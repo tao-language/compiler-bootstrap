@@ -48,9 +48,9 @@ src/
 │   ├── lexer.gleam           # Tao lexer
 │   ├── syntax.gleam          # Tao syntax/parser
 │   ├── test_filter.gleam     # Test filtering
-│   ├── test_parser.gleam     # Test annotation parser
+│   ├── test_parser.gleam     # Test annotation parsing
 │   ├── test_reporter.gleam   # Test reporting
-│   └── test_runner.gleam     # Test execution
+│   └── test_api.gleam        # Test execution (parses, compiles, type-checks, runs tests)
 └── examples/
     └── calc.gleam            # Calculator example with spans
 
@@ -66,15 +66,19 @@ test/
 │   ├── grammar_test.gleam
 │   ├── lexer_test.gleam
 │   └── formatter_test.gleam
-└── tao/
-    ├── desugarer_test.gleam
-    ├── examples_test.gleam
-    ├── import_desugar_test.gleam
-    ├── overloading_example_test.gleam
-    ├── overloading_test.gleam
-    ├── syntax_test.gleam
-    ├── test_filter_test.gleam
-    └── test_parser_test.gleam
+├── tao/
+│   ├── desugarer_test.gleam
+│   ├── examples_test.gleam
+│   ├── import_desugar_test.gleam
+│   ├── overloading_example_test.gleam
+│   ├── overloading_test.gleam
+│   ├── syntax_test.gleam
+│   ├── test_filter_test.gleam
+│   ├── test_parser_test.gleam
+│   └── test_api_unit_test.gleam  # Unit tests for test_api module
+├── lib/
+│   └── prelude/
+│       └── bool_test.gleam   # Prelude module tests
 
 docs/
 ├── README.md                 # Documentation index
@@ -278,9 +282,20 @@ When working with this codebase:
 
 16. **Match Case Body Environment** — `desugar_single_case` called `core_term_to_term(core_body)` with empty env `[]`, causing all `CoreVar(name)` in case bodies to default to `Var(0)`. At type-checking, `Var(0)` resolved to the match motive's `"_"` parameter (typed as a fresh hole), making both function and argument have the same hole type → `InfiniteType`. **Fix**: Keep case bodies as `CoreTerm` (not converted), then convert in `core_term_to_term_loop` with the correct environment containing enclosing lambda/let/fix bindings.
 
+17. **CLI Test Command Error Reporting** — The CLI `gleam run test` command used `test_runner.gleam` which had a stub `desugar_expression()` that always returned `CoreErr`, causing all tests to false-positive pass (both sides evaluated to `VErr`). Prelude file errors were silently ignored because files were never compiled/type-checked. **Fix**: Migrated CLI to use `test_api.run_test_file()` which properly parses, compiles, type-checks, and runs tests. Deleted `test_runner.gleam`. Added unit tests for error reporting.
+
 ### Known Issues
 
 **None** — All 454 tests pass with 0 failures and 0 warnings.
+
+### Test System Architecture
+
+| System | Entry Point | Status |
+|--------|------------|--------|
+| **Gleam tests** (`gleam test`) | `test/lib/prelude/bool_test.gleam` | ✅ Uses `test_api.run_test_file()` — catches errors |
+| **CLI test** (`gleam run test`) | `compiler_bootstrap.gleam` | ✅ Now uses `test_api.run_test_file()` — reports errors |
+| **test_api.gleam** | `src/tao/test_api.gleam` | ✅ Single source of truth for testing .tao files |
+| ~~test_runner.gleam~~ | ~~src/tao/test_runner.gleam~~ | ❌ Deleted — was broken (stub desugaring) |
 
 
 ## Contact

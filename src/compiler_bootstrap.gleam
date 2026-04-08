@@ -11,7 +11,7 @@
 /// ```
 import argv
 import core/ast as ast
-import core/state.{type Error as TypeError, State, type State, initial_state, initial_ffis}
+import core/state.{type Error as TypeError, State, type State, initial_state, initial_ffis, SyntaxError, TypeMismatch, CtrUndefined, VarUndefined, MatchMissingCase, MatchRedundantCase}
 import core/infer.{infer}
 import core/eval.{eval}
 import core/quote.{quote}
@@ -23,10 +23,8 @@ import tao/global_context.{new_context, with_prelude, set_current_module}
 import tao/compiler.{compile_files, compile_single_file, type CompileResult, type CompileErrorType, ParseError as CompilerParseError, ImportError as CompilerImportError, CircularImport as CompilerCircularImport, ModuleNotFound as CompilerModuleNotFound}
 import tao/ast as tao_ast
 import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, type Span, Span}
-import tao/test_parser.{parse_tests, type Test}
-import tao/test_filter.{filter_tests, file_base_name}
-import tao/test_runner.{run_tests, calculate_summary, get_failures, all_passed, type TestResult, Fail, Error as TestError, TimedOut}
-import tao/test_reporter.{report_results, report_final_status, list_test_names}
+import tao/test_api.{run_test_file, calculate_summary, all_passed, get_failures, type TestResult, Pass, Fail}
+import tao/test_reporter.{report_results, report_final_status, list_test_expressions}
 import gleam/int
 import gleam/io
 import gleam/list
@@ -240,91 +238,112 @@ fn detect_file_type(path: String) -> FileType {
 // TEST COMMAND
 // ============================================================================
 
+/// Result of processing a single test file.
+type FileTestResult {
+  FileTestResult(
+    path: String,
+    errors: List(TypeError),
+    results: List(TestResult),
+  )
+}
+
 fn run_test_command(
   paths: List(String),
-  match_pattern: String,
+  _match_pattern: String,
   list_tests: Bool,
   verbose: Bool,
   _debug: Bool,
 ) -> Nil {
-  // Default to current directory if no paths specified
   let test_paths = case paths {
     [] -> ["."]
     _ -> paths
   }
 
-  // Collect all tests from all paths
-  let all_tests = collect_tests_from_paths(test_paths, verbose)
+  let all_file_results = collect_and_run_tests_from_paths(test_paths, verbose)
 
-  // Filter tests by pattern
-  let filtered_tests = case match_pattern {
-    "" -> all_tests
-    pattern -> {
-      // Filter by pattern (match against test name or filename)
-      list.map(all_tests, fn(pair) {
-        let #(tests, file) = pair
-        #(filter_tests(tests, [pattern], file), file)
+  let has_errors = list.any(all_file_results, fn(f) {
+    list.length(f.errors) > 0
+  })
+
+  case has_errors {
+    True -> {
+      list.each(all_file_results, fn(file_result) {
+        case file_result.errors {
+          [] -> Nil
+          [_, ..] -> {
+            io.println("")
+            io.println("═══ Errors in " <> file_result.path <> " ═══")
+            io.println("")
+            case simplifile.read(from: file_result.path) {
+              Ok(source) -> {
+                list.each(file_result.errors, fn(e) {
+                  let diagnostic = error_reporter.type_error_to_diagnostic(e, source, file_result.path)
+                  io.println(error_reporter.format_diagnostic(diagnostic, source))
+                })
+              }
+              Error(_) -> {
+                list.each(file_result.errors, fn(e) {
+                  io.println("  " <> format_core_error(e))
+                })
+              }
+            }
+            io.println("")
+          }
+        }
       })
+      io.println("✗ Some files had errors")
     }
-  }
+    False -> {
+      let all_results = list.flat_map(all_file_results, fn(f) { f.results })
+      let summary = calculate_summary(all_results)
 
-  // List tests or run them
-  case list_tests {
-    True -> list_all_tests(filtered_tests)
-    False -> run_and_report_tests(filtered_tests, verbose)
+      case list_tests {
+        True -> list_test_expressions(all_results)
+        False -> {
+          io.println("")
+          report_results(all_results, summary, verbose)
+          report_final_status(all_passed(all_results))
+        }
+      }
+    }
   }
 }
 
-/// Collect tests from all paths
-fn collect_tests_from_paths(paths: List(String), verbose: Bool) -> List(#(List(Test), String)) {
+fn collect_and_run_tests_from_paths(paths: List(String), verbose: Bool) -> List(FileTestResult) {
   list.flat_map(paths, fn(path) {
-    collect_tests_from_path(path, verbose)
+    collect_and_run_tests_from_path(path, verbose)
   })
 }
 
-/// Collect tests from a single path (file or directory)
-fn collect_tests_from_path(path: String, verbose: Bool) -> List(#(List(Test), String)) {
-  // Check if it's a directory or file
+fn collect_and_run_tests_from_path(path: String, verbose: Bool) -> List(FileTestResult) {
   case simplifile.read(from: path) {
     Ok(contents) -> {
-      // It's a file
-      let parse_result = parse_tests(contents, path)
       case verbose {
-        True -> {
-          io.println("✓ Found " <> int.to_string(list.length(parse_result.tests)) <> " tests in " <> path)
-          Nil
-        }
+        True -> io.println("✓ Testing " <> path)
         False -> Nil
       }
-      [#(parse_result.tests, path)]
+      let #(errors, results) = run_test_file(contents, path)
+      [FileTestResult(path, errors, results)]
     }
-    Error(_) -> {
-      // Might be a directory, try to read it
-      collect_tests_from_directory(path, verbose)
-    }
+    Error(_) -> collect_and_run_tests_from_directory(path, verbose)
   }
 }
 
-/// Collect tests from a directory by recursively finding all .tao files
-fn collect_tests_from_directory(dir_path: String, verbose: Bool) -> List(#(List(Test), String)) {
+fn collect_and_run_tests_from_directory(dir_path: String, verbose: Bool) -> List(FileTestResult) {
   case simplifile.get_files(in: dir_path) {
     Ok(files) -> {
-      // Filter for .tao files and collect tests from each
       let tao_files = list.filter(files, fn(f) { string.ends_with(f, ".tao") })
-      list.map(tao_files, fn(file) {
+      list.flat_map(tao_files, fn(file) {
         case simplifile.read(from: file) {
           Ok(contents) -> {
-            let parse_result = parse_tests(contents, file)
             case verbose {
-              True -> {
-                io.println("✓ Found " <> int.to_string(list.length(parse_result.tests)) <> " tests in " <> file)
-                Nil
-              }
+              True -> io.println("✓ Testing " <> file)
               False -> Nil
             }
-            #(parse_result.tests, file)
+            let #(errors, results) = run_test_file(contents, file)
+            [FileTestResult(file, errors, results)]
           }
-          Error(_) -> #([], file)
+          Error(_) -> []
         }
       })
     }
@@ -338,38 +357,22 @@ fn collect_tests_from_directory(dir_path: String, verbose: Bool) -> List(#(List(
   }
 }
 
-/// List all tests
-fn list_all_tests(tests_with_files: List(#(List(Test), String))) -> Nil {
-  // Flatten all tests for listing
-  let all_tests = list.flat_map(tests_with_files, fn(pair) {
-    let #(tests, _) = pair
-    tests
-  })
-  list_test_names(all_tests)
-}
-
-/// Run tests and report results
-fn run_and_report_tests(tests_with_files: List(#(List(Test), String)), verbose: Bool) -> Nil {
-  // Run tests for each file with its source
-  let all_results = list.flat_map(tests_with_files, fn(pair) {
-    let #(tests, source) = pair
-    run_tests(tests, source)
-  })
-
-  let summary = calculate_summary(all_results)
-
-  // Report results using enhanced reporter
-  io.println("")
-  report_results(all_results, summary, verbose, "")
-
-  // Final status
-  report_final_status(all_passed(all_results))
-}
-
-/// Report a single test failure (legacy - kept for compatibility)
-fn report_test_failure(_result: TestResult) -> Nil {
-  // This function is now obsolete - use test_reporter instead
-  Nil
+fn format_core_error(error: TypeError) -> String {
+  case error {
+    SyntaxError(_, expected, got, _) ->
+      "Syntax error: expected " <> expected <> ", got " <> got
+    TypeMismatch(_, _, _, _) ->
+      "Type error: type mismatch"
+    CtrUndefined(name, _) ->
+      "Constructor error: undefined constructor '" <> name <> "'"
+    VarUndefined(_, _) ->
+      "Variable error: undefined variable"
+    MatchMissingCase(_, _) ->
+      "Exhaustiveness error: missing case in pattern match"
+    MatchRedundantCase(_) ->
+      "Warning: redundant case in pattern match"
+    _ -> "Error (see above for details)"
+  }
 }
 
 /// Update State.ctrs with constructor definitions from desugaring.

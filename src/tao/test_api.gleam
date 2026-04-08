@@ -14,7 +14,7 @@ import syntax/grammar.{type ParseResult, type Span, Span}
 import tao/desugar.{desugar_module, desugar_module_with_ctrs, type DesugarContext}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module}
 import core/ast.{type Term, type Value, Err as CoreErr, type CtrEnv}
-import core/state.{type State, State, type Error as CoreError, initial_state, SyntaxError, TypeMismatch, VarUndefined, CtrUndefined, HoleUnsolved, MatchRedundantCase, MatchMissingCase, RcdMissingFields, DotFieldNotFound, DotOnNonCtr, InfiniteType, SpineMismatch, ArityMismatch, NotAFunction, PatternMismatch, CtrUnsolvedParam, TODO as CoreTODO, ComptimePermissionDenied}
+import core/state.{type State, State, type Error as CoreError, initial_state, initial_ffis, SyntaxError, TypeMismatch, VarUndefined, CtrUndefined, HoleUnsolved, MatchRedundantCase, MatchMissingCase, RcdMissingFields, DotFieldNotFound, DotOnNonCtr, InfiniteType, SpineMismatch, ArityMismatch, NotAFunction, PatternMismatch, CtrUnsolvedParam, TODO as CoreTODO, ComptimePermissionDenied}
 import core/infer.{infer}
 import core/eval.{eval}
 import core/quote.{quote, normalize}
@@ -313,7 +313,7 @@ fn run_test(test_expr: TestExpr, state: State) -> TestResult {
     [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<parse error>")
     [] -> {
       let expr_term = expr_to_core_term([expr_result.ast], state.ctrs, test_expr.span)
-      let actual_value = eval([], [], expr_term)
+      let actual_value = eval(initial_ffis, [], expr_term)
 
       // Parse and evaluate expected
       let expected_result: ParseResult(Expr) = parse_expr(test_expr.expected)
@@ -321,7 +321,7 @@ fn run_test(test_expr: TestExpr, state: State) -> TestResult {
         [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<parse error>")
         [] -> {
           let expected_term = expr_to_core_term([expected_result.ast], state.ctrs, test_expr.span)
-          let expected_value = eval([], [], expected_term)
+          let expected_value = eval(initial_ffis, [], expected_term)
 
           // Compare values
           case values_equal(actual_value, expected_value) {
@@ -481,4 +481,50 @@ fn state_with_constructors(dc: DesugarContext, initial: State) -> State {
   // Prepend desugar context constructors so they take precedence
   let merged_ctrs = list.append(dc.ctrs, initial.ctrs)
   State(..initial, ctrs: merged_ctrs)
+}
+
+// ============================================================================
+// SUMMARY (Phase 2)
+// ============================================================================
+
+/// Summary of test run.
+pub type TestSummary {
+  TestSummary(
+    total: Int,
+    passed: Int,
+    failed: Int,
+  )
+}
+
+/// Calculate test run summary.
+pub fn calculate_summary(results: List(TestResult)) -> TestSummary {
+  list.fold(results, TestSummary(0, 0, 0), fn(acc, result) {
+    case result {
+      Pass(_) -> TestSummary(acc.total + 1, acc.passed + 1, acc.failed)
+      Fail(_, _, _) -> TestSummary(acc.total + 1, acc.passed, acc.failed + 1)
+    }
+  })
+}
+
+/// Check if all tests passed.
+pub fn all_passed(results: List(TestResult)) -> Bool {
+  case results {
+    [] -> True
+    [result, ..rest] -> {
+      case result {
+        Pass(_) -> all_passed(rest)
+        Fail(_, _, _) -> False
+      }
+    }
+  }
+}
+
+/// Get failed tests.
+pub fn get_failures(results: List(TestResult)) -> List(TestResult) {
+  list.filter(results, fn(result) {
+    case result {
+      Pass(_) -> False
+      Fail(_, _, _) -> True
+    }
+  })
 }
