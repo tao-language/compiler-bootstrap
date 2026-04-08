@@ -10,7 +10,7 @@
 /// - **[../plans/prelude/README.md](../plans/prelude/README.md)** - Prelude implementation plan
 /// - **[../plans/tao/18-stdlib-testing.md](../plans/tao/18-stdlib-testing.md)** - Testing infrastructure
 import tao/syntax.{parse_module, type Expr, parse as parse_expr, Int as TaoInt, Float as TaoFloat, Str as TaoStr, Var as TaoVar, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, If as TaoIf, For as TaoFor, While as TaoWhile, Loop as TaoLoop, Break as TaoBreak, Continue as TaoContinue, Test as TaoTest, Run as TaoRun, Import as TaoImport, Ctr as TaoCtr, TypeDecl as TaoTypeDecl, ConstructorDecl as TaoCtrDecl, expr_to_ast, block_to_ast, get_expr_span}
-import syntax/grammar.{type ParseResult, type Span, Span}
+import syntax/grammar.{type ParseResult, type ParseError, type Span, Span}
 import tao/desugar.{desugar_module, type DesugarContext}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module}
 import core/ast.{type Value}
@@ -21,6 +21,7 @@ import core/quote.{quote, normalize}
 import core/subst.{force}
 import core/syntax as core_syntax
 import gleam/list
+import gleam/int
 import gleam/option.{type Option, Some, None}
 import gleam/string
 import tao/ast as t
@@ -320,7 +321,7 @@ fn run_test(
   // Parse the test expression
   let expr_result: ParseResult(Expr) = parse_expr(test_expr.expression)
   case expr_result.errors {
-    [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<parse error>")
+    [_, ..] as errs -> Fail(test_expr.expression, test_expr.expected, format_parse_errors(errs))
     [] -> {
       // Create extended module: original body + test expression as the result
       // Use StmtRun instead of StmtExpr — StmtRun returns its expression as the
@@ -338,9 +339,9 @@ fn run_test(
       let #(_value, actual_type, type_state) = infer(eval_state, extended_term)
 
       case type_state.errors {
-        [_, ..] -> {
+        [_, ..] as errs -> {
           // Type error in test expression
-          Fail(test_expr.expression, test_expr.expected, "<type error>")
+          Fail(test_expr.expression, test_expr.expected, format_type_errors(errs))
         }
         [] -> {
           // Evaluate the extended module - the result is the test expression's value
@@ -351,7 +352,7 @@ fn run_test(
           // Parse and evaluate expected in the same extended context
           let expected_result: ParseResult(Expr) = parse_expr(test_expr.expected)
           case expected_result.errors {
-            [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<parse error>")
+            [_, ..] as errs -> Fail(test_expr.expression, test_expr.expected, format_parse_errors(errs))
             [] -> {
               // Create extended module for expected expression
               let expected_ast = expr_to_ast(expected_result.ast)
@@ -366,7 +367,7 @@ fn run_test(
               let #(_evalue, expected_type, expected_type_state) = infer(expected_eval_state, expected_term)
 
               case expected_type_state.errors {
-                [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<type error>")
+                [_, ..] as errs -> Fail(test_expr.expression, test_expr.expected, format_type_errors(errs))
                 [] -> {
                   // Check types match before comparing values
                   case types_match(actual_type, expected_type) {
@@ -407,6 +408,46 @@ fn format_type(ty: Value) -> String {
   let span = Span("", 0, 0, 0, 0)
   let term = quote(initial_ffis, 0, ty, span)
   core_syntax.format(term)
+}
+
+/// Format grammar parse errors as a readable message.
+fn format_parse_errors(errors: List(ParseError)) -> String {
+  case errors {
+    [] -> "<parse error>"
+    [first, ..] -> "Parse error: expected " <> first.expected <> ", got " <> first.got
+  }
+}
+
+/// Format core state type errors as a readable message.
+fn format_type_errors(errors: List(CoreError)) -> String {
+  case errors {
+    [] -> "<type error>"
+    [first, ..] -> format_core_error(first)
+  }
+}
+
+/// Format a single core error for display.
+fn format_core_error(error: CoreError) -> String {
+  case error {
+    SyntaxError(_, expected, got, _) ->
+      "Syntax error: expected " <> expected <> ", got " <> got
+    TypeMismatch(_, _, _, _) ->
+      "Type error: type mismatch"
+    CtrUndefined(name, _) ->
+      "Constructor error: undefined constructor '" <> name <> "'"
+    VarUndefined(index, _) ->
+      "Variable error: undefined variable at index " <> int.to_string(index)
+    MatchMissingCase(_, _) ->
+      "Exhaustiveness error: missing case in pattern match"
+    MatchRedundantCase(_) ->
+      "Warning: redundant case in pattern match"
+    InfiniteType(id, _, _, _) ->
+      "Infinite type error: unsolved hole #" <> int.to_string(id)
+    HoleUnsolved(id, _) ->
+      "Unsolved hole #" <> int.to_string(id)
+    _ ->
+      "Error: see above for details"
+  }
 }
 
 /// Check if two values are equal.

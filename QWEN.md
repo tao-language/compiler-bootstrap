@@ -286,6 +286,13 @@ When working with this codebase:
 
 18. **Boolean Operators as FFI Builtins** — `not(x)`, `and(x, y)`, `or(x, y)` were being parsed as unary/binary operators (`UnaryOp`, `BinOp`) and desugared to `CoreCall` (FFI builtin calls), producing `%call not(#True)` instead of calling user-defined functions. **Fix**: Changed `desugar_unaryop` and `desugar_binop` to create `CoreApp(CoreVar(name), ...)` for `not`/`and`/`or` instead of `CoreCall`, so they resolve to user-defined functions. Also fixed `VFix` evaluation to unwrap `Ann`-wrapped lambdas for annotated functions. Fixed incorrect test expectations for `implies(False, True)` and `implies(False, False)`.
 
+19. **Generic Error Messages in Test Runner** — Test failures showed generic placeholders like `<parse error>` and `<type error>` instead of actual error details. **Fix**: Added `format_parse_errors`, `format_type_errors`, and `format_core_error` helper functions to `test_api.gleam`. All 4 error placeholders now show specific messages:
+    - Parse errors: `"Parse error: expected X, got Y"`
+    - Type errors: `"Syntax error: expected X, got Y"`, `"Type error: type mismatch"`, `"Constructor error: undefined constructor 'A'"`, etc.
+    - Type mismatches: `"Type mismatch: expected %I32, got #Bool"`
+
+20. **Non-Zero Exit Code on Test Failure** — The CLI `gleam run test` always exited with code 0 even when tests failed. **Fix**: Added `src/exit_code.gleam` with `erlang:halt/1` external function. `run_test_command` now returns `Bool` and `main` calls `exit_code.exit(1)` on failure.
+
 ### Known Issues
 
 **None** — All 460 tests pass with 0 failures and 0 warnings.
