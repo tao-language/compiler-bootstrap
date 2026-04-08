@@ -32,6 +32,7 @@ import gleam/string
 import gleam/option.{Some, None}
 import simplifile
 import syntax/error_reporter
+import exit_code
 
 // ============================================================================
 // TYPES
@@ -87,7 +88,10 @@ pub fn main() {
           }
         }
         Test(paths, match_pattern, list_tests, verbose, debug) -> {
-          run_test_command(paths, match_pattern, list_tests, verbose, debug)
+          case run_test_command(paths, match_pattern, list_tests, verbose, debug) {
+            True -> Nil
+            False -> exit_code.exit(1)
+          }
         }
         Help -> {
           print_help()
@@ -253,7 +257,7 @@ fn run_test_command(
   list_tests: Bool,
   verbose: Bool,
   _debug: Bool,
-) -> Nil {
+) -> Bool {
   let test_paths = case paths {
     [] -> ["."]
     _ -> paths
@@ -292,17 +296,22 @@ fn run_test_command(
         }
       })
       io.println("✗ Some files had errors")
+      False
     }
     False -> {
       let all_results = list.flat_map(all_file_results, fn(f) { f.results })
       let summary = calculate_summary(all_results)
 
       case list_tests {
-        True -> list_test_expressions(all_results)
+        True -> {
+          list_test_expressions(all_results)
+          True
+        }
         False -> {
           io.println("")
           report_results(all_results, summary, verbose)
           report_final_status(all_passed(all_results))
+          all_passed(all_results)
         }
       }
     }
