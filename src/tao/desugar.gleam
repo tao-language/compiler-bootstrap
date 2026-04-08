@@ -1754,15 +1754,26 @@ fn desugar_binop(
   span: Span,
   dc: DesugarContext,
 ) -> #(CoreTerm, DesugarContext) {
-  // Convert operator to builtin function name
+  // Convert operator to function name
   let op_name = binop_to_name(op)
 
   // Desugar operands
   let #(core_left, dc1) = desugar_expr_core(left, dc)
   let #(core_right, dc2) = desugar_expr_core(right, dc1)
 
-  // Build call: op_name(left, right) using CoreCall
-  #(CoreCall(op_name, [core_left, core_right], span), dc2)
+  // Boolean operators (and, or) call user-defined functions via App(Var, ...)
+  // Arithmetic/comparison operators use CoreCall for FFI builtins
+  case op_name {
+    "and" | "or" -> {
+      // Build call: op_name(left, right) as App(App(Var(op_name), left), right)
+      let app1 = CoreApp(CoreVar(op_name, span), core_left, span)
+      #(CoreApp(app1, core_right, span), dc2)
+    }
+    _ -> {
+      // Arithmetic/comparison: use CoreCall for FFI builtins
+      #(CoreCall(op_name, [core_left, core_right], span), dc2)
+    }
+  }
 }
 
 /// Convert binary operator to function name.
@@ -1796,8 +1807,18 @@ fn desugar_unaryop(
   let op_name = unaryop_to_name(op)
   let #(core_expr, dc1) = desugar_expr_core(expr, dc)
 
-  // Build call: op_name(expr) using CoreCall
-  #(CoreCall(op_name, [core_expr], span), dc1)
+  // Boolean not calls user-defined function via App(Var, ...)
+  // Numeric negate uses CoreCall for FFI builtin
+  case op_name {
+    "not" -> {
+      // Build call: not(expr) as App(Var(not), expr)
+      #(CoreApp(CoreVar(op_name, span), core_expr, span), dc1)
+    }
+    _ -> {
+      // Numeric negate: use CoreCall for FFI builtin
+      #(CoreCall(op_name, [core_expr], span), dc1)
+    }
+  }
 }
 
 /// Convert unary operator to function name.

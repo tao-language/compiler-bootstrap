@@ -9,15 +9,16 @@
 /// For detailed documentation see:
 /// - **[../plans/prelude/README.md](../plans/prelude/README.md)** - Prelude implementation plan
 /// - **[../plans/tao/18-stdlib-testing.md](../plans/tao/18-stdlib-testing.md)** - Testing infrastructure
-import tao/syntax.{parse_module, type Expr, parse as parse_expr, Int as TaoInt, Float as TaoFloat, Str as TaoStr, Var as TaoVar, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, If as TaoIf, For as TaoFor, While as TaoWhile, Loop as TaoLoop, Break as TaoBreak, Continue as TaoContinue, Test as TaoTest, Run as TaoRun, Import as TaoImport, Ctr as TaoCtr, TypeDecl as TaoTypeDecl, ConstructorDecl as TaoCtrDecl, expr_to_ast, block_to_ast}
+import tao/syntax.{parse_module, type Expr, parse as parse_expr, Int as TaoInt, Float as TaoFloat, Str as TaoStr, Var as TaoVar, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, If as TaoIf, For as TaoFor, While as TaoWhile, Loop as TaoLoop, Break as TaoBreak, Continue as TaoContinue, Test as TaoTest, Run as TaoRun, Import as TaoImport, Ctr as TaoCtr, TypeDecl as TaoTypeDecl, ConstructorDecl as TaoCtrDecl, expr_to_ast, block_to_ast, get_expr_span}
 import syntax/grammar.{type ParseResult, type Span, Span}
-import tao/desugar.{desugar_module, desugar_module_with_ctrs, type DesugarContext}
+import tao/desugar.{desugar_module, type DesugarContext}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module}
-import core/ast.{type Term, type Value, Err as CoreErr, type CtrEnv}
+import core/ast.{type Value}
 import core/state.{type State, State, type Error as CoreError, initial_state, initial_ffis, SyntaxError, TypeMismatch, VarUndefined, CtrUndefined, HoleUnsolved, MatchRedundantCase, MatchMissingCase, RcdMissingFields, DotFieldNotFound, DotOnNonCtr, InfiniteType, SpineMismatch, ArityMismatch, NotAFunction, PatternMismatch, CtrUnsolvedParam, TODO as CoreTODO, ComptimePermissionDenied}
 import core/infer.{infer}
 import core/eval.{eval}
 import core/quote.{quote, normalize}
+import core/subst.{force}
 import core/syntax as core_syntax
 import gleam/list
 import gleam/option.{type Option, Some, None}
@@ -99,9 +100,11 @@ pub fn run_test_file(source: String, file_path: String) -> #(List(CoreError), Li
         [_, ..] as errors -> #(errors, [])
         [] -> {
           // 4. Extract and run tests from ORIGINAL source (with test lines)
+          // Each test expression is evaluated in an extended module that includes
+          // the original module's bindings, so functions like `not` are in scope.
           let tests = extract_repl_tests(source, file_path)
           let results = list.map(tests, fn(test_item) {
-            run_test(test_item, state)
+            run_test(test_item, body, ctx, file_path)
           })
 
           #([], results)
@@ -305,46 +308,80 @@ fn skip_past_line(lines: List(#(Int, String)), target_line: Int) -> List(#(Int, 
 // TEST EXECUTION
 // ============================================================================
 
-/// Run a single test.
-fn run_test(test_expr: TestExpr, state: State) -> TestResult {
-  // Parse and evaluate expression
+/// Run a single test by creating an extended module that includes the test
+/// expression. This ensures the test expression has access to the original
+/// module's function bindings (like `not`, `and`, `or`, etc.).
+fn run_test(
+  test_expr: TestExpr,
+  original_body: List(t.Stmt),
+  ctx: GlobalContext,
+  file_path: String,
+) -> TestResult {
+  // Parse the test expression
   let expr_result: ParseResult(Expr) = parse_expr(test_expr.expression)
   case expr_result.errors {
     [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<parse error>")
     [] -> {
-      let expr_term = expr_to_core_term([expr_result.ast], state.ctrs, test_expr.span)
-      let actual_value = eval(initial_ffis, [], expr_term)
+      // Create extended module: original body + test expression as the result
+      // Use StmtRun instead of StmtExpr — StmtRun returns its expression as the
+      // module result, while StmtExpr discards the result.
+      let ast_expr = expr_to_ast(expr_result.ast)
+      let expr_span = get_expr_span(expr_result.ast)
+      let test_stmt = t.StmtRun(ast_expr, expr_span)
+      let extended_body = list.append(original_body, [test_stmt])
+      let extended_module = t.Module(file_path, extended_body, expr_span)
 
-      // Parse and evaluate expected
-      let expected_result: ParseResult(Expr) = parse_expr(test_expr.expected)
-      case expected_result.errors {
-        [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<parse error>")
+      // Desugar and type-check the extended module
+      let extended_ctx = new_context() |> with_prelude()
+      let #(extended_term, extended_dc) = desugar_module(extended_module, extended_ctx)
+      let eval_state = state_with_constructors(extended_dc, initial_state)
+      let #(_value, _type, type_state) = infer(eval_state, extended_term)
+
+      case type_state.errors {
+        [_, ..] -> {
+          // Type error in test expression
+          Fail(test_expr.expression, test_expr.expected, "<type error>")
+        }
         [] -> {
-          let expected_term = expr_to_core_term([expected_result.ast], state.ctrs, test_expr.span)
-          let expected_value = eval(initial_ffis, [], expected_term)
+          // Evaluate the extended module - the result is the test expression's value
+          let actual_value = eval(initial_ffis, [], extended_term)
+          // Apply the type substitution to solve any holes
+          let forced_actual = force(initial_ffis, type_state.subst, actual_value)
 
-          // Compare values
-          case values_equal(actual_value, expected_value) {
-            True -> Pass(test_expr.expression)
-            False -> Fail(test_expr.expression, test_expr.expected, format_value(actual_value))
+          // Parse and evaluate expected in the same extended context
+          let expected_result: ParseResult(Expr) = parse_expr(test_expr.expected)
+          case expected_result.errors {
+            [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<parse error>")
+            [] -> {
+              // Create extended module for expected expression
+              let expected_ast = expr_to_ast(expected_result.ast)
+              let expected_span = get_expr_span(expected_result.ast)
+              let expected_stmt = t.StmtRun(expected_ast, expected_span)
+              let expected_body = list.append(original_body, [expected_stmt])
+              let expected_module = t.Module(file_path, expected_body, expected_span)
+
+              let expected_ctx = new_context() |> with_prelude()
+              let #(expected_term, expected_dc) = desugar_module(expected_module, expected_ctx)
+              let expected_eval_state = state_with_constructors(expected_dc, initial_state)
+              let #(_evalue, _etype, expected_type_state) = infer(expected_eval_state, expected_term)
+
+              case expected_type_state.errors {
+                [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<type error>")
+                [] -> {
+                  let expected_value = eval(initial_ffis, [], expected_term)
+                  let forced_expected = force(initial_ffis, expected_type_state.subst, expected_value)
+
+                  // Compare values
+                  case values_equal(forced_actual, forced_expected) {
+                    True -> Pass(test_expr.expression)
+                    False -> Fail(test_expr.expression, test_expr.expected, format_value(forced_actual))
+                  }
+                }
+              }
+            }
           }
         }
       }
-    }
-  }
-}
-
-/// Convert Tao AST to Core term.
-fn expr_to_core_term(exprs: List(Expr), ctrs: CtrEnv, span: Span) -> Term {
-  case exprs {
-    [] -> CoreErr("No expressions", span)
-    [_expr, ..] -> {
-      // Desugar single expression with the module's constructor environment
-      let body = exprs_to_stmts(exprs)
-      let module = t.Module("", body, span)
-      let ctx = new_context() |> with_prelude()
-      let #(term, _ctx) = desugar_module_with_ctrs(module, ctx, ctrs)
-      term
     }
   }
 }

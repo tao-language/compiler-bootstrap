@@ -146,7 +146,7 @@ examples/
 | CLI | Complete | Working |
 | Error Reporting | Complete | Working |
 | Warning Cleanup | Complete | 45 → 0 warnings |
-| **Total** | **All green** | **454 passing** |
+| **Total** | **All green** | **460 passing** |
 
 ### Key Features Working
 
@@ -245,7 +245,7 @@ When working with this codebase:
 
 ## Test Results
 
-- **454 tests passing**
+- **460 tests passing**
 - **0 failures**
 - **0 warnings**
 
@@ -284,9 +284,11 @@ When working with this codebase:
 
 17. **CLI Test Command Error Reporting** — The CLI `gleam run test` command used `test_runner.gleam` which had a stub `desugar_expression()` that always returned `CoreErr`, causing all tests to false-positive pass (both sides evaluated to `VErr`). Prelude file errors were silently ignored because files were never compiled/type-checked. **Fix**: Migrated CLI to use `test_api.run_test_file()` which properly parses, compiles, type-checks, and runs tests. Deleted `test_runner.gleam`. Added unit tests for error reporting.
 
+18. **Boolean Operators as FFI Builtins** — `not(x)`, `and(x, y)`, `or(x, y)` were being parsed as unary/binary operators (`UnaryOp`, `BinOp`) and desugared to `CoreCall` (FFI builtin calls), producing `%call not(#True)` instead of calling user-defined functions. **Fix**: Changed `desugar_unaryop` and `desugar_binop` to create `CoreApp(CoreVar(name), ...)` for `not`/`and`/`or` instead of `CoreCall`, so they resolve to user-defined functions. Also fixed `VFix` evaluation to unwrap `Ann`-wrapped lambdas for annotated functions. Fixed incorrect test expectations for `implies(False, True)` and `implies(False, False)`.
+
 ### Known Issues
 
-**None** — All 454 tests pass with 0 failures and 0 warnings.
+**None** — All 460 tests pass with 0 failures and 0 warnings.
 
 ### Test System Architecture
 

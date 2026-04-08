@@ -66,6 +66,21 @@ pub fn do_app(
     ast.VLam(_, _, closure_env, body) -> {
       eval(ffi, [arg_val, ..closure_env], body)
     }
+    ast.VFix(name, fix_env, fix_body) -> {
+      // Unroll the fixpoint: evaluate the fix body (should be a Lam, possibly wrapped in Ann)
+      // with the argument and the fix environment extended with the VFix itself
+      let body = case fix_body {
+        ast.Ann(inner, _, _) -> inner
+        _ -> fix_body
+      }
+      case body {
+        ast.Lam(implicit, _param, body_term, _) -> {
+          let self = ast.VFix(name, fix_env, fix_body)
+          eval(ffi, [arg_val, self, ..fix_env], body_term)
+        }
+        _ -> ast.VErr
+      }
+    }
     ast.VNeut(head, spine) -> {
       ast.VNeut(head, list.append(spine, [ast.EApp(arg_val)]))
     }

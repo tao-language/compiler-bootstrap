@@ -58,5 +58,5 @@ fn implies(a: Bool, b: Bool) -> Bool {
 
 > implies(True, True) ~> True
 > implies(True, False) ~> False
-> implies(False, True) ~> False
-> implies(False, False) ~> False
+> implies(False, True) ~> True
+> implies(False, False) ~> True
