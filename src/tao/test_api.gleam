@@ -335,7 +335,7 @@ fn run_test(
       let extended_ctx = new_context() |> with_prelude()
       let #(extended_term, extended_dc) = desugar_module(extended_module, extended_ctx)
       let eval_state = state_with_constructors(extended_dc, initial_state)
-      let #(_value, _type, type_state) = infer(eval_state, extended_term)
+      let #(_value, actual_type, type_state) = infer(eval_state, extended_term)
 
       case type_state.errors {
         [_, ..] -> {
@@ -363,18 +363,29 @@ fn run_test(
               let expected_ctx = new_context() |> with_prelude()
               let #(expected_term, expected_dc) = desugar_module(expected_module, expected_ctx)
               let expected_eval_state = state_with_constructors(expected_dc, initial_state)
-              let #(_evalue, _etype, expected_type_state) = infer(expected_eval_state, expected_term)
+              let #(_evalue, expected_type, expected_type_state) = infer(expected_eval_state, expected_term)
 
               case expected_type_state.errors {
                 [_, ..] -> Fail(test_expr.expression, test_expr.expected, "<type error>")
                 [] -> {
-                  let expected_value = eval(initial_ffis, [], expected_term)
-                  let forced_expected = force(initial_ffis, expected_type_state.subst, expected_value)
+                  // Check types match before comparing values
+                  case types_match(actual_type, expected_type) {
+                    False -> {
+                      // Type mismatch - report as type error
+                      Fail(test_expr.expression, test_expr.expected,
+                        "Type mismatch: expected " <> format_type(expected_type) <>
+                        ", got " <> format_type(actual_type))
+                    }
+                    True -> {
+                      let expected_value = eval(initial_ffis, [], expected_term)
+                      let forced_expected = force(initial_ffis, expected_type_state.subst, expected_value)
 
-                  // Compare values
-                  case values_equal(forced_actual, forced_expected) {
-                    True -> Pass(test_expr.expression)
-                    False -> Fail(test_expr.expression, test_expr.expected, format_value(forced_actual))
+                      // Compare values
+                      case values_equal(forced_actual, forced_expected) {
+                        True -> Pass(test_expr.expression)
+                        False -> Fail(test_expr.expression, test_expr.expected, format_value(forced_actual))
+                      }
+                    }
                   }
                 }
               }
@@ -384,6 +395,18 @@ fn run_test(
       }
     }
   }
+}
+
+/// Check if two types match by comparing their string representation.
+fn types_match(t1: Value, t2: Value) -> Bool {
+  format_type(t1) == format_type(t2)
+}
+
+/// Format a type value as a string for display.
+fn format_type(ty: Value) -> String {
+  let span = Span("", 0, 0, 0, 0)
+  let term = quote(initial_ffis, 0, ty, span)
+  core_syntax.format(term)
 }
 
 /// Check if two values are equal.
