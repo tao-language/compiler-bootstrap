@@ -1207,13 +1207,15 @@ pub fn tao_grammar() -> Grammar(Expr) {
           make_simple_fn,
         ),
       ]),
-      // Logic level: && and || (precedence 3)
+      // Logic level: &&, ||, and, or (precedence 3)
       left_assoc_rule(
         "Logic",
         "Comparison",
         [
           infix_binary("&&", make_and, InfixLeft, 3, " && "),
           infix_binary("||", make_or, InfixLeft, 3, " || "),
+          infix_binary("and", make_and, InfixLeft, 3, " and "),
+          infix_binary("or", make_or, InfixLeft, 3, " or "),
         ],
         3,
       ),

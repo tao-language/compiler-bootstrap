@@ -161,3 +161,109 @@ pub fn full_prelude_bool_module_test() {
   list.length(results) |> should.equal(18)
   test_api.all_passed(results) |> should.be_true
 }
+
+// ============================================================================
+// INFIX OPERATOR TESTS
+// ============================================================================
+
+pub fn and_operator_infix_syntax_test() {
+  let source = "
+type Bool = True | False
+
+fn and(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> b
+    | False -> False
+  }
+}
+
+> False and True ~> False
+> True and True ~> True
+> True and False ~> False
+> False and False ~> False
+"
+  let #(errors, results) = test_api.run_test_file(source, "test.tao")
+  errors |> should.equal([])
+  list.length(results) |> should.equal(4)
+  test_api.all_passed(results) |> should.be_true
+}
+
+pub fn or_operator_infix_syntax_test() {
+  let source = "
+type Bool = True | False
+
+fn or(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> True
+    | False -> b
+  }
+}
+
+> False or True ~> True
+> True or True ~> True
+> True or False ~> True
+> False or False ~> False
+"
+  let #(errors, results) = test_api.run_test_file(source, "test.tao")
+  errors |> should.equal([])
+  list.length(results) |> should.equal(4)
+  test_api.all_passed(results) |> should.be_true
+}
+
+pub fn mixed_infix_and_function_call_test() {
+  let source = "
+type Bool = True | False
+
+fn and(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> b
+    | False -> False
+  }
+}
+
+fn or(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> True
+    | False -> b
+  }
+}
+
+> and(False, True) ~> False
+> False and True ~> False
+> or(True, False) ~> True
+> True or False ~> True
+"
+  let #(errors, results) = test_api.run_test_file(source, "test.tao")
+  errors |> should.equal([])
+  list.length(results) |> should.equal(4)
+  test_api.all_passed(results) |> should.be_true
+}
+
+pub fn symbol_infix_operators_test() {
+  let source = "
+type Bool = True | False
+
+fn and(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> b
+    | False -> False
+  }
+}
+
+fn or(a: Bool, b: Bool) -> Bool {
+  match a {
+    | True -> True
+    | False -> b
+  }
+}
+
+> False && True ~> False
+> True && True ~> True
+> False || True ~> True
+> True || False ~> True
+"
+  let #(errors, results) = test_api.run_test_file(source, "test.tao")
+  errors |> should.equal([])
+  list.length(results) |> should.equal(4)
+  test_api.all_passed(results) |> should.be_true
+}

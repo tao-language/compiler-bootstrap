@@ -13,7 +13,7 @@ fn not(b: Bool) -> Bool {
 }
 
 > not(True) ~> False
-> not(False) ~> True
+> not False ~> True
 
 /// Logical AND with short-circuit evaluation
 fn and(a: Bool, b: Bool) -> Bool {
@@ -23,10 +23,10 @@ fn and(a: Bool, b: Bool) -> Bool {
   }
 }
 
-> and(True, True) ~> True
-> and(True, False) ~> False
-> and(False, True) ~> False
-> and(False, False) ~> False
+> True and True ~> True
+> True and False ~> False
+> False and True ~> False
+> False and False ~> False
 
 /// Logical OR with short-circuit evaluation
 fn or(a: Bool, b: Bool) -> Bool {
@@ -36,10 +36,10 @@ fn or(a: Bool, b: Bool) -> Bool {
   }
 }
 
-> or(True, True) ~> True
-> or(True, False) ~> True
-> or(False, True) ~> True
-> or(False, False) ~> False
+> True or True ~> True
+> True or False ~> True
+> False or True ~> True
+> False or False ~> False
 
 /// Exclusive OR: true if exactly one operand is true
 fn xor(a: Bool, b: Bool) -> Bool {

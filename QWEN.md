@@ -146,7 +146,7 @@ examples/
 | CLI | Complete | Working |
 | Error Reporting | Complete | Working |
 | Warning Cleanup | Complete | 45 → 0 warnings |
-| **Total** | **All green** | **460 passing** |
+| **Total** | **All green** | **464 passing** |
 
 ### Key Features Working
 
@@ -245,7 +245,7 @@ When working with this codebase:
 
 ## Test Results
 
-- **460 tests passing**
+- **464 tests passing**
 - **0 failures**
 - **0 warnings**
 
@@ -295,9 +295,11 @@ When working with this codebase:
 
 21. **Test Failure Location** — Test failures showed `✗ FAIL: test expression` without file/line context. **Fix**: Added `file: String, line: Int` fields to `TestResult.Pass` and `TestResult.Fail`. Output now shows `✗ FAIL: path/to/file.tao:15: test expression` for quick navigation to the failing test.
 
+22. **Infix Boolean Operators Not Parsed** — Python-style `x and y` and `x or y` syntax was not recognized as infix operators. The grammar's `operators` table defined them (lines 689-690) but the `left_assoc_rule("Logic", ...)` only included `&&` and `||`, not `and` and `or`. This caused `False and True` to be parsed incorrectly (only `False` was parsed, `and True` was left unparsed). **Fix**: Added `infix_binary("and", ...)` and `infix_binary("or", ...)` to the Logic level's `left_assoc_rule` in `src/tao/syntax.gleam`. Updated `lib/prelude/bool.tao` test expressions to use Python-style syntax: `not x`, `x and y`, `x or y`. Added 4 new unit tests for infix operators.
+
 ### Known Issues
 
-**None** — All 460 tests pass with 0 failures and 0 warnings.
+**None** — All 464 tests pass with 0 failures and 0 warnings.
 
 ### Test System Architecture
 
