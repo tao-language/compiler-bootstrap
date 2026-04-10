@@ -12,7 +12,7 @@ fn not(b: Bool) -> Bool {
   }
 }
 
-> not(True) ~> False
+> not True ~> False
 > not False ~> True
 
 /// Logical AND with short-circuit evaluation
