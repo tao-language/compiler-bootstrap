@@ -10,7 +10,9 @@
 /// - **[../plans/prelude/README.md](../plans/prelude/README.md)** - Prelude implementation plan
 /// - **[../plans/tao/18-stdlib-testing.md](../plans/tao/18-stdlib-testing.md)** - Testing infrastructure
 import tao/syntax.{parse_module, type Expr, parse as parse_expr, Int as TaoInt, Float as TaoFloat, Str as TaoStr, Var as TaoVar, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, If as TaoIf, For as TaoFor, While as TaoWhile, Loop as TaoLoop, Break as TaoBreak, Continue as TaoContinue, Test as TaoTest, Run as TaoRun, Import as TaoImport, Ctr as TaoCtr, TypeDecl as TaoTypeDecl, ConstructorDecl as TaoCtrDecl, expr_to_ast, block_to_ast, get_expr_span}
-import syntax/grammar.{type ParseResult, type ParseError, type Span, Span}
+import syntax/grammar.{type ParseResult, ParseError, type ParseError as GrammarParseError, type Span, Span}
+import syntax/error_reporter.{type_error_to_diagnostic, parse_error_to_diagnostic}
+import syntax/source_snippet.{format_diagnostic}
 import tao/desugar.{desugar_module, type DesugarContext}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module}
 import core/ast.{type Value}
@@ -105,7 +107,7 @@ pub fn run_test_file(source: String, file_path: String) -> #(List(CoreError), Li
           // the original module's bindings, so functions like `not` are in scope.
           let tests = extract_repl_tests(source, file_path)
           let results = list.map(tests, fn(test_item) {
-            run_test(test_item, body, ctx, file_path)
+            run_test(test_item, body, ctx, file_path, source)
           })
 
           #([], results)
@@ -317,13 +319,14 @@ fn run_test(
   original_body: List(t.Stmt),
   ctx: GlobalContext,
   file_path: String,
+  source: String,
 ) -> TestResult {
   let file = test_expr.span.file
   let line = test_expr.span.start_line
   // Parse the test expression
   let expr_result: ParseResult(Expr) = parse_expr(test_expr.expression)
   case expr_result.errors {
-    [_, ..] as errs -> Fail(file, line, test_expr.expression, test_expr.expected, format_parse_errors(errs))
+    [_, ..] as errs -> Fail(file, line, test_expr.expression, test_expr.expected, format_parse_errors(errs, source, file))
     [] -> {
       // Create extended module: original body + test expression as the result
       // Use StmtRun instead of StmtExpr — StmtRun returns its expression as the
@@ -343,7 +346,7 @@ fn run_test(
       case type_state.errors {
         [_, ..] as errs -> {
           // Type error in test expression
-          Fail(file, line, test_expr.expression, test_expr.expected, format_type_errors(errs))
+          Fail(file, line, test_expr.expression, test_expr.expected, format_type_errors(errs, source, file))
         }
         [] -> {
           // Evaluate the extended module - the result is the test expression's value
@@ -354,7 +357,7 @@ fn run_test(
           // Parse and evaluate expected in the same extended context
           let expected_result: ParseResult(Expr) = parse_expr(test_expr.expected)
           case expected_result.errors {
-            [_, ..] as errs -> Fail(file, line, test_expr.expression, test_expr.expected, format_parse_errors(errs))
+            [_, ..] as errs -> Fail(file, line, test_expr.expression, test_expr.expected, format_parse_errors(errs, source, file))
             [] -> {
               // Create extended module for expected expression
               let expected_ast = expr_to_ast(expected_result.ast)
@@ -369,7 +372,7 @@ fn run_test(
               let #(_evalue, expected_type, expected_type_state) = infer(expected_eval_state, expected_term)
 
               case expected_type_state.errors {
-                [_, ..] as errs -> Fail(file, line, test_expr.expression, test_expr.expected, format_type_errors(errs))
+                [_, ..] as errs -> Fail(file, line, test_expr.expression, test_expr.expected, format_type_errors(errs, source, file))
                 [] -> {
                   // Check types match before comparing values
                   case types_match(actual_type, expected_type) {
@@ -412,19 +415,49 @@ fn format_type(ty: Value) -> String {
   core_syntax.format(term)
 }
 
-/// Format grammar parse errors as a readable message.
-fn format_parse_errors(errors: List(ParseError)) -> String {
+/// Format grammar parse errors as a readable message with full diagnostics.
+/// Shows ALL errors with span, code snippet, and hints.
+fn format_parse_errors(errors: List(GrammarParseError), source: String, file: String) -> String {
   case errors {
     [] -> "<parse error>"
-    [first, ..] -> "Parse error: expected " <> first.expected <> ", got " <> first.got
+    errs -> {
+      let diagnostics = list.map(errs, fn(err) {
+        // Fix span: grammar parser swaps line/col
+        // err.span.start_col is actually the line
+        // err.span.end_line is actually the column
+        let fixed_span = Span(
+          file,
+          err.span.start_col,
+          err.span.end_line,
+          err.span.start_col,
+          err.span.end_line + string.length(err.got),
+        )
+        let grammar_err = ParseError(
+          span: fixed_span,
+          expected: err.expected,
+          got: err.got,
+          context: "",
+        )
+        let diagnostic = parse_error_to_diagnostic(grammar_err, source, file)
+        format_diagnostic(diagnostic, source)
+      })
+      string.join(diagnostics, "\n\n")
+    }
   }
 }
 
-/// Format core state type errors as a readable message.
-fn format_type_errors(errors: List(CoreError)) -> String {
+/// Format core state type errors as a readable message with full diagnostics.
+/// Shows ALL errors with span, code snippet, and hints.
+fn format_type_errors(errors: List(CoreError), source: String, file: String) -> String {
   case errors {
     [] -> "<type error>"
-    [first, ..] -> format_core_error(first)
+    errs -> {
+      let diagnostics = list.map(errs, fn(err) {
+        let diagnostic = type_error_to_diagnostic(err, source, file)
+        format_diagnostic(diagnostic, source)
+      })
+      string.join(diagnostics, "\n\n")
+    }
   }
 }
 
@@ -511,6 +544,15 @@ pub fn exprs_to_stmts(exprs: List(Expr)) -> List(t.Stmt) {
       }
       TaoImport(import_item, span) -> {
         t.StmtImport(import_item, span)
+      }
+      TaoLet(name, mutable, type_annotation, value, span) -> {
+        // Let bindings should be StmtLet, not StmtExpr
+        let ast_value = expr_to_ast(value)
+        let ast_type = case type_annotation {
+          Some(t) -> Some(t.TVar(t))
+          None -> None
+        }
+        t.StmtLet(name, mutable, ast_type, ast_value, span)
       }
       _ -> t.StmtExpr(expr_to_ast(expr), get_expr_span(expr))
     }

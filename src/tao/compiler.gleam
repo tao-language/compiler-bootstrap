@@ -15,6 +15,7 @@ import tao/import_ast.{type Import as ImportType, type ImportContext, type Resol
 import tao/import_resolver.{resolve_imports}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module, register_module}
 import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, Float as TaoFloat, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, Test, Run, If, For, While, Loop, Break, Continue, Import, Ctr, TypeDecl, expr_to_ast, block_to_ast, pattern_to_ast}
+import tao/test_api.{strip_test_lines}
 import syntax/grammar.{type Span, Span}
 import gleam/dict.{type Dict}
 import gleam/list
@@ -95,8 +96,11 @@ pub fn compile_single_file(
   let ctx = new_context() |> with_prelude()
   let ctx = ctx |> set_current_module(path)
 
+  // Strip test lines before parsing (> expr ~> expected format)
+  let code_only = strip_test_lines(contents)
+
   // Parse the file
-  let parse_result = tao_parse_module(contents, path)
+  let parse_result = tao_parse_module(code_only, path)
 
   case parse_result.errors {
     [err, ..] -> {

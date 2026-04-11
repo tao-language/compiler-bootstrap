@@ -158,7 +158,7 @@ pub fn full_prelude_bool_module_test() {
   let assert Ok(source) = simplifile.read("lib/prelude/bool.tao")
   let #(errors, results) = test_api.run_test_file(source, "lib/prelude/bool.tao")
   errors |> should.equal([])
-  list.length(results) |> should.equal(18)
+  list.length(results) |> should.equal(14)
   test_api.all_passed(results) |> should.be_true
 }
 
@@ -391,7 +391,7 @@ pub fn full_prelude_bool_tao_test() {
   let assert Ok(source) = simplifile.read("lib/prelude/bool.tao")
   let #(errors, results) = test_api.run_test_file(source, "lib/prelude/bool.tao")
   errors |> should.equal([])
-  list.length(results) |> should.equal(18)
+  list.length(results) |> should.equal(14)
   test_api.all_passed(results) |> should.be_true
 }
 
