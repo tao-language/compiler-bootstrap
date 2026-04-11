@@ -996,10 +996,11 @@ pub fn desugar_import(
 
     ImportSelective(path, items, _) -> {
       // import path {name1, name2, ...}
-      // Create a module record and project each name
-      let module_ref = create_module_record(path, dc, span)
+      // For functions, extract the actual function body from the module source
+      // so evaluation works correctly (not just the type).
+      let fn_bodies = get_module_function_bodies(path, dc, span)
       list.flat_map(items, fn(item) {
-        desugar_import_item(item, module_ref, path, span)
+        desugar_import_item_with_bodies(item, path, span, dc, fn_bodies)
       })
     }
 
@@ -1225,6 +1226,127 @@ fn desugar_import_item(
     }
     ImportOperator(name, Some(alias)) -> {
       [CoreLet(alias, CoreDot(module_ref, name, span), span)]
+    }
+  }
+}
+
+/// Desugar a single import item, using actual function bodies where available.
+fn desugar_import_item_with_bodies(
+  item: ImportItem,
+  path: String,
+  span: Span,
+  dc: DesugarContext,
+  fn_bodies: List(#(String, CoreTerm)),
+) -> List(CoreTerm) {
+  case item {
+    ImportName(name, None) -> {
+      // Check if we have the actual function body
+      case list.key_find(fn_bodies, name) {
+        Ok(body) -> [CoreLet(name, body, span)]  // Use actual function body
+        Error(Nil) -> {
+          // No function body - use Dot into module record (for types/constructors)
+          let module_ref = create_module_record(path, dc, span)
+          [CoreLet(name, CoreDot(module_ref, name, span), span)]
+        }
+      }
+    }
+    ImportName(name, Some(alias)) -> {
+      case list.key_find(fn_bodies, name) {
+        Ok(body) -> [CoreLet(alias, body, span)]
+        Error(Nil) -> {
+          let module_ref = create_module_record(path, dc, span)
+          [CoreLet(alias, CoreDot(module_ref, name, span), span)]
+        }
+      }
+    }
+    ImportType(name, None) -> {
+      let module_ref = create_module_record(path, dc, span)
+      [CoreLet(name, CoreDot(module_ref, name, span), span)]
+    }
+    ImportType(name, Some(alias)) -> {
+      let module_ref = create_module_record(path, dc, span)
+      [CoreLet(alias, CoreDot(module_ref, name, span), span)]
+    }
+    ImportOperator(name, None) -> {
+      let var_name = string.replace(name, "+", "add")
+      case list.key_find(fn_bodies, name) {
+        Ok(body) -> [CoreLet(var_name, body, span)]
+        Error(Nil) -> {
+          let module_ref = create_module_record(path, dc, span)
+          [CoreLet(var_name, CoreDot(module_ref, name, span), span)]
+        }
+      }
+    }
+    ImportOperator(name, Some(alias)) -> {
+      case list.key_find(fn_bodies, name) {
+        Ok(body) -> [CoreLet(alias, body, span)]
+        Error(Nil) -> {
+          let module_ref = create_module_record(path, dc, span)
+          [CoreLet(alias, CoreDot(module_ref, name, span), span)]
+        }
+      }
+    }
+  }
+}
+
+/// Get function bodies from a module by path.
+/// Process type definitions FIRST to populate constructor environment,
+/// then extract function bodies with proper constructor resolution.
+fn get_module_function_bodies(path: String, dc: DesugarContext, span: Span) -> List(#(String, CoreTerm)) {
+  case get_module(dc.global, path) {
+    Some(module_ref) -> {
+      case module_ref.source {
+        Some(module) -> {
+          // Process type definitions to populate ctrs before extracting functions
+          let dc_with_ctrs = process_imported_module_types(module.body, dc)
+          extract_function_bodies(module.body, span, dc_with_ctrs)
+        }
+        None -> []
+      }
+    }
+    None -> []
+  }
+}
+
+/// Process type definitions from a module body to populate constructor environment.
+fn process_imported_module_types(stmts: List(Stmt), dc: DesugarContext) -> DesugarContext {
+  list.fold(stmts, dc, fn(acc, stmt) {
+    case stmt {
+      StmtType(name, type_params, constructors, _) -> {
+        let type_ctr = #(name, core_ast.CtrDef(
+          params: type_params,
+          arg_ty: core_ast.Typ(0, Span("unit", 0, 0, 0, 0)),
+          ret_ty: core_ast.Typ(0, Span("type", 0, 0, 0, 0)),
+        ))
+        let new_ctrs = tao_type_to_core_ctrs(name, type_params, constructors)
+        let all_ctrs = [type_ctr, ..new_ctrs]
+        DesugarContext(..acc, ctrs: list.append(acc.ctrs, all_ctrs))
+      }
+      _ -> acc
+    }
+  })
+}
+
+/// Extract function bodies from a module body.
+fn extract_function_bodies(stmts: List(Stmt), span: Span, dc: DesugarContext) -> List(#(String, CoreTerm)) {
+  extract_fn_bodies_loop(stmts, [], span, dc)
+}
+
+fn extract_fn_bodies_loop(stmts: List(Stmt), acc: List(#(String, CoreTerm)), span: Span, dc: DesugarContext) -> List(#(String, CoreTerm)) {
+  case stmts {
+    [] -> list.reverse(acc)
+    [stmt, ..rest] -> {
+      case stmt {
+        StmtFn(name, type_params, params, _return_type, body, _fn_span) -> {
+          // Build the function as a CoreTerm (lambda/fix)
+          // Use build_lambdas_with_scope which properly handles variable scoping
+          let #(core_lam, _dc1) = build_lambdas_with_scope(type_params, params, body, span, dc)
+          // Wrap in Fix for recursion - the fix name must match for recursive calls to work
+          let core_fix = CoreFix(name, core_lam, span)
+          extract_fn_bodies_loop(rest, [#(name, core_fix), ..acc], span, dc)
+        }
+        _ -> extract_fn_bodies_loop(rest, acc, span, dc)
+      }
     }
   }
 }

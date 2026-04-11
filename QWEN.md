@@ -146,7 +146,7 @@ examples/
 | CLI | Complete | Working |
 | Error Reporting | Complete | Working |
 | Warning Cleanup | Complete | 45 → 0 warnings |
-| **Total** | **All green** | **464 passing** |
+| **Total** | **All green** | **470 passing** |
 
 ### Key Features Working
 
@@ -245,7 +245,7 @@ When working with this codebase:
 
 ## Test Results
 
-- **464 tests passing**
+- **470 tests passing**
 - **0 failures**
 - **0 warnings**
 
@@ -297,9 +297,11 @@ When working with this codebase:
 
 22. **Infix Boolean Operators Not Parsed** — Python-style `x and y` and `x or y` syntax was not recognized as infix operators. The grammar's `operators` table defined them (lines 689-690) but the `left_assoc_rule("Logic", ...)` only included `&&` and `||`, not `and` and `or`. This caused `False and True` to be parsed incorrectly (only `False` was parsed, `and True` was left unparsed). **Fix**: Added `infix_binary("and", ...)` and `infix_binary("or", ...)` to the Logic level's `left_assoc_rule` in `src/tao/syntax.gleam`. Updated `lib/prelude/bool.tao` test expressions to use Python-style syntax: `not x`, `x and y`, `x or y`. Added 4 new unit tests for infix operators.
 
+23. **Import Resolution for Python-Style Operators** — Imported prelude functions (`import prelude/bool {and, or, not}`) with Python-style operators (`True and True`) failed with "Type error: type mismatch". **Root cause**: When `get_module_function_bodies` extracted function bodies from the prelude source, it used the importing file's DesugarContext which had an empty `ctrs` (constructor environment). When desugaring function bodies containing constructors like `True` and `False`, `lookup_type_in_ctrs(dc.ctrs, "True")` returned false, causing constructors to become `CoreHole` instead of `CoreCtr("True", [])`. **Fix**: Added `process_imported_module_types` helper that processes type definitions from the imported module's body to populate `dc.ctrs` before extracting function bodies. Updated `lib/prelude/bool.test.tao` to use Python-style syntax. Added 6 new unit tests for import resolution with Python-style operators.
+
 ### Known Issues
 
-**None** — All 464 tests pass with 0 failures and 0 warnings.
+**None** — All 470 tests pass with 0 failures and 0 warnings.
 
 ### Test System Architecture
 

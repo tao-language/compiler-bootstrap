@@ -179,12 +179,12 @@ pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.Sta
     ast.Unit(span) -> #(ast.VUnit, ast.VTyp(0), s)
     ast.Dot(arg, name, span) -> {
       let #(arg_val, arg_ty, s) = infer(s, arg)
-      case arg_ty {
+      case arg_val {
         ast.VRcd(fields) ->
           case list.key_find(fields, name) {
-            Ok(ty) -> {
+            Ok(field_val) -> {
               let val = ast.VNeut(ast.HVar(0), [ast.EDot(name)])
-              #(val, ty, s)
+              #(val, field_val, s)
             }
             Error(Nil) -> {
               let s = state.State(..s, errors: [state.DotFieldNotFound(name, fields, span), ..s.errors])

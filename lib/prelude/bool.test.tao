@@ -1,21 +1,21 @@
 import prelude/bool {Bool, and, or, not}
 
 // Nested operations
-> and(and(True, True), True)
+> True and True and True
 True
 
-> or(or(False, False), False)
+> False or False or False
 False
 
 // Complex expressions
-> and(or(True, False), not(False))
+> (True or False) and not False
 True
 
-> or(and(True, False), not(False))
+> (True and False) or not False
 True
 
-> not(not(True))
+> not not True
 True
 
-> not(not(not(False)))
+> not not not False
 True
