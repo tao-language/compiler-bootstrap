@@ -299,6 +299,8 @@ When working with this codebase:
 
 23. **Import Resolution for Python-Style Operators** — Imported prelude functions (`import prelude/bool {and, or, not}`) with Python-style operators (`True and True`) failed with "Type error: type mismatch". **Root cause**: When `get_module_function_bodies` extracted function bodies from the prelude source, it used the importing file's DesugarContext which had an empty `ctrs` (constructor environment). When desugaring function bodies containing constructors like `True` and `False`, `lookup_type_in_ctrs(dc.ctrs, "True")` returned false, causing constructors to become `CoreHole` instead of `CoreCtr("True", [])`. **Fix**: Added `process_imported_module_types` helper that processes type definitions from the imported module's body to populate `dc.ctrs` before extracting function bodies. Updated `lib/prelude/bool.test.tao` to use Python-style syntax. Added 6 new unit tests for import resolution with Python-style operators.
 
+24. **Unified Error Reporting** — Error formatters (`format_parse_errors`, `format_type_errors`) only showed the FIRST error as a generic string like "Type error: type mismatch", ignoring ALL other errors and not using the rich diagnostic system. **Fix**: Replaced generic formatters with full diagnostics using `error_reporter.type_error_to_diagnostic` and `format_diagnostic`, showing ALL errors with span, code snippet, and hints. Also fixed: `TaoLet` wasn't handled in `exprs_to_stmts` (let bindings became discarded expressions), `compile_single_file` didn't strip test lines before parsing (causing parse errors on `>` lines).
+
 ### Known Issues
 
 **None** — All 470 tests pass with 0 failures and 0 warnings.
