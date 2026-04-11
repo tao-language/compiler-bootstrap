@@ -96,6 +96,9 @@ pub type CoreTerm {
   /// Hole/metavariable for type inference
   CoreHole(id: Int, span: Span)
 
+  /// Constructor reference (resolved via State.ctrs during type checking)
+  CoreCtrRef(name: String, span: Span)
+
   /// Literal
   CoreLit(value: String, span: Span)
 
@@ -1148,7 +1151,7 @@ fn extract_fn_types_loop(stmts: List(Stmt), acc: List(#(String, CoreTerm)), span
 }
 
 /// Create record fields from public names, using actual types where available.
-/// Functions get their full Pi type, types/constructors get CoreVar references
+/// Functions get their full Pi type, types/constructors get CoreCtrRef references
 /// that the type checker resolves through the constructor environment.
 fn create_fields_from_names(names: List(String), fn_types: List(#(String, CoreTerm)), span: Span, ctrs: core_ast.CtrEnv, base_id: Int) -> List(#(String, CoreTerm)) {
   case names {
@@ -1157,9 +1160,9 @@ fn create_fields_from_names(names: List(String), fn_types: List(#(String, CoreTe
       let field_value = case list.find(fn_types, fn(t) { t.0 == name }) {
         Ok(#(_n, typ)) -> typ  // Function - use extracted type
         Error(Nil) -> {
-          // Type or constructor - create a reference the type checker can resolve
+          // Type or constructor - create a constructor reference
           case lookup_type_in_ctrs(ctrs, name) {
-            True -> CoreVar(name, span)  // Constructor name - resolved via ctrs
+            True -> CoreCtrRef(name, span)  // Constructor name
             False -> CoreHole(hash_path_name("", name, base_id), span)  // Unknown
           }
         }
@@ -2530,6 +2533,11 @@ fn core_term_to_term_loop(
         }
       }
     }
+    CoreCtrRef(name, span) -> {
+      // Constructor reference - resolved via State.ctrs during type checking
+      // Create a Ctr with Unit argument (for nullary constructors)
+      core_ast.Ctr(tag: name, arg: core_ast.Unit(span), span: span)
+    }
     CoreCall(name, args, span) -> {
       // Convert CoreCall to core/core.Call for FFI builtin
       core_ast.Call(name, list.map(args, fn(a) { core_term_to_term_loop(a, env, annotated_types) }), span)
@@ -2744,6 +2752,7 @@ fn value_span(term: CoreTerm) -> Span {
     CoreMatchCore(_, _, _, span) -> span
     CoreFix(_, _, span) -> span
     CoreCtr(_, _, span) -> span
+    CoreCtrRef(_, span) -> span
     CorePi(_, _, _, _, span) -> span
     CoreAnn(_, _, span) -> span
     CoreUnit(span) -> span
