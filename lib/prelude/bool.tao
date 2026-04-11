@@ -50,13 +50,3 @@ fn xor(a: Bool, b: Bool) -> Bool {
 > xor(True, False) ~> True
 > xor(False, True) ~> True
 > xor(False, False) ~> False
-
-/// Logical implication: if a then b
-fn implies(a: Bool, b: Bool) -> Bool {
-  or(not(a), b)
-}
-
-> implies(True, True) ~> True
-> implies(True, False) ~> False
-> implies(False, True) ~> True
-> implies(False, False) ~> True
