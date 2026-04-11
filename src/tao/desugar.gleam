@@ -1046,14 +1046,126 @@ pub fn desugar_import(
 }
 
 /// Create a module Record term for a given path.
-/// All modules use holes for public names - the actual types come from dc.ctrs.
+/// Uses actual function types from the module's source when available,
+/// otherwise falls back to holes.
 fn create_module_record(path: String, dc: DesugarContext, span: Span) -> CoreTerm {
+  case get_module(dc.global, path) {
+    Some(module_ref) -> {
+      case module_ref.source {
+        Some(module) -> {
+          let body = module.body
+          // Get ALL public names including types and constructors
+          let all_names = get_all_public_names(body)
+          let fn_types = extract_function_types(body, span, dc)
+          let fields = create_fields_from_names(all_names, fn_types, span, dc.ctrs, 0)
+          CoreRcd(fields, span)
+        }
+        None -> create_module_with_holes(path, dc, span)
+      }
+    }
+    None -> create_module_with_holes(path, dc, span)
+  }
+}
+
+/// Get all public names from a module body, including types and constructors.
+fn get_all_public_names(stmts: List(Stmt)) -> List(String) {
+  get_all_names_loop(stmts, [])
+}
+
+fn get_all_names_loop(stmts: List(Stmt), acc: List(String)) -> List(String) {
+  case stmts {
+    [] -> list.reverse(acc)
+    [stmt, ..rest] -> {
+      case stmt {
+        StmtType(name, _, constructors, _) -> {
+          // Include type name and all constructor names
+          // Types/constructors are in module record so imports can reference them
+          let type_names = case string.starts_with(name, "_") {
+            True -> []
+            False -> [name]
+          }
+          let ctr_names = list.flat_map(constructors, fn(ctr) {
+            case ctr {
+              Constructor(ctr_name, _, _) -> {
+                case string.starts_with(ctr_name, "_") {
+                  True -> []
+                  False -> [ctr_name]
+                }
+              }
+            }
+          })
+          get_all_names_loop(rest, list.append(list.append(acc, type_names), ctr_names))
+        }
+        StmtImport(_, _) -> get_all_names_loop(rest, acc)
+        StmtExpr(_, _) -> get_all_names_loop(rest, acc)
+        _ -> {
+          case get_stmt_name(stmt) {
+            Some(name) -> {
+              case string.starts_with(name, "_") {
+                True -> get_all_names_loop(rest, acc)
+                False -> get_all_names_loop(rest, [name, ..acc])
+              }
+            }
+            None -> get_all_names_loop(rest, acc)
+          }
+        }
+      }
+    }
+  }
+}
+
+/// Fallback: create a module Record with holes for each public name.
+fn create_module_with_holes(path: String, dc: DesugarContext, span: Span) -> CoreTerm {
   case get_module_public_names(dc.global, path) {
     Some(public_names) -> {
       let fields = create_module_fields(public_names, path, span, 0)
       CoreRcd(fields, span)
     }
     None -> CoreRcd([], span)
+  }
+}
+
+/// Extract function type annotations from a module body.
+fn extract_function_types(stmts: List(Stmt), span: Span, dc: DesugarContext) -> List(#(String, CoreTerm)) {
+  extract_fn_types_loop(stmts, [], span, dc)
+}
+
+fn extract_fn_types_loop(stmts: List(Stmt), acc: List(#(String, CoreTerm)), span: Span, dc: DesugarContext) -> List(#(String, CoreTerm)) {
+  case stmts {
+    [] -> list.reverse(acc)
+    [stmt, ..rest] -> {
+      case stmt {
+        StmtFn(name, _type_params, params, Some(return_type), _body, _fn_span) -> {
+          let #(param_types, _dc1) = build_param_types(params, dc, span)
+          let #(core_ret, _dc2) = build_core_type_from_ast(return_type, dc, span)
+          let fn_type = build_fn_type_from_types(param_types, core_ret, span)
+          extract_fn_types_loop(rest, [#(name, fn_type), ..acc], span, dc)
+        }
+        _ -> extract_fn_types_loop(rest, acc, span, dc)
+      }
+    }
+  }
+}
+
+/// Create record fields from public names, using actual types where available.
+/// Functions get their full Pi type, types/constructors get CoreVar references
+/// that the type checker resolves through the constructor environment.
+fn create_fields_from_names(names: List(String), fn_types: List(#(String, CoreTerm)), span: Span, ctrs: core_ast.CtrEnv, base_id: Int) -> List(#(String, CoreTerm)) {
+  case names {
+    [] -> []
+    [name, ..rest] -> {
+      let field_value = case list.find(fn_types, fn(t) { t.0 == name }) {
+        Ok(#(_n, typ)) -> typ  // Function - use extracted type
+        Error(Nil) -> {
+          // Type or constructor - create a reference the type checker can resolve
+          case lookup_type_in_ctrs(ctrs, name) {
+            True -> CoreVar(name, span)  // Constructor name - resolved via ctrs
+            False -> CoreHole(hash_path_name("", name, base_id), span)  // Unknown
+          }
+        }
+      }
+      [#(name, field_value), ..create_fields_from_names(rest, fn_types, span, ctrs, base_id + 1)]
+    }
   }
 }
 

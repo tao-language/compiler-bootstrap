@@ -17,12 +17,12 @@ import gleam/option.{type Option, Some, None}
 import gleam/result
 import gleam/string
 import syntax/grammar.{type ParseResult, type Span, Span}
-import tao/ast.{type Module, Module as ModuleCtr, get_public_names, StmtType, type Stmt, StmtExpr, type Constructor, Constructor as Ctor, type ConstructorField, NamedField, UnnamedField, type TypeAst, TVar, TApp, THole, TFn, TRecord, TTuple}
+import tao/ast.{type Module, Module as ModuleCtr, get_public_names, StmtType, type Stmt, StmtExpr, StmtImport, StmtFn, type Constructor, Constructor as Ctor, type ConstructorField, NamedField, UnnamedField, type TypeAst, TVar, TApp, THole, TFn, TRecord, TTuple, Param}
 import tao/import_ast.{
   ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias,
   ImportWildcard, type Import,
 }
-import tao/syntax.{parse_module, type Expr, TypeDecl, type ConstructorDecl, ConstructorDecl as CtorDecl}
+import tao/syntax.{parse_module, type Expr, TypeDecl as ExprTypeDecl, type ConstructorDecl, ConstructorDecl as CtorDecl, expr_to_ast, get_expr_span, block_to_ast, Import as ExprImport, SimpleFn as ExprSimpleFn}
 import core/ast as core_ast
 import simplifile
 
@@ -301,7 +301,7 @@ fn extract_ctr_env_from_exprs_loop(
     [] -> acc
     [expr, ..rest] -> {
       case expr {
-        TypeDecl(name, _type_params, ctors, span) -> {
+        ExprTypeDecl(name, _type_params, ctors, span) -> {
           // Add the type itself as a constructor
           let type_ctr = #(name, core_ast.CtrDef(
             params: [],
@@ -458,6 +458,54 @@ pub fn register_error_module(
   )
 }
 
+/// Strip test lines from source code (lines starting with > are test annotations).
+/// Test lines are not valid module syntax and must be removed before parsing.
+fn strip_test_lines(source: String) -> String {
+  source
+  |> string.split("\n")
+  |> list.filter(fn(line) {
+    let trimmed = string.trim(line)
+    !string.starts_with(trimmed, ">")
+  })
+  |> string.join("\n")
+}
+
+/// Convert expressions to statements.
+fn exprs_to_stmts(exprs: List(Expr)) -> List(Stmt) {
+  list.map(exprs, fn(expr) {
+    case expr {
+      ExprTypeDecl(name, type_params, constructors, span) -> {
+        StmtType(name, type_params, list.map(constructors, fn(ctr) {
+          case ctr {
+            CtorDecl(ctr_name, _fields, ctr_span) ->
+              Ctor(ctr_name, [], ctr_span)
+          }
+        }), span)
+      }
+      ExprImport(import_item, span) -> {
+        StmtImport(import_item, span)
+      }
+      ExprSimpleFn(name, params, return_type, body, span) -> {
+        let ast_params = list.map(params, fn(param) {
+          let #(pname, ptype) = param
+          let ast_type = case ptype {
+            Some(type_name) -> Some(TVar(type_name))
+            None -> None
+          }
+          Param(pname, ast_type, span)
+        })
+        let ast_body = block_to_ast(body)
+        let ast_return_type = case return_type {
+          Some(type_name) -> Some(TVar(type_name))
+          None -> None
+        }
+        StmtFn(name, [], ast_params, ast_return_type, ast_body, span)
+      }
+      _ -> StmtExpr(expr_to_ast(expr), get_expr_span(expr))
+    }
+  })
+}
+
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -489,10 +537,13 @@ fn register_prelude_modules_loop(
       let file_path = "lib/" <> path <> ".tao"
       case simplifile.read(file_path) {
         Ok(source) -> {
-          let parse_result = parse_module(source, path <> ".tao")
+          // Strip test lines before parsing (test lines starting with > are not valid module syntax)
+          let code_only = strip_test_lines(source)
+          let parse_result = parse_module(code_only, path <> ".tao")
+          let body = exprs_to_stmts(parse_result.ast)
           let ctr_env = extract_ctr_env_from_exprs(parse_result.ast)
-          // Create a minimal module with just the type info
-          let module = ModuleCtr(path, [], Span(path, 0, 0, 0, 0))
+          // Store the full module body so imports can resolve function types
+          let module = ModuleCtr(path, body, Span(path, 0, 0, 0, 0))
           let ctx1 = register_module_with_ctr_env(ctx, path, module, ctr_env)
           register_prelude_modules_loop(ctx1, rest)
         }

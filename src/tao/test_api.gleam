@@ -509,6 +509,9 @@ pub fn exprs_to_stmts(exprs: List(Expr)) -> List(t.Stmt) {
         }
         t.StmtFn(name, [], ast_params, ast_return_type, ast_body, span)
       }
+      TaoImport(import_item, span) -> {
+        t.StmtImport(import_item, span)
+      }
       _ -> t.StmtExpr(expr_to_ast(expr), get_expr_span(expr))
     }
   })
