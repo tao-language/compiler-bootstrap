@@ -1,7 +1,0 @@
-// Selective import example
-
-import prelude/bool.{True, False, not}
-
-let x = not(True)
-
-x
