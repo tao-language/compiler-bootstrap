@@ -27,6 +27,7 @@ import gleam/int
 import gleam/option.{type Option, Some, None}
 import gleam/string
 import tao/ast as t
+import tao/import_ast.{type Import, ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias, ImportWildcard, ImportName, ImportType, ImportOperator}
 
 // ============================================================================
 // TYPES
@@ -117,9 +118,97 @@ pub fn run_test_file(source: String, file_path: String) -> #(List(CoreError), Li
   }
 }
 
-// ============================================================================
-// TEST EXTRACTION
-// ============================================================================
+/// Extract all defined names from a module body (for validating test expected values).
+pub fn get_defined_names(body: List(t.Stmt)) -> List(String) {
+  list.flat_map(body, fn(stmt) {
+    case stmt {
+      t.StmtLet(name, _, _, _, _) -> [name]
+      t.StmtFn(name, _, _, _, _, _) -> [name]
+      t.StmtType(name, _, constructors, _) -> {
+        // Include type name and constructor names
+        let ctr_names = list.flat_map(constructors, fn(ctr) {
+          case ctr {
+            t.Constructor(ctr_name, _, _) -> [ctr_name]
+          }
+        })
+        [name, ..ctr_names]
+      }
+      t.StmtImport(import_item, _) -> {
+        // Extract imported names from the Import item
+        extract_import_names(import_item)
+      }
+      _ -> []
+    }
+  })
+}
+
+/// Extract names from an import item.
+fn extract_import_names(import_item: Import) -> List(String) {
+  case import_item {
+    ImportModule(_, _) -> []
+    ImportAlias(_, _, _) -> []
+    ImportSelective(_, items, _) -> {
+      list.flat_map(items, fn(item) {
+        case item {
+          ImportName(name, Some(alias)) -> [alias]
+          ImportName(name, None) -> [name]
+          ImportType(name, Some(alias)) -> [alias]
+          ImportType(name, None) -> [name]
+          ImportOperator(name, Some(alias)) -> [alias]
+          ImportOperator(name, None) -> [string.replace(name, "+", "add")]
+        }
+      })
+    }
+    ImportSelectiveAlias(_, _, items, _) -> {
+      list.flat_map(items, fn(item) {
+        case item {
+          ImportName(name, Some(alias)) -> [alias]
+          ImportName(name, None) -> [name]
+          ImportType(name, Some(alias)) -> [alias]
+          ImportType(name, None) -> [name]
+          ImportOperator(name, Some(alias)) -> [alias]
+          ImportOperator(name, None) -> [string.replace(name, "+", "add")]
+        }
+      })
+    }
+    ImportWildcard(_, _) -> []
+  }
+}
+
+/// Check if an expected value is valid.
+/// - `_` is a wildcard that matches anything
+/// - Bare variables must be defined in the module
+/// - Other expressions are evaluated normally
+fn check_expected(
+  expected_expr: Expr,
+  defined_names: List(String),
+  file: String,
+  line: Int,
+  expression: String,
+  expected_str: String,
+  source: String,
+) -> Result(Nil, String) {
+  case expected_expr {
+    TaoVar("_", _) -> {
+      // Wildcard - matches anything, no further checking needed
+      Ok(Nil)
+    }
+    TaoVar(name, _) -> {
+      // Bare variable - must be defined in the module
+      case list.contains(defined_names, name) {
+        True -> Ok(Nil)
+        False -> {
+          Error("Expected value '" <> name <> "' is not defined in this module. "
+            <> "Use '_' to match any value, or define '" <> name <> "' first.")
+        }
+      }
+    }
+    _ -> {
+      // Other expressions (literals, function calls, etc.) - evaluate normally
+      Ok(Nil)
+    }
+  }
+}
 
 /// Strip test lines from source for parsing.
 /// Removes:
@@ -359,38 +448,23 @@ fn run_test(
           case expected_result.errors {
             [_, ..] as errs -> Fail(file, line, test_expr.expression, test_expr.expected, format_parse_errors(errs, source, file))
             [] -> {
-              // Create extended module for expected expression
-              let expected_ast = expr_to_ast(expected_result.ast)
-              let expected_span = get_expr_span(expected_result.ast)
-              let expected_stmt = t.StmtRun(expected_ast, expected_span)
-              let expected_body = list.append(original_body, [expected_stmt])
-              let expected_module = t.Module(file_path, expected_body, expected_span)
-
-              let expected_ctx = new_context() |> with_prelude()
-              let #(expected_term, expected_dc) = desugar_module(expected_module, expected_ctx)
-              let expected_eval_state = state_with_constructors(expected_dc, initial_state)
-              let #(_evalue, expected_type, expected_type_state) = infer(expected_eval_state, expected_term)
-
-              case expected_type_state.errors {
-                [_, ..] as errs -> Fail(file, line, test_expr.expression, test_expr.expected, format_type_errors(errs, source, file))
-                [] -> {
-                  // Check types match before comparing values
-                  case types_match(actual_type, expected_type) {
-                    False -> {
-                      // Type mismatch - report as type error
-                      Fail(file, line, test_expr.expression, test_expr.expected,
-                        "Type mismatch: expected " <> format_type(expected_type) <>
-                        ", got " <> format_type(actual_type))
+              // Check expected value validity before evaluation
+              let defined_names = get_defined_names(original_body)
+              case check_expected(expected_result.ast, defined_names, file, line, test_expr.expression, test_expr.expected, source) {
+                Error(msg) -> {
+                  // Undefined variable or invalid expected value
+                  Fail(file, line, test_expr.expression, test_expr.expected, msg)
+                }
+                Ok(_) -> {
+                  // Check if expected is wildcard `_`
+                  case expected_result.ast {
+                    TaoVar("_", _) -> {
+                      // Wildcard - matches any value
+                      Pass(file, line, test_expr.expression)
                     }
-                    True -> {
-                      let expected_value = eval(initial_ffis, [], expected_term)
-                      let forced_expected = force(initial_ffis, expected_type_state.subst, expected_value)
-
-                      // Compare values
-                      case values_equal(forced_actual, forced_expected) {
-                        True -> Pass(file, line, test_expr.expression)
-                        False -> Fail(file, line, test_expr.expression, test_expr.expected, format_value(forced_actual))
-                      }
+                    _ -> {
+                      // Regular expected value - evaluate and compare
+                      check_expected_value(expected_result.ast, original_body, file_path, test_expr, source, line, forced_actual, actual_type)
                     }
                   }
                 }
@@ -406,6 +480,55 @@ fn run_test(
 /// Check if two types match by comparing their string representation.
 fn types_match(t1: Value, t2: Value) -> Bool {
   format_type(t1) == format_type(t2)
+}
+
+/// Evaluate expected value and compare with actual.
+fn check_expected_value(
+  expected_expr: Expr,
+  original_body: List(t.Stmt),
+  file_path: String,
+  test_expr: TestExpr,
+  source: String,
+  line: Int,
+  forced_actual: Value,
+  actual_type: Value,
+) -> TestResult {
+  let file = test_expr.span.file
+  let expected_ast = expr_to_ast(expected_expr)
+  let expected_span = get_expr_span(expected_expr)
+  let expected_stmt = t.StmtRun(expected_ast, expected_span)
+  let expected_body = list.append(original_body, [expected_stmt])
+  let expected_module = t.Module(file_path, expected_body, expected_span)
+
+  let expected_ctx = new_context() |> with_prelude()
+  let #(expected_term, expected_dc) = desugar_module(expected_module, expected_ctx)
+  let expected_eval_state = state_with_constructors(expected_dc, initial_state)
+  let #(_evalue, expected_type, expected_type_state) = infer(expected_eval_state, expected_term)
+
+  case expected_type_state.errors {
+    [_, ..] as errs -> Fail(file, line, test_expr.expression, test_expr.expected, format_type_errors(errs, source, file))
+    [] -> {
+      // Check types match before comparing values
+      case types_match(actual_type, expected_type) {
+        False -> {
+          // Type mismatch - report as type error
+          Fail(file, line, test_expr.expression, test_expr.expected,
+            "Type mismatch: expected " <> format_type(expected_type) <>
+            ", got " <> format_type(actual_type))
+        }
+        True -> {
+          let expected_value = eval(initial_ffis, [], expected_term)
+          let forced_expected = force(initial_ffis, expected_type_state.subst, expected_value)
+
+          // Compare values
+          case values_equal(forced_actual, forced_expected) {
+            True -> Pass(file, line, test_expr.expression)
+            False -> Fail(file, line, test_expr.expression, test_expr.expected, format_value(forced_actual))
+          }
+        }
+      }
+    }
+  }
 }
 
 /// Format a type value as a string for display.

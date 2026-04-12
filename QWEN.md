@@ -146,7 +146,7 @@ examples/
 | CLI | Complete | Working |
 | Error Reporting | Complete | Working |
 | Warning Cleanup | Complete | 45 → 0 warnings |
-| **Total** | **All green** | **470 passing** |
+| **Total** | **All green** | **478 passing** |
 
 ### Key Features Working
 
@@ -245,7 +245,7 @@ When working with this codebase:
 
 ## Test Results
 
-- **470 tests passing**
+- **478 tests passing**
 - **0 failures**
 - **0 warnings**
 
@@ -301,9 +301,11 @@ When working with this codebase:
 
 24. **Unified Error Reporting** — Error formatters (`format_parse_errors`, `format_type_errors`) only showed the FIRST error as a generic string like "Type error: type mismatch", ignoring ALL other errors and not using the rich diagnostic system. **Fix**: Replaced generic formatters with full diagnostics using `error_reporter.type_error_to_diagnostic` and `format_diagnostic`, showing ALL errors with span, code snippet, and hints. Also fixed: `TaoLet` wasn't handled in `exprs_to_stmts` (let bindings became discarded expressions), `compile_single_file` didn't strip test lines before parsing (causing parse errors on `>` lines).
 
+25. **Expected Value Validation** — `> two ~> x` passed when `x` was undefined because it silently resolved to `Var(0)` and matches whatever is at that index. **Fix**: Added validation before evaluating expected values: `_` acts as wildcard (matches anything), bare variables must be defined in the module (otherwise fail with clear error message), other expressions evaluated normally. Added `get_defined_names` to extract all defined names from module body including imports.
+
 ### Known Issues
 
-**None** — All 470 tests pass with 0 failures and 0 warnings.
+**None** — All 478 tests pass with 0 failures and 0 warnings.
 
 ### Test System Architecture
 

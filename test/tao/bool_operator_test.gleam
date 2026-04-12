@@ -11,6 +11,7 @@
 /// 4. Chained operators work: `not not True`
 /// 5. Nested operators work: `and(not(True), or(False, True))`
 import gleam/list
+import gleam/string
 import gleeunit
 import gleeunit/should
 import simplifile
@@ -401,5 +402,133 @@ pub fn prelude_bool_test_tao_test() {
   let #(errors, results) = test_api.run_test_file(source, "lib/prelude/bool.test.tao")
   errors |> should.equal([])
   list.length(results) |> should.equal(6)
+  test_api.all_passed(results) |> should.be_true
+}
+
+// ============================================================================
+// EXPECTED VALUE VALIDATION TESTS
+// ============================================================================
+
+/// Test that `_` as expected value matches anything (wildcard).
+pub fn wildcard_underscore_matches_anything_test() {
+  let source = "
+let x = 42
+
+> x ~> _
+> 1 + 1 ~> _
+"
+  let #(errors, results) = test_api.run_test_file(source, "test.tao")
+  errors |> should.equal([])
+  list.length(results) |> should.equal(2)
+  test_api.all_passed(results) |> should.be_true
+}
+
+/// Test that undefined variables in expected position fail with clear error.
+pub fn undefined_variable_in_expected_fails_test() {
+  let source = "
+let two = 2
+
+> two ~> x
+"
+  let #(errors, results) = test_api.run_test_file(source, "test.tao")
+  errors |> should.equal([])
+  list.length(results) |> should.equal(1)
+  case results {
+    [test_api.Fail(_, _, expr, expected, actual)] -> {
+      expr |> should.equal("two")
+      expected |> should.equal("x")
+      actual |> string.contains("not defined") |> should.be_true
+    }
+    _ -> panic("Expected Fail result")
+  }
+}
+
+/// Test that defined variables in expected position work correctly.
+pub fn defined_variable_in_expected_works_test() {
+  let source = "
+let expected = 42
+let x = 42
+
+> x ~> expected
+"
+  let #(errors, results) = test_api.run_test_file(source, "test.tao")
+  errors |> should.equal([])
+  list.length(results) |> should.equal(1)
+  test_api.all_passed(results) |> should.be_true
+}
+
+/// Test that mismatch with defined variable fails.
+pub fn defined_variable_mismatch_fails_test() {
+  let source = "
+let expected = 100
+let x = 42
+
+> x ~> expected
+"
+  let #(errors, results) = test_api.run_test_file(source, "test.tao")
+  errors |> should.equal([])
+  list.length(results) |> should.equal(1)
+  case results {
+    [test_api.Fail(_, _, _, _, actual)] -> {
+      actual |> string.contains("42") |> should.be_true
+    }
+    _ -> panic("Expected Fail result")
+  }
+}
+
+/// Test that expression in expected position still works.
+pub fn expression_in_expected_works_test() {
+  let source = "
+let x = 42
+
+> x ~> 40 + 2
+> x * 2 ~> 84
+"
+  let #(errors, results) = test_api.run_test_file(source, "test.tao")
+  errors |> should.equal([])
+  list.length(results) |> should.equal(2)
+  test_api.all_passed(results) |> should.be_true
+}
+
+/// Test edge case: `_` with different types always passes.
+pub fn wildcard_with_different_types_test() {
+  let source = "
+let x = 42
+let y = \"hello\"
+
+> x ~> _
+> y ~> _
+> x + 1 ~> _
+"
+  let #(errors, results) = test_api.run_test_file(source, "test.tao")
+  errors |> should.equal([])
+  list.length(results) |> should.equal(3)
+  test_api.all_passed(results) |> should.be_true
+}
+
+/// Test that imported names are considered defined.
+pub fn imported_names_are_defined_test() {
+  let source = "
+import prelude/bool {Bool, not}
+
+> not(True) ~> False
+"
+  let #(errors, results) = test_api.run_test_file(source, "test.tao")
+  errors |> should.equal([])
+  list.length(results) |> should.equal(1)
+  test_api.all_passed(results) |> should.be_true
+}
+
+/// Test that constructor names from imported types are considered defined.
+pub fn imported_constructors_are_defined_test() {
+  let source = "
+import prelude/bool {Bool}
+
+> True ~> True
+> False ~> False
+"
+  let #(errors, results) = test_api.run_test_file(source, "test.tao")
+  errors |> should.equal([])
+  list.length(results) |> should.equal(2)
   test_api.all_passed(results) |> should.be_true
 }
