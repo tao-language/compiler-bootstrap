@@ -16,7 +16,7 @@ import tao/import_resolver.{resolve_imports}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module, register_module}
 import tao/syntax.{parse_module as tao_parse_module, type Expr as TaoExpr, Var, Int as TaoInt, Float as TaoFloat, BinOp, UnaryOp, OverloadedFn, OverloadedApp, Let, Block, SimpleFn, App, Lambda, Match, Str, Test, Run, If, For, While, Loop, Break, Continue, Import, Ctr, TypeDecl, expr_to_ast, block_to_ast, pattern_to_ast}
 import tao/test_api.{strip_test_lines}
-import syntax/grammar.{type Span, Span}
+import syntax/grammar.{type Span, Span, ParseError}
 import gleam/dict.{type Dict}
 import gleam/list
 import gleam/option.{Some, None}
@@ -105,7 +105,7 @@ pub fn compile_single_file(
   case parse_result.errors {
     [err, ..] -> {
       let error = ParseError(
-        message: "Parse error: " <> err.expected <> " got " <> err.got,
+        message: "Parse error: end of input got " <> err.got,
         span: err.span,
       )
       #(ctx, ModuleCtr(path, [], err.span), [error])
@@ -176,7 +176,7 @@ fn compile_single(
       case parse_result.errors {
         [err, ..] -> {
           let error = ParseError(
-            message: "Parse error: " <> err.expected <> " got " <> err.got,
+            message: "Parse error: end of input got " <> err.got,
             span: err.span,
           )
           let result = CompileError(path, [error])

@@ -23,7 +23,7 @@ import tao/global_context.{new_context, with_prelude, set_current_module}
 import tao/compiler.{compile_files, compile_single_file, type CompileResult, type CompileErrorType, ParseError as CompilerParseError, ImportError as CompilerImportError, CircularImport as CompilerCircularImport, ModuleNotFound as CompilerModuleNotFound}
 import tao/ast as tao_ast
 import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, type Span, Span}
-import tao/test_api.{run_test_file, calculate_summary, all_passed, get_failures, type TestResult}
+import tao/test_api.{run_test_file, calculate_summary, all_passed, get_failures, type TestResult, strip_test_lines}
 import tao/test_reporter.{report_results, report_final_status, list_test_expressions}
 import gleam/int
 import gleam/io
@@ -493,14 +493,17 @@ fn check_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     False -> Nil
   }
 
+  // Strip test lines before compiling
+  let code_only = strip_test_lines(file.contents)
+
   // Use multi-file compiler (single file mode)
-  let #(ctx, module, compile_errors) = compile_single_file(file.path, file.contents, ".")
+  let #(ctx, module, compile_errors) = compile_single_file(file.path, code_only, ".")
 
   case compile_errors {
     [err, ..] -> {
       // Report compile errors
       io.println("")
-      report_compile_error(err)
+      report_compile_error(err, code_only, file.path)
       io.println("")
       Error(CompileError(compile_errors))
     }
@@ -846,10 +849,18 @@ fn report_error(error: Error) {
 }
 
 /// Report a compile error to stderr
-fn report_compile_error(error: CompileErrorType) {
+fn report_compile_error(error: CompileErrorType, source: String, path: String) {
   case error {
-    CompilerParseError(message, _span) -> {
-      io.println("Parse error: " <> message)
+    CompilerParseError(message, span) -> {
+      // Create a grammar ParseError from the compiler error so we can use full diagnostics
+      let grammar_error = GrammarParseError(
+        span: span,
+        expected: "valid expression",
+        got: string.drop_start(message, string.length("Parse error: end of input got ")),
+        context: "",
+      )
+      let diagnostic = error_reporter.parse_error_to_diagnostic(grammar_error, source, path)
+      io.println(error_reporter.format_diagnostic(diagnostic, source))
     }
     CompilerImportError(message, _span) -> {
       io.println("Import error: " <> message)
