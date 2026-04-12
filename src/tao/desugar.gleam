@@ -302,8 +302,20 @@ fn build_type_app(type_name: String, type_params: List(String)) -> core_ast.Term
 fn type_ast_to_core(t: TypeAst) -> core_ast.Term {
   case t {
     TVar(name) -> {
-      // Type variable - use negative hole for inference
-      core_ast.Hole(-1, Span(name, 0, 0, 0, 0))
+      // Check if it's a builtin type name
+      case name {
+        "I32" -> core_ast.LitT(core_ast.I32T, Span("I32", 0, 0, 0, 0))
+        "I64" -> core_ast.LitT(core_ast.I64T, Span("I64", 0, 0, 0, 0))
+        "F32" -> core_ast.LitT(core_ast.F32T, Span("F32", 0, 0, 0, 0))
+        "F64" -> core_ast.LitT(core_ast.F64T, Span("F64", 0, 0, 0, 0))
+        "Bool" -> core_ast.Ctr("Bool", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("Bool", 0, 0, 0, 0))
+        "String" -> core_ast.Ctr("String", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("String", 0, 0, 0, 0))
+        "Unit" -> core_ast.Ctr("Unit", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("Unit", 0, 0, 0, 0))
+        _ -> {
+          // Type variable - use negative hole for inference
+          core_ast.Hole(-1, Span(name, 0, 0, 0, 0))
+        }
+      }
     }
     TApp(name, _args) -> core_ast.Ctr(name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("tapp", 0, 0, 0, 0))
     TFn(_params, _ret) -> core_ast.Typ(1, Span("fn", 0, 0, 0, 0))
@@ -1621,14 +1633,44 @@ fn desugar_expr_core(
     
     ast.Call(call_fun, call_args, span) -> {
       // Function call - desugar function and args
-      let #(core_fun, dc1) = desugar_expr_core(call_fun, dc)
-      let #(core_args, dc2) = desugar_exprs(call_args, dc1)
-      // Empty calls f() become f(Unit), non-empty calls f(x) become f(x)
-      let core_app = case core_args {
-        [] -> CoreApp(core_fun, CoreRcd([], span), span)
-        _ -> build_apps(core_fun, core_args, span)
+      // KEY FIX: If this is a constructor call, build CoreCtr directly
+      case call_fun, call_args {
+        ast.Var(name, _), [arg, ..rest] -> {
+          case list.key_find(dc.ctrs, name) {
+            Ok(_) -> {
+              // Constructor call - build CoreCtr with first arg, then apply rest
+              let #(core_arg, dc1) = desugar_expr_core(arg, dc)
+              let #(core_rest, dc2) = desugar_exprs(rest, dc1)
+              let core_ctr = CoreCtr(name, core_arg, span)
+              let core_app = case core_rest {
+                [] -> core_ctr
+                _ -> build_apps(core_ctr, core_rest, span)
+              }
+              #(core_app, dc2)
+            }
+            Error(_) -> {
+              // Not a constructor - regular call
+              let #(core_fun, dc1) = desugar_expr_core(call_fun, dc)
+              let #(core_args, dc2) = desugar_exprs(call_args, dc1)
+              let core_app = case core_args {
+                [] -> CoreApp(core_fun, CoreRcd([], span), span)
+                _ -> build_apps(core_fun, core_args, span)
+              }
+              #(core_app, dc2)
+            }
+          }
+        }
+        _, _ -> {
+          // Not a simple constructor call - regular call
+          let #(core_fun, dc1) = desugar_expr_core(call_fun, dc)
+          let #(core_args, dc2) = desugar_exprs(call_args, dc1)
+          let core_app = case core_args {
+            [] -> CoreApp(core_fun, CoreRcd([], span), span)
+            _ -> build_apps(core_fun, core_args, span)
+          }
+          #(core_app, dc2)
+        }
       }
-      #(core_app, dc2)
     }
     
     ast.BinOp(left, op, right, span) -> {

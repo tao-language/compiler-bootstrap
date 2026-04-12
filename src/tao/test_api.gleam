@@ -636,13 +636,14 @@ pub fn exprs_to_stmts(exprs: List(Expr)) -> List(t.Stmt) {
     case expr {
       TaoTypeDecl(name, type_params, constructors, span) -> {
         // Type declarations should be StmtType, not StmtExpr
-        // Convert ConstructorDecl to Constructor
+        // Convert ConstructorDecl to Constructor with proper field types
         t.StmtType(name, type_params, list.map(constructors, fn(ctr) {
           case ctr {
-            TaoCtrDecl(ctr_name, _fields, ctr_span) -> {
-              // For nullary constructors (True, False), ignore fields
-              // This is a simplification - proper type handling would require parsing field types
-              t.Constructor(ctr_name, [], ctr_span)
+            TaoCtrDecl(ctr_name, fields, ctr_span) -> {
+              let ast_fields = list.map(fields, fn(field_type_str) {
+                t.UnnamedField(t.TVar(field_type_str))
+              })
+              t.Constructor(ctr_name, ast_fields, ctr_span)
             }
           }
         }), span)
