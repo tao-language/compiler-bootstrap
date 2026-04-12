@@ -1,6 +1,0 @@
-// Missing closing parenthesis
-// Expected error: Parse error - expected ')', got something else
-
-let x = (10 + 5
-
-x

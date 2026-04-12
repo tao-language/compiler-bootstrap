@@ -1,7 +1,0 @@
-// Module not found: importing a non-existent module
-// Expected error: Import error - module not found
-
-import nonexistent/module
-
-let x = 10
-x

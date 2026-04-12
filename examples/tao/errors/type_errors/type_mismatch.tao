@@ -1,6 +1,0 @@
-// Type mismatch: adding Int and String
-// Expected error: Type error - expected Int, got String
-
-let x = 10
-let y = "hello"
-x + y
