@@ -1057,15 +1057,8 @@ pub fn tao_grammar() -> Grammar(Expr) {
               [TokenValue(ctr_tok), ..] -> ctr_tok.value
               _ -> ""
             }
-            // Extract all ListValue items (from many) and collect constructor names
-            let more_ctr_names = extract_many_ctr_names(values)
-            let ctr_names = case first_ctr_name {
-              "" -> more_ctr_names
-              _ -> [first_ctr_name, ..more_ctr_names]
-            }
-            let constructors = list.map(ctr_names, fn(n) {
-              ConstructorDecl(n, [], Span("type", 0, 0, 0, 0))
-            })
+            // Extract all constructors with their field types
+            let constructors = extract_constructors_with_fields(values, first_ctr_offset)
             TypeDecl(type_name, type_params, constructors, Span("type", 0, 0, 0, 0))
           },
         ),
@@ -3883,6 +3876,160 @@ fn parse_local_constructor_fields_opt(fields_opt: Value(Expr)) -> List(String) {
 /// Each ListValue contains: [TokenValue(pipe), TokenValue(ctr_name), ...]
 fn extract_many_ctr_names(values: List(Value(Expr))) -> List(String) {
   extract_many_loop(values, [])
+}
+
+/// Extract constructors with their field types from the TypeDecl values.
+/// The values after first_ctr_offset contain:
+/// [ctr_name, opt_fields_list, |, ctr_name, opt_fields_list, ...]
+/// where opt_fields_list is ListValue([(, field1, ..., )]) from the opt(seq([...])) pattern
+fn extract_constructors_with_fields(
+  values: List(Value(Expr)),
+  first_ctr_offset: Int,
+) -> List(ConstructorDecl) {
+  let remaining = list.drop(values, first_ctr_offset)
+  extract_ctr_loop(remaining, [])
+}
+
+fn extract_ctr_loop(
+  items: List(Value(Expr)),
+  acc: List(ConstructorDecl),
+) -> List(ConstructorDecl) {
+  case items {
+    [] -> list.reverse(acc)
+    
+    // First constructor: TokenValue(ctr_name) followed by optional flat field tokens
+    // Then ListValue items from `many` for additional constructors
+    [TokenValue(ctr_tok), ..rest] -> {
+      case ctr_tok.value == "|" {
+        True -> {
+          // Skip | and continue
+          extract_ctr_loop(rest, acc)
+        }
+        False -> {
+          // This is a constructor name
+          let ctr_name = ctr_tok.value
+          // Check if next token is `(` indicating field types (flat tokens)
+          case rest {
+            [TokenValue(paren_tok), TokenValue(field_tok), ..rest_after] -> {
+              case paren_tok.value == "(" {
+                True -> {
+                  // Has flat field tokens - collect until `)`
+                  let #(fields_list, remaining_after_close) = extract_fields_until_close(rest_after, [field_tok.value])
+                  let ctr = ConstructorDecl(ctr_name, fields_list, Span("type", 0, 0, 0, 0))
+                  // Continue processing remaining (might have ListValue from many)
+                  extract_ctr_loop_or_many(remaining_after_close, [ctr, ..acc])
+                }
+                False -> {
+                  // Not a paren - no fields
+                  let ctr = ConstructorDecl(ctr_name, [], Span("type", 0, 0, 0, 0))
+                  extract_ctr_loop_or_many(rest, [ctr, ..acc])
+                }
+              }
+            }
+            _ -> {
+              // No fields
+              let ctr = ConstructorDecl(ctr_name, [], Span("type", 0, 0, 0, 0))
+              extract_ctr_loop_or_many(rest, [ctr, ..acc])
+            }
+          }
+        }
+      }
+    }
+    
+    [ListValue(_), ..rest] -> {
+      // ListValue from many - extract constructors from it
+      extract_many_constructors(items, acc)
+    }
+    
+    [_, ..rest] -> extract_ctr_loop(rest, acc)
+  }
+}
+
+/// Process remaining items, handling ListValue from many.
+fn extract_ctr_loop_or_many(
+  items: List(Value(Expr)),
+  acc: List(ConstructorDecl),
+) -> List(ConstructorDecl) {
+  case items {
+    [] -> list.reverse(acc)
+    [ListValue(list_inner), ..rest] -> {
+      // Extract constructors from this many iteration
+      let ctrs = extract_ctr_from_many(list_inner)
+      extract_ctr_loop_or_many(rest, list.append(acc, ctrs))
+    }
+    [TokenValue(tok), ..rest] -> {
+      case tok.value == "|" {
+        True -> extract_ctr_loop_or_many(rest, acc)
+        False -> {
+          // Another constructor name (shouldn't happen after flat fields)
+          let ctr = ConstructorDecl(tok.value, [], Span("type", 0, 0, 0, 0))
+          extract_ctr_loop_or_many(rest, [ctr, ..acc])
+        }
+      }
+    }
+    [_, ..rest] -> extract_ctr_loop_or_many(rest, acc)
+  }
+}
+
+/// Extract constructor(s) from a many iteration: [|, ctr_name, (, fields, )] or [|, ctr_name]
+fn extract_ctr_from_many(list_inner: List(Value(Expr))) -> List(ConstructorDecl) {
+  case list_inner {
+    [TokenValue(pipe_tok), TokenValue(ctr_tok), ..rest_inner] -> {
+      case pipe_tok.value == "|" {
+        True -> {
+          // Check if there are field types
+          case rest_inner {
+            [TokenValue(paren_tok), TokenValue(field_tok), ..rest_after] -> {
+              case paren_tok.value == "(" {
+                True -> {
+                  let #(fields_list, _) = extract_fields_until_close(rest_after, [field_tok.value])
+                  [ConstructorDecl(ctr_tok.value, fields_list, Span("type", 0, 0, 0, 0))]
+                }
+                False -> [ConstructorDecl(ctr_tok.value, [], Span("type", 0, 0, 0, 0))]
+              }
+            }
+            _ -> [ConstructorDecl(ctr_tok.value, [], Span("type", 0, 0, 0, 0))]
+          }
+        }
+        False -> []
+      }
+    }
+    _ -> []
+  }
+}
+
+/// Extract field types from tokens until we find `)`.
+/// Returns the collected fields and the remaining tokens after `)`.
+fn extract_fields_until_close(
+  items: List(Value(Expr)),
+  acc: List(String),
+) -> #(List(String), List(Value(Expr))) {
+  case items {
+    [] -> #(list.reverse(acc), [])
+    [TokenValue(tok), ..rest] -> {
+      case tok.value {
+        ")" -> #(list.reverse(acc), rest)
+        "," -> extract_fields_until_close(rest, acc)
+        _ -> extract_fields_until_close(rest, [tok.value, ..acc])
+      }
+    }
+    [_, ..rest] -> extract_fields_until_close(rest, acc)
+  }
+}
+
+/// Placeholder for extract_many_constructors (handles ListValue from many pattern)
+fn extract_many_constructors(
+  items: List(Value(Expr)),
+  acc: List(ConstructorDecl),
+) -> List(ConstructorDecl) {
+  case items {
+    [] -> list.reverse(acc)
+    [ListValue(list_inner), ..rest] -> {
+      let ctrs = extract_ctr_from_many(list_inner)
+      extract_many_constructors(rest, list.append(acc, ctrs))
+    }
+    [_, ..rest] -> extract_many_constructors(rest, acc)
+  }
 }
 
 fn extract_many_loop(items: List(Value(Expr)), acc: List(String)) -> List(String) {

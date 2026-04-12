@@ -10,18 +10,19 @@
 /// - **[../plans/prelude/README.md](../plans/prelude/README.md)** - Prelude implementation plan
 /// - **[../plans/tao/18-stdlib-testing.md](../plans/tao/18-stdlib-testing.md)** - Testing infrastructure
 import tao/syntax.{parse_module, type Expr, parse as parse_expr, Int as TaoInt, Float as TaoFloat, Str as TaoStr, Var as TaoVar, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlock, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, If as TaoIf, For as TaoFor, While as TaoWhile, Loop as TaoLoop, Break as TaoBreak, Continue as TaoContinue, Test as TaoTest, Run as TaoRun, Import as TaoImport, Ctr as TaoCtr, TypeDecl as TaoTypeDecl, ConstructorDecl as TaoCtrDecl, expr_to_ast, block_to_ast, get_expr_span}
-import syntax/grammar.{type ParseResult, ParseError, type ParseError as GrammarParseError, type Span, Span}
+import syntax/grammar.{type ParseResult, ParseError, type ParseError as GrammarParseError, type Span, Span, type Span as GrammarSpan}
 import syntax/error_reporter.{type_error_to_diagnostic, parse_error_to_diagnostic}
 import syntax/source_snippet.{format_diagnostic}
 import tao/desugar.{desugar_module, type DesugarContext}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module}
 import core/ast.{type Value}
-import core/state.{type State, State, type Error as CoreError, initial_state, initial_ffis, SyntaxError, TypeMismatch, VarUndefined, CtrUndefined, HoleUnsolved, MatchRedundantCase, MatchMissingCase, RcdMissingFields, DotFieldNotFound, DotOnNonCtr, InfiniteType, SpineMismatch, ArityMismatch, NotAFunction, PatternMismatch, CtrUnsolvedParam, TODO as CoreTODO, ComptimePermissionDenied}
+import core/state.{type State, State, type Error as CoreError, initial_state, initial_ffis, SyntaxError}
 import core/infer.{infer}
 import core/eval.{eval}
 import core/quote.{quote, normalize}
 import core/subst.{force}
 import core/syntax as core_syntax
+import core/unify as unify
 import gleam/list
 import gleam/int
 import gleam/option.{type Option, Some, None}
@@ -175,6 +176,38 @@ fn extract_import_names(import_item: Import) -> List(String) {
   }
 }
 
+/// Fix the expected expression's span to match the actual line in the file.
+/// The parsed expected expression gets default spans (line 1), but we need
+/// it to point to the actual line where it appears in the source.
+fn fix_expected_span(expr: Expr, test_span: GrammarSpan, source: String, file: String) -> Expr {
+  let fixed = Span(
+    file,
+    test_span.start_line,
+    test_span.start_col,
+    test_span.end_line,
+    test_span.end_col,
+  )
+  case expr {
+    TaoInt(n, _) -> TaoInt(n, fixed)
+    TaoFloat(n, _) -> TaoFloat(n, fixed)
+    TaoStr(s_val, _) -> TaoStr(s_val, fixed)
+    TaoVar(name, _) -> TaoVar(name, fixed)
+    TaoBinOp(left, op, right, _) ->
+      TaoBinOp(fix_expected_span(left, test_span, source, file), op, fix_expected_span(right, test_span, source, file), fixed)
+    TaoUnaryOp(op, arg, _) ->
+      TaoUnaryOp(op, fix_expected_span(arg, test_span, source, file), fixed)
+    TaoApp(fn_expr, args, _) ->
+      TaoApp(fix_expected_span(fn_expr, test_span, source, file), list.map(args, fn(a) { fix_expected_span(a, test_span, source, file) }), fixed)
+    TaoCtr(name, args, _) ->
+      TaoCtr(name, list.map(args, fn(a) { fix_expected_span(a, test_span, source, file) }), fixed)
+    TaoLet(name, mutable, type_ann, value, _) ->
+      TaoLet(name, mutable, type_ann, fix_expected_span(value, test_span, source, file), fixed)
+    TaoBlock(stmts, _) ->
+      TaoBlock(list.map(stmts, fn(stmt) { fix_expected_span(stmt, test_span, source, file) }), fixed)
+    _ -> expr
+  }
+}
+
 /// Check if an expected value is valid.
 /// - `_` is a wildcard that matches anything
 /// - Bare variables must be defined in the module
@@ -271,7 +304,7 @@ fn strip_test_lines_loop(
 
 /// Test expression extracted from source.
 type TestExpr {
-  TestExpr(expression: String, expected: String, span: Span)
+  TestExpr(expression: String, expected: String, span: Span, expected_span: Span)
 }
 
 /// Extract REPL-style tests from source.
@@ -330,7 +363,10 @@ fn extract_test_pairs(
                       let expression = string.trim(expr_part)
                       let expected = string.trim(expected_part)
                       let span = Span(file_path, line_num, 1, line_num, string.length(line_content))
-                      let test_expr = TestExpr(expression, expected, span)
+                      // Calculate expected value's column position
+                      let expected_col = 3 + string.length(expr_part) + 2 // "> " + expr_part + " ~>"
+                      let expected_span = Span(file_path, line_num, expected_col, line_num, expected_col + string.length(expected))
+                      let test_expr = TestExpr(expression, expected, span, expected_span)
                       extract_test_pairs(rest, source, file_path, [test_expr, ..acc])
                     }
                     _ -> extract_test_pairs(rest, source, file_path, acc)
@@ -345,7 +381,8 @@ fn extract_test_pairs(
                     Some(#(expected_line_num, expected_line)) -> {
                       let expected = string.trim(expected_line)
                       let span = Span(file_path, line_num, 1, expected_line_num, string.length(expected_line))
-                      let test_expr = TestExpr(expression, expected, span)
+                      let expected_span = Span(file_path, expected_line_num, 1, expected_line_num, string.length(expected_line))
+                      let test_expr = TestExpr(expression, expected, span, expected_span)
                       // Skip past the expected line
                       let remaining = skip_past_line(rest, expected_line_num)
                       extract_test_pairs(remaining, source, file_path, [test_expr, ..acc])
@@ -448,23 +485,25 @@ fn run_test(
           case expected_result.errors {
             [_, ..] as errs -> Fail(file, line, test_expr.expression, test_expr.expected, format_parse_errors(errs, source, file))
             [] -> {
+              // Fix the expected expression's span to match the actual line in the file
+              let expected_expr = fix_expected_span(expected_result.ast, test_expr.expected_span, source, file)
               // Check expected value validity before evaluation
               let defined_names = get_defined_names(original_body)
-              case check_expected(expected_result.ast, defined_names, file, line, test_expr.expression, test_expr.expected, source) {
+              case check_expected(expected_expr, defined_names, file, line, test_expr.expression, test_expr.expected, source) {
                 Error(msg) -> {
                   // Undefined variable or invalid expected value
                   Fail(file, line, test_expr.expression, test_expr.expected, msg)
                 }
                 Ok(_) -> {
                   // Check if expected is wildcard `_`
-                  case expected_result.ast {
+                  case expected_expr {
                     TaoVar("_", _) -> {
                       // Wildcard - matches any value
                       Pass(file, line, test_expr.expression)
                     }
                     _ -> {
                       // Regular expected value - evaluate and compare
-                      check_expected_value(expected_result.ast, original_body, file_path, test_expr, source, line, forced_actual, actual_type)
+                      check_expected_value(expected_expr, original_body, file_path, test_expr, source, line, forced_actual, actual_type)
                     }
                   }
                 }
@@ -477,9 +516,35 @@ fn run_test(
   }
 }
 
-/// Check if two types match by comparing their string representation.
-fn types_match(t1: Value, t2: Value) -> Bool {
-  format_type(t1) == format_type(t2)
+/// Check if two types match. Returns errors if they don't.
+fn check_types(
+  actual_type: Value,
+  expected_type: Value,
+  expected_span: GrammarSpan,
+  actual_span: GrammarSpan,
+  file: String,
+) -> Result(Nil, List(CoreError)) {
+  // Fix spans to use the correct file path
+  let fixed_expected = Span(
+    file,
+    expected_span.start_line,
+    expected_span.start_col,
+    expected_span.end_line,
+    expected_span.end_col,
+  )
+  let fixed_actual = Span(
+    file,
+    actual_span.start_line,
+    actual_span.start_col,
+    actual_span.end_line,
+    actual_span.end_col,
+  )
+  let init_state = State(..initial_state, errors: [])
+  let #(_subst, state) = unify.unify(init_state, 0, expected_type, actual_type, fixed_expected, fixed_actual)
+  case state.errors {
+    [] -> Ok(Nil)
+    errs -> Error(errs)
+  }
 }
 
 /// Evaluate expected value and compare with actual.
@@ -509,14 +574,12 @@ fn check_expected_value(
     [_, ..] as errs -> Fail(file, line, test_expr.expression, test_expr.expected, format_type_errors(errs, source, file))
     [] -> {
       // Check types match before comparing values
-      case types_match(actual_type, expected_type) {
-        False -> {
-          // Type mismatch - report as type error
-          Fail(file, line, test_expr.expression, test_expr.expected,
-            "Type mismatch: expected " <> format_type(expected_type) <>
-            ", got " <> format_type(actual_type))
+      case check_types(actual_type, expected_type, expected_span, test_expr.span, file) {
+        Error(type_errs) -> {
+          // Type mismatch - report with full diagnostics
+          Fail(file, line, test_expr.expression, test_expr.expected, format_type_errors(type_errs, source, file))
         }
-        True -> {
+        Ok(Nil) -> {
           let expected_value = eval(initial_ffis, [], expected_term)
           let forced_expected = force(initial_ffis, expected_type_state.subst, expected_value)
 
@@ -581,30 +644,6 @@ fn format_type_errors(errors: List(CoreError), source: String, file: String) -> 
       })
       string.join(diagnostics, "\n\n")
     }
-  }
-}
-
-/// Format a single core error for display.
-fn format_core_error(error: CoreError) -> String {
-  case error {
-    SyntaxError(_, expected, got, _) ->
-      "Syntax error: expected " <> expected <> ", got " <> got
-    TypeMismatch(_, _, _, _) ->
-      "Type error: type mismatch"
-    CtrUndefined(name, _) ->
-      "Constructor error: undefined constructor '" <> name <> "'"
-    VarUndefined(index, _) ->
-      "Variable error: undefined variable at index " <> int.to_string(index)
-    MatchMissingCase(_, _) ->
-      "Exhaustiveness error: missing case in pattern match"
-    MatchRedundantCase(_) ->
-      "Warning: redundant case in pattern match"
-    InfiniteType(id, _, _, _) ->
-      "Infinite type error: unsolved hole #" <> int.to_string(id)
-    HoleUnsolved(id, _) ->
-      "Unsolved hole #" <> int.to_string(id)
-    _ ->
-      "Error: see above for details"
   }
 }
 
@@ -749,8 +788,6 @@ fn get_module_span(body: List(t.Stmt), path: String) -> Span {
 /// Merges DesugarContext.ctrs into State.ctrs for type checking.
 fn state_with_constructors(dc: DesugarContext, initial: State) -> State {
   // Merge DesugarContext.ctrs into State.ctrs
-  // Both are CtrEnv (List(#(String, CtrDef)))
-  // Prepend desugar context constructors so they take precedence
   let merged_ctrs = list.append(dc.ctrs, initial.ctrs)
   State(..initial, ctrs: merged_ctrs)
 }

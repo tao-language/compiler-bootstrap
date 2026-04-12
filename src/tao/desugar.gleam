@@ -256,8 +256,8 @@ fn tao_constructor_to_ctr_def(
   type_params: List(String),
   constructor: Constructor,
 ) -> core_ast.CtrDef {
-  let Constructor(_name, fields, _span) = constructor
-  
+  let Constructor(name, fields, _span) = constructor
+
   let arg_ty = case fields {
     // For nullary constructors, the argument type is Typ(0) because
     // the implicit Unit argument has type Typ(0) (not VUnit which is the value)
@@ -1765,7 +1765,7 @@ fn desugar_expr_core(
     }
 
     // Placeholder for unimplemented expressions
-    _ -> #(CoreErr("Expression not yet implemented", get_expr_span(expr)), dc)
+    _ -> #(CoreErr("Expression not yet implemented: see debug", get_expr_span(expr)), dc)
   }
 }
 

@@ -15,7 +15,7 @@
 ///
 /// For detailed documentation see:
 /// - **[../plans/tao/11-test-system.md](../plans/tao/11-test-system.md)** - Test system specification
-import tao/syntax.{type Expr, parse as parse_expr}
+import tao/syntax.{type Expr, parse as parse_expr, type MatchClause, MatchClause, Int as EInt, Float as EFloat, Str as EStr, Var as EVar, Let as ELet, Block as EBlock, SimpleFn as ESimpleFn, App as EApp, Lambda as ELambda, BinOp as EBinOp, UnaryOp as EUnaryOp, Match as EMatch, If as EIf, For as EFor, While as EWhile, Loop as ELoop, Break as EBreak, Continue as EContinue, Test as ETest, Run as ERun, Import as EImport, Ctr as ECtr, TypeDecl as ETypeDecl, OverloadedFn as EOverloadedFn, OverloadedApp as EOverloadedApp}
 import syntax/grammar.{type ParseResult, ParseResult, type Span, Span}
 import gleam/string
 import gleam/list
@@ -553,7 +553,17 @@ fn parse_single_line_test(
 fn parse_expected_result(content: String, span: Span, file: String) -> ExpectedResult {
   // Try to parse as expression first
   case parse_expr(content) {
-    ParseResult(expr, []) -> Expression(expr)
+    ParseResult(expr, []) -> {
+      // Fix the spans on the expression to use the correct file and line
+      let fixed_expr = fix_expr_file_span(expr, file)
+      // Adjust line numbers to match the expected result's position
+      // span.start_line is the line where the expected result appears in the file
+      // The parsed expr will have start_line=1 (first line of parsed content)
+      // So we need to add (span.start_line - 1) to get the correct line
+      let line_offset = span.start_line - 1
+      let adjusted = adjust_expr_spans(fixed_expr, line_offset)
+      Expression(adjusted)
+    }
     _ -> {
       // If it looks like a pattern (contains `_`), treat as pattern
       case string.contains(content, "_") {
@@ -561,6 +571,200 @@ fn parse_expected_result(content: String, span: Span, file: String) -> ExpectedR
         False -> Pattern(content)
       }
     }
+  }
+}
+
+/// Adjust line numbers in expression spans by adding an offset.
+fn adjust_expr_spans(expr: Expr, line_offset: Int) -> Expr {
+  let s = get_expr_span(expr)
+  let fixed = Span(
+    s.file,
+    s.start_line + line_offset,
+    s.start_col,
+    s.end_line + line_offset,
+    s.end_col,
+  )
+  case expr {
+    EInt(n, _) -> EInt(n, fixed)
+    EFloat(n, _) -> EFloat(n, fixed)
+    EStr(s_val, _) -> EStr(s_val, fixed)
+    EVar(name, _) -> EVar(name, fixed)
+    ELet(name, mutable, type_ann, value, _) ->
+      ELet(name, mutable, type_ann, adjust_expr_spans(value, line_offset), fixed)
+    EBlock(stmts, _) ->
+      EBlock(list.map(stmts, fn(stmt) { adjust_expr_spans(stmt, line_offset) }), fixed)
+    ESimpleFn(name, params, return_type, body, _) ->
+      ESimpleFn(name, params, return_type, adjust_expr_spans(body, line_offset), fixed)
+    EApp(fn_expr, args, _) ->
+      EApp(adjust_expr_spans(fn_expr, line_offset), list.map(args, fn(a) { adjust_expr_spans(a, line_offset) }), fixed)
+    ELambda(type_params, params, body, _) ->
+      ELambda(type_params, params, adjust_expr_spans(body, line_offset), fixed)
+    EBinOp(left, op, right, _) ->
+      EBinOp(adjust_expr_spans(left, line_offset), op, adjust_expr_spans(right, line_offset), fixed)
+    EUnaryOp(op, arg, _) ->
+      EUnaryOp(op, adjust_expr_spans(arg, line_offset), fixed)
+    EMatch(expr_val, clauses, _) ->
+      EMatch(adjust_expr_spans(expr_val, line_offset), list.map(clauses, adjust_clause_spans(_, line_offset)), fixed)
+    EIf(cond, then_branch, else_branch, _) ->
+      EIf(
+        adjust_expr_spans(cond, line_offset),
+        adjust_expr_spans(then_branch, line_offset),
+        case else_branch {
+          Some(e) -> Some(adjust_expr_spans(e, line_offset))
+          None -> None
+        },
+        fixed,
+      )
+    EFor(pattern, collection, body, _) ->
+      EFor(pattern, adjust_expr_spans(collection, line_offset), list.map(body, fn(stmt) { adjust_expr_spans(stmt, line_offset) }), fixed)
+    EWhile(cond, body, _) ->
+      EWhile(adjust_expr_spans(cond, line_offset), list.map(body, fn(stmt) { adjust_expr_spans(stmt, line_offset) }), fixed)
+    ELoop(body, _) ->
+      ELoop(list.map(body, fn(stmt) { adjust_expr_spans(stmt, line_offset) }), fixed)
+    EBreak(_) -> EBreak(fixed)
+    EContinue(_) -> EContinue(fixed)
+    ETest(name, body, _) ->
+      ETest(name, adjust_expr_spans(body, line_offset), fixed)
+    ERun(name, _) ->
+      ERun(name, fixed)
+    EImport(item, _) ->
+      EImport(item, fixed)
+    ECtr(name, args, _) ->
+      ECtr(name, list.map(args, fn(a) { adjust_expr_spans(a, line_offset) }), fixed)
+    ETypeDecl(name, type_params, constructors, _) ->
+      ETypeDecl(name, type_params, constructors, fixed)
+    EOverloadedFn(name, type_param, param_name, param_type, return_type, body, _) ->
+      EOverloadedFn(name, type_param, param_name, param_type, return_type, adjust_expr_spans(body, line_offset), fixed)
+    EOverloadedApp(name, args, _) ->
+      EOverloadedApp(name, list.map(args, fn(a) { adjust_expr_spans(a, line_offset) }), fixed)
+  }
+}
+
+fn adjust_clause_spans(clause: MatchClause, line_offset: Int) -> MatchClause {
+  case clause {
+    MatchClause(pattern: pattern, guard: guard, body: body, span: s) ->
+      MatchClause(
+        pattern: pattern,
+        guard: case guard {
+          Some(g) -> Some(adjust_expr_spans(g, line_offset))
+          None -> None
+        },
+        body: adjust_expr_spans(body, line_offset),
+        span: Span(s.file, s.start_line + line_offset, s.start_col, s.end_line + line_offset, s.end_col),
+      )
+  }
+}
+
+/// Fix the file in all spans of an expression.
+fn fix_expr_file_span(expr: Expr, file: String) -> Expr {
+  let span = get_expr_span(expr)
+  let fixed = Span(file, span.start_line, span.start_col, span.end_line, span.end_col)
+  case expr {
+    EInt(n, _) -> EInt(n, fixed)
+    EFloat(n, _) -> EFloat(n, fixed)
+    EStr(s_val, _) -> EStr(s_val, fixed)
+    EVar(name, _) -> EVar(name, fixed)
+    ELet(name, mutable, type_ann, value, _) ->
+      ELet(name, mutable, type_ann, fix_expr_file_span(value, file), fixed)
+    EBlock(stmts, _) ->
+      EBlock(list.map(stmts, fn(stmt) { fix_expr_file_span(stmt, file) }), fixed)
+    ESimpleFn(name, params, return_type, body, _) ->
+      ESimpleFn(name, params, return_type, fix_expr_file_span(body, file), fixed)
+    EApp(fn_expr, args, _) ->
+      EApp(fix_expr_file_span(fn_expr, file), list.map(args, fn(a) { fix_expr_file_span(a, file) }), fixed)
+    ELambda(type_params, params, body, _) ->
+      ELambda(type_params, params, fix_expr_file_span(body, file), fixed)
+    EBinOp(left, op, right, _) ->
+      EBinOp(fix_expr_file_span(left, file), op, fix_expr_file_span(right, file), fixed)
+    EUnaryOp(op, arg, _) ->
+      EUnaryOp(op, fix_expr_file_span(arg, file), fixed)
+    EMatch(expr_val, clauses, _) ->
+      EMatch(fix_expr_file_span(expr_val, file), list.map(clauses, fix_clause_file(_, file)), fixed)
+    EIf(cond, then_branch, else_branch, _) ->
+      EIf(
+        fix_expr_file_span(cond, file),
+        fix_expr_file_span(then_branch, file),
+        case else_branch {
+          Some(e) -> Some(fix_expr_file_span(e, file))
+          None -> None
+        },
+        fixed,
+      )
+    EFor(pattern, collection, body, _) ->
+      EFor(pattern, fix_expr_file_span(collection, file), list.map(body, fn(stmt) { fix_expr_file_span(stmt, file) }), fixed)
+    EWhile(cond, body, _) ->
+      EWhile(fix_expr_file_span(cond, file), list.map(body, fn(stmt) { fix_expr_file_span(stmt, file) }), fixed)
+    ELoop(body, _) ->
+      ELoop(list.map(body, fn(stmt) { fix_expr_file_span(stmt, file) }), fixed)
+    EBreak(_) -> EBreak(fixed)
+    EContinue(_) -> EContinue(fixed)
+    ETest(name, body, _) ->
+      ETest(name, fix_expr_file_span(body, file), fixed)
+    ERun(name, _) ->
+      ERun(name, fixed)
+    EImport(item, _) ->
+      EImport(item, fixed)
+    ECtr(name, args, _) ->
+      ECtr(name, list.map(args, fn(a) { fix_expr_file_span(a, file) }), fixed)
+    ETypeDecl(name, type_params, constructors, _) ->
+      ETypeDecl(name, type_params, constructors, fixed)
+    EOverloadedFn(name, type_param, param_name, param_type, return_type, body, _) ->
+      EOverloadedFn(name, type_param, param_name, param_type, return_type, fix_expr_file_span(body, file), fixed)
+    EOverloadedApp(name, args, _) ->
+      EOverloadedApp(name, list.map(args, fn(a) { fix_expr_file_span(a, file) }), fixed)
+  }
+}
+
+/// Get the span from an expression.
+fn get_expr_span(expr: Expr) -> Span {
+  case expr {
+    EInt(_, s) -> s
+    EFloat(_, s) -> s
+    EStr(_, s) -> s
+    EVar(_, s) -> s
+    ELet(_, _, _, _, s) -> s
+    EBlock(_, s) -> s
+    ESimpleFn(_, _, _, _, s) -> s
+    EApp(_, _, s) -> s
+    ELambda(_, _, _, s) -> s
+    EBinOp(_, _, _, s) -> s
+    EUnaryOp(_, _, s) -> s
+    EMatch(_, _, s) -> s
+    EIf(_, _, _, s) -> s
+    EFor(_, _, _, s) -> s
+    EWhile(_, _, s) -> s
+    ELoop(_, s) -> s
+    EBreak(s) -> s
+    EContinue(s) -> s
+    ETest(_, _, s) -> s
+    ERun(_, s) -> s
+    EImport(_, s) -> s
+    ECtr(_, _, s) -> s
+    ETypeDecl(_, _, _, s) -> s
+    EOverloadedFn(_, _, _, _, _, _, s) -> s
+    EOverloadedApp(_, _, s) -> s
+  }
+}
+
+fn fix_clause_file(clause: MatchClause, file: String) -> MatchClause {
+  case clause {
+    MatchClause(pattern: pattern, guard: guard, body: body, span: s) ->
+      MatchClause(
+        pattern: pattern,
+        guard: case guard {
+          Some(g) -> Some(fix_expr_file_span(g, file))
+          None -> None
+        },
+        body: fix_expr_file_span(body, file),
+        span: Span(file, s.start_line, s.start_col, s.end_line, s.end_col),
+      )
+  }
+}
+
+fn fix_expected_file(expected: ExpectedResult, file: String) -> ExpectedResult {
+  case expected {
+    Pattern(p) -> Pattern(p)
+    Expression(expr) -> Expression(fix_expr_file_span(expr, file))
   }
 }
 
