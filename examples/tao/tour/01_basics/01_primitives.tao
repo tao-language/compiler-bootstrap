@@ -16,6 +16,3 @@ let x = 42
 // Definitions can optionally have type annotations.
 let pi: F64 = 3.14  // F64 stands for a Float of 64 bits.
 > pi ~> 3.14
-
-let z: I32 = 9  // I32 stands for an Integer of 32 bits.
-> z ~> 9
