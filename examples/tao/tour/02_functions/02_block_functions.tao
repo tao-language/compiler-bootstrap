@@ -1,0 +1,17 @@
+// Inferred types.
+fn double(n) => n + n
+
+> double(3) ~> 6
+> double(3.3) ~> 6.6
+
+// Type annotations give explicit types.
+fn square(n: I32) -> I32 =>
+  n * n
+
+> square(3) ~> 9
+
+// Functions can also be anonymous.
+let add = fn(x, y) =>
+  x + y
+
+> add(1, 2) ~> 3

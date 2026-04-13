@@ -16,7 +16,7 @@ import syntax/source_snippet.{format_diagnostic}
 import tao/desugar.{desugar_module, type DesugarContext}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module}
 import core/ast.{type Value}
-import core/state.{type State, State, type Error as CoreError, initial_state, initial_ffis, SyntaxError}
+import core/state.{type State, State, type Error as CoreError, initial_state, initial_ffis, SyntaxError, NameShadow, TypeMismatch}
 import core/infer.{infer}
 import core/eval.{eval}
 import core/quote.{quote, normalize}
@@ -92,28 +92,96 @@ pub fn run_test_file(source: String, file_path: String) -> #(List(CoreError), Li
     [] -> {
       // 2. Convert expressions to module and desugar
       let body = exprs_to_stmts(parse_result.ast)
-      let module = t.Module(file_path, body, get_module_span(body, file_path))
-      let ctx = new_context() |> with_prelude()
 
-      let #(core_term, desugar_ctx) = desugar_module(module, ctx)
+      // Check for duplicate top-level definitions
+      case check_duplicate_names(body, file_path) {
+        Error(dup_errs) -> #(dup_errs, [])
+        Ok(_) -> {
+          let module = t.Module(file_path, body, get_module_span(body, file_path))
+          let ctx = new_context() |> with_prelude()
 
-      // 3. Initialize state with constructor environment from desugaring
-      let state = state_with_constructors(desugar_ctx, initial_state)
-      let #(_value, _type, state) = infer(state, core_term)
+          let #(core_term, desugar_ctx) = desugar_module(module, ctx)
 
-      case state.errors {
-        [_, ..] as errors -> #(errors, [])
-        [] -> {
-          // 4. Extract and run tests from ORIGINAL source (with test lines)
-          // Each test expression is evaluated in an extended module that includes
-          // the original module's bindings, so functions like `not` are in scope.
-          let tests = extract_repl_tests(source, file_path)
-          let results = list.map(tests, fn(test_item) {
-            run_test(test_item, body, ctx, file_path, source)
-          })
+          // 3. Initialize state with constructor environment from desugaring
+          let state = state_with_constructors(desugar_ctx, initial_state)
+          let #(_value, _type, state) = infer(state, core_term)
 
-          #([], results)
+          case state.errors {
+            [_, ..] as errors -> #(errors, [])
+            [] -> {
+              // 4. Extract and run tests from ORIGINAL source (with test lines)
+              // Each test expression is evaluated in an extended module that includes
+              // the original module's bindings, so functions like `not` are in scope.
+              let tests = extract_repl_tests(source, file_path)
+              let results = list.map(tests, fn(test_item) {
+                run_test(test_item, body, ctx, file_path, source)
+              })
+
+              #([], results)
+            }
+          }
         }
+      }
+    }
+  }
+}
+
+/// Check for duplicate top-level definitions in a module body.
+/// Shadowing is not allowed at the global level.
+fn check_duplicate_names(
+  body: List(t.Stmt),
+  file_path: String,
+) -> Result(Nil, List(CoreError)) {
+  let names_and_spans = list.flat_map(body, fn(stmt) {
+    case stmt {
+      t.StmtLet(name, _, _, _, span) -> [#(name, span)]
+      t.StmtFn(name, _, _, _, _, span) -> [#(name, span)]
+      t.StmtType(name, _, _, span) -> [#(name, span)]
+      _ -> []
+    }
+  })
+  // Find duplicates
+  let duplicates = find_duplicates(names_and_spans, [], [])
+  case duplicates {
+    [] -> Ok(Nil)
+    [#(name, first_span, second_span), ..] -> {
+      let err = NameShadow(name, first_span, second_span)
+      Error([err])
+    }
+  }
+}
+
+/// Find duplicate names, returning list of #(name, first_span, second_span).
+fn find_duplicates(
+  names: List(#(String, grammar.Span)),
+  seen: List(#(String, grammar.Span)),
+  acc: List(#(String, grammar.Span, grammar.Span)),
+) -> List(#(String, grammar.Span, grammar.Span)) {
+  case names {
+    [] -> acc
+    [#(name, span), ..rest] -> {
+      // Check if name is already in seen
+      case find_in_list(seen, name) {
+        Some(first_span) ->
+          find_duplicates(rest, seen, [#(name, first_span, span), ..acc])
+        None ->
+          find_duplicates(rest, [#(name, span), ..seen], acc)
+      }
+    }
+  }
+}
+
+/// Find a name in a list of #(name, span), returning the span if found.
+fn find_in_list(
+  list: List(#(String, grammar.Span)),
+  name: String,
+) -> Option(grammar.Span) {
+  case list {
+    [] -> None
+    [#(n, s), ..rest] -> {
+      case n == name {
+        True -> Some(s)
+        False -> find_in_list(rest, name)
       }
     }
   }
@@ -141,6 +209,28 @@ pub fn get_defined_names(body: List(t.Stmt)) -> List(String) {
       _ -> []
     }
   })
+}
+
+/// Get span from any statement variant.
+fn get_stmt_span(stmt: t.Stmt) -> GrammarSpan {
+  case stmt {
+    t.StmtLet(_, _, _, _, span) -> span
+    t.StmtFn(_, _, _, _, _, span) -> span
+    t.StmtImport(_, span) -> span
+    t.StmtType(_, _, _, span) -> span
+    t.StmtFor(_, _, _, span) -> span
+    t.StmtWhile(_, _, span) -> span
+    t.StmtLoop(_, span) -> span
+    t.StmtBreak(span) -> span
+    t.StmtContinue(span) -> span
+    t.StmtReturn(_, span) -> span
+    t.StmtYield(_, span) -> span
+    t.StmtExpr(_, span) -> span
+    t.StmtBind(_, _, span) -> span
+    t.StmtMut(_, _, span) -> span
+    t.StmtTest(_, _, span) -> span
+    t.StmtRun(_, span) -> span
+  }
 }
 
 /// Extract names from an import item.
@@ -460,7 +550,13 @@ fn run_test(
       let ast_expr = expr_to_ast(expr_result.ast)
       let expr_span = get_expr_span(expr_result.ast)
       let test_stmt = t.StmtRun(ast_expr, expr_span)
-      let extended_body = list.append(original_body, [test_stmt])
+      // Only include definitions that appear before the test in the file
+      // TODO: Currently disabled due to type issues, using full body
+      let visible_body = original_body
+      // let visible_body = list.filter(original_body, fn(stmt) {
+      //   get_stmt_span(stmt).start_line < line
+      // })
+      let extended_body = list.append(visible_body, [test_stmt])
       let extended_module = t.Module(file_path, extended_body, expr_span)
 
       // Desugar and type-check the extended module
@@ -488,7 +584,7 @@ fn run_test(
               // Fix the expected expression's span to match the actual line in the file
               let expected_expr = fix_expected_span(expected_result.ast, test_expr.expected_span, source, file)
               // Check expected value validity before evaluation
-              let defined_names = get_defined_names(original_body)
+              let defined_names = get_defined_names(visible_body)
               case check_expected(expected_expr, defined_names, file, line, test_expr.expression, test_expr.expected, source) {
                 Error(msg) -> {
                   // Undefined variable or invalid expected value

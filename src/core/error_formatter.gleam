@@ -23,7 +23,7 @@ import core/state.{
   ArityMismatch, CtrUndefined, MatchRedundantCase, MatchMissingCase,
   ComptimePermissionDenied, InfiniteType,
   RcdMissingFields, CtrUnsolvedParam, DotFieldNotFound, DotOnNonCtr,
-  SpineMismatch, TODO,
+  SpineMismatch, TODO, NameShadow,
   AllowRead, AllowWrite,
 }
 import gleam/float
@@ -73,6 +73,7 @@ pub fn error_code(error: Error) -> String {
     MatchMissingCase(..) -> "E0202"
     MatchRedundantCase(..) -> "E0203"
     ComptimePermissionDenied(..) -> "E0501"
+    NameShadow(..) -> "E0301"
     TODO(..) -> "E9999"
   }
 }
@@ -96,6 +97,7 @@ pub fn error_message(error: Error) -> String {
     MatchMissingCase(..) -> "ast.Pattern match not exhaustive"
     MatchRedundantCase(..) -> "Redundant pattern"
     ComptimePermissionDenied(..) -> "Permission denied"
+    NameShadow(..) -> "Duplicate definition"
     TODO(..) -> "TODO: Not yet implemented"
   }
 }
@@ -443,6 +445,30 @@ pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagno
           "Check that the function and argument types match",
           "Review the function's type signature",
           "Add type annotations to clarify expectations",
+        ],
+      )
+
+    NameShadow(name, first_def, second_def) ->
+      source_snippet.Diagnostic(
+        code: code,
+        severity: severity,
+        message: message,
+        primary_span: to_source_span(second_def),
+        spans: [
+          source_snippet.Highlight(
+            span: to_source_span(first_def),
+            style: source_snippet.Secondary,
+            label: Some("First defined here"),
+          ),
+        ],
+        notes: [
+          "`" <> name <> "` was already defined at the module level",
+          "Shadowing is not allowed for top-level definitions",
+        ],
+        hints: [
+          "Use a different name for this definition",
+          "Remove the previous definition if no longer needed",
+          "Within functions, shadowing is allowed",
         ],
       )
 

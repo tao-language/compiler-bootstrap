@@ -75,6 +75,8 @@ pub type Error {
     span: Span,
     required: List(Permission),
   )
+  /// Duplicate definition at module level - shadowing not allowed globally
+  NameShadow(name: String, first_def: Span, second_def: Span)
 }
 
 pub type PHead {

@@ -9,7 +9,7 @@ import core/state.{
   ArityMismatch, CtrUndefined, MatchRedundantCase, MatchMissingCase,
   ComptimePermissionDenied, InfiniteType,
   RcdMissingFields, CtrUnsolvedParam, DotFieldNotFound, DotOnNonCtr,
-  SpineMismatch, TODO, PatternMismatch, SyntaxError,
+  SpineMismatch, TODO, PatternMismatch, SyntaxError, NameShadow,
 }
 import gleam/float
 import gleam/int
@@ -410,6 +410,30 @@ pub fn type_error_to_diagnostic(error: TypeError, source: String, file: String) 
           "Check for typos or missing tokens",
           "Ensure expressions are well-formed",
           "Review the syntax documentation"
+        ],
+      )
+    }
+    NameShadow(name, first_def, second_def) -> {
+      source_snippet.Diagnostic(
+        code: "E0201",
+        severity: source_snippet.Error,
+        message: "Duplicate definition",
+        primary_span: span_to_source_snippet_span(second_def),
+        spans: [
+          source_snippet.Highlight(
+            span: span_to_source_snippet_span(first_def),
+            style: source_snippet.Secondary,
+            label: Some("First defined here"),
+          ),
+        ],
+        notes: [
+          "`" <> name <> "` was already defined at the module level",
+          "Shadowing is not allowed for top-level definitions"
+        ],
+        hints: [
+          "Use a different name for this definition",
+          "Remove the previous definition if no longer needed",
+          "Within functions, shadowing is allowed"
         ],
       )
     }
