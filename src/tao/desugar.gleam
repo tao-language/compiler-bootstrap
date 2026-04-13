@@ -1777,10 +1777,21 @@ fn desugar_type_ast(
   // Type ASTs are converted to Core terms
   case type_ast {
     ast.TVar(name) -> {
-      // Type variable - check if it's a known type
-      case lookup_type_in_ctrs(dc.ctrs, name) {
-        True -> #(CoreCtr(name, CoreUnit(Span(name, 0, 0, 0, 0)), Span(name, 0, 0, 0, 0)), dc)
-        False -> #(CoreHole(-1, Span(name, 0, 0, 0, 0)), dc)
+      // Check if it's a builtin type name
+      case name {
+        "I32" -> #(CoreBuiltinType(name, Span(name, 0, 0, 0, 0)), dc)
+        "I64" -> #(CoreBuiltinType(name, Span(name, 0, 0, 0, 0)), dc)
+        "U32" -> #(CoreBuiltinType(name, Span(name, 0, 0, 0, 0)), dc)
+        "U64" -> #(CoreBuiltinType(name, Span(name, 0, 0, 0, 0)), dc)
+        "F32" -> #(CoreBuiltinType(name, Span(name, 0, 0, 0, 0)), dc)
+        "F64" -> #(CoreBuiltinType(name, Span(name, 0, 0, 0, 0)), dc)
+        _ -> {
+          // Type variable - check if it's a known type
+          case lookup_type_in_ctrs(dc.ctrs, name) {
+            True -> #(CoreCtr(name, CoreUnit(Span(name, 0, 0, 0, 0)), Span(name, 0, 0, 0, 0)), dc)
+            False -> #(CoreHole(-1, Span(name, 0, 0, 0, 0)), dc)
+          }
+        }
       }
     }
     ast.TApp(name, args) -> {
@@ -2800,9 +2811,16 @@ fn core_term_to_term_loop(
       core_ast.Typ(universe: universe, span: span)
     }
     CoreBuiltinType(name, span) -> {
-      // Convert CoreBuiltinType to a type variable
-      // For now, use a hole as a placeholder
-      core_ast.Hole(id: -1, span: span)
+      // Convert builtin type names to proper LiteralType terms
+      case name {
+        "I32" -> core_ast.LitT(typ: core_ast.I32T, span: span)
+        "I64" -> core_ast.LitT(typ: core_ast.I64T, span: span)
+        "U32" -> core_ast.LitT(typ: core_ast.U32T, span: span)
+        "U64" -> core_ast.LitT(typ: core_ast.U64T, span: span)
+        "F32" -> core_ast.LitT(typ: core_ast.F32T, span: span)
+        "F64" -> core_ast.LitT(typ: core_ast.F64T, span: span)
+        _ -> core_ast.Hole(id: -1, span: span)  // Unknown type
+      }
     }
     CoreHole(id, span) -> {
       // Convert CoreHole to core/core.Hole (metavariable)

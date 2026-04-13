@@ -1,17 +1,14 @@
-// Inferred types.
-fn double(n) => n + n
+// You can pass a block with {} and a sequence of statments.
+// This can be useful for more complex control flow.
+fn double(n) {
+  let result = n + n
+  return result
+}
 
-> double(3) ~> 6
-> double(3.3) ~> 6.6
-
-// Type annotations give explicit types.
-fn square(n: I32) -> I32 =>
-  n * n
-
-> square(3) ~> 9
-
-// Functions can also be anonymous.
-let add = fn(x, y) =>
-  x + y
+// Block functions can also be anonymous.
+let add = fn(x, y) {
+  let result = x + y
+  return result
+}
 
 > add(1, 2) ~> 3

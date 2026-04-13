@@ -3402,7 +3402,22 @@ fn make_let(values) -> Expr {
     _ -> Int(0, Span("error", 0, 0, 0, 0))
   }
 
-  Let(name, mutable, type_annotation, value_expr, Span("let", 0, 0, 0, 0))
+  // Build span from "let" keyword to end of value expression
+  let start_span = case list.first(values) {
+    Ok(KeywordValue(token)) -> Span("tao", token.line, token.column, token.line, token.column)
+    Ok(TokenValue(token)) -> Span("tao", token.line, token.column, token.line, token.column)
+    _ -> Span("tao", 0, 0, 0, 0)
+  }
+  let end_span = get_expr_span(value_expr)
+  let span = Span(
+    start_span.file,
+    start_span.start_line,
+    start_span.start_col,
+    end_span.end_line,
+    end_span.end_col,
+  )
+
+  Let(name, mutable, type_annotation, value_expr, span)
 }
 
 fn make_block(values) -> Expr {

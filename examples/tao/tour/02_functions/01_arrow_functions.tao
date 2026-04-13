@@ -10,7 +10,7 @@ fn square(n: I32) -> I32 =>
 
 > square(3) ~> 9
 
-// Functions can also be anonymous.
+// Arrow functions can also be anonymous.
 let add = fn(x, y) =>
   x + y
 

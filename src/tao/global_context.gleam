@@ -17,12 +17,12 @@ import gleam/option.{type Option, Some, None}
 import gleam/result
 import gleam/string
 import syntax/grammar.{type ParseResult, type Span, Span}
-import tao/ast.{type Module, Module as ModuleCtr, get_public_names, StmtType, type Stmt, StmtExpr, StmtImport, StmtFn, type Constructor, Constructor as Ctor, type ConstructorField, NamedField, UnnamedField, type TypeAst, TVar, TApp, THole, TFn, TRecord, TTuple, Param}
+import tao/ast.{type Module, Module as ModuleCtr, get_public_names, StmtType, type Stmt, StmtExpr, StmtImport, StmtFn, StmtLet, type Constructor, Constructor as Ctor, type ConstructorField, NamedField, UnnamedField, type TypeAst, TVar, TApp, THole, TFn, TRecord, TTuple, Param}
 import tao/import_ast.{
   ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias,
   ImportWildcard, type Import,
 }
-import tao/syntax.{parse_module, type Expr, TypeDecl as ExprTypeDecl, type ConstructorDecl, ConstructorDecl as CtorDecl, expr_to_ast, get_expr_span, block_to_ast, Import as ExprImport, SimpleFn as ExprSimpleFn}
+import tao/syntax.{parse_module, type Expr, TypeDecl as ExprTypeDecl, type ConstructorDecl, ConstructorDecl as CtorDecl, expr_to_ast, get_expr_span, block_to_ast, Import as ExprImport, SimpleFn as ExprSimpleFn, Let as ExprLet}
 import core/ast as core_ast
 import simplifile
 
@@ -500,6 +500,15 @@ fn exprs_to_stmts(exprs: List(Expr)) -> List(Stmt) {
           None -> None
         }
         StmtFn(name, [], ast_params, ast_return_type, ast_body, span)
+      }
+      // Let binding at module level: let x = expr
+      ExprLet(name, mutable, type_annotation, value, span) -> {
+        let ast_type = case type_annotation {
+          Some(type_name) -> Some(TVar(type_name))
+          None -> None
+        }
+        let ast_value = expr_to_ast(value)
+        StmtLet(name, mutable, ast_type, ast_value, span)
       }
       _ -> StmtExpr(expr_to_ast(expr), get_expr_span(expr))
     }
