@@ -114,7 +114,8 @@ pub fn run_test_file(source: String, file_path: String) -> #(List(CoreError), Li
               // the original module's bindings, so functions like `not` are in scope.
               let tests = extract_repl_tests(source, file_path)
               let results = list.map(tests, fn(test_item) {
-                run_test(test_item, body, ctx, file_path, source)
+                // Pass code_only for error formatting (AST spans are from stripped source)
+                run_test(test_item, body, ctx, file_path, code_only)
               })
 
               #([], results)

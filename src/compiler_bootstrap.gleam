@@ -248,6 +248,7 @@ type FileTestResult {
     path: String,
     errors: List(TypeError),
     results: List(TestResult),
+    stripped_source: String,
   )
 }
 
@@ -278,19 +279,12 @@ fn run_test_command(
             io.println("")
             io.println("═══ Errors in " <> file_result.path <> " ═══")
             io.println("")
-            case simplifile.read(from: file_result.path) {
-              Ok(source) -> {
-                list.each(file_result.errors, fn(e) {
-                  let diagnostic = error_reporter.type_error_to_diagnostic(e, source, file_result.path)
-                  io.println(error_reporter.format_diagnostic(diagnostic, source))
-                })
-              }
-              Error(_) -> {
-                list.each(file_result.errors, fn(e) {
-                  io.println("  " <> format_core_error(e))
-                })
-              }
-            }
+            // Use stripped_source for error formatting (AST spans are from stripped source)
+            let source = file_result.stripped_source
+            list.each(file_result.errors, fn(e) {
+              let diagnostic = error_reporter.type_error_to_diagnostic(e, source, file_result.path)
+              io.println(error_reporter.format_diagnostic(diagnostic, source))
+            })
             io.println("")
           }
         }
@@ -332,7 +326,8 @@ fn collect_and_run_tests_from_path(path: String, verbose: Bool) -> List(FileTest
         False -> Nil
       }
       let #(errors, results) = run_test_file(contents, path)
-      [FileTestResult(path, errors, results)]
+      let stripped = strip_test_lines(contents)
+      [FileTestResult(path, errors, results, stripped)]
     }
     Error(_) -> collect_and_run_tests_from_directory(path, verbose)
   }
@@ -350,7 +345,8 @@ fn collect_and_run_tests_from_directory(dir_path: String, verbose: Bool) -> List
               False -> Nil
             }
             let #(errors, results) = run_test_file(contents, file)
-            [FileTestResult(file, errors, results)]
+            let stripped = strip_test_lines(contents)
+            [FileTestResult(file, errors, results, stripped)]
           }
           Error(_) -> []
         }
