@@ -540,10 +540,11 @@ fn check_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
       case final_state.errors {
         [_err, ..] -> {
           // Report type errors
+          // Use code_only (stripped source) since AST spans were computed from it
           io.println("")
           final_state.errors |> list.each(fn(e) {
-            let diagnostic = error_reporter.type_error_to_diagnostic(e, file.contents, file.path)
-            io.println(error_reporter.format_diagnostic(diagnostic, file.contents))
+            let diagnostic = error_reporter.type_error_to_diagnostic(e, code_only, file.path)
+            io.println(error_reporter.format_diagnostic(diagnostic, code_only))
           })
           io.println("")
           Error(TypeError(final_state.errors))
