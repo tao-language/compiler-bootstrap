@@ -513,6 +513,8 @@ fn literal_to_string(literal) -> String {
     ast.U64(n) -> int.to_string(n) <> "u64"
     ast.F32(f) -> float.to_string(f) <> "f32"
     ast.F64(f) -> float.to_string(f)
+    ast.IntLit(n) -> int.to_string(n)
+    ast.FloatLit(f) -> float.to_string(f)
   }
 }
 
@@ -524,6 +526,8 @@ fn literal_type_to_string(literal_type) -> String {
     ast.U64T -> "UInt64"
     ast.F32T -> "Float32"
     ast.F64T -> "Float"
+    ast.ILitT -> "Int (any)"
+    ast.FLitT -> "Float (any)"
   }
 }
 

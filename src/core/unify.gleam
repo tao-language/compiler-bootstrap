@@ -42,6 +42,24 @@ pub fn unify_result(
     ast.VTyp(k1), ast.VTyp(k2) if k1 == k2 -> Ok(s)
     ast.VLit(k1), ast.VLit(k2) if k1 == k2 -> Ok(s)
     ast.VLitT(k1), ast.VLitT(k2) if k1 == k2 -> Ok(s)
+    // Overloaded integer type resolves to any concrete integer or float type
+    ast.VLitT(ast.ILitT), ast.VLitT(ast.I32T) -> Ok(s)
+    ast.VLitT(ast.ILitT), ast.VLitT(ast.I64T) -> Ok(s)
+    ast.VLitT(ast.ILitT), ast.VLitT(ast.U32T) -> Ok(s)
+    ast.VLitT(ast.ILitT), ast.VLitT(ast.U64T) -> Ok(s)
+    ast.VLitT(ast.ILitT), ast.VLitT(ast.F32T) -> Ok(s)  // int→float coercion
+    ast.VLitT(ast.ILitT), ast.VLitT(ast.F64T) -> Ok(s)  // int→float coercion
+    ast.VLitT(ast.I32T), ast.VLitT(ast.ILitT) -> Ok(s)
+    ast.VLitT(ast.I64T), ast.VLitT(ast.ILitT) -> Ok(s)
+    ast.VLitT(ast.U32T), ast.VLitT(ast.ILitT) -> Ok(s)
+    ast.VLitT(ast.U64T), ast.VLitT(ast.ILitT) -> Ok(s)
+    ast.VLitT(ast.F32T), ast.VLitT(ast.ILitT) -> Ok(s)  // int→float coercion
+    ast.VLitT(ast.F64T), ast.VLitT(ast.ILitT) -> Ok(s)  // int→float coercion
+    // Overloaded float type resolves to any concrete float type
+    ast.VLitT(ast.FLitT), ast.VLitT(ast.F32T) -> Ok(s)
+    ast.VLitT(ast.FLitT), ast.VLitT(ast.F64T) -> Ok(s)
+    ast.VLitT(ast.F32T), ast.VLitT(ast.FLitT) -> Ok(s)
+    ast.VLitT(ast.F64T), ast.VLitT(ast.FLitT) -> Ok(s)
     ast.VNeut(ast.HHole(id), []), _ ->
       case list.key_find(s.subst, id) {
         Ok(v) -> unify_result(s, v, v2, s1, s2)

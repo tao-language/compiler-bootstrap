@@ -554,6 +554,8 @@ fn literal_from_value(lit: ast.Literal) -> String {
     ast.U64(n) -> int.to_string(n)
     ast.F32(f) -> "" <> float.to_string(f)
     ast.F64(f) -> "" <> float.to_string(f)
+    ast.IntLit(n) -> int.to_string(n)
+    ast.FloatLit(f) -> "" <> float.to_string(f)
   }
 }
 
@@ -565,6 +567,8 @@ fn literal_type_to_string(lit: ast.LiteralType) -> String {
     ast.U64T -> "Int"
     ast.F32T -> "Float"
     ast.F64T -> "Float"
+    ast.ILitT -> "Int (any integer type)"
+    ast.FLitT -> "Float (any float type)"
   }
 }
 
@@ -576,6 +580,8 @@ fn literal_type_from_value(lit: ast.Literal) -> String {
     ast.U64(_) -> "Int"
     ast.F32(_) -> "Float"
     ast.F64(_) -> "Float"
+    ast.IntLit(_) -> "Int (any integer type)"
+    ast.FloatLit(_) -> "Float (any float type)"
   }
 }
 
@@ -604,6 +610,8 @@ fn literal_to_string(lit: ast.Literal) -> String {
     ast.U64(n) -> int.to_string(n)
     ast.F32(f) -> float_to_string(f)
     ast.F64(f) -> float_to_string(f)
+    ast.IntLit(n) -> int.to_string(n)
+    ast.FloatLit(f) -> float_to_string(f)
   }
 }
 

@@ -23,6 +23,7 @@ import core/ast.{
   Call, Case, Comptime, Ctr, Dot, Err, F32, F32T, F64, F64T, Fix, Hole, I32,
   I32T, I64, I64T, Lam, Lit, LitT, Match, PAny, PAs, PCtr, PUnit, PLit, PLitT, PRcd,
   PTyp, Pi, Rcd, Typ, U32, U32T, U64, U64T, Var, Unit,
+  ILitT, FLitT, IntLit, FloatLit,
 }
 import core/state.{type Error}
 import gleam/float
@@ -1417,6 +1418,8 @@ fn format_term(
           ])
         F32(f) -> formatter.text(float.to_string(f))
         F64(f) -> formatter.text(float.to_string(f))
+        IntLit(n) -> formatter.text(int.to_string(n))
+        FloatLit(f) -> formatter.text(float.to_string(f))
       }
     }
     Typ(level, _) -> {
@@ -1448,6 +1451,8 @@ fn format_term(
         U64T -> formatter.text("%U64")
         F32T -> formatter.text("%F32")
         F64T -> formatter.text("%F64")
+        ILitT -> formatter.text("%Int")
+        FLitT -> formatter.text("%Float")
       }
     }
     Ctr(tag, arg, _) -> {
@@ -1667,13 +1672,25 @@ fn format_pattern(pattern: Pattern) -> formatter.Doc {
     PLit(value) -> {
       case value {
         I32(n) -> formatter.text(int.to_string(n))
-        _ -> formatter.text("<lit>")
+        I64(n) -> formatter.text(int.to_string(n))
+        U32(n) -> formatter.text(int.to_string(n))
+        U64(n) -> formatter.text(int.to_string(n))
+        F32(f) -> formatter.text(float.to_string(f))
+        F64(f) -> formatter.text(float.to_string(f))
+        IntLit(n) -> formatter.text(int.to_string(n))
+        FloatLit(f) -> formatter.text(float.to_string(f))
       }
     }
     PLitT(typ) -> {
       case typ {
         I32T -> formatter.text("%I32")
-        _ -> formatter.text("<litt>")
+        I64T -> formatter.text("%I64")
+        U32T -> formatter.text("%U32")
+        U64T -> formatter.text("%U64")
+        F32T -> formatter.text("%F32")
+        F64T -> formatter.text("%F64")
+        ILitT -> formatter.text("%Int")
+        FLitT -> formatter.text("%Float")
       }
     }
     PRcd(fields) -> {
@@ -1795,6 +1812,8 @@ fn literal_to_string(literal: ast.Literal) -> String {
     ast.U64(n) -> int.to_string(n)
     ast.F32(f) -> float_to_string(f)
     ast.F64(f) -> float_to_string(f)
+    ast.IntLit(n) -> int.to_string(n)
+    ast.FloatLit(f) -> float_to_string(f)
   }
 }
 
@@ -1806,6 +1825,8 @@ fn literal_type_to_string(literal_type: ast.LiteralType) -> String {
     ast.U64T -> "%U64"
     ast.F32T -> "%F32"
     ast.F64T -> "%F64"
+    ast.ILitT -> "%Int"
+    ast.FLitT -> "%Float"
   }
 }
 

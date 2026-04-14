@@ -350,6 +350,8 @@ fn typeof_lit(literal: ast.Literal) -> ast.Type {
     ast.U64(_) -> ast.VLitT(ast.U64T)
     ast.F32(_) -> ast.VLitT(ast.F32T)
     ast.F64(_) -> ast.VLitT(ast.F64T)
+    ast.IntLit(_) -> ast.VLitT(ast.ILitT)
+    ast.FloatLit(_) -> ast.VLitT(ast.FLitT)
   }
 }
 
@@ -627,6 +629,8 @@ fn infer_pattern(
         ast.U64(n) -> ast.VLit(ast.U64(n))
         ast.F32(f) -> ast.VLit(ast.F32(f))
         ast.F64(f) -> ast.VLit(ast.F64(f))
+        ast.IntLit(n) -> ast.VLit(ast.IntLit(n))
+        ast.FloatLit(f) -> ast.VLit(ast.FloatLit(f))
       }
       #(val, s)
     }
@@ -1056,6 +1060,36 @@ pub fn check(
         }
         _ -> {
           let #(value, inferred_ty, s) = infer(s, term)
+          case inferred_ty, expected_ty {
+            ast.VErr, _ | _, ast.VErr -> #(ast.VErr, s)
+            _, _ -> {
+              case unify.unify_result(s, inferred_ty, expected_ty, Span("", 0, 0, 0, 0), ty_span) {
+                Ok(s) -> #(subst.force(s.ffi, s.subst, value), s)
+                Error(e) -> #(ast.VErr, state.with_err(s, e))
+              }
+            }
+          }
+        }
+      }
+    }
+    ast.Lit(literal, span) -> {
+      // Coerce overloaded literals to the expected concrete type
+      case literal, expected_ty {
+        ast.IntLit(n), ast.VLitT(ast.I32T) -> #(ast.VLit(ast.I32(n)), s)
+        ast.IntLit(n), ast.VLitT(ast.I64T) -> #(ast.VLit(ast.I64(n)), s)
+        ast.IntLit(n), ast.VLitT(ast.U32T) -> #(ast.VLit(ast.U32(n)), s)
+        ast.IntLit(n), ast.VLitT(ast.U64T) -> #(ast.VLit(ast.U64(n)), s)
+        ast.IntLit(n), ast.VLitT(ast.F32T) -> #(ast.VLit(ast.F32(int.to_float(n))), s)
+        ast.IntLit(n), ast.VLitT(ast.F64T) -> #(ast.VLit(ast.F64(int.to_float(n))), s)
+        ast.FloatLit(f), ast.VLitT(ast.F32T) -> #(ast.VLit(ast.F32(f)), s)
+        ast.FloatLit(f), ast.VLitT(ast.F64T) -> #(ast.VLit(ast.F64(f)), s)
+        // If expected type is also overloaded, coerce accordingly
+        ast.IntLit(n), ast.VLitT(ast.ILitT) -> #(ast.VLit(ast.IntLit(n)), s)
+        ast.IntLit(n), ast.VLitT(ast.FLitT) -> #(ast.VLit(ast.FloatLit(int.to_float(n))), s)
+        ast.FloatLit(f), ast.VLitT(ast.FLitT) -> #(ast.VLit(ast.FloatLit(f)), s)
+        // For concrete literals (I32, F64, etc.), check exact match
+        _, _ -> {
+          let #(value, inferred_ty, s) = infer(s, ast.Lit(literal, span))
           case inferred_ty, expected_ty {
             ast.VErr, _ | _, ast.VErr -> #(ast.VErr, s)
             _, _ -> {

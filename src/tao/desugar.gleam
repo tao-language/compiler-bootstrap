@@ -1875,9 +1875,9 @@ fn desugar_exprs_loop(
 /// Convert a Tao literal to a Core literal.
 fn tao_literal_to_core_literal(literal: Literal) -> core_ast.Literal {
   case literal {
-    LitInt(n) -> core_ast.I32(n)
-    LitFloat(f) -> core_ast.F64(f)
-    LitString(_s) -> core_ast.I32(0)  // Strings not directly supported in core literals
+    LitInt(n) -> core_ast.IntLit(n)
+    LitFloat(f) -> core_ast.FloatLit(f)
+    LitString(_s) -> core_ast.IntLit(0)  // Strings not directly supported in core literals
   }
 }
 
@@ -2827,13 +2827,13 @@ fn core_term_to_term_loop(
       core_ast.Hole(id: id, span: span)
     }
     CoreLit(value, span) -> {
-      // Try to parse as integer first
+      // Try to parse as integer first — produce overloaded IntLit
       case int.parse(value) {
-        Ok(n) -> core_ast.Lit(value: core_ast.I32(n), span: span)
+        Ok(n) -> core_ast.Lit(value: core_ast.IntLit(n), span: span)
         Error(_) -> {
-          // Not an integer - try float
+          // Not an integer - try float — produce overloaded FloatLit
           case float.parse(value) {
-            Ok(f) -> core_ast.Lit(value: core_ast.F64(f), span: span)
+            Ok(f) -> core_ast.Lit(value: core_ast.FloatLit(f), span: span)
             Error(_) -> {
               // String literal - core language doesn't support strings directly
               // For now, represent as unit to avoid type errors

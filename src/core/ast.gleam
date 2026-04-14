@@ -18,6 +18,10 @@ pub type Literal {
   U64(value: Int)
   F32(value: Float)
   F64(value: Float)
+  /// Overloaded integer literal — resolves to any integer or float type during type checking.
+  IntLit(value: Int)
+  /// Overloaded float literal — resolves to any float type during type checking.
+  FloatLit(value: Float)
 }
 
 pub type LiteralType {
@@ -27,6 +31,10 @@ pub type LiteralType {
   U64T
   F32T
   F64T
+  /// Unresolved integer type — compatible with all integer and float LiteralTypes.
+  ILitT
+  /// Unresolved float type — compatible with all float LiteralTypes.
+  FLitT
 }
 
 // ============================================================================

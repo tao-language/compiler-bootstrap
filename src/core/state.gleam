@@ -176,6 +176,10 @@ pub fn ffi_add(args: List(ast.Value)) -> Option(ast.Value) {
     [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(ast.VLit(ast.I32(a + b)))
     [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(ast.VLit(ast.I64(a + b)))
     [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(ast.VLit(ast.F64(a +. b)))
+    // Overloaded integer literals
+    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(ast.VLit(ast.IntLit(a + b)))
+    // Overloaded float literals
+    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(ast.VLit(ast.FloatLit(a +. b)))
     _ -> None
   }
 }
@@ -185,6 +189,8 @@ pub fn ffi_sub(args: List(ast.Value)) -> Option(ast.Value) {
     [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(ast.VLit(ast.I32(a - b)))
     [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(ast.VLit(ast.I64(a - b)))
     [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(ast.VLit(ast.F64(a -. b)))
+    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(ast.VLit(ast.IntLit(a - b)))
+    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(ast.VLit(ast.FloatLit(a -. b)))
     _ -> None
   }
 }
@@ -194,6 +200,8 @@ pub fn ffi_mul(args: List(ast.Value)) -> Option(ast.Value) {
     [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(ast.VLit(ast.I32(a * b)))
     [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(ast.VLit(ast.I64(a * b)))
     [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(ast.VLit(ast.F64(a *. b)))
+    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(ast.VLit(ast.IntLit(a * b)))
+    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(ast.VLit(ast.FloatLit(a *. b)))
     _ -> None
   }
 }
@@ -203,6 +211,8 @@ pub fn ffi_div(args: List(ast.Value)) -> Option(ast.Value) {
     [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] if b != 0 -> Some(ast.VLit(ast.I32(a / b)))
     [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] if b != 0 -> Some(ast.VLit(ast.I64(a / b)))
     [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] if b != 0.0 -> Some(ast.VLit(ast.F64(a /. b)))
+    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] if b != 0 -> Some(ast.VLit(ast.IntLit(a / b)))
+    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] if b != 0.0 -> Some(ast.VLit(ast.FloatLit(a /. b)))
     _ -> None
   }
 }
@@ -212,6 +222,8 @@ pub fn ffi_eq(args: List(ast.Value)) -> Option(ast.Value) {
     [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(bool_to_value(a == b))
     [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(bool_to_value(a == b))
     [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(bool_to_value(a == b))
+    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(bool_to_value(a == b))
+    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(bool_to_value(a == b))
     _ -> None
   }
 }
@@ -221,6 +233,8 @@ pub fn ffi_lt(args: List(ast.Value)) -> Option(ast.Value) {
     [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(bool_to_value(a < b))
     [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(bool_to_value(a < b))
     [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(bool_to_value(a <. b))
+    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(bool_to_value(a < b))
+    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(bool_to_value(a <. b))
     _ -> None
   }
 }
