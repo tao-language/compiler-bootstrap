@@ -237,11 +237,14 @@ fn get_imports(body: List(Stmt)) -> List(ImportType) {
 fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(Stmt) {
   list.flat_map(exprs, fn(expr) {
     case expr {
-      Let(name, mutable, _type_annotation, value, span) -> {
+      Let(name, mutable, type_annotation, value, span) -> {
         // Convert let expression to StmtLet
-        // Note: Type annotations are not yet parsed, so we ignore them for now
         let ast_value = expr_to_ast(value)
-        [StmtLet(name, mutable, None, ast_value, span)]
+        let ast_type = case type_annotation {
+          Some(t) -> Some(TVar(t))
+          None -> None
+        }
+        [StmtLet(name, mutable, ast_type, ast_value, span)]
       }
       SimpleFn(name, params, return_type, body, span) -> {
         // Convert function definition to StmtFn

@@ -207,3 +207,44 @@ pub fn run_test_file_with_test_lines_only() {
   let _ = errors
   list.is_empty(results) |> should.be_false
 }
+
+// ============================================================================
+// TYPE ANNOTATION PRESERVATION TESTS
+// ============================================================================
+/// Regression tests for fix: let bindings now preserve type annotations
+/// in compiler.gleam's exprs_to_stmts (was discarding annotations).
+
+pub fn let_type_annotation_float_vs_int_detected() {
+  // Float literal assigned to Int type should fail
+  let source = "let x: I32 = 3.14"
+  let #(errors, _results) = run_test_file(source, "test.tao")
+  list.is_empty(errors) |> should.be_false
+}
+
+pub fn let_type_annotation_float_vs_i64_detected() {
+  // Float literal assigned to I64 type should fail
+  let source = "let x: I64 = 3.14"
+  let #(errors, _results) = run_test_file(source, "test.tao")
+  list.is_empty(errors) |> should.be_false
+}
+
+pub fn let_type_annotation_int_vs_float_detected() {
+  // Int literal assigned to Float type should fail
+  let source = "let x: F64 = 42"
+  let #(errors, _results) = run_test_file(source, "test.tao")
+  list.is_empty(errors) |> should.be_false
+}
+
+pub fn let_type_annotation_valid_assignment_passes() {
+  // Int literal assigned to Int type should pass
+  let source = "let x: I32 = 42"
+  let #(errors, _results) = run_test_file(source, "test.tao")
+  list.is_empty(errors) |> should.be_true
+}
+
+pub fn let_type_annotation_float_valid_passes() {
+  // Float literal assigned to Float type should pass
+  let source = "let x: F64 = 3.14"
+  let #(errors, _results) = run_test_file(source, "test.tao")
+  list.is_empty(errors) |> should.be_true
+}
