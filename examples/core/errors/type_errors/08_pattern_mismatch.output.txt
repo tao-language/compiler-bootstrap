@@ -1,10 +1,14 @@
 error[E0101]: Type mismatch
-  ┌─ :0:0
-1 │ // Pattern Type Mismatch
-2 │ // Pattern expects a different type than the matched value
+  ┌─ input:6:10
 3 │ // This error occurs when a pattern's type doesn't match the scrutinee
-  = note: %Type(0) and %Type(1) are incompatible types
-  = note: The expression produces %Type(0) but %Type(1) is expected here
+4 │ // Example: trying to match a type pattern against a value
+5 │ %match (42 : Int) ~ (x : Int) -> %Type {
+6 │   | _ -> %Type
+             ^^^^^ -----
+7 │ }
+8 │ 
+  = note: %Type(1) and %Type(0) are incompatible types
+  = note: The expression produces %Type(1) but %Type(0) is expected here
   = hint: Check that the expression has the expected type
   = hint: Consider adding a type annotation
   = hint: Did you mean to use a different expression?

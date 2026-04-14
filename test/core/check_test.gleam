@@ -49,8 +49,11 @@ pub fn check_type_equal_test() {
 }
 
 pub fn check_type_mismatch_test() {
+  // FIX: After fixing unify TypeMismatch argument order,
+  // expected type (v64t, second arg) is first, got type (v32t, first arg) is second.
+  // Spans are also swapped: expected_span=s2, got_span=s1.
   let #(s_result, _) = check_type(s, v32t, v64t, s1, s2)
-  s_result |> should.equal(state.State(..s, errors: [state.TypeMismatch(v32t, v64t, s1, s2)]))
+  s_result |> should.equal(state.State(..s, errors: [state.TypeMismatch(v64t, v32t, s2, s1)]))
 }
 
 pub fn check_type_with_hole_test() {
@@ -81,6 +84,9 @@ pub fn check_accumulates_errors_test() {
   // Type mismatch should be recorded, not thrown
   let #(_, s) = check(s, ast.Lit(ast.I32(1), s1), v64t, s1)
 
+  // FIX: After fixing unify TypeMismatch argument order,
+  // expected type (v64t) is first, got type (v32t) is second.
+  // Both spans now use the actual term span (s1) instead of dummy.
   s.errors
-  |> should.equal([state.TypeMismatch(v32t, v64t, Span("", 0, 0, 0, 0), s1)])
+  |> should.equal([state.TypeMismatch(v64t, v32t, s1, s1)])
 }

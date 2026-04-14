@@ -1,15 +1,10 @@
-
-   Compiled in 0.06s
-    Running compiler_bootstrap.main
-
 error[E0101]: Type mismatch
-  ┌─ :0:0
+  ┌─ input:1:1
 1 │ 42 : %Type
-    --
+    ^^ --
 2 │ 
-  = note: %Type(0) and Int are incompatible types
-  = note: The expression produces %Type(0) but Int is expected here
+  = note: Int and %Type(0) are incompatible types
+  = note: The expression produces Int but %Type(0) is expected here
   = hint: Check that the expression has the expected type
   = hint: Consider adding a type annotation
   = hint: Did you mean to use a different expression?
-

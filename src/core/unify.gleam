@@ -101,7 +101,7 @@ pub fn unify_result(
     }
     ast.VErr, _ -> Ok(s)
     _, ast.VErr -> Ok(s)
-    _, _ -> Error(state.TypeMismatch(v1, v2, s1, s2))
+    _, _ -> Error(state.TypeMismatch(v2, v1, s2, s1))
   }
 }
 

@@ -1063,7 +1063,7 @@ pub fn check(
           case inferred_ty, expected_ty {
             ast.VErr, _ | _, ast.VErr -> #(ast.VErr, s)
             _, _ -> {
-              case unify.unify_result(s, inferred_ty, expected_ty, Span("", 0, 0, 0, 0), ty_span) {
+              case unify.unify_result(s, inferred_ty, expected_ty, span, ty_span) {
                 Ok(s) -> #(subst.force(s.ffi, s.subst, value), s)
                 Error(e) -> #(ast.VErr, state.with_err(s, e))
               }
@@ -1093,7 +1093,7 @@ pub fn check(
           case inferred_ty, expected_ty {
             ast.VErr, _ | _, ast.VErr -> #(ast.VErr, s)
             _, _ -> {
-              case unify.unify_result(s, inferred_ty, expected_ty, Span("", 0, 0, 0, 0), ty_span) {
+              case unify.unify_result(s, inferred_ty, expected_ty, span, ty_span) {
                 Ok(s) -> #(subst.force(s.ffi, s.subst, value), s)
                 Error(e) -> #(ast.VErr, state.with_err(s, e))
               }
@@ -1113,11 +1113,12 @@ pub fn check(
       #(body_val, s5)
     }
     _ -> {
+      let term_span = get_span(term)
       let #(value, inferred_ty, s) = infer(s, term)
       case inferred_ty, expected_ty {
         ast.VErr, _ | _, ast.VErr -> #(ast.VErr, s)
         _, _ -> {
-          case unify.unify_result(s, inferred_ty, expected_ty, Span("", 0, 0, 0, 0), ty_span) {
+          case unify.unify_result(s, inferred_ty, expected_ty, term_span, ty_span) {
             Ok(s) -> #(subst.force(s.ffi, s.subst, value), s)
             Error(e) -> #(ast.VErr, state.with_err(s, e))
           }
