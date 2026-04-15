@@ -146,7 +146,7 @@ examples/
 | CLI | Complete | Working |
 | Error Reporting | Complete | Working |
 | Warning Cleanup | Complete | 45 → 0 warnings |
-| **Total** | **All green** | **478 passing** |
+| **Total** | **All green** | **536 passing** |
 
 ### Key Features Working
 
@@ -245,11 +245,23 @@ When working with this codebase:
 
 ## Test Results
 
-- **478 tests passing**
+- **536 tests passing**
 - **0 failures**
 - **0 warnings**
 
 ### Recent Fixes (April 2026)
+
+26. **Check CLI Type Error Detection** — The `check` CLI command wasn't catching type errors in definitions (e.g., `let x: I64 = 3.14`). Fixed by:
+    - Preserving type annotations in `compiler.gleam`'s `exprs_to_stmts` (was discarding them)
+    - Using stripped source (without test lines) for error reporting in both check and test commands
+    - Adding `stripped_source` field to `FileTestResult` for correct span display
+
+27. **Prelude Constructor Resolution** — Constructors from prelude modules (e.g., `True`, `False` from `prelude/bool`) were not available in test expressions. Fixed by:
+    - Adding `merge_prelude_ctr_env` function in `desugar.gleam` to merge prelude `ctr_env` into `DesugarContext.ctrs`
+    - Called when module doesn't define its own types (same condition as implicit prelude imports)
+    - Added 13 regression tests in `test/tao/prelude_constructor_test.gleam`
+
+28. **FFI Builtin Return Type Inference (KNOWN ISSUE)** — The `infer_call` function for FFI builtins (e.g., `eq`, `lt`) returns the type of the first argument as the result type, instead of deriving it from the actual result value. This causes `1 == 1` to have type `ILitT` instead of `Bool`. Workaround: use explicit type annotations when comparing with prelude constructors.
 
 1. **Match Expression Type Inference** — Fixed match expressions working correctly with different result types across functions. Previously caused `InfiniteType` errors due to hole ID management in match motives. Fixed by:
    - Simplifying desugarer to always use `Hole(-1)` for unknown types (removed complex hole counter)

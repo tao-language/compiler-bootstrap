@@ -541,6 +541,15 @@ pub fn desugar_module_with_ctrs(
     False -> create_implicit_prelude_imports(dc.global, module.span)
   }
 
+  // KEY FIX: Merge prelude constructor environment into dc.ctrs when the module
+  // doesn't define its own types. This makes prelude constructors (True, False, etc.)
+  // available for type checking. Without this, dc.ctrs is empty for modules that
+  // rely on implicit prelude imports, causing "Constructor not found" errors.
+  let dc_with_prelude_ctrs = case has_type_defs {
+    True -> dc_with_annotated_types  // Local types shadow prelude, no merge needed
+    False -> merge_prelude_ctr_env(dc_with_annotated_types)
+  }
+
   // Check if the last statement is an expression (for expression-style modules)
   let last_is_expr = is_last_stmt_expr(module.body)
 
@@ -549,7 +558,7 @@ pub fn desugar_module_with_ctrs(
       // Expression-style module: separate the last expression from the bindings
       // First, desugar all statements EXCEPT the last one
       let all_but_last = drop_last(module.body)
-      let #(core_stmts, dc1) = desugar_stmts(all_but_last, dc_with_annotated_types)
+      let #(core_stmts, dc1) = desugar_stmts(all_but_last, dc_with_prelude_ctrs)
       // Prepend prelude import statements
       let core_stmts_with_prelude = list.append(prelude_imports, core_stmts)
 
@@ -577,7 +586,7 @@ pub fn desugar_module_with_ctrs(
     }
     False -> {
       // Declaration-style module: desugar all statements and return a record
-      let #(core_stmts, dc1) = desugar_stmts(module.body, dc_with_annotated_types)
+      let #(core_stmts, dc1) = desugar_stmts(module.body, dc_with_prelude_ctrs)
       // Prepend prelude import statements
       let core_stmts_with_prelude = list.append(prelude_imports, core_stmts)
       let public_names = get_public_names(module.body)
@@ -976,6 +985,27 @@ fn get_prelude_module_paths_loop(
       }
     }
   }
+}
+
+/// Merge constructor environments from all prelude modules into dc.ctrs.
+/// This makes prelude constructors (True, False, Some, None, Ok, Err, etc.)
+/// available for type checking in modules that don't define their own types.
+fn merge_prelude_ctr_env(dc: DesugarContext) -> DesugarContext {
+  let prelude_paths = get_prelude_module_paths(dc.global)
+  list.fold(prelude_paths, dc, fn(acc, path) {
+    case dict.get(acc.global.modules, path) {
+      Ok(module_ref) ->
+        DesugarContext(
+          global: acc.global,
+          current_module: acc.current_module,
+          local_scope: acc.local_scope,
+          loop_stack: acc.loop_stack,
+          ctrs: list.append(acc.ctrs, module_ref.ctr_env),
+          annotated_types: acc.annotated_types,
+        )
+      Error(Nil) -> acc
+    }
+  })
 }
 
 /// Create a wildcard import for a module: `import path as *`
