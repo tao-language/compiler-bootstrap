@@ -1008,28 +1008,9 @@ fn shift_hvar_in_pattern(pattern: ast.Pattern, shift: Int) -> ast.Pattern {
   }
 }
 
+/// Get span from a term. Delegates to ast.get_span to avoid duplication.
 fn get_span(term: ast.Term) -> Span {
-  case term {
-    ast.Typ(_, span) -> span
-    ast.Lit(_, span) -> span
-    ast.LitT(_, span) -> span
-    ast.Var(_, span) -> span
-    ast.Hole(_, span) -> span
-    ast.Rcd(_, span) -> span
-    ast.Ctr(_, _, span) -> span
-    ast.Unit(span) -> span
-    ast.Dot(_, _, span) -> span
-    ast.Ann(_, _, span) -> span
-    ast.Lam(_, _, _, span) -> span
-    ast.Pi(_, _, _, _, span) -> span
-    ast.App(_, _, _, span) -> span
-    ast.Match(_, _, _, span) -> span
-    ast.Call(_, _, span) -> span
-    ast.Comptime(_, span) -> span
-    ast.Fix(_, _, span) -> span
-    ast.Let(_, _, _, span) -> span
-    ast.Err(_, span) -> span
-  }
+  ast.get_span(term)
 }
 
 
