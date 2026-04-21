@@ -258,3 +258,16 @@ pub fn shift_case(case_val: Case, shift: Int) -> Case {
       )
   }
 }
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/// Check if a value is the canonical "true" constructor.
+/// Default name is "True" (compatible with the prelude's bool module).
+pub fn is_true_value(value: Value) -> Bool {
+  case value {
+    VCtrValue(VCtr(tag, _)) if tag == "True" -> True
+    _ -> False
+  }
+}

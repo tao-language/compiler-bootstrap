@@ -122,36 +122,29 @@ pub fn non_literal_types_return_false_test() {
 
 pub fn is_true_true_constructor_test() {
   let true_val = ast.VCtrValue(ast.VCtr("True", ast.VUnit))
-  eval.is_true(true_val, "True")
+  ast.is_true_value(true_val)
   |> should.equal(True)
 }
 
 pub fn is_true_false_constructor_test() {
   let false_val = ast.VCtrValue(ast.VCtr("False", ast.VUnit))
-  eval.is_true(false_val, "True")
+  ast.is_true_value(false_val)
   |> should.equal(False)
 }
 
 pub fn is_true_other_constructor_test() {
   let other_val = ast.VCtrValue(ast.VCtr("Some", ast.VLit(ast.I32(42))))
-  eval.is_true(other_val, "True")
+  ast.is_true_value(other_val)
   |> should.equal(False)
 }
 
 pub fn is_true_literal_test() {
   let lit_val = ast.VLit(ast.I32(42))
-  eval.is_true(lit_val, "True")
+  ast.is_true_value(lit_val)
   |> should.equal(False)
 }
 
 pub fn is_true_unit_test() {
-  eval.is_true(ast.VUnit, "True")
+  ast.is_true_value(ast.VUnit)
   |> should.equal(False)
-}
-
-pub fn is_true_custom_name_test() {
-  // Test with a custom constructor name
-  let custom_true = ast.VCtrValue(ast.VCtr("yes", ast.VUnit))
-  eval.is_true(custom_true, "yes")
-  |> should.equal(True)
 }
