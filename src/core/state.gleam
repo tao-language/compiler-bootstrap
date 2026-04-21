@@ -36,7 +36,7 @@ pub type State {
     max_steps: Int,
     ffi: FFI,
     /// Truth constructor tag for guard evaluation in matches.
-    /// Default is "True"; set by the language layer for custom languages.
+    /// Set by the language layer (e.g., "True" for Tao).
     truth_ctor: String,
   )
 }
@@ -104,7 +104,7 @@ pub const initial_state = State(
   step_counter: 0,
   max_steps: 10000,
   ffi: [],  // FFI is populated by the language layer (Tao)
-  truth_ctor: "True",  // Default truth constructor name
+  truth_ctor: "True",  // Set by the language layer (Tao defaults to "True")
 )
 
 // ============================================================================
@@ -173,26 +173,7 @@ fn lookup_var_loop(
   }
 }
 
-// ============================================================================
-// LIST HELPERS
-// ============================================================================
-
-pub fn list_get(list: List(a), index: Int) -> Result(a, Nil) {
-  list_get_loop(list, index, 0)
-}
-
-fn list_get_loop(list: List(a), index: Int, current: Int) -> Result(a, Nil) {
-  case list {
-    [] -> Error(Nil)
-    [x, ..xs] -> {
-      case current == index {
-        True -> Ok(x)
-        False -> list_get_loop(xs, index, current + 1)
-      }
-    }
-  }
-}
-
 // No built-in FFI definitions in Core — these are language-specific and belong
 // in the language layer (e.g., src/tao/compiler.gleam). Core's `State` accepts
 // FFI via the `ffi` field but provides no default implementations.
+// Shared list utilities are in core/list_utils.gleam.

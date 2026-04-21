@@ -8,6 +8,7 @@ import gleam/result
 import syntax/grammar.{type Span}
 import core/ast as ast
 import core/state as state
+import core/list_utils as list_utils
 
 // ============================================================================
 // MAIN EVALUATION
@@ -28,7 +29,7 @@ pub fn eval_with_ctor(
     ast.Typ(universe, _) -> ast.VTyp(universe)
     ast.Lit(value, _) -> ast.VLit(value)
     ast.LitT(typ, _) -> ast.VLitT(typ)
-    ast.Var(index, _) -> list_get(env, index) |> result.lazy_unwrap(fn() { ast.VErr })
+    ast.Var(index, _) -> list_utils.list_get(env, index) |> result.lazy_unwrap(fn() { ast.VErr })
     ast.Hole(id, _) -> ast.VNeut(ast.HHole(id), [])
     ast.Err(_, _) -> ast.VErr
     ast.Rcd(fields, _) -> {
@@ -303,28 +304,4 @@ fn do_call(ffi: state.FFI, env: ast.Env, name: String, args: List(ast.Term), spa
   }
 }
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-
-
-// ============================================================================
-// LIST HELPER
-// ============================================================================
-
-fn list_get(list: List(a), index: Int) -> Result(a, Nil) {
-  list_get_loop(list, index, 0)
-}
-
-fn list_get_loop(list: List(a), index: Int, current: Int) -> Result(a, Nil) {
-  case list {
-    [] -> Error(Nil)
-    [x, ..xs] -> {
-      case current == index {
-        True -> Ok(x)
-        False -> list_get_loop(xs, index, current + 1)
-      }
-    }
-  }
-}
+// No additional helpers needed — shared list utilities are in core/list_utils.gleam

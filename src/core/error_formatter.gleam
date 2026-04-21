@@ -616,12 +616,7 @@ fn literal_to_string(lit: ast.Literal) -> String {
 }
 
 fn float_to_string(f: Float) -> String {
-  // Simple float to string conversion
-  case f {
-    0.0 -> "0.0"
-    1.0 -> "1.0"
-    _ -> "float"
-  }
+  float.to_string(f)
 }
 
 fn head_to_string(head: ast.Head) -> String {
