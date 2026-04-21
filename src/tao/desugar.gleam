@@ -297,6 +297,57 @@ fn build_type_applications(base: CoreTerm, args: List(CoreTerm), span: Span) -> 
   }
 }
 
+/// Desugar a call expression, handling both constructor calls and regular function calls.
+fn desugar_call(
+  call_fun: Expr,
+  call_args: List(Expr),
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  // Check if this is a simple constructor call: Ctor(arg1, ..., argN)
+  case call_fun, call_args {
+    ast.Var(name, _), [arg, ..rest] -> {
+      case list.key_find(dc.ctrs, name) {
+        Ok(_) -> {
+          // Constructor call - build CoreCtr with first arg, then apply rest
+          let #(core_arg, dc1) = desugar_expr_core(arg, dc)
+          let #(core_rest, dc2) = desugar_exprs(rest, dc1)
+          let core_ctr = CoreCtr(name, core_arg, span)
+          let core_app = case core_rest {
+            [] -> core_ctr
+            _ -> build_apps(core_ctr, core_rest, span)
+          }
+          #(core_app, dc2)
+        }
+        Error(_) -> {
+          // Not a constructor - regular call
+          desugar_regular_call(call_fun, call_args, span, dc)
+        }
+      }
+    }
+    _, _ -> {
+      // Not a simple constructor call - regular call
+      desugar_regular_call(call_fun, call_args, span, dc)
+    }
+  }
+}
+
+/// Desugar a regular function call (not a constructor).
+fn desugar_regular_call(
+  call_fun: Expr,
+  call_args: List(Expr),
+  span: Span,
+  dc: DesugarContext,
+) -> #(CoreTerm, DesugarContext) {
+  let #(core_fun, dc1) = desugar_expr_core(call_fun, dc)
+  let #(core_args, dc2) = desugar_exprs(call_args, dc1)
+  let core_app = case core_args {
+    [] -> CoreApp(core_fun, CoreRcd([], span), span)
+    _ -> build_apps(core_fun, core_args, span)
+  }
+  #(core_app, dc2)
+}
+
 /// Build list of type arguments.
 fn build_core_type_args(args: List(TypeAst), dc: DesugarContext, span: Span) -> #(List(CoreTerm), DesugarContext) {
   let #(reversed_terms, final_dc) = list.fold(args, #([], dc), fn(acc, arg) {
@@ -1581,43 +1632,7 @@ fn desugar_expr_core(
     ast.Call(call_fun, call_args, span) -> {
       // Function call - desugar function and args
       // KEY FIX: If this is a constructor call, build CoreCtr directly
-      case call_fun, call_args {
-        ast.Var(name, _), [arg, ..rest] -> {
-          case list.key_find(dc.ctrs, name) {
-            Ok(_) -> {
-              // Constructor call - build CoreCtr with first arg, then apply rest
-              let #(core_arg, dc1) = desugar_expr_core(arg, dc)
-              let #(core_rest, dc2) = desugar_exprs(rest, dc1)
-              let core_ctr = CoreCtr(name, core_arg, span)
-              let core_app = case core_rest {
-                [] -> core_ctr
-                _ -> build_apps(core_ctr, core_rest, span)
-              }
-              #(core_app, dc2)
-            }
-            Error(_) -> {
-              // Not a constructor - regular call
-              let #(core_fun, dc1) = desugar_expr_core(call_fun, dc)
-              let #(core_args, dc2) = desugar_exprs(call_args, dc1)
-              let core_app = case core_args {
-                [] -> CoreApp(core_fun, CoreRcd([], span), span)
-                _ -> build_apps(core_fun, core_args, span)
-              }
-              #(core_app, dc2)
-            }
-          }
-        }
-        _, _ -> {
-          // Not a simple constructor call - regular call
-          let #(core_fun, dc1) = desugar_expr_core(call_fun, dc)
-          let #(core_args, dc2) = desugar_exprs(call_args, dc1)
-          let core_app = case core_args {
-            [] -> CoreApp(core_fun, CoreRcd([], span), span)
-            _ -> build_apps(core_fun, core_args, span)
-          }
-          #(core_app, dc2)
-        }
-      }
+      desugar_call(call_fun, call_args, span, dc)
     }
     
     ast.BinOp(left, op, right, span) -> {
