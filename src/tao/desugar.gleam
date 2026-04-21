@@ -2091,7 +2091,17 @@ fn desugar_binop(
     }
     _ -> {
       // Arithmetic/comparison: use CoreCall for FFI builtins
-      #(CoreCall(op_name, [core_left, core_right], span), dc2)
+      let core_call = CoreCall(op_name, [core_left, core_right], span)
+      #(
+        case op_name {
+          "eq" | "neq" | "lt" | "lte" | "gt" | "gte" -> {
+            // Wrap comparison operators in CoreAnn with Bool type
+            CoreAnn(core_call, CoreCtr("Bool", CoreUnit(span), span), span)
+          }
+          _ -> core_call
+        },
+        dc2,
+      )
     }
   }
 }

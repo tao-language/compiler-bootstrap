@@ -883,7 +883,7 @@ fn get_module_span(body: List(t.Stmt), path: String) -> Span {
 
 /// Initialize Core State with constructor environment from desugaring.
 /// Merges DesugarContext.ctrs into State.ctrs for type checking.
-fn state_with_constructors(dc: DesugarContext, initial: State) -> State {
+pub fn state_with_constructors(dc: DesugarContext, initial: State) -> State {
   // Merge DesugarContext.ctrs into State.ctrs
   let merged_ctrs = list.append(dc.ctrs, initial.ctrs)
   State(..initial, ctrs: merged_ctrs)

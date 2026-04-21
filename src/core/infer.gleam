@@ -677,18 +677,37 @@ fn infer_call(
       let #(arg_vals, arg_tys, s) = infer_args(s, args)
       case impl(arg_vals) {
         Some(result_val) -> {
-          let result_ty = case arg_tys {
-            [ty, ..] -> ty
-            [] -> ast.VErr
+          // KEY FIX: Derive result type from the actual result value.
+          // For VCtrValue, look up the constructor in s.ctrs to get its return type.
+          // For VLit, use typeof_lit.
+          // For other values, fall back to arg_tys[0].
+          let result_ty = case result_val {
+            ast.VCtrValue(ctr) -> {
+              case list.key_find(s.ctrs, ctr.tag) {
+                Ok(c) -> eval.eval(s.ffi, get_env(s), c.ret_ty)
+                Error(Nil) -> case arg_tys {
+                  [ty, ..] -> ty
+                  [] -> ast.VErr
+                }
+              }
+            }
+            ast.VLit(v) -> typeof_lit(v)
+            ast.VLitT(lit_ty) -> ast.VLitT(lit_ty)
+            ast.VUnit -> ast.VTyp(0)
+            _ -> case arg_tys {
+              [ty, ..] -> ty
+              [] -> ast.VErr
+            }
           }
           #(result_val, result_ty, s)
         }
         None -> {
-          let result_ty = case arg_tys {
-            [ty, ..] -> ty
-            [] -> ast.VErr
-          }
-          #(ast.VCall(name, arg_vals), result_ty, s)
+          // KEY FIX: Create a fresh hole for the result type instead of
+          // using arg_tys[0]. This prevents the result type from being
+          // unified with the first argument's type, which can cause
+          // incorrect type inference when the first argument is a variable.
+          let #(result_ty_hole, s) = new_hole(s)
+          #(ast.VCall(name, arg_vals), result_ty_hole, s)
         }
       }
     }
@@ -1016,6 +1035,7 @@ pub fn check(
   expected_ty: ast.Type,
   ty_span: Span,
 ) -> #(ast.Value, state.State) {
+
   case term {
     ast.Fix(name, body, span) -> {
       // For annotated Fix, use annotation type for def_var, not expected_ty.

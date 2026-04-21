@@ -239,6 +239,47 @@ pub fn ffi_lt(args: List(ast.Value)) -> Option(ast.Value) {
   }
 }
 
+pub fn ffi_neq(args: List(ast.Value)) -> Option(ast.Value) {
+  case ffi_eq(args) {
+    Some(ast.VCtrValue(ast.VCtr("True", _))) -> Some(bool_to_value(False))
+    Some(ast.VCtrValue(ast.VCtr("False", _))) -> Some(bool_to_value(True))
+    _ -> None
+  }
+}
+
+pub fn ffi_gt(args: List(ast.Value)) -> Option(ast.Value) {
+  case args {
+    [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(bool_to_value(a > b))
+    [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(bool_to_value(a > b))
+    [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(bool_to_value(a >. b))
+    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(bool_to_value(a > b))
+    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(bool_to_value(a >. b))
+    _ -> None
+  }
+}
+
+pub fn ffi_lte(args: List(ast.Value)) -> Option(ast.Value) {
+  case args {
+    [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(bool_to_value(a <= b))
+    [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(bool_to_value(a <= b))
+    [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(bool_to_value(a <=. b))
+    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(bool_to_value(a <= b))
+    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(bool_to_value(a <=. b))
+    _ -> None
+  }
+}
+
+pub fn ffi_gte(args: List(ast.Value)) -> Option(ast.Value) {
+  case args {
+    [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(bool_to_value(a >= b))
+    [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(bool_to_value(a >= b))
+    [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(bool_to_value(a >=. b))
+    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(bool_to_value(a >= b))
+    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(bool_to_value(a >=. b))
+    _ -> None
+  }
+}
+
 fn bool_to_value(b: Bool) -> ast.Value {
   case b {
     True -> ast.VCtrValue(ast.VCtr("True", ast.VUnit))
@@ -252,5 +293,9 @@ pub const initial_ffis: FFI = [
   #("mul", Builtin(ffi_mul, [])),
   #("div", Builtin(ffi_div, [])),
   #("eq", Builtin(ffi_eq, [])),
+  #("neq", Builtin(ffi_neq, [])),
   #("lt", Builtin(ffi_lt, [])),
+  #("gt", Builtin(ffi_gt, [])),
+  #("lte", Builtin(ffi_lte, [])),
+  #("gte", Builtin(ffi_gte, [])),
 ]

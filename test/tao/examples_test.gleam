@@ -34,11 +34,13 @@
 /// 2. Run the CLI to see actual output
 /// 3. Copy the output to `.output.txt`
 /// 4. The test will automatically pick it up
-import core/state.{type Error as TypeError, type State, initial_state}
+import core/state.{type Error as TypeError, type State, initial_state, TypeMismatch, VarUndefined, CtrUndefined, PatternMismatch}
+import tao/test_api.{state_with_constructors}
 import core/infer.{infer}
 import core/eval.{eval}
 import core/quote.{quote}
 import core/syntax as core_syntax
+import core/ast as core_ast
 import gleam/int
 import gleam/list
 import gleam/result
@@ -247,10 +249,11 @@ fn run_example(example: Example) -> Bool {
         }
         #([], ShouldSucceed) -> {
           // Success - desugar, type check, and evaluate
-          let #(term, _dc) = desugar_module(module, ctx)
+          let #(term, dc) = desugar_module(module, ctx)
 
-          // Run type inference
-          let #(_value, _typ, s2) = infer(initial_state, term)
+          // Run type inference with constructor environment from desugaring
+          let infer_state = state_with_constructors(dc, initial_state)
+          let #(_value, _typ, s2) = infer(infer_state, term)
           let type_errors = s2.errors
 
           case type_errors {
