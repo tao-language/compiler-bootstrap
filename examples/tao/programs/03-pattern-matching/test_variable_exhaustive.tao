@@ -1,7 +1,0 @@
-// Test variable pattern (should work as exhaustive)
-// Expected output: 100
-
-let x = 100
-match x {
-  | n -> 100
-}

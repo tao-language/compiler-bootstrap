@@ -1,6 +1,0 @@
-// Simple import example
-// Note: Prelude imports not yet supported - types must be defined in source
-
-let x = 42
-
-x

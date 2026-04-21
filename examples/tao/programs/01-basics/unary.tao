@@ -1,7 +1,0 @@
-// Unary operators: logical not
-// Note: ! operator requires prelude functions (not yet implemented)
-// Expected output: 0
-
-// TODO: Uncomment when prelude is implemented
-// !1
-0

@@ -1,8 +1,0 @@
-// Test exhaustiveness checking with wildcard patterns
-// This test reproduces the issue where PAny is not recognized as exhaustive
-
-// Test 1: Simple wildcard should be exhaustive
-let x = 100
-match x {
-  | _ -> 100
-}

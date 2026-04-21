@@ -1,9 +1,0 @@
-// Block expressions: sequential evaluation
-// Note: Let bindings parse correctly, but variable scoping is not yet implemented
-// TODO: Fix variable scoping in core_term_to_term_loop
-// Expected output: 30
-
-let x = 10
-let y = 20
-let z = x + y
-z

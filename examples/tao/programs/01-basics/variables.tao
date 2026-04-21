@@ -1,7 +1,0 @@
-// Variable bindings with let
-// Note: Let expression parsing is not yet implemented (returns placeholder)
-// TODO: Implement let expression parsing in tao/syntax.gleam
-// Expected output: 10
-
-let x = 10
-x

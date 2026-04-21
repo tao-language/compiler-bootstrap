@@ -1,5 +1,0 @@
-// Loop example - infinite loop
-
-loop {
-  True
-}

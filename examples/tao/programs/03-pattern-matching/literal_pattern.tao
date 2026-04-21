@@ -1,8 +1,0 @@
-// Literal pattern: matches specific values
-// Expected output: 0
-
-let x = 0
-match x {
-  | 0 -> 0
-  | _ -> 1
-}

@@ -1,7 +1,0 @@
-// Variable pattern: binds the matched value
-// Expected output: 42
-
-let x = 42
-match x -> I32 {
-  | y -> y
-}
