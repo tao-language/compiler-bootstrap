@@ -3,7 +3,6 @@
 // ============================================================================
 import gleam/list
 import gleam/int
-import gleam/string
 import gleam/option.{type Option, None, Some}
 import syntax/grammar.{type Span, Span}
 import core/ast as ast
