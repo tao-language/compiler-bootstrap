@@ -385,43 +385,7 @@ fn infer_app(
   let fun_ty_forced = subst.force(s.ffi, s.subst, fun_ty)
   case fun_ty_forced {
     ast.VPi(implicit_params, _, pi_env, domain, codomain) -> {
-      // Instantiate implicit type variables with fresh holes
-      let #(implicit_subst, s) = subst.instantiate_implicit_params(implicit_params, s)
-
-      // KEY FIX: If the domain is a hole and there are implicit params,
-      // add the domain hole to the implicit subst for the first implicit param.
-      // This ensures the codomain term references the domain hole directly.
-      let implicit_subst = case implicit_params, domain {
-        [_, ..], ast.VNeut(ast.HHole(domain_hole_id), []) -> {
-          // Check if the first implicit param's instantiation is a hole
-          case implicit_subst {
-            [#(0, ast.VNeut(ast.HHole(implicit_hole_id), [])), ..rest] -> {
-              // Replace the first implicit param's instantiation with the domain hole
-              [#(0, ast.VNeut(ast.HHole(domain_hole_id), [])), ..rest]
-            }
-            _ -> implicit_subst
-          }
-        }
-        _, _ -> implicit_subst
-      }
-
-      // Apply substitution to domain and codomain
-      let domain_instantiated =
-        subst.subst_value_with_implicit_vars(implicit_subst, domain)
-      let codomain_instantiated =
-        subst.subst_term_with_implicit_vars(implicit_subst, codomain)
-
-      // Check argument against instantiated domain
-      let #(arg_val, s) = check(s, arg, domain_instantiated, get_span(arg))
-      // Instantiate implicit params in pi_env before evaluating codomain
-      // This ensures HVar placeholders are replaced with fresh holes
-      let pi_env_instantiated = list.map(pi_env, fn(v) { 
-        subst.subst_value_with_implicit_vars(implicit_subst, v) 
-      })
-      // Evaluate codomain with instantiated environment
-      let out_val = eval(s.ffi, [arg_val, ..pi_env_instantiated], codomain_instantiated)
-      let out_val_forced = subst.force(s.ffi, s.subst, out_val)
-      #(do_app(s.ffi, get_env(s), fun, implicit, arg, span), out_val_forced, s)
+      infer_app_with_pi(s, fun, implicit, arg, domain, codomain, implicit_params, pi_env, span)
     }
     ast.VNeut(ast.HHole(hole_id), spine) -> expand_hole_app(s, fun, implicit, arg, hole_id, fun_ty, span)
     ast.VNeut(ast.HStepLimit, _) -> {
@@ -439,6 +403,63 @@ fn infer_app(
 /// For dependent motives (λp. ResultTy), extract ResultTy.
 /// For non-dependent motives, return the type as-is.
 
+
+/// Expand a hole application: infer the arg type, check for cycles, unify,
+/// and return the evaluated application. This is the "hole expansion" case
+/// of infer_app where the function's type is a hole (?N).
+///
+/// KEY DESIGN: Infer the argument's type FIRST, then check for cycles.
+
+/// Handle application to a Pi type with implicit parameters.
+fn infer_app_with_pi(
+  s: state.State,
+  fun: ast.Term,
+  implicit: List(ast.Term),
+  arg: ast.Term,
+  domain: ast.Value,
+  codomain: ast.Term,
+  implicit_params: List(String),
+  pi_env: ast.Env,
+  span: Span,
+) -> #(ast.Value, ast.Type, state.State) {
+  // Instantiate implicit type variables with fresh holes
+  let #(implicit_subst, s) = subst.instantiate_implicit_params(implicit_params, s)
+
+  // KEY FIX: If the domain is a hole and there are implicit params,
+  // add the domain hole to the implicit subst for the first implicit param.
+  // This ensures the codomain term references the domain hole directly.
+  let implicit_subst = case implicit_params, domain {
+    [_, ..], ast.VNeut(ast.HHole(domain_hole_id), []) -> {
+      // Check if the first implicit param's instantiation is a hole
+      case implicit_subst {
+        [#(0, ast.VNeut(ast.HHole(implicit_hole_id), [])), ..rest] -> {
+          // Replace the first implicit param's instantiation with the domain hole
+          [#(0, ast.VNeut(ast.HHole(domain_hole_id), [])), ..rest]
+        }
+        _ -> implicit_subst
+      }
+    }
+    _, _ -> implicit_subst
+  }
+
+  // Apply substitution to domain and codomain
+  let domain_instantiated =
+    subst.subst_value_with_implicit_vars(implicit_subst, domain)
+  let codomain_instantiated =
+    subst.subst_term_with_implicit_vars(implicit_subst, codomain)
+
+  // Check argument against instantiated domain
+  let #(arg_val, s) = check(s, arg, domain_instantiated, get_span(arg))
+  // Instantiate implicit params in pi_env before evaluating codomain
+  // This ensures HVar placeholders are replaced with fresh holes
+  let pi_env_instantiated = list.map(pi_env, fn(v) {
+    subst.subst_value_with_implicit_vars(implicit_subst, v)
+  })
+  // Evaluate codomain with instantiated environment
+  let out_val = eval(s.ffi, [arg_val, ..pi_env_instantiated], codomain_instantiated)
+  let out_val_forced = subst.force(s.ffi, s.subst, out_val)
+  #(do_app(s.ffi, get_env(s), fun, implicit, arg, span), out_val_forced, s)
+}
 
 /// Expand a hole application: infer the arg type, check for cycles, unify,
 /// and return the evaluated application. This is the "hole expansion" case
