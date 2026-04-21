@@ -1214,161 +1214,98 @@ fn subst_param_vars(term: ast.Term, params: List(Int), s: state.State) -> ast.Va
   }
 }
 
-/// Shift HVar indices in a value down by 1.
-/// Used when a nested lambda's body references outer bindings.
-fn shift_hvar_down(value: ast.Value) -> ast.Value {
-  shift_hvar_down_loop(value, 0)
+/// Shift HVar indices in a value by the given amount.
+/// Positive shift = shift up (add), Negative shift = shift down (subtract).
+/// The offset parameter handles binder nesting (starts at 0, increments at lambdas).
+fn shift_hvar(value: ast.Value, shift: Int) -> ast.Value {
+  shift_hvar_loop(value, shift, 0)
 }
 
-fn shift_hvar_down_loop(value: ast.Value, offset: Int) -> ast.Value {
+fn shift_hvar_loop(value: ast.Value, shift: Int, offset: Int) -> ast.Value {
   case value {
     ast.VNeut(ast.HHole(id), spine) ->
-      ast.VNeut(ast.HHole(id), list.map(spine, fn(e) { shift_hvar_down_elim(e, offset) }))
-    ast.VNeut(ast.HVar(level), spine) ->
-      case level > offset {
-        True -> ast.VNeut(ast.HVar(level - 1), list.map(spine, fn(e) { shift_hvar_down_elim(e, offset) }))
-        False -> ast.VNeut(ast.HVar(level), list.map(spine, fn(e) { shift_hvar_down_elim(e, offset) }))
+      ast.VNeut(ast.HHole(id), list.map(spine, fn(e) { shift_hvar_elim(e, shift, offset) }))
+    ast.VNeut(ast.HVar(level), spine) -> {
+      // Shift up (shift >= 0): always add shift
+      // Shift down (shift < 0): subtract shift only if level > offset
+      let new_level = case shift >= 0 {
+        True -> level + shift
+        False -> case level > offset {
+          True -> level + shift  // shift is negative, so this subtracts
+          False -> level
+        }
       }
+      ast.VNeut(ast.HVar(new_level), list.map(spine, fn(e) { shift_hvar_elim(e, shift, offset) }))
+    }
     ast.VNeut(head, spine) ->
-      ast.VNeut(head, list.map(spine, fn(e) { shift_hvar_down_elim(e, offset) }))
+      ast.VNeut(head, list.map(spine, fn(e) { shift_hvar_elim(e, shift, offset) }))
     ast.VLam(impl, name, env, body) ->
-      ast.VLam(impl, name, env, shift_hvar_down_term(body, offset + 1))
+      ast.VLam(impl, name, env, shift_hvar_term(body, shift, offset + 1))
     ast.VPi(impl, name, env, in_val, out) ->
-      ast.VPi(impl, name, env, shift_hvar_down_loop(in_val, offset), shift_hvar_down_term(out, offset))
+      ast.VPi(impl, name, env, shift_hvar_loop(in_val, shift, offset), shift_hvar_term(out, shift, offset))
     ast.VRcd(fields) ->
-      ast.VRcd(list.map(fields, fn(kv) { #(kv.0, shift_hvar_down_loop(kv.1, offset)) }))
+      ast.VRcd(list.map(fields, fn(kv) { #(kv.0, shift_hvar_loop(kv.1, shift, offset)) }))
     ast.VCtrValue(ast.VCtr(tag, arg)) ->
-      ast.VCtrValue(ast.VCtr(tag, shift_hvar_down_loop(arg, offset)))
+      ast.VCtrValue(ast.VCtr(tag, shift_hvar_loop(arg, shift, offset)))
     ast.VCall(name, args) ->
-      ast.VCall(name, list.map(args, fn(a) { shift_hvar_down_loop(a, offset) }))
+      ast.VCall(name, list.map(args, fn(a) { shift_hvar_loop(a, shift, offset) }))
     ast.VFix(name, env, body) ->
-      ast.VFix(name, env, shift_hvar_down_term(body, offset))
+      ast.VFix(name, env, shift_hvar_term(body, shift, offset))
     ast.VRecord(fields) ->
-      ast.VRcd(list.map(fields, fn(kv) { #(kv.0, shift_hvar_down_loop(kv.1, offset)) }))
+      ast.VRcd(list.map(fields, fn(kv) { #(kv.0, shift_hvar_loop(kv.1, shift, offset)) }))
     _ -> value
   }
 }
 
-fn shift_hvar_down_elim(elim: ast.Elim, offset: Int) -> ast.Elim {
+fn shift_hvar_elim(elim: ast.Elim, shift: Int, offset: Int) -> ast.Elim {
   case elim {
     ast.EDot(name) -> ast.EDot(name)
-    ast.EApp(arg) -> ast.EApp(shift_hvar_down_loop(arg, offset))
-    ast.EAppImplicit(arg) -> ast.EAppImplicit(shift_hvar_down_loop(arg, offset))
+    ast.EApp(arg) -> ast.EApp(shift_hvar_loop(arg, shift, offset))
+    ast.EAppImplicit(arg) -> ast.EAppImplicit(shift_hvar_loop(arg, shift, offset))
     ast.EMatch(env, motive, cases) ->
-      ast.EMatch(env, shift_hvar_down_loop(motive, offset), cases)
+      ast.EMatch(env, shift_hvar_loop(motive, shift, offset), cases)
   }
 }
 
-fn shift_hvar_down_term(term: ast.Term, offset: Int) -> ast.Term {
+/// Shift HVar indices in a term by the given amount.
+/// Uses offset-based logic: Var indices > offset are shifted.
+fn shift_hvar_term(term: ast.Term, shift: Int, offset: Int) -> ast.Term {
   case term {
     ast.Hole(id, span) -> ast.Hole(id, span)
     ast.Var(index, span) ->
       case index > offset {
-        True -> ast.Var(index - 1, span)
+        True -> ast.Var(index + shift, span)
         False -> ast.Var(index, span)
       }
     ast.Lam(impl, param, body, span) ->
-      ast.Lam(impl, param, shift_hvar_down_term(body, offset + 1), span)
+      ast.Lam(impl, param, shift_hvar_term(body, shift, offset + 1), span)
     ast.Pi(impl, name, in_t, out_t, span) ->
-      ast.Pi(impl, name, shift_hvar_down_term(in_t, offset), shift_hvar_down_term(out_t, offset + 1), span)
+      ast.Pi(impl, name, shift_hvar_term(in_t, shift, offset), shift_hvar_term(out_t, shift, offset + 1), span)
     ast.App(fun, impl, arg, span) ->
-      ast.App(shift_hvar_down_term(fun, offset), list.map(impl, fn(t) { shift_hvar_down_term(t, offset) }), shift_hvar_down_term(arg, offset), span)
+      ast.App(shift_hvar_term(fun, shift, offset), list.map(impl, fn(t) { shift_hvar_term(t, shift, offset) }), shift_hvar_term(arg, shift, offset), span)
     ast.Rcd(fields, span) ->
-      ast.Rcd(list.map(fields, fn(kv) { #(kv.0, shift_hvar_down_term(kv.1, offset)) }), span)
+      ast.Rcd(list.map(fields, fn(kv) { #(kv.0, shift_hvar_term(kv.1, shift, offset)) }), span)
     ast.Ctr(tag, arg, span) ->
-      ast.Ctr(tag, shift_hvar_down_term(arg, offset), span)
+      ast.Ctr(tag, shift_hvar_term(arg, shift, offset), span)
     ast.Dot(arg, name, span) ->
-      ast.Dot(shift_hvar_down_term(arg, offset), name, span)
+      ast.Dot(shift_hvar_term(arg, shift, offset), name, span)
     ast.Ann(term, typ, span) ->
-      ast.Ann(shift_hvar_down_term(term, offset), shift_hvar_down_term(typ, offset), span)
+      ast.Ann(shift_hvar_term(term, shift, offset), shift_hvar_term(typ, shift, offset), span)
     ast.Match(arg, motive, cases, span) ->
-      ast.Match(shift_hvar_down_term(arg, offset), shift_hvar_down_term(motive, offset), list.map(cases, fn(c) { ast.Case(c.pattern, shift_hvar_down_term(c.body, offset), c.guard, c.span) }), span)
+      ast.Match(
+        shift_hvar_term(arg, shift, offset),
+        shift_hvar_term(motive, shift, offset),
+        list.map(cases, fn(c) { ast.Case(c.pattern, shift_hvar_term(c.body, shift, offset), c.guard, c.span) }),
+        span,
+      )
     ast.Call(name, args, span) ->
-      ast.Call(name, list.map(args, fn(a) { shift_hvar_down_term(a, offset) }), span)
+      ast.Call(name, list.map(args, fn(a) { shift_hvar_term(a, shift, offset) }), span)
     ast.Comptime(inner, span) ->
-      ast.Comptime(shift_hvar_down_term(inner, offset), span)
+      ast.Comptime(shift_hvar_term(inner, shift, offset), span)
     ast.Fix(name, body, span) ->
-      ast.Fix(name, shift_hvar_down_term(body, offset + 1), span)
+      ast.Fix(name, shift_hvar_term(body, shift, offset + 1), span)
     ast.Let(name, value, body, span) ->
-      ast.Let(name, shift_hvar_down_term(value, offset), shift_hvar_down_term(body, offset + 1), span)
-    ast.Typ(k, span) -> ast.Typ(k, span)
-    ast.Lit(v, span) -> ast.Lit(v, span)
-    ast.LitT(t, span) -> ast.LitT(t, span)
-    ast.Unit(span) -> ast.Unit(span)
-    ast.Err(msg, span) -> ast.Err(msg, span)
-  }
-}
-
-/// Shift HVar indices in a value UP by shift_amount.
-/// Used when a nested lambda's type needs to reference outer bindings.
-fn shift_hvar_up(value: ast.Value, shift_amount: Int) -> ast.Value {
-  shift_hvar_up_loop(value, shift_amount, 0)
-}
-
-fn shift_hvar_up_loop(value: ast.Value, shift_amount: Int, offset: Int) -> ast.Value {
-  case value {
-    ast.VNeut(ast.HHole(id), spine) ->
-      ast.VNeut(ast.HHole(id), list.map(spine, fn(e) { shift_hvar_up_elim(e, shift_amount, offset) }))
-    ast.VNeut(ast.HVar(level), spine) ->
-      ast.VNeut(ast.HVar(level + shift_amount), list.map(spine, fn(e) { shift_hvar_up_elim(e, shift_amount, offset) }))
-    ast.VNeut(head, spine) ->
-      ast.VNeut(head, list.map(spine, fn(e) { shift_hvar_up_elim(e, shift_amount, offset) }))
-    ast.VLam(impl, name, env, body) ->
-      ast.VLam(impl, name, env, shift_hvar_up_term(body, shift_amount, offset + 1))
-    ast.VPi(impl, name, env, in_val, out) ->
-      ast.VPi(impl, name, env, shift_hvar_up_loop(in_val, shift_amount, offset), shift_hvar_up_term(out, shift_amount, offset))
-    ast.VRcd(fields) ->
-      ast.VRcd(list.map(fields, fn(kv) { #(kv.0, shift_hvar_up_loop(kv.1, shift_amount, offset)) }))
-    ast.VCtrValue(ast.VCtr(tag, arg)) ->
-      ast.VCtrValue(ast.VCtr(tag, shift_hvar_up_loop(arg, shift_amount, offset)))
-    ast.VCall(name, args) ->
-      ast.VCall(name, list.map(args, fn(a) { shift_hvar_up_loop(a, shift_amount, offset) }))
-    ast.VFix(name, env, body) ->
-      ast.VFix(name, env, shift_hvar_up_term(body, shift_amount, offset))
-    ast.VRecord(fields) ->
-      ast.VRcd(list.map(fields, fn(kv) { #(kv.0, shift_hvar_up_loop(kv.1, shift_amount, offset)) }))
-    _ -> value
-  }
-}
-
-fn shift_hvar_up_elim(elim: ast.Elim, shift_amount: Int, offset: Int) -> ast.Elim {
-  case elim {
-    ast.EDot(name) -> ast.EDot(name)
-    ast.EApp(arg) -> ast.EApp(shift_hvar_up_loop(arg, shift_amount, offset))
-    ast.EAppImplicit(arg) -> ast.EAppImplicit(shift_hvar_up_loop(arg, shift_amount, offset))
-    ast.EMatch(env, motive, cases) ->
-      ast.EMatch(env, shift_hvar_up_loop(motive, shift_amount, offset), cases)
-  }
-}
-
-fn shift_hvar_up_term(term: ast.Term, shift_amount: Int, offset: Int) -> ast.Term {
-  case term {
-    ast.Hole(id, span) -> ast.Hole(id, span)
-    ast.Var(index, span) -> ast.Var(index + shift_amount, span)
-    ast.Lam(impl, param, body, span) ->
-      ast.Lam(impl, param, shift_hvar_up_term(body, shift_amount, offset + 1), span)
-    ast.Pi(impl, name, in_t, out_t, span) ->
-      ast.Pi(impl, name, shift_hvar_up_term(in_t, shift_amount, offset), shift_hvar_up_term(out_t, shift_amount, offset + 1), span)
-    ast.App(fun, impl, arg, span) ->
-      ast.App(shift_hvar_up_term(fun, shift_amount, offset), list.map(impl, fn(t) { shift_hvar_up_term(t, shift_amount, offset) }), shift_hvar_up_term(arg, shift_amount, offset), span)
-    ast.Rcd(fields, span) ->
-      ast.Rcd(list.map(fields, fn(kv) { #(kv.0, shift_hvar_up_term(kv.1, shift_amount, offset)) }), span)
-    ast.Ctr(tag, arg, span) ->
-      ast.Ctr(tag, shift_hvar_up_term(arg, shift_amount, offset), span)
-    ast.Dot(arg, name, span) ->
-      ast.Dot(shift_hvar_up_term(arg, shift_amount, offset), name, span)
-    ast.Ann(term, typ, span) ->
-      ast.Ann(shift_hvar_up_term(term, shift_amount, offset), shift_hvar_up_term(typ, shift_amount, offset), span)
-    ast.Match(arg, motive, cases, span) ->
-      ast.Match(shift_hvar_up_term(arg, shift_amount, offset), shift_hvar_up_term(motive, shift_amount, offset), list.map(cases, fn(c) { ast.Case(c.pattern, shift_hvar_up_term(c.body, shift_amount, offset), c.guard, c.span) }), span)
-    ast.Call(name, args, span) ->
-      ast.Call(name, list.map(args, fn(a) { shift_hvar_up_term(a, shift_amount, offset) }), span)
-    ast.Comptime(inner, span) ->
-      ast.Comptime(shift_hvar_up_term(inner, shift_amount, offset), span)
-    ast.Fix(name, body, span) ->
-      ast.Fix(name, shift_hvar_up_term(body, shift_amount, offset + 1), span)
-    ast.Let(name, value, body, span) ->
-      ast.Let(name, shift_hvar_up_term(value, shift_amount, offset), shift_hvar_up_term(body, shift_amount, offset + 1), span)
+      ast.Let(name, shift_hvar_term(value, shift, offset), shift_hvar_term(body, shift, offset + 1), span)
     ast.Typ(k, span) -> ast.Typ(k, span)
     ast.Lit(v, span) -> ast.Lit(v, span)
     ast.LitT(t, span) -> ast.LitT(t, span)
