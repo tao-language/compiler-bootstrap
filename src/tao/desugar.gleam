@@ -299,24 +299,13 @@ fn build_type_app(type_name: String, type_params: List(String)) -> core_ast.Term
 /// Convert Tao TypeAst to Core Term.
 /// Note: This is a simplified version that doesn't handle type parameters.
 /// Use build_core_type_from_ast for full type annotation support.
+///
+/// All type names are treated as constructor references — the type checker
+/// will resolve them through the constructor environment (prelude or user-defined).
+/// This avoids hardcoding language-specific types in the desugarer.
 fn type_ast_to_core(t: TypeAst) -> core_ast.Term {
   case t {
-    TVar(name) -> {
-      // Check if it's a builtin type name
-      case name {
-        "I32" -> core_ast.LitT(core_ast.I32T, Span("I32", 0, 0, 0, 0))
-        "I64" -> core_ast.LitT(core_ast.I64T, Span("I64", 0, 0, 0, 0))
-        "F32" -> core_ast.LitT(core_ast.F32T, Span("F32", 0, 0, 0, 0))
-        "F64" -> core_ast.LitT(core_ast.F64T, Span("F64", 0, 0, 0, 0))
-        "Bool" -> core_ast.Ctr("Bool", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("Bool", 0, 0, 0, 0))
-        "String" -> core_ast.Ctr("String", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("String", 0, 0, 0, 0))
-        "Unit" -> core_ast.Ctr("Unit", core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("Unit", 0, 0, 0, 0))
-        _ -> {
-          // Type variable - use negative hole for inference
-          core_ast.Hole(-1, Span(name, 0, 0, 0, 0))
-        }
-      }
-    }
+    TVar(name) -> core_ast.Ctr(name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("type", 0, 0, 0, 0))
     TApp(name, _args) -> core_ast.Ctr(name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("tapp", 0, 0, 0, 0))
     TFn(_params, _ret) -> core_ast.Typ(1, Span("fn", 0, 0, 0, 0))
     TRecord(_fields) -> core_ast.Typ(0, Span("rcd", 0, 0, 0, 0))
