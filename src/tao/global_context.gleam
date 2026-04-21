@@ -490,10 +490,14 @@ fn exprs_to_stmts(exprs: List(Expr)) -> List(Stmt) {
 /// at the start of every file during desugaring.
 
 /// Register a single prelude module from lib/prelude/.
+/// Register a single prelude module from lib/prelude/.
+/// Prelude modules are registered with the "prelude/" prefix so that
+/// get_prelude_module_paths() can find them.
 pub fn register_prelude_from_path(
   ctx: GlobalContext,
   path: String,
 ) -> GlobalContext {
+  let prelude_path = "prelude/" <> path
   let file_path = "lib/prelude/" <> path <> ".tao"
   case simplifile.read(file_path) {
     Ok(source) -> {
@@ -502,20 +506,20 @@ pub fn register_prelude_from_path(
       let parse_result = parse_module(code_only, path <> ".tao")
       let body = exprs_to_stmts(parse_result.ast)
       let ctr_env = extract_ctr_env_from_exprs(parse_result.ast)
-      let module = ModuleCtr(path, body, Span(path, 0, 0, 0, 0))
-      register_module_with_ctr_env(ctx, path, module, ctr_env)
+      let module = ModuleCtr(prelude_path, body, Span(prelude_path, 0, 0, 0, 0))
+      register_module_with_ctr_env(ctx, prelude_path, module, ctr_env)
     }
     Error(_) -> {
       // Prelude module file not found — register empty placeholder.
       // In production this would be a hard error, but we loop here to
       // keep the initialization simple.
       let module_ref = ModuleRef(
-        path: path,
+        path: prelude_path,
         public_names: [],
         ctr_env: [],
         source: None,
       )
-      GlobalContext(..ctx, modules: dict.insert(ctx.modules, path, module_ref))
+      GlobalContext(..ctx, modules: dict.insert(ctx.modules, prelude_path, module_ref))
     }
   }
 }
