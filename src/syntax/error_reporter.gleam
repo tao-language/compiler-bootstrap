@@ -488,8 +488,8 @@ fn value_to_string(value) -> String {
     ast.VRecord(fields) -> {
       "{" <> string.join(list.map(fields, fn(f) { f.0 <> ": ..." }), ", ") <> "}"
     }
-    ast.VCall(name, args) -> {
-      name <> "(" <> args |> list.map(value_to_string) |> string.join(", ") <> ")"
+    ast.VCall(name, args, ret) -> {
+      name <> "(" <> args |> list.map(value_to_string) |> string.join(", ") <> ") -> " <> value_to_string(ret)
     }
     ast.VFix(_name, _env, _body) -> "fix(...)"
     ast.VUnit -> "Unit"

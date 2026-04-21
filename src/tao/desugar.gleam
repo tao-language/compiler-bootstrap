@@ -2686,8 +2686,14 @@ fn core_term_to_term_loop(
       core_ast.Ctr(tag: name, arg: core_ast.Unit(span), span: span)
     }
     CoreCall(name, args, span) -> {
-      // Convert CoreCall to core/core.Call for FFI builtin
-      core_ast.Call(name, list.map(args, fn(a) { core_term_to_term_loop(a, env, annotated_types) }), span)
+      // Convert CoreCall to core/core.Call with typed args
+      // Each arg gets paired with a type hole for inference
+      let typed_args = list.map(args, fn(a) {
+        let converted = core_term_to_term_loop(a, env, annotated_types)
+        #(converted, core_ast.Hole(-1, span))
+      })
+      let ret_type = core_ast.Hole(-1, span)
+      core_ast.Call(name: name, args: typed_args, ret: ret_type, span: span)
     }
     CoreModuleRef(_, span) -> {
       // Module reference - should have been replaced by create_module_record

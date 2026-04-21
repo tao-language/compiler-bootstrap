@@ -63,7 +63,13 @@ pub type Term {
   )
   App(fun: Term, implicit: List(Term), arg: Term, span: Span)
   Match(arg: Term, motive: Term, cases: List(Case), span: Span)
-  Call(name: String, args: List(Term), span: Span)
+  // Typed builtin call: %call name(x: T1, y: T2) -> R
+  Call(
+    name: String,
+    args: List(#(Term, Term)),  // #(arg_term, arg_type)
+    ret: Term,                   // return type
+    span: Span,
+  )
   Comptime(term: Term, span: Span)
   Fix(name: String, body: Term, span: Span)
   Let(name: String, value: Term, body: Term, span: Span)
@@ -86,7 +92,7 @@ pub fn get_span(term: Term) -> Span {
     Pi(_, _, _, _, span) -> span
     App(_, _, _, span) -> span
     Match(_, _, _, span) -> span
-    Call(_, _, span) -> span
+    Call(_, _, _, span) -> span
     Comptime(_, span) -> span
     Fix(_, _, span) -> span
     Let(_, _, _, span) -> span
@@ -148,7 +154,12 @@ pub type Value {
     out_term: Term,
   )
   VRecord(fields: List(#(String, Value)))
-  VCall(name: String, args: List(Value))
+  // Runtime value of a builtin call with typed args and return type
+  VCall(
+    name: String,
+    args: List(Value),
+    ret: Value,  // evaluated return type
+  )
   VFix(name: String, env: Env, body: Term)
   VCtrValue(CtrValue)
   VUnit
@@ -238,8 +249,10 @@ pub fn shift_term(term: Term, shift: Int) -> Term {
     Dot(arg, name, span) -> Dot(shift_term(arg, shift), name, span)
     Ann(term, type_ann, span) ->
       Ann(shift_term(term, shift), shift_term(type_ann, shift), span)
-    Call(name, args, span) ->
-      Call(name, list.map(args, fn(a) { shift_term(a, shift) }), span)
+    Call(name, arg_tuples, ret, span) -> {
+      let shifted_args = list.map(arg_tuples, fn(pair) { #(shift_term(pair.0, shift), shift_term(pair.1, shift)) })
+      Call(name, shifted_args, shift_term(ret, shift), span)
+    }
     Comptime(term, span) -> Comptime(shift_term(term, shift), span)
     Fix(name, body, span) -> Fix(name, shift_term(body, shift), span)
     Let(name, value, body, span) -> Let(name, shift_term(value, shift), shift_term(body, shift), span)

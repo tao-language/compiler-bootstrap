@@ -157,10 +157,11 @@ fn free_holes_value_loop(value: ast.Value, seen: List(Int), acc: List(Int)) -> L
         free_holes_value_loop(f.1, seen, acc_holes)
       })
     }
-    ast.VCall(_, args) -> {
-      list.fold(args, acc, fn(acc_holes, a) {
+    ast.VCall(_, args, ret) -> {
+      let acc = list.fold(args, acc, fn(acc_holes, a) {
         free_holes_value_loop(a, seen, acc_holes)
       })
+      free_holes_value_loop(ret, seen, acc)
     }
     ast.VFix(_, env, body) -> {
       let env_holes = free_holes_env(env, seen, acc)
@@ -386,8 +387,9 @@ pub fn subst_term_with_implicit_vars(
         span,
       )
     }
-    ast.Call(name, args, span) -> {
-      ast.Call(name, list.map(args, fn(a) { subst_term_with_implicit_vars(subst, a) }), span)
+    ast.Call(name, typed_args, ret, span) -> {
+      let shifted_args = list.map(typed_args, fn(pair) { #(subst_term_with_implicit_vars(subst, pair.0), subst_term_with_implicit_vars(subst, pair.1)) })
+      ast.Call(name, shifted_args, subst_term_with_implicit_vars(subst, ret), span)
     }
     ast.Comptime(inner, span) -> {
       ast.Comptime(subst_term_with_implicit_vars(subst, inner), span)

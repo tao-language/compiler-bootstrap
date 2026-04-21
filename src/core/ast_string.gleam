@@ -45,7 +45,7 @@ pub fn value_to_string(val: ast.Value) -> String {
     ast.VLam(_, _, _, _) -> "λ"
     ast.VPi(_, _, _, domain, _) -> "(" <> type_to_string(domain) <> ") -> ..."
     ast.VRecord(_) -> "Record{...}"
-    ast.VCall(name, _) -> name <> "(...)"
+    ast.VCall(name, _, _) -> name <> "(...)"
     ast.VFix(_, _, _) -> "fix"
     ast.VErr -> "⊥"
   }
@@ -77,7 +77,7 @@ pub fn type_to_string(ty: ast.Type) -> String {
     ast.VLam(_, _, _, _) -> "λ"
     ast.VPi(_, _, _, domain, _) -> "(" <> type_to_string(domain) <> ") -> ..."
     ast.VRecord(_) -> "Record{...}"
-    ast.VCall(name, _) -> name
+    ast.VCall(name, _, _) -> name
     ast.VFix(_, _, _) -> "fix"
     ast.VUnit -> "Unit"
     ast.VErr -> "⊥"
@@ -127,8 +127,8 @@ pub fn term_to_string(term: ast.Term) -> String {
       "match " <> term_to_string(arg) <> " with { " <>
       list.map(cases, fn(c) { pattern_to_string(c.pattern) <> " -> ..." })
       |> string.join(", ") <> " }"
-    ast.Call(name, args, _) ->
-      name <> "(" <> list.map(args, term_to_string) |> string.join(", ") <> ")"
+    ast.Call(name, typed_args, ret, _) ->
+      name <> "(" <> list.map(typed_args, fn(pair) { term_to_string(pair.0) }) |> string.join(", ") <> ") -> " <> term_to_string(ret)
     ast.Comptime(term, _) -> "#" <> term_to_string(term)
     ast.Fix(name, body, _) -> "fix " <> name
     ast.Typ(level, _) -> case level {

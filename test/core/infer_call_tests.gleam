@@ -49,7 +49,7 @@ fn test_infer_call_eq_with_literals() {
 fn test_infer_call_eq_with_variables() {
   // Test that eq with variables returns None (non-concrete)
   let args = [
-    ast.VCall("x", []),
+    ast.VCall(name: "x", args: [], ret: ast.VUnit),
     ast.VLit(ast.IntLit(10)),
   ]
   

@@ -513,7 +513,7 @@ fn type_to_string(ty: ast.Type) -> String {
       "(" <> type_to_string(domain) <> ") → ..."
     ast.VRcd(_) -> "{...}"
     ast.VRecord(_) -> "Record{...}"
-    ast.VCall(name, _) -> name
+    ast.VCall(name, _, _) -> name
     ast.VFix(_, _, _) -> "fix"
     ast.VUnit -> "Unit"
     ast.VErr -> "⊥"
@@ -539,7 +539,7 @@ fn value_to_string(val: ast.Value) -> String {
     ast.VLam(_, _, _, _) -> "λ"
     ast.VPi(_, _, _, domain, _) -> "(" <> type_to_string(domain) <> ") → ..."
     ast.VRecord(_) -> "Record{...}"
-    ast.VCall(name, _) -> name <> "(...)"
+    ast.VCall(name, _, _) -> name <> "(...)"
     ast.VFix(_, _, _) -> "fix"
     ast.VUnit -> "Unit"
     ast.VErr -> "⊥"

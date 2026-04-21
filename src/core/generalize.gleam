@@ -81,7 +81,12 @@ fn collect_names_from_term_acc(term: ast.Term, acc: List(String)) -> List(String
     ast.Match(arg, motive, cases, _) -> {
       collect_names_from_cases_acc(cases, collect_names_from_term_acc(motive, collect_names_from_term_acc(arg, acc)))
     }
-    ast.Call(_, args, _) -> collect_names_from_terms_acc(args, acc)
+    ast.Call(_, typed_args, ret, _) -> {
+      let acc = list.fold(typed_args, acc, fn(acc, pair) {
+        collect_names_from_term_acc(pair.0, collect_names_from_term_acc(pair.1, acc))
+      })
+      collect_names_from_term_acc(ret, acc)
+    }
     ast.Comptime(inner, _) -> collect_names_from_term_acc(inner, acc)
     ast.Fix(name, body, _) -> collect_names_from_term_acc(body, [name, ..acc])
     ast.Let(name, value, body, _) -> collect_names_from_term_acc(body, [name, ..collect_names_from_term_acc(value, acc)])
@@ -181,8 +186,12 @@ fn subst_value_with_hole_vars(subst: List(#(Int, Int)), value: ast.Value) -> ast
         subst_value_with_hole_vars(subst, in_val),
         subst_term_with_hole_vars(subst, out),
       )
-    ast.VCall(name, args) ->
-      ast.VCall(name, list.map(args, fn(a) { subst_value_with_hole_vars(subst, a) }))
+    ast.VCall(name, args, ret) ->
+      ast.VCall(
+        name: name,
+        args: list.map(args, fn(a) { subst_value_with_hole_vars(subst, a) }),
+        ret: subst_value_with_hole_vars(subst, ret),
+      )
     ast.VFix(name, env, body) ->
       ast.VFix(name, env, subst_term_with_hole_vars(subst, body))
     ast.VRecord(fields) ->
@@ -252,8 +261,10 @@ fn subst_term_with_hole_vars(subst: List(#(Int, Int)), term: ast.Term) -> ast.Te
         }),
         span,
       )
-    ast.Call(name, args, span) ->
-      ast.Call(name, list.map(args, fn(a) { subst_term_with_hole_vars(subst, a) }), span)
+    ast.Call(name, typed_args, ret, span) -> {
+      let shifted_args = list.map(typed_args, fn(pair) { #(subst_term_with_hole_vars(subst, pair.0), subst_term_with_hole_vars(subst, pair.1)) })
+      ast.Call(name, shifted_args, subst_term_with_hole_vars(subst, ret), span)
+    }
     ast.Comptime(inner, span) ->
       ast.Comptime(subst_term_with_hole_vars(subst, inner), span)
     ast.Fix(name, body, span) ->

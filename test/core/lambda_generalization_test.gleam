@@ -44,7 +44,7 @@ fn inspect_value(v: ast.Value) -> String {
     ast.VTyp(_) -> "VTyp"
     ast.VRcd(_) -> "VRcd"
     ast.VRecord(_) -> "VRecord"
-    ast.VCall(_, _) -> "VCall"
+    ast.VCall(_, _, _) -> "VCall"
     ast.VFix(_, _, _) -> "VFix"
     ast.VCtrValue(_) -> "VCtrValue"
     ast.VUnit -> "VUnit"

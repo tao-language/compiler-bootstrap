@@ -52,12 +52,16 @@ fn state_with_bool_ctrs() {
 // BASIC FFI RETURN TYPE TESTS
 // ============================================================================
 
+fn eq_call_with_types(args: List(#(ast.Term, ast.Term)), ret: ast.Term) -> ast.Term {
+  ast.Call(name: "eq", args: args, ret: ret, span: span())
+}
+
 pub fn ffi_eq_returns_bool_type_test() {
-  // eq(I32(1), I32(1)) should return value True with type Bool (VTyp(0))
-  let eq_call = ast.Call("eq", [
-    ast.Lit(ast.I32(1), span()),
-    ast.Lit(ast.I32(1), span()),
-  ], span())
+  // eq(I32(1): I32, I32(1): I32) -> Bool should return value True with type Bool (VTyp(0))
+  let eq_call = eq_call_with_types([
+    #(ast.Lit(ast.I32(1), span()), ast.Typ(0, span())),
+    #(ast.Lit(ast.I32(1), span()), ast.Typ(0, span())),
+  ], ast.Typ(0, span()))
 
   let #(_val, ty, s) = infer(state_with_bool_ctrs(), eq_call)
   list.is_empty(s.errors) |> should.be_true
@@ -70,11 +74,11 @@ pub fn ffi_eq_returns_bool_type_test() {
 }
 
 pub fn ffi_lt_returns_bool_type_test() {
-  // lt(I32(1), I32(2)) should return value True with type Bool (VTyp(0))
-  let lt_call = ast.Call("lt", [
-    ast.Lit(ast.I32(1), span()),
-    ast.Lit(ast.I32(2), span()),
-  ], span())
+  // lt(I32(1): I32, I32(2): I32) -> Bool should return value True with type Bool (VTyp(0))
+  let lt_call = eq_call_with_types([
+    #(ast.Lit(ast.I32(1), span()), ast.Typ(0, span())),
+    #(ast.Lit(ast.I32(2), span()), ast.Typ(0, span())),
+  ], ast.Typ(0, span()))
 
   let #(_val, ty, s) = infer(state_with_bool_ctrs(), lt_call)
   list.is_empty(s.errors) |> should.be_true
@@ -91,11 +95,11 @@ pub fn ffi_lt_returns_bool_type_test() {
 // ============================================================================
 
 pub fn ffi_eq_true_value_test() {
-  // eq(I32(1), I32(1)) should evaluate to True
-  let eq_call = ast.Call("eq", [
-    ast.Lit(ast.I32(1), span()),
-    ast.Lit(ast.I32(1), span()),
-  ], span())
+  // eq(I32(1): I32, I32(1): I32) -> Bool should evaluate to True
+  let eq_call = eq_call_with_types([
+    #(ast.Lit(ast.I32(1), span()), ast.Typ(0, span())),
+    #(ast.Lit(ast.I32(1), span()), ast.Typ(0, span())),
+  ], ast.Typ(0, span()))
 
   let #(val, ty, s) = infer(state_with_bool_ctrs(), eq_call)
   list.is_empty(s.errors) |> should.be_true
@@ -114,11 +118,11 @@ pub fn ffi_eq_true_value_test() {
 }
 
 pub fn ffi_eq_false_value_test() {
-  // eq(I32(1), I32(2)) should evaluate to False
-  let eq_call = ast.Call("eq", [
-    ast.Lit(ast.I32(1), span()),
-    ast.Lit(ast.I32(2), span()),
-  ], span())
+  // eq(I32(1): I32, I32(2): I32) -> Bool should evaluate to False
+  let eq_call = eq_call_with_types([
+    #(ast.Lit(ast.I32(1), span()), ast.Typ(0, span())),
+    #(ast.Lit(ast.I32(2), span()), ast.Typ(0, span())),
+  ], ast.Typ(0, span()))
 
   let #(val, ty, s) = infer(state_with_bool_ctrs(), eq_call)
   list.is_empty(s.errors) |> should.be_true
@@ -140,11 +144,11 @@ pub fn ffi_eq_false_value_test() {
 // ============================================================================
 
 pub fn ffi_eq_with_overloaded_literals_test() {
-  // eq(IntLit(1), IntLit(1)) should still work with overloaded literals
-  let eq_call = ast.Call("eq", [
-    ast.Lit(ast.IntLit(1), span()),
-    ast.Lit(ast.IntLit(1), span()),
-  ], span())
+  // eq(IntLit(1): I32, IntLit(1): I32) should still work with overloaded literals
+  let eq_call = eq_call_with_types([
+    #(ast.Lit(ast.IntLit(1), span()), ast.Typ(0, span())),
+    #(ast.Lit(ast.IntLit(1), span()), ast.Typ(0, span())),
+  ], ast.Typ(0, span()))
 
   let #(val, ty, s) = infer(state_with_bool_ctrs(), eq_call)
   list.is_empty(s.errors) |> should.be_true
@@ -168,10 +172,10 @@ pub fn ffi_eq_with_overloaded_literals_test() {
 
 pub fn ffi_eq_with_floats_test() {
   // eq with float literals - note: FFI eq handles F64
-  let eq_call = ast.Call("eq", [
-    ast.Lit(ast.F64(1.0), span()),
-    ast.Lit(ast.F64(1.0), span()),
-  ], span())
+  let eq_call = eq_call_with_types([
+    #(ast.Lit(ast.F64(1.0), span()), ast.Typ(0, span())),
+    #(ast.Lit(ast.F64(1.0), span()), ast.Typ(0, span())),
+  ], ast.Typ(0, span()))
 
   let #(val, ty, s) = infer(state_with_bool_ctrs(), eq_call)
   list.is_empty(s.errors) |> should.be_true

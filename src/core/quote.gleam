@@ -61,9 +61,15 @@ fn quote_loop_impl(ffi: state.FFI, lvl: Int, value: ast.Value, s: Span, steps: I
       let terms = list.map(fields, fn(f) { #(f.0, quote_loop(ffi, lvl, f.1, s, steps - 1)) })
       ast.Rcd(terms, s)
     }
-    ast.VCall(name, args) -> {
-      let arg_terms = list.map(args, fn(a) { quote_loop(ffi, lvl, a, s, steps - 1) })
-      ast.Call(name, arg_terms, s)
+    ast.VCall(name, args, ret) -> {
+      let ret_term = quote_loop(ffi, lvl, ret, s, steps - 1)
+      // For VCall, we don't have explicit typed args from evaluation,
+      // so we wrap the args in type annotations
+      let arg_pairs = list.map(args, fn(arg_val) {
+        let arg_term = quote_loop(ffi, lvl, arg_val, s, steps - 1)
+        #(arg_term, ret_term)
+      })
+      ast.Call(name, arg_pairs, ret_term, s)
     }
     ast.VFix(name, env, body) -> {
       // Add a fresh HVar to represent the recursive function

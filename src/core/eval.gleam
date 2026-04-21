@@ -48,7 +48,7 @@ pub fn eval_with_ctor(
       ast.VPi(implicit, name, env, eval_with_ctor(ffi, env, in_term, truth_ctor), out_term)
     ast.App(fun, implicit, arg, span) -> do_app(ffi, env, fun, implicit, arg, span)
     ast.Match(arg, motive, cases, span) -> do_match(ffi, env, arg, motive, cases, span, 100, truth_ctor)
-    ast.Call(name, args, span) -> do_call(ffi, env, name, args, span)
+    ast.Call(name, typed_args, ret_type, span) -> do_call(ffi, env, name, typed_args, ret_type, span)
     ast.Comptime(term, _) -> eval_with_ctor(ffi, env, term, truth_ctor)
     ast.Fix(name, body, _) -> ast.VFix(name, env, body)
     ast.Let(name, value, body, _) -> {
@@ -290,17 +290,29 @@ fn do_match_record_fields(
 // CALL (FFI BUILTIN)
 // ============================================================================
 
-fn do_call(ffi: state.FFI, env: ast.Env, name: String, args: List(ast.Term), span: Span) -> ast.Value {
-  let arg_values = list.map(args, fn(a) { eval(ffi, env, a) })
+/// Evaluate a builtin call with typed args and return type annotation.
+/// The return type is evaluated for correctness but not used in evaluation.
+fn do_call(
+  ffi: state.FFI,
+  env: ast.Env,
+  name: String,
+  typed_args: List(#(ast.Term, ast.Term)),
+  ret_type: ast.Term,
+  span: Span,
+) -> ast.Value {
+  // Extract argument terms for evaluation
+  let arg_terms = list.map(typed_args, fn(pair) { eval(ffi, env, pair.0) })
+  // Evaluate return type annotation (for correctness, not for computation)
+  let ret_val = eval_with_ctor(ffi, env, ret_type, "True")
   
   case list.key_find(ffi, name) {
     Ok(state.Builtin(impl, _)) -> {
-      case impl(arg_values) {
+      case impl(arg_terms) {
         Some(result) -> result
         None -> ast.VErr
       }
     }
-    Error(Nil) -> ast.VCall(name, arg_values)
+    Error(Nil) -> ast.VCall(name: name, args: arg_terms, ret: ret_val)
   }
 }
 

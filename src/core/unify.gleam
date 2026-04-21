@@ -172,7 +172,7 @@ pub fn occurs(sub: ast.Subst, id: Int, value: ast.Value) -> Bool {
     ast.VLam(_, _, _, _) -> False
     ast.VPi(_, _, _, in_val, out_term) ->
       occurs(sub, id, in_val) || occurs_in_term(id, out_term)
-    ast.VCall(_, args) -> list.any(args, occurs(sub, id, _))
+    ast.VCall(_, args, ret) -> list.any(args, occurs(sub, id, _)) || occurs(sub, id, ret)
     ast.VFix(_, _, _) -> False
     ast.VRecord(fields) -> list.any(fields, fn(kv) { occurs(sub, id, kv.1) })
   }
@@ -206,7 +206,12 @@ fn occurs_in_term(id: Int, term: ast.Term) -> Bool {
           None -> False
         }
       })
-    ast.Call(_, args, _) -> list.any(args, occurs_in_term(id, _))
+    ast.Call(_, typed_args, ret, _) -> {
+      list.any(typed_args, fn(pair) {
+        occurs_in_term(id, pair.0) || occurs_in_term(id, pair.1)
+      })
+      || occurs_in_term(id, ret)
+    }
     ast.Comptime(inner, _) -> occurs_in_term(id, inner)
     ast.Fix(_, body, _) -> occurs_in_term(id, body)
     ast.Let(_, value, body, _) -> occurs_in_term(id, value) || occurs_in_term(id, body)
@@ -313,8 +318,9 @@ fn subst_value_with_implicit_vars(
     ast.VCtrValue(ast.VCtr(tag, arg)) -> {
       ast.VCtrValue(ast.VCtr(tag, subst_value_with_implicit_vars(subst, arg)))
     }
-    ast.VCall(name, args) -> {
-      ast.VCall(name, list.map(args, fn(a) { subst_value_with_implicit_vars(subst, a) }))
+    ast.VCall(name, args, ret) -> {
+      let shifted_args = list.map(args, fn(a) { subst_value_with_implicit_vars(subst, a) })
+      ast.VCall(name, shifted_args, subst_value_with_implicit_vars(subst, ret))
     }
     ast.VFix(name, env, body) -> {
       ast.VFix(name, env, body)

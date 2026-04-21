@@ -61,8 +61,13 @@ pub type NamedTerm {
   NRcd(fields: List(#(String, NamedTerm)), span: Span)
   /// Pattern matching: match arg with motive returning cases
   NMatch(arg: NamedTerm, motive: NamedTerm, cases: List(NamedCase), span: Span)
-  /// Built-in call: call name(args)
-  NCall(name: String, args: List(NamedTerm), span: Span)
+  /// Built-in call: %call name(arg1: T1, arg2: T2) -> R
+  NCall(
+    name: String,
+    args: List(#(NamedTerm, NamedTerm)),  // #(arg_term, arg_type)
+    ret: NamedTerm,                         // return type
+    span: Span,
+  )
   /// Compile-time evaluation: comptime { term }
   NComptime(term: NamedTerm, span: Span)
   /// Fixpoint for recursion: fix name -> body
@@ -106,6 +111,9 @@ pub type ParseValue {
   AsCases(List(NamedCase))
   AsPattern(NamedPattern)
   AsArgs(List(NamedTerm))
+  /// Typed arguments for builtin calls: %call name(x: T1, y: T2) -> R
+  AsTypedArg(#(NamedTerm, NamedTerm))
+  AsTypedArgs(List(#(NamedTerm, NamedTerm)))
 }
 
 // ============================================================================
@@ -172,9 +180,12 @@ fn named_to_de_bruijn_loop(term: NamedTerm, env: List(String)) -> Term {
         cases |> list.map(fn(c) { named_case_to_de_bruijn(c, env) })
       Match(arg_db, motive_db, cases_db, span)
     }
-    NCall(name, args, span) -> {
-      let args_db = args |> list.map(fn(a) { named_to_de_bruijn_loop(a, env) })
-      Call(name, args_db, span)
+    NCall(name, args, ret, span) -> {
+      let shifted_args = list.map(args, fn(pair) {
+        let #(t, ty) = pair
+        #(named_to_de_bruijn_loop(t, env), named_to_de_bruijn_loop(ty, env))
+      })
+      Call(name, shifted_args, named_to_de_bruijn_loop(ret, env), span)
     }
     NComptime(term, span) -> {
       let term_db = named_to_de_bruijn_loop(term, env)
@@ -315,6 +326,22 @@ pub fn parse(source: String) -> ParseResult(Term) {
             )
           ParseResult(ast: placeholder, errors: [
             ParseError(span: grammar.Span("", 0, 0, 0, 0), expected: "expression", got: "argument list", context: ""),
+          ])
+        }
+        AsTypedArg(_) -> {
+          let placeholder = ast.Err("Expected expression, got typed argument",
+            grammar.Span("", 0, 0, 0, 0),
+          )
+          ParseResult(ast: placeholder, errors: [
+            ParseError(span: grammar.Span("", 0, 0, 0, 0), expected: "expression", got: "typed argument", context: ""),
+          ])
+        }
+        AsTypedArgs(_) -> {
+          let placeholder = ast.Err("Expected expression, got typed argument list",
+            grammar.Span("", 0, 0, 0, 0),
+          )
+          ParseResult(ast: placeholder, errors: [
+            ParseError(span: grammar.Span("", 0, 0, 0, 0), expected: "expression", got: "typed argument list", context: ""),
           ])
         }
       }
@@ -520,18 +547,19 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
           make_match,
         ),
       ]),
-      // Call: %call name(args)
+      // Call: %call name(arg1: T1, arg2: T2) -> Ret
       rule("Call", [
         alt(
           seq([
             token_pattern("PercentCall"),
             token_pattern("Ident"),
-            // Simple function name for now
             token_pattern("LParen"),
-            ref("ArgList"),
+            ref("TypedArgList"),
             token_pattern("RParen"),
+            token_pattern("Arrow"),
+            ref("Expr"),
           ]),
-          make_call,
+          make_typed_call,
         ),
       ]),
       // Comptime: %comptime term
@@ -780,6 +808,20 @@ pub fn core_grammar() -> grammar.Grammar(ParseValue) {
             ref("ArgList"),
           ]),
           make_arg_cons,
+        ),
+      ]),
+      // Typed argument list: expr: Type, expr: Type, ...
+      rule("TypedArgList", [
+        // Single typed arg: expr : Type
+        alt(seq([ref("Expr"), token_pattern("Colon"), ref("Expr")]), make_typed_arg),
+        // Multiple typed args: expr : Type, args...
+        alt(
+          seq([
+            seq([ref("Expr"), token_pattern("Colon"), ref("Expr")]),
+            token_pattern("Comma"),
+            ref("TypedArgList"),
+          ]),
+          make_typed_args_cons,
         ),
       ]),
     ],
@@ -1119,14 +1161,43 @@ fn make_match(values) -> ParseValue {
   }
 }
 
-fn make_call(values) -> ParseValue {
+/// %call name(arg1: T1, arg2: T2) -> Ret
+fn make_typed_call(values) -> ParseValue {
   case values {
-    [_, AstValue(AsCoreTerm(name_term)), _, AstValue(AsArgs(args)), _] -> {
-      // Extract name from the term (could be NVar, NDot, etc.)
+    [
+      _,
+      AstValue(AsCoreTerm(name_term)),
+      _,
+      AstValue(AsTypedArgs(args)),
+      _,
+      AstValue(AsCoreTerm(ret)),
+      _,
+    ] -> {
       let name = term_to_name(name_term)
-      AsCoreTerm(NCall(name, args, get_span(name_term)))
+      AsCoreTerm(NCall(name, args, ret, get_span(name_term)))
     }
-    _ -> panic as "Expected call expression"
+    _ -> panic as "Expected typed call expression"
+  }
+}
+
+/// Single typed argument: expr : Type
+fn make_typed_arg(values) -> ParseValue {
+  case values {
+    [AstValue(AsCoreTerm(term)), _, AstValue(AsCoreTerm(typ))] ->
+      AsTypedArgs([#(term, typ)])
+    _ -> panic as "Expected typed argument"
+  }
+}
+
+/// Multiple typed arguments: expr : Type, args...
+fn make_typed_args_cons(values) -> ParseValue {
+  case values {
+    [
+      AstValue(AsTypedArg(pair)),
+      _,
+      AstValue(AsTypedArgs(rest)),
+    ] -> AsTypedArgs([pair, ..rest])
+    _ -> panic as "Expected typed argument list"
   }
 }
 
@@ -1358,7 +1429,7 @@ fn get_span(term: NamedTerm) -> Span {
     NLitT(_, span) -> span
     NRcd(_, span) -> span
     NMatch(_, _, _, span) -> span
-    NCall(_, _, span) -> span
+    NCall(_, _, _, span) -> span
     NComptime(_, span) -> span
     NFix(_, _, span) -> span
     NErr(_, span) -> span
@@ -1379,6 +1450,25 @@ fn format_value(value: ParseValue, parent_prec: Int) -> formatter.Doc {
     AsCases(_) -> formatter.text("<cases>")
     AsPattern(_) -> formatter.text("<pattern>")
     AsArgs(_) -> formatter.text("<args>")
+    AsTypedArg(pair) -> formatter.concat([
+      formatter.text("<typed_arg> "),
+      format_term(named_to_de_bruijn(pair.0), 85, []),
+      formatter.text(": "),
+      format_term(named_to_de_bruijn(pair.1), 85, []),
+    ])
+    AsTypedArgs(args) -> formatter.concat([
+      formatter.text("<typed_args> "),
+      formatter.concat(list.intersperse(
+        list.map(args, fn(pair) {
+          formatter.concat([
+            format_term(named_to_de_bruijn(pair.0), 85, []),
+            formatter.text(": "),
+            format_term(named_to_de_bruijn(pair.1), 85, []),
+          ])
+        }),
+        formatter.text(", "),
+      )),
+    ])
   }
 }
 
@@ -1596,14 +1686,17 @@ fn format_term(
         ])
       wrap_parens(inner, 40 < parent_prec)
     }
-    Call(name, args, _) -> {
-      let arg_docs = args |> list.map(fn(a) { format_term(a, 85, bindings) })
+    Call(name, args, ret, _) -> {
+      let arg_docs = args |> list.map(fn(pair) { format_term(pair.0, 85, bindings) })
+      let ret_doc = format_term(ret, 85, bindings)
       let inner =
         formatter.concat([
           formatter.text("%call "),
           formatter.text(name),
           formatter.text("("),
           list.intersperse(arg_docs, formatter.text(", ")) |> formatter.concat,
+          formatter.text(") -> "),
+          ret_doc,
           formatter.text(")"),
         ])
       wrap_parens(inner, 85 < parent_prec)
@@ -1795,8 +1888,8 @@ fn term_to_string_loop(term: Term, bindings: List(String)) -> String {
     ast.Match(arg, _motive, _cases, _) -> {
       "match(" <> term_to_string_loop(arg, bindings) <> ") { ... }"
     }
-    ast.Call(name, args, _) -> {
-      name <> "(" <> string.join(args |> list.map(fn(a) { term_to_string_loop(a, bindings) }), ", ") <> ")"
+    ast.Call(name, args, ret, _) -> {
+      name <> "(" <> string.join(args |> list.map(fn(pair) { term_to_string_loop(pair.0, bindings) }), ", ") <> ") -> " <> term_to_string_loop(ret, bindings)
     }
     ast.Comptime(term, _) -> "comptime { " <> term_to_string_loop(term, bindings) <> " }"
     ast.Fix(name, body, _) -> "fix " <> name <> " -> " <> term_to_string_loop(body, [name, ..bindings])
