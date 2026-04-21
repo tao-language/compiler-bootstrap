@@ -336,7 +336,7 @@ fn decl_type_to_core_ctrs(
 }
 
 /// Build type application: TypeName(param1, param2, ...)
-fn build_type_app(type_name: String, type_params: List(String)) -> core_ast.Term {
+pub fn build_type_app(type_name: String, type_params: List(String)) -> core_ast.Term {
   let span = Span("type_app", 0, 0, 0, 0)
   core_ast.Ctr(type_name, core_ast.Unit(span), span)
 }
@@ -373,7 +373,7 @@ fn extract_ctr_env_loop(
 }
 
 /// Convert a Tao type definition to Core constructor definitions.
-fn tao_type_to_core_ctrs(
+pub fn tao_type_to_core_ctrs(
   type_name: String,
   type_params: List(String),
   constructors: List(Constructor),
@@ -385,7 +385,7 @@ fn tao_type_to_core_ctrs(
 }
 
 /// Convert a Tao constructor to a Core CtrDef.
-fn tao_constructor_to_ctr_def(
+pub fn tao_constructor_to_ctr_def(
   type_name: String,
   type_params: List(String),
   constructor: Constructor,
@@ -412,7 +412,7 @@ fn tao_constructor_to_ctr_def(
 }
 
 /// Convert a constructor field to a Core type.
-fn constructor_field_to_type(field: ConstructorField) -> core_ast.Term {
+pub fn constructor_field_to_type(field: ConstructorField) -> core_ast.Term {
   case field {
     UnnamedField(t) -> type_ast_to_core(t)
     NamedField(_name, t) -> type_ast_to_core(t)

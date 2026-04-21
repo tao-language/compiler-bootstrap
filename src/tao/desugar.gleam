@@ -41,6 +41,10 @@ import tao/global_context.{
   get_module, has_module, get_module_public_names,
   module_base_name, is_prelude_module,
   type_ast_to_core,
+  tao_type_to_core_ctrs,
+  tao_constructor_to_ctr_def,
+  build_type_app,
+  constructor_field_to_type,
 }
 import tao/import_ast.{
   type Import, ImportModule, ImportAlias, ImportSelective,
@@ -238,66 +242,6 @@ pub fn process_type_definitions(
     }
   })
 }
-
-/// Convert a Tao type definition to Core constructor definitions.
-fn tao_type_to_core_ctrs(
-  type_name: String,
-  type_params: List(String),
-  constructors: List(Constructor),
-) -> core_ast.CtrEnv {
-  list.map(constructors, fn(ctr) {
-    let ctr_def = tao_constructor_to_ctr_def(type_name, type_params, ctr)
-    #(ctr.name, ctr_def)
-  })
-}
-
-/// Convert a Tao constructor to a Core core_ast.CtrDef.
-fn tao_constructor_to_ctr_def(
-  type_name: String,
-  type_params: List(String),
-  constructor: Constructor,
-) -> core_ast.CtrDef {
-  let Constructor(name, fields, _span) = constructor
-
-  let arg_ty = case fields {
-    // For nullary constructors, the argument type is Typ(0) because
-    // the implicit Unit argument has type Typ(0) (not VUnit which is the value)
-    [] -> core_ast.Typ(0, Span("unit", 0, 0, 0, 0))
-    [field] -> constructor_field_to_type(field)
-    fields -> {
-      let field_types = list.index_map(fields, fn(field, index) {
-        case field {
-          UnnamedField(t) -> #("field_" <> int.to_string(index), type_ast_to_core(t))
-          NamedField(name, t) -> #(name, type_ast_to_core(t))
-        }
-      })
-      core_ast.Rcd(field_types, Span("rcd", 0, 0, 0, 0))
-    }
-  }
-  
-  let ret_ty = build_type_app(type_name, type_params)
-  
-  core_ast.CtrDef(params: type_params, arg_ty: arg_ty, ret_ty: ret_ty)
-}
-
-/// Convert a constructor field to a Core type.
-fn constructor_field_to_type(field: ConstructorField) -> core_ast.Term {
-  case field {
-    UnnamedField(t) -> type_ast_to_core(t)
-    NamedField(_name, t) -> type_ast_to_core(t)
-  }
-}
-
-/// Build type application: TypeName(param1, param2, ...)
-fn build_type_app(type_name: String, type_params: List(String)) -> core_ast.Term {
-  let span = Span("type_app", 0, 0, 0, 0)
-  case type_params {
-    [] -> core_ast.Ctr(type_name, core_ast.Unit(span), span)
-    _params -> core_ast.Ctr(type_name, core_ast.Unit(span), span)
-  }
-}
-
-
 
 // ============================================================================
 // TYPE ANNOTATION BUILDING (Phase 1)
