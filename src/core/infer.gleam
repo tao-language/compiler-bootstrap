@@ -1018,9 +1018,30 @@ fn get_span(term: ast.Term) -> Span {
 // ============================================================================
 
 
+/// Infer a term's type, unify with expected type, and return the value.
+/// Handles VErr cases early for error resilience.
+fn unify_infer_and_check(
+  s: state.State,
+  term: ast.Term,
+  expected_ty: ast.Type,
+  term_span: Span,
+  ty_span: Span,
+) -> #(ast.Value, state.State) {
+  let #(value, inferred_ty, s) = infer(s, term)
+  case inferred_ty, expected_ty {
+    ast.VErr, _ | _, ast.VErr -> #(ast.VErr, s)
+    _, _ -> {
+      case unify.unify_result(s, inferred_ty, expected_ty, term_span, ty_span) {
+        Ok(s) -> #(subst.force(s.ffi, s.subst, value), s)
+        Error(e) -> #(ast.VErr, state.with_err(s, e))
+      }
+    }
+  }
+}
+
 // ============================================================================
 // CHECK - Type Checking (bidirectional)
-// ============================================================================
+// //==========
 
 pub fn check(
   s: state.State,
@@ -1072,16 +1093,7 @@ pub fn check(
           #(lam_val, s)
         }
         _ -> {
-          let #(value, inferred_ty, s) = infer(s, term)
-          case inferred_ty, expected_ty {
-            ast.VErr, _ | _, ast.VErr -> #(ast.VErr, s)
-            _, _ -> {
-              case unify.unify_result(s, inferred_ty, expected_ty, span, ty_span) {
-                Ok(s) -> #(subst.force(s.ffi, s.subst, value), s)
-                Error(e) -> #(ast.VErr, state.with_err(s, e))
-              }
-            }
-          }
+          unify_infer_and_check(s, term, expected_ty, span, ty_span)
         }
       }
     }
@@ -1091,16 +1103,7 @@ pub fn check(
       case try_coerce_literal(literal, expected_ty) {
         Some(coerced) -> #(coerced, s)
         None -> {
-          let #(value, inferred_ty, s) = infer(s, ast.Lit(literal, span))
-          case inferred_ty, expected_ty {
-            ast.VErr, _ | _, ast.VErr -> #(ast.VErr, s)
-            _, _ -> {
-              case unify.unify_result(s, inferred_ty, expected_ty, span, ty_span) {
-                Ok(s) -> #(subst.force(s.ffi, s.subst, value), s)
-                Error(e) -> #(ast.VErr, state.with_err(s, e))
-              }
-            }
-          }
+          unify_infer_and_check(s, ast.Lit(literal, span), expected_ty, span, ty_span)
         }
       }
     }
@@ -1116,16 +1119,7 @@ pub fn check(
     }
     _ -> {
       let term_span = get_span(term)
-      let #(value, inferred_ty, s) = infer(s, term)
-      case inferred_ty, expected_ty {
-        ast.VErr, _ | _, ast.VErr -> #(ast.VErr, s)
-        _, _ -> {
-          case unify.unify_result(s, inferred_ty, expected_ty, term_span, ty_span) {
-            Ok(s) -> #(subst.force(s.ffi, s.subst, value), s)
-            Error(e) -> #(ast.VErr, state.with_err(s, e))
-          }
-        }
-      }
+      unify_infer_and_check(s, term, expected_ty, term_span, ty_span)
     }
   }
 }
