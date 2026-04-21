@@ -40,6 +40,7 @@ import tao/global_context.{
   type GlobalContext, type ModuleRef,
   get_module, has_module, get_module_public_names,
   module_base_name, is_prelude_module,
+  type_ast_to_core,
 }
 import tao/import_ast.{
   type Import, ImportModule, ImportAlias, ImportSelective,
@@ -296,23 +297,7 @@ fn build_type_app(type_name: String, type_params: List(String)) -> core_ast.Term
   }
 }
 
-/// Convert Tao TypeAst to Core Term.
-/// Note: This is a simplified version that doesn't handle type parameters.
-/// Use build_core_type_from_ast for full type annotation support.
-///
-/// All type names are treated as constructor references — the type checker
-/// will resolve them through the constructor environment (prelude or user-defined).
-/// This avoids hardcoding language-specific types in the desugarer.
-fn type_ast_to_core(t: TypeAst) -> core_ast.Term {
-  case t {
-    TVar(name) -> core_ast.Ctr(name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("type", 0, 0, 0, 0))
-    TApp(name, _args) -> core_ast.Ctr(name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("tapp", 0, 0, 0, 0))
-    TFn(_params, _ret) -> core_ast.Typ(1, Span("fn", 0, 0, 0, 0))
-    TRecord(_fields) -> core_ast.Typ(0, Span("rcd", 0, 0, 0, 0))
-    TTuple(_elems) -> core_ast.Typ(0, Span("tuple", 0, 0, 0, 0))
-    THole -> core_ast.Hole(-1, Span("hole", 0, 0, 0, 0))
-  }
-}
+
 
 // ============================================================================
 // TYPE ANNOTATION BUILDING (Phase 1)

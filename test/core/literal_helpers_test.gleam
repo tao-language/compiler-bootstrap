@@ -122,29 +122,55 @@ pub fn non_literal_types_return_false_test() {
 
 pub fn is_true_true_constructor_test() {
   let true_val = ast.VCtrValue(ast.VCtr("True", ast.VUnit))
-  ast.is_true_value(true_val)
+  ast.is_true_value(true_val, "True")
   |> should.equal(True)
 }
 
 pub fn is_true_false_constructor_test() {
   let false_val = ast.VCtrValue(ast.VCtr("False", ast.VUnit))
-  ast.is_true_value(false_val)
+  ast.is_true_value(false_val, "True")
   |> should.equal(False)
 }
 
 pub fn is_true_other_constructor_test() {
   let other_val = ast.VCtrValue(ast.VCtr("Some", ast.VLit(ast.I32(42))))
-  ast.is_true_value(other_val)
+  ast.is_true_value(other_val, "True")
   |> should.equal(False)
 }
 
 pub fn is_true_literal_test() {
   let lit_val = ast.VLit(ast.I32(42))
-  ast.is_true_value(lit_val)
+  ast.is_true_value(lit_val, "True")
   |> should.equal(False)
 }
 
 pub fn is_true_unit_test() {
-  ast.is_true_value(ast.VUnit)
+  ast.is_true_value(ast.VUnit, "True")
   |> should.equal(False)
+}
+
+// ============================================================================
+// LANGUAGE-AGNOSTIC TRUTH CONSTRUCTOR TESTS
+// Verify that is_true_value works with different truth constructor names
+// ============================================================================
+
+pub fn is_true_custom_truth_ctor_test() {
+  // When truth_ctor is "yes", only "yes" constructor is truthy
+  let yes_val = ast.VCtrValue(ast.VCtr("yes", ast.VUnit))
+  ast.is_true_value(yes_val, "yes")
+  |> should.equal(True)
+}
+
+pub fn is_true_custom_truth_ctor_rejects_true_test() {
+  // When truth_ctor is "yes", "True" is not truthy
+  let true_val = ast.VCtrValue(ast.VCtr("True", ast.VUnit))
+  ast.is_true_value(true_val, "yes")
+  |> should.equal(False)
+}
+
+pub fn is_true_truth_ctor_matches_any_tag_test() {
+  // Any constructor tag can serve as truth when it matches truth_ctor
+  let any_val = ast.VCtrValue(ast.VCtr("my_truth", ast.VLit(ast.I32(999))))
+  ast.is_true_value(any_val, "my_truth")
+  |> should.equal(True)
 }

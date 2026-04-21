@@ -14,6 +14,16 @@ import core/state as state
 // ============================================================================
 
 pub fn eval(ffi: state.FFI, env: ast.Env, term: ast.Term) -> ast.Value {
+  eval_with_ctor(ffi, env, term, "True")
+}
+
+/// Evaluate a term with a configurable truth constructor for guard evaluation.
+pub fn eval_with_ctor(
+  ffi: state.FFI,
+  env: ast.Env,
+  term: ast.Term,
+  truth_ctor: String,
+) -> ast.Value {
   case term {
     ast.Typ(universe, _) -> ast.VTyp(universe)
     ast.Lit(value, _) -> ast.VLit(value)
@@ -22,27 +32,27 @@ pub fn eval(ffi: state.FFI, env: ast.Env, term: ast.Term) -> ast.Value {
     ast.Hole(id, _) -> ast.VNeut(ast.HHole(id), [])
     ast.Err(_, _) -> ast.VErr
     ast.Rcd(fields, _) -> {
-      let values = list.map(fields, fn(f) { #(f.0, eval(ffi, env, f.1)) })
+      let values = list.map(fields, fn(f) { #(f.0, eval_with_ctor(ffi, env, f.1, truth_ctor)) })
       ast.VRcd(values)
     }
-    ast.Ctr(tag, arg, _) -> ast.VCtrValue(ast.VCtr(tag, eval(ffi, env, arg)))
+    ast.Ctr(tag, arg, _) -> ast.VCtrValue(ast.VCtr(tag, eval_with_ctor(ffi, env, arg, truth_ctor)))
     ast.Unit(_) -> ast.VUnit
     ast.Dot(arg, field, span) -> do_dot(ffi, env, arg, field, span)
-    ast.Ann(term, _, _) -> eval(ffi, env, term)
+    ast.Ann(term, _, _) -> eval_with_ctor(ffi, env, term, truth_ctor)
     ast.Lam(implicit, param, body, _) -> {
       let #(name, _) = param
       ast.VLam(implicit, name, env, body)
     }
     ast.Pi(implicit, name, in_term, out_term, _) ->
-      ast.VPi(implicit, name, env, eval(ffi, env, in_term), out_term)
+      ast.VPi(implicit, name, env, eval_with_ctor(ffi, env, in_term, truth_ctor), out_term)
     ast.App(fun, implicit, arg, span) -> do_app(ffi, env, fun, implicit, arg, span)
-    ast.Match(arg, motive, cases, span) -> do_match(ffi, env, arg, motive, cases, span, 100)
+    ast.Match(arg, motive, cases, span) -> do_match(ffi, env, arg, motive, cases, span, 100, truth_ctor)
     ast.Call(name, args, span) -> do_call(ffi, env, name, args, span)
-    ast.Comptime(term, _) -> eval(ffi, env, term)
+    ast.Comptime(term, _) -> eval_with_ctor(ffi, env, term, truth_ctor)
     ast.Fix(name, body, _) -> ast.VFix(name, env, body)
     ast.Let(name, value, body, _) -> {
-      let val = eval(ffi, env, value)
-      eval(ffi, [val, ..env], body)
+      let val = eval_with_ctor(ffi, env, value, truth_ctor)
+      eval_with_ctor(ffi, [val, ..env], body, truth_ctor)
     }
   }
 }
@@ -89,6 +99,45 @@ pub fn do_app(
   }
 }
 
+/// Evaluate with a custom truth constructor. Exposed for callers that need
+/// a non-default truth constructor.
+pub fn do_app_with_ctor(
+  ffi: state.FFI,
+  env: ast.Env,
+  fun: ast.Term,
+  implicit: List(ast.Term),
+  arg: ast.Term,
+  span: Span,
+  truth_ctor: String,
+) -> ast.Value {
+  let fun_val = eval_with_ctor(ffi, env, fun, truth_ctor)
+  let arg_val = eval_with_ctor(ffi, env, arg, truth_ctor)
+  
+  case fun_val {
+    ast.VLam(_, _, closure_env, body) -> {
+      eval_with_ctor(ffi, [arg_val, ..closure_env], body, truth_ctor)
+    }
+    ast.VFix(name, fix_env, fix_body) -> {
+      let body = case fix_body {
+        ast.Ann(inner, _, _) -> inner
+        _ -> fix_body
+      }
+      case body {
+        ast.Lam(implicit, _param, body_term, _) -> {
+          let self = ast.VFix(name, fix_env, fix_body)
+          eval_with_ctor(ffi, [arg_val, self, ..fix_env], body_term, truth_ctor)
+        }
+        _ -> ast.VErr
+      }
+    }
+    ast.VNeut(head, spine) -> {
+      ast.VNeut(head, list.append(spine, [ast.EApp(arg_val)]))
+    }
+    ast.VErr -> ast.VErr
+    _ -> ast.VErr
+  }
+}
+
 // ============================================================================
 // DOT (FIELD PROJECTION)
 // ============================================================================
@@ -122,12 +171,13 @@ pub fn do_match(
   cases: List(ast.Case),
   span: Span,
   steps: Int,
+  truth_ctor: String,
 ) -> ast.Value {
   case steps <= 0 {
     True -> ast.VErr
     False -> {
       let arg_val = eval(ffi, env, arg)
-      do_match_loop(ffi, env, arg_val, motive, cases, steps)
+      do_match_loop(ffi, env, arg_val, motive, cases, steps, truth_ctor)
     }
   }
 }
@@ -139,6 +189,7 @@ fn do_match_loop(
   motive: ast.Term,
   cases: List(ast.Case),
   steps: Int,
+  truth_ctor: String,
 ) -> ast.Value {
   case cases {
     [] -> ast.VErr
@@ -148,15 +199,15 @@ fn do_match_loop(
           case first.guard {
             Some(guard) -> {
               let guard_val = eval(ffi, list.append(match_env, env), guard)
-              case guard_val, ast.is_true_value(guard_val) {
+              case guard_val, ast.is_true_value(guard_val, truth_ctor) {
                 _, True -> eval(ffi, list.append(match_env, env), first.body)
-                _, False -> do_match_loop(ffi, env, arg_val, motive, rest, steps - 1)
+                _, False -> do_match_loop(ffi, env, arg_val, motive, rest, steps - 1, truth_ctor)
               }
             }
             None -> eval(ffi, list.append(match_env, env), first.body)
           }
         }
-        Error(Nil) -> do_match_loop(ffi, env, arg_val, motive, rest, steps - 1)
+        Error(Nil) -> do_match_loop(ffi, env, arg_val, motive, rest, steps - 1, truth_ctor)
       }
     }
   }

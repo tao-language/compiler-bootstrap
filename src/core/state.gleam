@@ -35,6 +35,9 @@ pub type State {
     step_counter: Int,
     max_steps: Int,
     ffi: FFI,
+    /// Truth constructor tag for guard evaluation in matches.
+    /// Default is "True"; set by the language layer for custom languages.
+    truth_ctor: String,
   )
 }
 
@@ -101,6 +104,7 @@ pub const initial_state = State(
   step_counter: 0,
   max_steps: 10000,
   ffi: [],  // FFI is populated by the language layer (Tao)
+  truth_ctor: "True",  // Default truth constructor name
 )
 
 // ============================================================================

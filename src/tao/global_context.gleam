@@ -419,11 +419,13 @@ fn constructor_field_to_type(field: ConstructorField) -> core_ast.Term {
   }
 }
 
-/// Convert a Tao type AST to a Core term.
-fn type_ast_to_core(t: TypeAst) -> core_ast.Term {
+/// Convert a Tao TypeAst to a Core term. Exposed for desugar.gleam to
+/// avoid duplication. Uses simplified Core terms — full type annotation
+/// building should use `build_core_type_from_ast` instead.
+pub fn type_ast_to_core(t: TypeAst) -> core_ast.Term {
   case t {
     TVar(name) -> core_ast.Ctr(name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("type", 0, 0, 0, 0))
-    TApp(name, _args) -> core_ast.Ctr(name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("type", 0, 0, 0, 0))
+    TApp(name, _args) -> core_ast.Ctr(name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("tapp", 0, 0, 0, 0))
     TFn(_, _) -> core_ast.Typ(1, Span("fn", 0, 0, 0, 0))
     TRecord(_) -> core_ast.Typ(0, Span("rcd", 0, 0, 0, 0))
     TTuple(_) -> core_ast.Typ(0, Span("tuple", 0, 0, 0, 0))

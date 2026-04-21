@@ -14,8 +14,7 @@ import gleam/list
 import gleeunit
 import gleeunit/should
 import syntax/grammar.{Span}
-import core/check.{check_type, check}
-import core/infer.{infer}
+import core/infer.{check_type, check, infer}
 
 pub fn main() {
   gleeunit.main()

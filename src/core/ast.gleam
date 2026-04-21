@@ -263,11 +263,12 @@ pub fn shift_case(case_val: Case, shift: Int) -> Case {
 // HELPER FUNCTIONS
 // ============================================================================
 
-/// Check if a value is the canonical "true" constructor.
-/// Default name is "True" (compatible with the prelude's bool module).
-pub fn is_true_value(value: Value) -> Bool {
+/// Check if a value matches the given truth constructor tag.
+/// This is language-agnostic — the truth constructor name is configured by
+/// the language layer (e.g., "True" for Tao, "yes" for other languages).
+pub fn is_true_value(value: Value, truth_ctor: String) -> Bool {
   case value {
-    VCtrValue(VCtr(tag, _)) if tag == "True" -> True
+    VCtrValue(VCtr(tag, _)) if tag == truth_ctor -> True
     _ -> False
   }
 }
