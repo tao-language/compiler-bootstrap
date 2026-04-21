@@ -8,6 +8,7 @@
 import core/ast as ast
 import core/state as state
 import core/infer as infer
+import tao/ffi.{ffi_eq}
 import syntax/grammar as g
 import gleam/option.{type Option, None, Some}
 import gleeunit
@@ -27,7 +28,7 @@ fn test_infer_call_eq_with_literals() {
   ]
   
   // Call ffi_eq directly
-  let result = state.ffi_eq(args)
+  let result = ffi_eq(args)
   case result {
     Some(val) -> case val {
       ast.VCtrValue(ast.VCtr("True", ast.VUnit)) -> {
@@ -52,7 +53,7 @@ fn test_infer_call_eq_with_variables() {
     ast.VLit(ast.IntLit(10)),
   ]
   
-  let result = state.ffi_eq(args)
+  let result = ffi_eq(args)
   case result {
     Some(_) -> panic("Expected None for non-literal args")
     None -> panic("Expected Error for non-literal args")

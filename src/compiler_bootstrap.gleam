@@ -11,7 +11,8 @@
 /// ```
 import argv
 import core/ast as ast
-import core/state.{type Error as TypeError, State, type State, initial_state, initial_ffis, SyntaxError, TypeMismatch, CtrUndefined, VarUndefined, MatchMissingCase, MatchRedundantCase}
+import core/state.{type Error as TypeError, State, type State, initial_state, SyntaxError, TypeMismatch, CtrUndefined, VarUndefined, MatchMissingCase, MatchRedundantCase}
+import tao/ffi.{tao_ffis}
 import core/infer.{infer}
 import core/eval.{eval}
 import core/quote.{quote}
@@ -657,7 +658,7 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   }
 
   let env = []
-  let ffi = initial_ffis
+  let ffi = tao_ffis()
   let value = eval(ffi, env, parse_result.ast)
   // Force the value with the substitution from type checking to solve any holes
   let forced_value = force(ffi, type_state.subst, value)
@@ -779,7 +780,7 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   }
 
   let env = []
-  let ffi = initial_ffis
+  let ffi = tao_ffis()
   let value = eval(ffi, env, term)
   // Force the value with the substitution from type checking to solve any holes
   let forced_value = force(ffi, type_state.subst, value)

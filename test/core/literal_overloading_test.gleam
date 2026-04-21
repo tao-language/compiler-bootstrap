@@ -11,6 +11,7 @@
 /// while `let z: I32 = 3.14` correctly fails type checking.
 import core/ast as ast
 import core/state as state
+import tao/ffi.{ffi_add, ffi_sub, ffi_mul, ffi_div, ffi_eq, ffi_lt, ffi_gt, ffi_lte, ffi_gte, tao_ffis}
 import core/infer.{infer, check}
 import core/unify.{unify_result}
 import gleam/list
@@ -241,7 +242,7 @@ pub fn check_floatlit_against_i64t_fails_test() {
 // ============================================================================
 
 pub fn ffi_add_intlit_test() {
-  let result = state.ffi_add([ast.VLit(ast.IntLit(40)), ast.VLit(ast.IntLit(2))])
+  let result = ffi_add([ast.VLit(ast.IntLit(40)), ast.VLit(ast.IntLit(2))])
   case result {
     Some(ast.VLit(ast.IntLit(42))) -> True
     _ -> False
@@ -249,7 +250,7 @@ pub fn ffi_add_intlit_test() {
 }
 
 pub fn ffi_mul_intlit_test() {
-  let result = state.ffi_mul([ast.VLit(ast.IntLit(6)), ast.VLit(ast.IntLit(7))])
+  let result = ffi_mul([ast.VLit(ast.IntLit(6)), ast.VLit(ast.IntLit(7))])
   case result {
     Some(ast.VLit(ast.IntLit(42))) -> True
     _ -> False
@@ -257,7 +258,7 @@ pub fn ffi_mul_intlit_test() {
 }
 
 pub fn ffi_sub_intlit_test() {
-  let result = state.ffi_sub([ast.VLit(ast.IntLit(50)), ast.VLit(ast.IntLit(8))])
+  let result = ffi_sub([ast.VLit(ast.IntLit(50)), ast.VLit(ast.IntLit(8))])
   case result {
     Some(ast.VLit(ast.IntLit(42))) -> True
     _ -> False
@@ -265,7 +266,7 @@ pub fn ffi_sub_intlit_test() {
 }
 
 pub fn ffi_div_intlit_test() {
-  let result = state.ffi_div([ast.VLit(ast.IntLit(84)), ast.VLit(ast.IntLit(2))])
+  let result = ffi_div([ast.VLit(ast.IntLit(84)), ast.VLit(ast.IntLit(2))])
   case result {
     Some(ast.VLit(ast.IntLit(42))) -> True
     _ -> False
@@ -275,7 +276,7 @@ pub fn ffi_div_intlit_test() {
 pub fn ffi_add_floatlit_test() {
   // 1.1 + 2.2 in IEEE 754 = 3.3000000000000003, not exactly 3.3
   // So we just check that the result is a FloatLit, not the exact value
-  let result = state.ffi_add([ast.VLit(ast.FloatLit(1.5)), ast.VLit(ast.FloatLit(2.5))])
+  let result = ffi_add([ast.VLit(ast.FloatLit(1.5)), ast.VLit(ast.FloatLit(2.5))])
   case result {
     Some(ast.VLit(ast.FloatLit(4.0))) -> True
     _ -> False
@@ -283,7 +284,7 @@ pub fn ffi_add_floatlit_test() {
 }
 
 pub fn ffi_eq_intlit_test() {
-  let result = state.ffi_eq([ast.VLit(ast.IntLit(42)), ast.VLit(ast.IntLit(42))])
+  let result = ffi_eq([ast.VLit(ast.IntLit(42)), ast.VLit(ast.IntLit(42))])
   case result {
     Some(ast.VCtrValue(ast.VCtr("True", ast.VUnit))) -> True
     _ -> False
@@ -291,7 +292,7 @@ pub fn ffi_eq_intlit_test() {
 }
 
 pub fn ffi_lt_intlit_test() {
-  let result = state.ffi_lt([ast.VLit(ast.IntLit(1)), ast.VLit(ast.IntLit(2))])
+  let result = ffi_lt([ast.VLit(ast.IntLit(1)), ast.VLit(ast.IntLit(2))])
   case result {
     Some(ast.VCtrValue(ast.VCtr("True", ast.VUnit))) -> True
     _ -> False
@@ -299,7 +300,7 @@ pub fn ffi_lt_intlit_test() {
 }
 
 pub fn ffi_eq_floatlit_test() {
-  let result = state.ffi_eq([ast.VLit(ast.FloatLit(3.14)), ast.VLit(ast.FloatLit(3.14))])
+  let result = ffi_eq([ast.VLit(ast.FloatLit(3.14)), ast.VLit(ast.FloatLit(3.14))])
   case result {
     Some(ast.VCtrValue(ast.VCtr("True", ast.VUnit))) -> True
     _ -> False

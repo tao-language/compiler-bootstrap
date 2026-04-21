@@ -100,7 +100,7 @@ pub const initial_state = State(
   hole_depths: [],  // No holes created yet
   step_counter: 0,
   max_steps: 10000,
-  ffi: initial_ffis,
+  ffi: [],  // FFI is populated by the language layer (Tao)
 )
 
 // ============================================================================
@@ -167,135 +167,6 @@ fn list_get_loop(list: List(a), index: Int, current: Int) -> Result(a, Nil) {
   }
 }
 
-// ============================================================================
-// BUILTIN FFIS
-// ============================================================================
-
-pub fn ffi_add(args: List(ast.Value)) -> Option(ast.Value) {
-  case args {
-    [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(ast.VLit(ast.I32(a + b)))
-    [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(ast.VLit(ast.I64(a + b)))
-    [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(ast.VLit(ast.F64(a +. b)))
-    // Overloaded integer literals
-    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(ast.VLit(ast.IntLit(a + b)))
-    // Overloaded float literals
-    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(ast.VLit(ast.FloatLit(a +. b)))
-    _ -> None
-  }
-}
-
-pub fn ffi_sub(args: List(ast.Value)) -> Option(ast.Value) {
-  case args {
-    [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(ast.VLit(ast.I32(a - b)))
-    [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(ast.VLit(ast.I64(a - b)))
-    [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(ast.VLit(ast.F64(a -. b)))
-    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(ast.VLit(ast.IntLit(a - b)))
-    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(ast.VLit(ast.FloatLit(a -. b)))
-    _ -> None
-  }
-}
-
-pub fn ffi_mul(args: List(ast.Value)) -> Option(ast.Value) {
-  case args {
-    [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(ast.VLit(ast.I32(a * b)))
-    [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(ast.VLit(ast.I64(a * b)))
-    [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(ast.VLit(ast.F64(a *. b)))
-    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(ast.VLit(ast.IntLit(a * b)))
-    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(ast.VLit(ast.FloatLit(a *. b)))
-    _ -> None
-  }
-}
-
-pub fn ffi_div(args: List(ast.Value)) -> Option(ast.Value) {
-  case args {
-    [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] if b != 0 -> Some(ast.VLit(ast.I32(a / b)))
-    [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] if b != 0 -> Some(ast.VLit(ast.I64(a / b)))
-    [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] if b != 0.0 -> Some(ast.VLit(ast.F64(a /. b)))
-    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] if b != 0 -> Some(ast.VLit(ast.IntLit(a / b)))
-    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] if b != 0.0 -> Some(ast.VLit(ast.FloatLit(a /. b)))
-    _ -> None
-  }
-}
-
-pub fn ffi_eq(args: List(ast.Value)) -> Option(ast.Value) {
-  case args {
-    [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(bool_to_value(a == b))
-    [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(bool_to_value(a == b))
-    [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(bool_to_value(a == b))
-    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(bool_to_value(a == b))
-    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(bool_to_value(a == b))
-    _ -> None
-  }
-}
-
-pub fn ffi_lt(args: List(ast.Value)) -> Option(ast.Value) {
-  case args {
-    [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(bool_to_value(a < b))
-    [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(bool_to_value(a < b))
-    [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(bool_to_value(a <. b))
-    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(bool_to_value(a < b))
-    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(bool_to_value(a <. b))
-    _ -> None
-  }
-}
-
-pub fn ffi_neq(args: List(ast.Value)) -> Option(ast.Value) {
-  case ffi_eq(args) {
-    Some(ast.VCtrValue(ast.VCtr("True", _))) -> Some(bool_to_value(False))
-    Some(ast.VCtrValue(ast.VCtr("False", _))) -> Some(bool_to_value(True))
-    _ -> None
-  }
-}
-
-pub fn ffi_gt(args: List(ast.Value)) -> Option(ast.Value) {
-  case args {
-    [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(bool_to_value(a > b))
-    [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(bool_to_value(a > b))
-    [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(bool_to_value(a >. b))
-    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(bool_to_value(a > b))
-    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(bool_to_value(a >. b))
-    _ -> None
-  }
-}
-
-pub fn ffi_lte(args: List(ast.Value)) -> Option(ast.Value) {
-  case args {
-    [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(bool_to_value(a <= b))
-    [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(bool_to_value(a <= b))
-    [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(bool_to_value(a <=. b))
-    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(bool_to_value(a <= b))
-    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(bool_to_value(a <=. b))
-    _ -> None
-  }
-}
-
-pub fn ffi_gte(args: List(ast.Value)) -> Option(ast.Value) {
-  case args {
-    [ast.VLit(ast.I32(a)), ast.VLit(ast.I32(b))] -> Some(bool_to_value(a >= b))
-    [ast.VLit(ast.I64(a)), ast.VLit(ast.I64(b))] -> Some(bool_to_value(a >= b))
-    [ast.VLit(ast.F64(a)), ast.VLit(ast.F64(b))] -> Some(bool_to_value(a >=. b))
-    [ast.VLit(ast.IntLit(a)), ast.VLit(ast.IntLit(b))] -> Some(bool_to_value(a >= b))
-    [ast.VLit(ast.FloatLit(a)), ast.VLit(ast.FloatLit(b))] -> Some(bool_to_value(a >=. b))
-    _ -> None
-  }
-}
-
-fn bool_to_value(b: Bool) -> ast.Value {
-  case b {
-    True -> ast.VCtrValue(ast.VCtr("True", ast.VUnit))
-    False -> ast.VCtrValue(ast.VCtr("False", ast.VUnit))
-  }
-}
-
-pub const initial_ffis: FFI = [
-  #("add", Builtin(ffi_add, [])),
-  #("sub", Builtin(ffi_sub, [])),
-  #("mul", Builtin(ffi_mul, [])),
-  #("div", Builtin(ffi_div, [])),
-  #("eq", Builtin(ffi_eq, [])),
-  #("neq", Builtin(ffi_neq, [])),
-  #("lt", Builtin(ffi_lt, [])),
-  #("gt", Builtin(ffi_gt, [])),
-  #("lte", Builtin(ffi_lte, [])),
-  #("gte", Builtin(ffi_gte, [])),
-]
+// No built-in FFI definitions in Core — these are language-specific and belong
+// in the language layer (e.g., src/tao/compiler.gleam). Core's `State` accepts
+// FFI via the `ffi` field but provides no default implementations.

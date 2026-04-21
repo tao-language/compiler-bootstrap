@@ -85,8 +85,8 @@ fn app(fun, arg, s) {
 // ============================================================================
 
 pub fn eval_typ_test() {
-  eval(state.initial_ffis, [], typ(0, s1)) |> should.equal(ast.VTyp(0))
-  eval(state.initial_ffis, [], typ(1, s1)) |> should.equal(ast.VTyp(1))
+  eval([], [], typ(0, s1)) |> should.equal(ast.VTyp(0))
+  eval([], [], typ(1, s1)) |> should.equal(ast.VTyp(1))
 }
 
 // ============================================================================
@@ -94,17 +94,17 @@ pub fn eval_typ_test() {
 // ============================================================================
 
 pub fn eval_lit_test() {
-  eval(state.initial_ffis, [], lit(ast.I32(1), s1))
+  eval([], [], lit(ast.I32(1), s1))
   |> should.equal(ast.VLit(ast.I32(1)))
-  eval(state.initial_ffis, [], lit(ast.I64(1), s1))
+  eval([], [], lit(ast.I64(1), s1))
   |> should.equal(ast.VLit(ast.I64(1)))
-  eval(state.initial_ffis, [], lit(ast.U32(1), s1))
+  eval([], [], lit(ast.U32(1), s1))
   |> should.equal(ast.VLit(ast.U32(1)))
-  eval(state.initial_ffis, [], lit(ast.U64(1), s1))
+  eval([], [], lit(ast.U64(1), s1))
   |> should.equal(ast.VLit(ast.U64(1)))
-  eval(state.initial_ffis, [], lit(ast.F32(1.0), s1))
+  eval([], [], lit(ast.F32(1.0), s1))
   |> should.equal(ast.VLit(ast.F32(1.0)))
-  eval(state.initial_ffis, [], lit(ast.F64(1.0), s1))
+  eval([], [], lit(ast.F64(1.0), s1))
   |> should.equal(ast.VLit(ast.F64(1.0)))
 }
 
@@ -113,17 +113,17 @@ pub fn eval_lit_test() {
 // ============================================================================
 
 pub fn eval_litt_test() {
-  eval(state.initial_ffis, [], litt(ast.I32T, s1))
+  eval([], [], litt(ast.I32T, s1))
   |> should.equal(ast.VLitT(ast.I32T))
-  eval(state.initial_ffis, [], litt(ast.I64T, s1))
+  eval([], [], litt(ast.I64T, s1))
   |> should.equal(ast.VLitT(ast.I64T))
-  eval(state.initial_ffis, [], litt(ast.U32T, s1))
+  eval([], [], litt(ast.U32T, s1))
   |> should.equal(ast.VLitT(ast.U32T))
-  eval(state.initial_ffis, [], litt(ast.U64T, s1))
+  eval([], [], litt(ast.U64T, s1))
   |> should.equal(ast.VLitT(ast.U64T))
-  eval(state.initial_ffis, [], litt(ast.F32T, s1))
+  eval([], [], litt(ast.F32T, s1))
   |> should.equal(ast.VLitT(ast.F32T))
-  eval(state.initial_ffis, [], litt(ast.F64T, s1))
+  eval([], [], litt(ast.F64T, s1))
   |> should.equal(ast.VLitT(ast.F64T))
 }
 
@@ -133,8 +133,8 @@ pub fn eval_litt_test() {
 
 pub fn eval_var_test() {
   let env = [v32(0)]
-  eval(state.initial_ffis, env, var(0, s1)) |> should.equal(v32(0))
-  eval(state.initial_ffis, env, var(1, s1)) |> should.equal(ast.VErr)
+  eval([], env, var(0, s1)) |> should.equal(v32(0))
+  eval([], env, var(1, s1)) |> should.equal(ast.VErr)
 }
 
 // ============================================================================
@@ -142,8 +142,8 @@ pub fn eval_var_test() {
 // ============================================================================
 
 pub fn eval_hole_test() {
-  eval(state.initial_ffis, [], hole(0, s1)) |> should.equal(vhole(0))
-  eval(state.initial_ffis, [], hole(1, s1)) |> should.equal(vhole(1))
+  eval([], [], hole(0, s1)) |> should.equal(vhole(0))
+  eval([], [], hole(1, s1)) |> should.equal(vhole(1))
 }
 
 // ============================================================================
@@ -155,7 +155,7 @@ pub fn eval_lambda_identity_test() {
   let identity = lam("x", var(0, s1), s1)  // λx. x
   let arg = i32(42, s1)
   let app_term = app(identity, arg, s1)
-  eval(state.initial_ffis, [], app_term) |> should.equal(v32(42))
+  eval([], [], app_term) |> should.equal(v32(42))
 }
 
 pub fn eval_lambda_const_test() {
@@ -166,7 +166,7 @@ pub fn eval_lambda_const_test() {
   let arg2 = i32(2, s1)
   let app1 = app(outer_lam, arg1, s1)
   let app2 = app(app1, arg2, s1)
-  eval(state.initial_ffis, [], app2) |> should.equal(v32(1))
+  eval([], [], app2) |> should.equal(v32(1))
 }
 
 pub fn eval_lambda_application_test() {
@@ -176,5 +176,5 @@ pub fn eval_lambda_application_test() {
   let identity_outer = lam("x", identity_inner, s1)
   let arg = i32(42, s1)
   let app_term = app(app(identity_outer, identity_outer, s1), arg, s1)
-  eval(state.initial_ffis, [], app_term) |> should.equal(v32(42))
+  eval([], [], app_term) |> should.equal(v32(42))
 }

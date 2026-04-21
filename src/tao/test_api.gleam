@@ -16,7 +16,8 @@ import syntax/source_snippet.{format_diagnostic}
 import tao/desugar.{desugar_module, type DesugarContext}
 import tao/global_context.{type GlobalContext, new_context, with_prelude, set_current_module}
 import core/ast.{type Value}
-import core/state.{type State, State, type Error as CoreError, initial_state, initial_ffis, SyntaxError, NameShadow, TypeMismatch}
+import core/state.{type State, State, type Error as CoreError, initial_state, SyntaxError, NameShadow, TypeMismatch}
+import tao/ffi.{tao_ffis}
 import core/infer.{infer}
 import core/eval.{eval}
 import core/quote.{quote, normalize}
@@ -573,9 +574,9 @@ fn run_test(
         }
         [] -> {
           // Evaluate the extended module - the result is the test expression's value
-          let actual_value = eval(initial_ffis, [], extended_term)
+          let actual_value = eval(tao_ffis(), [], extended_term)
           // Apply the type substitution to solve any holes
-          let forced_actual = force(initial_ffis, type_state.subst, actual_value)
+          let forced_actual = force(tao_ffis(), type_state.subst, actual_value)
 
           // Parse and evaluate expected in the same extended context
           let expected_result: ParseResult(Expr) = parse_expr(test_expr.expected)
@@ -677,8 +678,8 @@ fn check_expected_value(
           Fail(file, line, test_expr.expression, test_expr.expected, format_type_errors(type_errs, source, file))
         }
         Ok(Nil) -> {
-          let expected_value = eval(initial_ffis, [], expected_term)
-          let forced_expected = force(initial_ffis, expected_type_state.subst, expected_value)
+          let expected_value = eval(tao_ffis(), [], expected_term)
+          let forced_expected = force(tao_ffis(), expected_type_state.subst, expected_value)
 
           // Compare values
           case values_equal(forced_actual, forced_expected) {
@@ -694,7 +695,7 @@ fn check_expected_value(
 /// Format a type value as a string for display.
 fn format_type(ty: Value) -> String {
   let span = Span("", 0, 0, 0, 0)
-  let term = quote(initial_ffis, 0, ty, span)
+  let term = quote(tao_ffis(), 0, ty, span)
   core_syntax.format(term)
 }
 

@@ -15,6 +15,7 @@ import core/ast as ast
 import core/state as state
 import core/infer.{infer}
 import core/quote.{quote}
+import tao/ffi.{tao_ffis}
 import syntax/grammar.{Span}
 import gleam/list
 import gleeunit
@@ -122,7 +123,7 @@ pub fn fix_quote_roundtrip_test() {
   let term = fix("f", body, s1)
   let #(_val, _ty, _s) = infer(state.initial_state, term)
   // Quote the value back
-  let quoted = quote(state.initial_ffis, 0, ast.VFix("f", [], body), s0)
+  let quoted = quote(tao_ffis(), 0, ast.VFix("f", [], body), s0)
   // Should quote back to a Fix term
   case quoted {
     ast.Fix(_, _, _) -> True |> should.be_true()

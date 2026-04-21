@@ -22,6 +22,7 @@ import core/ast as ast
 import core/state as state
 import core/infer.{infer}
 import core/quote.{quote}
+import tao/ffi.{tao_ffis}
 import syntax/grammar.{Span}
 import gleam/list
 import gleeunit
@@ -224,7 +225,7 @@ pub fn pi_quote_roundtrip_test() {
   has_errors |> should.equal(False)
 
   // Quote back to syntax
-  let quoted = quote(state.initial_ffis, 0, val, s0)
+  let quoted = quote(tao_ffis(), 0, val, s0)
 
   // Should quote back to a Pi term
   case quoted {

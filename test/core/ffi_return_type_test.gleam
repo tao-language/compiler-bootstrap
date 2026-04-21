@@ -11,7 +11,8 @@
 
 import core/ast as ast
 import core/infer.{infer}
-import core/state as state
+import core/state.{initial_state}
+import tao/ffi.{tao_ffis}
 import gleam/list
 import gleeunit
 import gleeunit/should
@@ -43,7 +44,8 @@ fn state_with_bool_ctrs() {
     arg_ty: ast.Typ(0, Span("unit", 0, 0, 0, 0)),
     ret_ty: ast.Typ(0, Span("Bool", 0, 0, 0, 0)),
   ))
-  state.State(..state.initial_state, ctrs: [bool_type_ctr, true_ctr, false_ctr])
+  let ffi = list.append(initial_state.ffi, tao_ffis())
+  state.State(..initial_state, ffi: ffi, ctrs: [bool_type_ctr, true_ctr, false_ctr])
 }
 
 // ============================================================================
