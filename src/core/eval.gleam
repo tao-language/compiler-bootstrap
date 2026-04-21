@@ -148,9 +148,9 @@ fn do_match_loop(
           case first.guard {
             Some(guard) -> {
               let guard_val = eval(ffi, list.append(match_env, env), guard)
-              case guard_val {
-                ast.VCtrValue(ast.VCtr("True", _)) -> eval(ffi, list.append(match_env, env), first.body)
-                _ -> do_match_loop(ffi, env, arg_val, motive, rest, steps - 1)
+              case guard_val, is_true(guard_val, "True") {
+                _, True -> eval(ffi, list.append(match_env, env), first.body)
+                _, False -> do_match_loop(ffi, env, arg_val, motive, rest, steps - 1)
               }
             }
             None -> eval(ffi, list.append(match_env, env), first.body)
@@ -249,6 +249,20 @@ fn do_call(ffi: state.FFI, env: ast.Env, name: String, args: List(ast.Term), spa
       }
     }
     Error(Nil) -> ast.VCall(name, arg_values)
+  }
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/// Check if a value is the canonical "true" constructor.
+/// The constructor name is configurable via the `true_name` parameter.
+/// Default name is "True" (compatible with the prelude's bool module).
+pub fn is_true(value: ast.Value, true_name: String) -> Bool {
+  case value {
+    ast.VCtrValue(ast.VCtr(tag, _)) if tag == true_name -> True
+    _ -> False
   }
 }
 
