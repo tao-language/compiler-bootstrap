@@ -351,6 +351,16 @@ fn subst_elim_with_implicit_vars(
 /// Overloaded float types (FLitT) unify with any concrete float type.
 pub fn lit_types_unify(v1: ast.Value, v2: ast.Value) -> Bool {
   case v1, v2 {
+    // Identical literal types always unify
+    ast.VLitT(ast.I32T), ast.VLitT(ast.I32T) -> True
+    ast.VLitT(ast.I64T), ast.VLitT(ast.I64T) -> True
+    ast.VLitT(ast.U32T), ast.VLitT(ast.U32T) -> True
+    ast.VLitT(ast.U64T), ast.VLitT(ast.U64T) -> True
+    ast.VLitT(ast.F32T), ast.VLitT(ast.F32T) -> True
+    ast.VLitT(ast.F64T), ast.VLitT(ast.F64T) -> True
+    ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT) -> True
+    ast.VLitT(ast.FLitT), ast.VLitT(ast.FLitT) -> True
+    // Overloaded integer type resolves to any concrete integer or float type
     ast.VLitT(ast.ILitT), ast.VLitT(ast.I32T) -> True
     ast.VLitT(ast.ILitT), ast.VLitT(ast.I64T) -> True
     ast.VLitT(ast.ILitT), ast.VLitT(ast.U32T) -> True
@@ -363,6 +373,7 @@ pub fn lit_types_unify(v1: ast.Value, v2: ast.Value) -> Bool {
     ast.VLitT(ast.U64T), ast.VLitT(ast.ILitT) -> True
     ast.VLitT(ast.F32T), ast.VLitT(ast.ILitT) -> True
     ast.VLitT(ast.F64T), ast.VLitT(ast.ILitT) -> True
+    // Overloaded float type resolves to any concrete float type
     ast.VLitT(ast.FLitT), ast.VLitT(ast.F32T) -> True
     ast.VLitT(ast.FLitT), ast.VLitT(ast.F64T) -> True
     ast.VLitT(ast.F32T), ast.VLitT(ast.FLitT) -> True
