@@ -856,15 +856,8 @@ fn update_last_var_type(
 }
 
 fn new_hole(s: state.State) -> #(ast.Type, state.State) {
-  let id = s.hole_counter
-  let hole_ty = ast.VNeut(ast.HHole(id), [])
-  // Record the hole depth for proper generalization filtering
-  let s = state.State(
-    ..s,
-    hole_counter: id + 1,
-    hole_depths: [#(id, s.lambda_depth), ..s.hole_depths],
-  )
-  #(hole_ty, s)
+  let #(hole_val, s) = state.new_hole_value(s, s.lambda_depth)
+  #(hole_val, s)
 }
 
 fn create_implicit_holes(implicit: List(String), s: state.State) -> #(List(Int), state.State) {
@@ -1339,14 +1332,7 @@ pub fn check_type(
 }
 
 fn new_hole_value(s: state.State) -> #(ast.Value, state.State) {
-  let id = s.hole_counter
-  let hole_val = ast.VNeut(ast.HHole(id), [])
-  // Record the hole depth for proper generalization filtering
-  let s = state.State(
-    ..s,
-    hole_counter: id + 1,
-    hole_depths: [#(id, s.lambda_depth), ..s.hole_depths],
-  )
+  let #(hole_val, s) = state.new_hole_value(s, s.lambda_depth)
   #(hole_val, s)
 }
 

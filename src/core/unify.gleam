@@ -274,9 +274,8 @@ fn instantiate_implicit_params_loop(
 }
 
 fn new_hole(s: state.State) -> #(ast.Value, state.State) {
-  let id = s.hole_counter
-  let hole_val = ast.VNeut(ast.HHole(id), [])
-  #(hole_val, state.State(..s, hole_counter: id + 1))
+  let #(hole_val, s) = state.new_hole_unify(s)
+  #(hole_val, s)
 }
 
 fn subst_value_with_implicit_vars(

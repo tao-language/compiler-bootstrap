@@ -111,8 +111,30 @@ pub fn with_err(s: State, err: Error) -> State {
   State(..s, errors: [err, ..s.errors])
 }
 
+/// Create a new hole ID and return it with updated state.
 pub fn new_hole(s: State) -> #(Int, State) {
   #(s.hole_counter, State(..s, hole_counter: s.hole_counter + 1))
+}
+
+/// Create a new hole value (VNeut(HHole(id), [])) with depth tracking for
+/// lambda generalization. Returns the hole value and updated state.
+pub fn new_hole_value(s: State, lambda_depth: Int) -> #(ast.Value, State) {
+  let id = s.hole_counter
+  let hole_val = ast.VNeut(ast.HHole(id), [])
+  let s = State(
+    ..s,
+    hole_counter: id + 1,
+    hole_depths: [#(id, lambda_depth), ..s.hole_depths],
+  )
+  #(hole_val, s)
+}
+
+/// Create a new hole type (VNeut(HHole(id), [])) without depth tracking.
+/// For unification contexts where depth tracking isn't needed.
+pub fn new_hole_unify(s: State) -> #(ast.Value, State) {
+  let id = s.hole_counter
+  let hole_val = ast.VNeut(ast.HHole(id), [])
+  #(hole_val, State(..s, hole_counter: id + 1))
 }
 
 pub fn new_var(s: State) -> #(Int, State) {
