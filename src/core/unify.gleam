@@ -42,24 +42,12 @@ pub fn unify_result(
     ast.VTyp(k1), ast.VTyp(k2) if k1 == k2 -> Ok(s)
     ast.VLit(k1), ast.VLit(k2) if k1 == k2 -> Ok(s)
     ast.VLitT(k1), ast.VLitT(k2) if k1 == k2 -> Ok(s)
-    // Overloaded integer type resolves to any concrete integer or float type
-    ast.VLitT(ast.ILitT), ast.VLitT(ast.I32T) -> Ok(s)
-    ast.VLitT(ast.ILitT), ast.VLitT(ast.I64T) -> Ok(s)
-    ast.VLitT(ast.ILitT), ast.VLitT(ast.U32T) -> Ok(s)
-    ast.VLitT(ast.ILitT), ast.VLitT(ast.U64T) -> Ok(s)
-    ast.VLitT(ast.ILitT), ast.VLitT(ast.F32T) -> Ok(s)  // int→float coercion
-    ast.VLitT(ast.ILitT), ast.VLitT(ast.F64T) -> Ok(s)  // int→float coercion
-    ast.VLitT(ast.I32T), ast.VLitT(ast.ILitT) -> Ok(s)
-    ast.VLitT(ast.I64T), ast.VLitT(ast.ILitT) -> Ok(s)
-    ast.VLitT(ast.U32T), ast.VLitT(ast.ILitT) -> Ok(s)
-    ast.VLitT(ast.U64T), ast.VLitT(ast.ILitT) -> Ok(s)
-    ast.VLitT(ast.F32T), ast.VLitT(ast.ILitT) -> Ok(s)  // int→float coercion
-    ast.VLitT(ast.F64T), ast.VLitT(ast.ILitT) -> Ok(s)  // int→float coercion
-    // Overloaded float type resolves to any concrete float type
-    ast.VLitT(ast.FLitT), ast.VLitT(ast.F32T) -> Ok(s)
-    ast.VLitT(ast.FLitT), ast.VLitT(ast.F64T) -> Ok(s)
-    ast.VLitT(ast.F32T), ast.VLitT(ast.FLitT) -> Ok(s)
-    ast.VLitT(ast.F64T), ast.VLitT(ast.FLitT) -> Ok(s)
+    // Overloaded literal types resolve to compatible concrete types
+    ast.VLitT(_), ast.VLitT(_) ->
+      case lit_types_unify(v1, v2) {
+        True -> Ok(s)
+        False -> Error(state.TypeMismatch(v2, v1, s2, s1))
+      }
     ast.VNeut(ast.HHole(id), []), _ ->
       case list.key_find(s.subst, id) {
         Ok(v) -> unify_result(s, v, v2, s1, s2)
@@ -351,5 +339,34 @@ fn subst_elim_with_implicit_vars(
         cases,
       )
     }
+  }
+}
+
+// ============================================================================
+// LITERAL TYPE UNIFICATION
+// ============================================================================
+
+/// Check if two literal type values can unify.
+/// Overloaded integer types (ILitT) unify with any concrete integer or float type.
+/// Overloaded float types (FLitT) unify with any concrete float type.
+pub fn lit_types_unify(v1: ast.Value, v2: ast.Value) -> Bool {
+  case v1, v2 {
+    ast.VLitT(ast.ILitT), ast.VLitT(ast.I32T) -> True
+    ast.VLitT(ast.ILitT), ast.VLitT(ast.I64T) -> True
+    ast.VLitT(ast.ILitT), ast.VLitT(ast.U32T) -> True
+    ast.VLitT(ast.ILitT), ast.VLitT(ast.U64T) -> True
+    ast.VLitT(ast.ILitT), ast.VLitT(ast.F32T) -> True
+    ast.VLitT(ast.ILitT), ast.VLitT(ast.F64T) -> True
+    ast.VLitT(ast.I32T), ast.VLitT(ast.ILitT) -> True
+    ast.VLitT(ast.I64T), ast.VLitT(ast.ILitT) -> True
+    ast.VLitT(ast.U32T), ast.VLitT(ast.ILitT) -> True
+    ast.VLitT(ast.U64T), ast.VLitT(ast.ILitT) -> True
+    ast.VLitT(ast.F32T), ast.VLitT(ast.ILitT) -> True
+    ast.VLitT(ast.F64T), ast.VLitT(ast.ILitT) -> True
+    ast.VLitT(ast.FLitT), ast.VLitT(ast.F32T) -> True
+    ast.VLitT(ast.FLitT), ast.VLitT(ast.F64T) -> True
+    ast.VLitT(ast.F32T), ast.VLitT(ast.FLitT) -> True
+    ast.VLitT(ast.F64T), ast.VLitT(ast.FLitT) -> True
+    _, _ -> False
   }
 }

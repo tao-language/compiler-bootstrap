@@ -1093,22 +1093,11 @@ pub fn check(
       }
     }
     ast.Lit(literal, span) -> {
-      // Coerce overloaded literals to the expected concrete type
-      case literal, expected_ty {
-        ast.IntLit(n), ast.VLitT(ast.I32T) -> #(ast.VLit(ast.I32(n)), s)
-        ast.IntLit(n), ast.VLitT(ast.I64T) -> #(ast.VLit(ast.I64(n)), s)
-        ast.IntLit(n), ast.VLitT(ast.U32T) -> #(ast.VLit(ast.U32(n)), s)
-        ast.IntLit(n), ast.VLitT(ast.U64T) -> #(ast.VLit(ast.U64(n)), s)
-        ast.IntLit(n), ast.VLitT(ast.F32T) -> #(ast.VLit(ast.F32(int.to_float(n))), s)
-        ast.IntLit(n), ast.VLitT(ast.F64T) -> #(ast.VLit(ast.F64(int.to_float(n))), s)
-        ast.FloatLit(f), ast.VLitT(ast.F32T) -> #(ast.VLit(ast.F32(f)), s)
-        ast.FloatLit(f), ast.VLitT(ast.F64T) -> #(ast.VLit(ast.F64(f)), s)
-        // If expected type is also overloaded, coerce accordingly
-        ast.IntLit(n), ast.VLitT(ast.ILitT) -> #(ast.VLit(ast.IntLit(n)), s)
-        ast.IntLit(n), ast.VLitT(ast.FLitT) -> #(ast.VLit(ast.FloatLit(int.to_float(n))), s)
-        ast.FloatLit(f), ast.VLitT(ast.FLitT) -> #(ast.VLit(ast.FloatLit(f)), s)
-        // For concrete literals (I32, F64, etc.), check exact match
-        _, _ -> {
+      // Coerce overloaded literals (IntLit/FloatLit) to expected concrete types.
+      // If coercion isn't possible, fall through to inference + unification.
+      case try_coerce_literal(literal, expected_ty) {
+        Some(coerced) -> #(coerced, s)
+        None -> {
           let #(value, inferred_ty, s) = infer(s, ast.Lit(literal, span))
           case inferred_ty, expected_ty {
             ast.VErr, _ | _, ast.VErr -> #(ast.VErr, s)
@@ -1359,5 +1348,31 @@ fn new_hole_value(s: state.State) -> #(ast.Value, state.State) {
     hole_depths: [#(id, s.lambda_depth), ..s.hole_depths],
   )
   #(hole_val, s)
+}
+
+// ============================================================================
+// LITERAL COERCION
+// ============================================================================
+
+/// Try to coerce an overloaded literal (IntLit/FloatLit) to a concrete type.
+/// Returns the coerced value if the target type is a known literal type,
+/// otherwise returns None and the caller should fall back to inference.
+pub fn try_coerce_literal(literal: ast.Literal, expected_ty: ast.Type) -> Option(ast.Value) {
+  case literal, expected_ty {
+    ast.IntLit(n), ast.VLitT(ast.I32T) -> Some(ast.VLit(ast.I32(n)))
+    ast.IntLit(n), ast.VLitT(ast.I64T) -> Some(ast.VLit(ast.I64(n)))
+    ast.IntLit(n), ast.VLitT(ast.U32T) -> Some(ast.VLit(ast.U32(n)))
+    ast.IntLit(n), ast.VLitT(ast.U64T) -> Some(ast.VLit(ast.U64(n)))
+    ast.IntLit(n), ast.VLitT(ast.F32T) -> Some(ast.VLit(ast.F32(int.to_float(n))))
+    ast.IntLit(n), ast.VLitT(ast.F64T) -> Some(ast.VLit(ast.F64(int.to_float(n))))
+    ast.FloatLit(f), ast.VLitT(ast.F32T) -> Some(ast.VLit(ast.F32(f)))
+    ast.FloatLit(f), ast.VLitT(ast.F64T) -> Some(ast.VLit(ast.F64(f)))
+    // If expected type is also overloaded, coerce accordingly
+    ast.IntLit(n), ast.VLitT(ast.ILitT) -> Some(ast.VLit(ast.IntLit(n)))
+    ast.IntLit(n), ast.VLitT(ast.FLitT) -> Some(ast.VLit(ast.FloatLit(int.to_float(n))))
+    ast.FloatLit(f), ast.VLitT(ast.FLitT) -> Some(ast.VLit(ast.FloatLit(f)))
+    // For concrete literals (I32, F64, etc.), fall through to inference
+    _, _ -> None
+  }
 }
 
