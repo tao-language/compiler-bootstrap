@@ -404,75 +404,7 @@ fn infer_app(
       let out_val_forced = subst.force(s.ffi, s.subst, out_val)
       #(do_app(s.ffi, get_env(s), fun, implicit, arg, span), out_val_forced, s)
     }
-    ast.VNeut(ast.HHole(hole_id), spine) -> {
-      // Hole expansion: ?1 applied to arg means ?1 = (?2 -> ?3)
-      // KEY FIX: Use empty environment for the expanded VPi.
-      // The codomain is a simple Hole term that doesn't reference any variables,
-      // so capturing the current environment (which contains HVar values from
-      // enclosing lambdas) can create cycles when those HVar types contain holes
-      // that get unified with the original hole.
-      
-      // KEY FIX 2: Infer the argument's type FIRST, then check for cycles
-      // before expanding the hole. This prevents creating a cycle where
-      // the domain hole gets unified with the original hole.
-      let #(arg_val, arg_ty, s1) = infer(s, arg)
-      
-      // Check if the argument's type contains the original hole.
-      // If so, expanding the hole would create a cycle:
-      //   hole_id = (arg_ty -> ?)
-      //   arg_ty contains hole_id
-      // Therefore: hole_id = (hole_id -> ...) - infinite type!
-      case unify.occurs(s1.subst, hole_id, arg_ty) {
-        True -> {
-          // Would create infinite type - return InfiniteType error
-          #(ast.VErr, ast.VErr, state.with_err(s1, state.InfiniteType(hole_id, arg_ty, get_span(arg), span)))
-        }
-        False -> {
-          // Safe to expand
-          let result_ty_hole_id = s1.hole_counter
-          let #(result_ty_hole_val, s2) = new_hole(s1)
-          
-          // KEY FIX: Check if the argument's type is already solved to something
-          // containing the original hole. This can happen if the argument's type
-          // was unified with something else before this application.
-          let arg_ty_forced = subst.force(s2.ffi, s2.subst, arg_ty)
-          case unify.occurs(s2.subst, hole_id, arg_ty_forced) {
-            True -> {
-              // Argument's solved type contains the original hole - would create cycle
-              #(ast.VErr, ast.VErr, state.with_err(s2, state.InfiniteType(hole_id, arg_ty_forced, get_span(arg), span)))
-            }
-            False -> {
-              // Create the expanded function type: (arg_ty -> ?3)
-              // KEY FIX: Use the argument's type DIRECTLY as the domain, not a new hole.
-              // This prevents the domain hole from being unified with something containing
-              // the original hole, which would create a cycle.
-              let fun_ty_expanded =
-                ast.VPi(
-                  [],
-                  "_",
-                  [],  // Empty environment - codomain doesn't reference any variables
-                  arg_ty,  // Use argument's type directly as domain
-                  ast.Hole(result_ty_hole_id, span),
-                )
-              // Unify the original hole with the expanded type
-              case unify.unify_result(s2, ast.VNeut(ast.HHole(hole_id), []), fun_ty_expanded, span, span) {
-                Ok(s3) -> {
-                  // Force the result hole through substitution to get the solved type
-                  let out_val = subst.force(s3.ffi, s3.subst, result_ty_hole_val)
-                  #(do_app(s3.ffi, get_env(s3), fun, implicit, arg, span), out_val, s3)
-                }
-                Error(_) -> {
-                  case fun_ty {
-                    ast.VErr -> #(ast.VErr, ast.VErr, s2)
-                    _ -> #(ast.VErr, ast.VErr, state.with_err(s2, state.NotAFunction(fun, fun_ty)))
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+    ast.VNeut(ast.HHole(hole_id), spine) -> expand_hole_app(s, fun, implicit, arg, hole_id, fun_ty, span)
     ast.VNeut(ast.HStepLimit, _) -> {
       // Step limit exceeded - return error
       #(ast.VErr, ast.VErr, state.with_err(s, state.NotAFunction(fun, fun_ty)))
@@ -482,6 +414,74 @@ fn infer_app(
       case fun_ty {
         ast.VErr -> #(ast.VErr, ast.VErr, s)
         _ -> #(ast.VErr, ast.VErr, state.with_err(s, state.NotAFunction(fun, fun_ty)))
+      }
+    }
+  }
+}
+
+/// Extract the result type from a motive.
+/// For dependent motives (λp. ResultTy), extract ResultTy.
+/// For non-dependent motives, return the type as-is.
+
+
+/// Expand a hole application: infer the arg type, check for cycles, unify,
+/// and return the evaluated application. This is the "hole expansion" case
+/// of infer_app where the function's type is a hole (?N).
+///
+/// KEY DESIGN: Infer the argument's type FIRST, then check for cycles.
+/// This prevents creating infinite types where the hole expands to
+/// (arg_type containing the original hole).
+///
+/// Also handles the "already solved" case where the arg's type was unified
+/// with something containing the original hole before this application.
+fn expand_hole_app(
+  s: state.State,
+  fun: ast.Term,
+  implicit: List(ast.Term),
+  arg: ast.Term,
+  hole_id: Int,
+  fun_ty: ast.Value,
+  span: Span,
+) -> #(ast.Value, ast.Type, state.State) {
+  // Step 1: Infer argument type and value
+  let #(arg_val, arg_ty, s1) = infer(s, arg)
+  
+  // Step 2: Check if arg type contains the original hole (cycle detection)
+  case unify.occurs(s1.subst, hole_id, arg_ty) {
+    True ->
+      #(ast.VErr, ast.VErr, state.with_err(s1, state.InfiniteType(hole_id, arg_ty, get_span(arg), span)))
+    False -> {
+      // Step 3: Create fresh result hole and double-check for solved conflicts
+      let result_ty_hole_id = s1.hole_counter
+      let #(result_ty_hole_val, s2) = new_hole(s1)
+      let arg_ty_forced = subst.force(s2.ffi, s2.subst, arg_ty)
+      
+      case unify.occurs(s2.subst, hole_id, arg_ty_forced) {
+        True ->
+          #(ast.VErr, ast.VErr, state.with_err(s2, state.InfiniteType(hole_id, arg_ty_forced, get_span(arg), span)))
+        False -> {
+          // Step 4: Build expanded function type and unify
+          // Use arg_ty directly as domain (not a fresh hole) to prevent cycles
+          let fun_ty_expanded = ast.VPi(
+            [],
+            "_",
+            [],
+            arg_ty,
+            ast.Hole(result_ty_hole_id, span),
+          )
+          
+          case unify.unify_result(s2, ast.VNeut(ast.HHole(hole_id), []), fun_ty_expanded, span, span) {
+            Ok(s3) -> {
+              let out_val = subst.force(s3.ffi, s3.subst, result_ty_hole_val)
+              #(do_app(s3.ffi, get_env(s3), fun, implicit, arg, span), out_val, s3)
+            }
+            Error(_) ->
+              case fun_ty {
+                ast.VErr -> #(ast.VErr, ast.VErr, s2)
+                _ -> #(ast.VErr, ast.VErr, state.with_err(s2, state.NotAFunction(fun, fun_ty)))
+              }
+          }
+        }
       }
     }
   }
