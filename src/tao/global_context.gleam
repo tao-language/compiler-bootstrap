@@ -41,7 +41,7 @@ pub type GlobalContext {
   )
 }
 
-/// Module reference - tracks a module's public names and compiled value.
+/// Module reference - tracks a module's public names.
 pub type ModuleRef {
   ModuleRef(
     /// Module path (e.g., "math/trig", "math")
@@ -50,17 +50,9 @@ pub type ModuleRef {
     public_names: List(String),
     /// Constructor definitions from this module's type declarations
     ctr_env: core_ast.CtrEnv,
-    /// Compiled Core term (None = not yet compiled)
-    /// Using dynamic to avoid circular dependency with core
-    value: Option(Dynamic),
     /// Source module AST
     source: Option(Module),
   )
-}
-
-/// Dynamic placeholder for Core term (avoids circular dependency).
-pub type Dynamic {
-  Dynamic(value: String)
 }
 
 // ============================================================================
@@ -108,7 +100,6 @@ pub fn register_module_with_ctr_env(
     path: path,
     public_names: public_names,
     ctr_env: ctr_env,
-    value: None,
     source: Some(module),
   )
 
@@ -131,35 +122,6 @@ pub fn has_module(ctx: GlobalContext, path: String) -> Bool {
   case dict.get(ctx.modules, path) {
     Ok(_) -> True
     Error(_) -> False
-  }
-}
-
-/// Update a module's compiled value.
-pub fn set_module_value(
-  ctx: GlobalContext,
-  path: String,
-  value: Dynamic,
-) -> Result(GlobalContext, String) {
-  case dict.get(ctx.modules, path) {
-    Ok(module_ref) -> {
-      let updated_ref = ModuleRef(..module_ref, value: Some(value))
-      Ok(GlobalContext(
-        ..ctx,
-        modules: dict.insert(ctx.modules, path, updated_ref),
-      ))
-    }
-    Error(_) -> Error("Module not found: " <> path)
-  }
-}
-
-/// Get a module's compiled value.
-pub fn get_module_value(
-  ctx: GlobalContext,
-  path: String,
-) -> Option(Dynamic) {
-  case dict.get(ctx.modules, path) {
-    Ok(module_ref) -> module_ref.value
-    Error(_) -> None
   }
 }
 
@@ -443,7 +405,6 @@ pub fn error_module_ref(path: String, _error: String) -> ModuleRef {
     path: path,
     public_names: [],
     ctr_env: [],
-    value: None,
     source: None,
   )
 }
@@ -570,7 +531,6 @@ fn register_module_placeholder(ctx: GlobalContext, path: String) -> GlobalContex
     path: path,
     public_names: public_names,
     ctr_env: [],
-    value: None,
     source: None,
   )
   GlobalContext(
