@@ -430,10 +430,7 @@ fn infer_app(
     }
     _ -> {
       // Avoid adding duplicate error if fun_ty is already VErr
-      case fun_ty {
-        ast.VErr -> #(ast.VErr, ast.VErr, s)
-        _ -> #(ast.VErr, ast.VErr, state.with_err(s, state.NotAFunction(fun, fun_ty)))
-      }
+      infer_app_not_a_function(s, fun, fun_ty)
     }
   }
 }
@@ -442,6 +439,24 @@ fn infer_app(
 /// For dependent motives (λp. ResultTy), extract ResultTy.
 /// For non-dependent motives, return the type as-is.
 
+
+/// Expand a hole application: infer the arg type, check for cycles, unify,
+/// and return the evaluated application. This is the "hole expansion" case
+/// of infer_app where the function's type is a hole (?N).
+///
+/// KEY DESIGN: Infer the argument's type FIRST, then check for cycles.
+/// Handle the "not a function" error case for infer_app.
+/// Avoids duplicating the error if fun_ty is already VErr.
+fn infer_app_not_a_function(
+  s: state.State,
+  fun: ast.Term,
+  fun_ty: ast.Value,
+) -> #(ast.Value, ast.Value, state.State) {
+  case fun_ty {
+    ast.VErr -> #(ast.VErr, ast.VErr, s)
+    _ -> #(ast.VErr, ast.VErr, state.with_err(s, state.NotAFunction(fun, fun_ty)))
+  }
+}
 
 /// Expand a hole application: infer the arg type, check for cycles, unify,
 /// and return the evaluated application. This is the "hole expansion" case
