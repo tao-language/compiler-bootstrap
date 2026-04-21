@@ -17,6 +17,7 @@ import gleam/option.{type Option, Some, None}
 import gleam/result
 import gleam/string
 import syntax/grammar.{type ParseResult, type Span, Span}
+import tao/prelude_data
 import tao/ast.{type Module, Module as ModuleCtr, get_public_names, StmtType, type Stmt, StmtExpr, StmtImport, StmtFn, StmtLet, type Constructor, Constructor as Ctor, type ConstructorField, NamedField, UnnamedField, type TypeAst, TVar, TApp, THole, TFn, TRecord, TTuple, Param}
 import tao/import_ast.{
   ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias,
@@ -524,13 +525,7 @@ fn exprs_to_stmts(exprs: List(Expr)) -> List(Stmt) {
 /// avoiding any hardcoded prelude knowledge in the compiler.
 pub fn with_prelude(ctx: GlobalContext) -> GlobalContext {
   // List of prelude module paths (relative to lib/)
-  let prelude_paths = [
-    "prelude/bool",
-    "prelude/option",
-    "prelude/result",
-    "prelude/ordering",
-    "prelude/list",
-  ]
+  let prelude_paths = prelude_data.prelude_paths()
 
   // Register each prelude module by reading and parsing its source file
   register_prelude_modules_loop(ctx, prelude_paths)
@@ -568,14 +563,7 @@ fn register_prelude_modules_loop(
 
 /// Register a prelude module placeholder when source file is not available.
 fn register_module_placeholder(ctx: GlobalContext, path: String) -> GlobalContext {
-  let public_names = case path {
-    "prelude/bool" -> ["Bool", "True", "False", "not", "and", "or", "xor", "to_int", "from_int", "to_string"]
-    "prelude/option" -> ["Option", "Some", "None", "is_some", "is_none", "unwrap", "map", "and_then", "unwrap_or"]
-    "prelude/result" -> ["Result", "Ok", "Err", "is_ok", "is_err", "unwrap", "map", "and_then", "unwrap_or"]
-    "prelude/ordering" -> ["Ordering", "LT", "EQ", "GT", "compare", "reverse"]
-    "prelude/list" -> ["List", "Cons", "Nil", "head", "tail", "is_empty", "length", "map", "fold"]
-    _ -> []
-  }
+  let public_names = prelude_data.prelude_public_names(path)
   let module_ref = ModuleRef(
     path: path,
     public_names: public_names,
