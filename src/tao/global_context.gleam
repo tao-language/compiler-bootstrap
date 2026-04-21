@@ -17,7 +17,6 @@ import gleam/option.{type Option, Some, None}
 import gleam/result
 import gleam/string
 import syntax/grammar.{type ParseResult, type Span, Span}
-import tao/prelude_data
 import tao/ast.{type Module, Module as ModuleCtr, get_public_names, StmtType, type Stmt, StmtExpr, StmtImport, StmtFn, StmtLet, type Constructor, Constructor as Ctor, type ConstructorField, NamedField, UnnamedField, type TypeAst, TVar, TApp, THole, TFn, TRecord, TTuple, Param}
 import tao/import_ast.{
   ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias,
@@ -483,58 +482,60 @@ fn exprs_to_stmts(exprs: List(Expr)) -> List(Stmt) {
 // INITIALIZATION
 // ============================================================================
 
-/// Initialize global context with prelude modules by reading their source files.
-/// This extracts type definitions from prelude source files and registers them,
-/// avoiding any hardcoded prelude knowledge in the compiler.
-pub fn with_prelude(ctx: GlobalContext) -> GlobalContext {
-  // List of prelude module paths (relative to lib/)
-  let prelude_paths = prelude_data.prelude_paths()
+/// Initialize global context with prelude modules by scanning lib/prelude/.
+/// Reads .tao files from lib/prelude/, parses them, and registers their
+/// type definitions. This is the only source of prelude knowledge — no
+/// hardcoded module names. Prelude modules are loaded like any other package,
+/// the only difference being that `import prelude {*}` is implicitly added
+/// at the start of every file during desugaring.
 
-  // Register each prelude module by reading and parsing its source file
-  register_prelude_modules_loop(ctx, prelude_paths)
-}
-
-fn register_prelude_modules_loop(
+/// Register a single prelude module from lib/prelude/.
+pub fn register_prelude_from_path(
   ctx: GlobalContext,
-  paths: List(String),
+  path: String,
 ) -> GlobalContext {
-  case paths {
-    [] -> ctx
-    [path, ..rest] -> {
-      let file_path = "lib/" <> path <> ".tao"
-      case simplifile.read(file_path) {
-        Ok(source) -> {
-          // Strip test lines before parsing (test lines starting with > are not valid module syntax)
-          let code_only = strip_test_lines(source)
-          let parse_result = parse_module(code_only, path <> ".tao")
-          let body = exprs_to_stmts(parse_result.ast)
-          let ctr_env = extract_ctr_env_from_exprs(parse_result.ast)
-          // Store the full module body so imports can resolve function types
-          let module = ModuleCtr(path, body, Span(path, 0, 0, 0, 0))
-          let ctx1 = register_module_with_ctr_env(ctx, path, module, ctr_env)
-          register_prelude_modules_loop(ctx1, rest)
-        }
-        Error(_) -> {
-          // If file not found, register placeholder
-          let ctx1 = register_module_placeholder(ctx, path)
-          register_prelude_modules_loop(ctx1, rest)
-        }
-      }
+  let file_path = "lib/prelude/" <> path <> ".tao"
+  case simplifile.read(file_path) {
+    Ok(source) -> {
+      // Strip test lines before parsing
+      let code_only = strip_test_lines(source)
+      let parse_result = parse_module(code_only, path <> ".tao")
+      let body = exprs_to_stmts(parse_result.ast)
+      let ctr_env = extract_ctr_env_from_exprs(parse_result.ast)
+      let module = ModuleCtr(path, body, Span(path, 0, 0, 0, 0))
+      register_module_with_ctr_env(ctx, path, module, ctr_env)
+    }
+    Error(_) -> {
+      // Prelude module file not found — register empty placeholder.
+      // In production this would be a hard error, but we loop here to
+      // keep the initialization simple.
+      let module_ref = ModuleRef(
+        path: path,
+        public_names: [],
+        ctr_env: [],
+        source: None,
+      )
+      GlobalContext(..ctx, modules: dict.insert(ctx.modules, path, module_ref))
     }
   }
 }
 
-/// Register a prelude module placeholder when source file is not available.
-fn register_module_placeholder(ctx: GlobalContext, path: String) -> GlobalContext {
-  let public_names = prelude_data.prelude_public_names(path)
-  let module_ref = ModuleRef(
-    path: path,
-    public_names: public_names,
-    ctr_env: [],
-    source: None,
-  )
-  GlobalContext(
-    ..ctx,
-    modules: dict.insert(ctx.modules, path, module_ref),
-  )
+/// Scan lib/prelude/ for .tao files and register each one.
+pub fn with_prelude(ctx: GlobalContext) -> GlobalContext {
+  case simplifile.read_directory("lib/prelude") {
+    Ok(files) -> {
+      let prelude_files = list.filter(files, fn(f) {
+        string.ends_with(f, ".tao") && !string.ends_with(f, ".test.tao")
+      })
+      let paths = list.map(prelude_files, fn(f) {
+        string.replace(f, ".tao", "")
+      })
+      list.fold(paths, ctx, fn(acc, path) {
+        register_prelude_from_path(acc, path)
+      })
+    }
+    // Prelude directory missing — return context as-is.
+    // In production this would be a hard error (missing prelude).
+    Error(_) -> ctx
+  }
 }
