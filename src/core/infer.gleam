@@ -203,97 +203,7 @@ pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.Sta
       let #(val, s) = check(s, inner, ty_val, span)
       #(val, ty_val, s)
     }
-    ast.Lam(implicit, param, body, span) -> {
-      let #(name, param_ty_term) = param
-      let env = get_env(s)
-      let holes_before = s.hole_counter
-
-      // Create implicit param placeholders (holes) for each implicit name
-      let #(implicit_hole_ids, s) = create_implicit_holes(implicit, s)
-      let implicit_bindings = create_implicit_bindings_from_holes(implicit, implicit_hole_ids)
-      let s = state.State(..s, vars: list.append(implicit_bindings, s.vars))
-
-      let #(domain_val, s) = case param_ty_term {
-        ast.Hole(_, _) -> new_hole(s)
-        _ -> {
-          // KEY FIX: Freshen negative holes in the param type before evaluation.
-          // This ensures each lambda's param type gets unique hole IDs.
-          let #(fresh_ty, _counter) = freshen_annotation(param_ty_term, 0)
-          #(eval.eval(s.ffi, get_env(s), fresh_ty), s)
-        }
-      }
-      // Bind variable at current level, then increment for the body
-      let #(_fresh, s) = def_var(s, name, domain_val)
-      let s = state.State(..s, level: s.level + 1)
-
-      // Increment lambda depth before inferring body (track nesting)
-      let s = state.State(..s, lambda_depth: s.lambda_depth + 1)
-      let #(body_val, body_ty, s) = infer(s, body)
-      // Decrement lambda depth after inferring the body
-      let s = state.State(..s, lambda_depth: s.lambda_depth - 1)
-
-      // Decrement level after inferring the body
-      let s = state.State(..s, level: s.level - 1)
-
-      // KEY FIX: For polymorphic lambdas, the codomain should refer to the domain,
-      // not be a separate generalized hole. When body_ty equals domain_val (e.g., x -> x),
-      // we should use the domain as the codomain after generalization.
-      let domain_forced = subst.force(s.ffi, s.subst, domain_val)
-      let codomain_forced = subst.force(s.ffi, s.subst, body_ty)
-      let domain_holes = subst.free_holes_in_value(domain_forced)
-      let codomain_holes = subst.free_holes_in_value(codomain_forced)
-      let all_holes = list.unique(list.append(domain_holes, codomain_holes))
-
-      // Filter holes: only generalize holes at current lambda depth
-      // Holes from nested lambdas (deeper depth) should NOT be generalized here
-      let current_depth = s.lambda_depth
-      let holes_to_generalize =
-        list.filter(all_holes, fn(id) {
-          case list.key_find(s.hole_depths, id) {
-            Ok(hole_depth) -> hole_depth == current_depth
-            Error(Nil) -> True  // If no depth recorded, include it (shouldn't happen)
-          }
-        })
-
-      // Always generalize for lambdas to ensure polymorphic types
-      let quote_lvl = list.length(env) + list.length(implicit) + 1
-      let #(final_implicit, final_t1, final_t2_term) = generalize_holes_wrapper(
-        holes_to_generalize,
-        implicit,
-        domain_val,
-        body_ty,
-        s,
-        s.ffi,
-        quote_lvl,
-        span,
-      )
-
-      let num_new_implicit = list.length(final_implicit) - list.length(implicit)
-      let quote_lvl = list.length(env) + list.length(implicit) + num_new_implicit + 1
-      let body_quoted = quote.quote(s.ffi, quote_lvl, body_val, get_span(body))
-      // Use the generalized codomain term (shifted for the outer context)
-      let final_t2_shifted = shift_hvar_in_term(final_t2_term, num_new_implicit)
-
-      // Build VPi environment: implicit param HVars + domain value
-      // The domain value must be included so codomain can reference it via Var(0)
-      // With absolute HVar levels, the domain is at level (s.level - 1) after decrementing
-      let implicit_hvars = case final_implicit {
-        [] -> []
-        [_] -> [ast.VNeut(ast.HVar(0), [])]
-        [_, _] -> [ast.VNeut(ast.HVar(0), []), ast.VNeut(ast.HVar(1), [])]
-        _ -> list.index_map(final_implicit, fn(_, idx) { ast.VNeut(ast.HVar(idx), []) })
-      }
-      // Domain value is at the current level (after decrementing, this is the lambda's binder level)
-      let domain_level = s.level - 1
-      let domain_hvar = ast.VNeut(ast.HVar(domain_level), [])
-      let vpi_env = list.append(implicit_hvars, [domain_hvar])
-
-      #(
-        ast.VLam(final_implicit, name, env, body_quoted),
-        ast.VPi(final_implicit, name, vpi_env, final_t1, final_t2_shifted),
-        s,
-      )
-    }
+    ast.Lam(implicit, param, body, span) -> infer_lam(s, implicit, param, body, span)
     ast.Pi(implicit, name, in_term, out_term, span) -> {
       let env = get_env(s)
       let #(in_val, _, s) = infer(s, in_term)
@@ -353,6 +263,116 @@ fn typeof_lit(literal: ast.Literal) -> ast.Type {
     ast.IntLit(_) -> ast.VLitT(ast.ILitT)
     ast.FloatLit(_) -> ast.VLitT(ast.FLitT)
   }
+}
+
+/// Infer the type of a lambda abstraction.
+///
+/// This handles:
+/// 1. Creating implicit parameter holes for each implicit argument
+/// 2. Freshening negative hole IDs in the param type
+/// 3. Evaluating the domain type
+/// 4. Inferring the body type in an extended environment
+/// 5. Generalizing over holes at the current lambda depth
+/// 6. Building the VPi result with implicit HVars and domain HVar
+///
+/// KEY DESIGN: The domain value is included in the VPi environment so the
+/// codomain can reference it via Var(0). This enables dependent lambda types.
+fn infer_lam(
+  s: state.State,
+  implicit: List(String),
+  param: #(String, ast.Term),
+  body: ast.Term,
+  span: Span,
+) -> #(ast.Value, ast.Type, state.State) {
+  let #(name, param_ty_term) = param
+  let env = get_env(s)
+  let holes_before = s.hole_counter
+
+  // Create implicit param placeholders (holes) for each implicit name
+  let #(implicit_hole_ids, s) = create_implicit_holes(implicit, s)
+  let implicit_bindings = create_implicit_bindings_from_holes(implicit, implicit_hole_ids)
+  let s = state.State(..s, vars: list.append(implicit_bindings, s.vars))
+
+  let #(domain_val, s) = case param_ty_term {
+    ast.Hole(_, _) -> new_hole(s)
+    _ -> {
+      // KEY FIX: Freshen negative holes in the param type before evaluation.
+      // This ensures each lambda's param type gets unique hole IDs.
+      let #(fresh_ty, _counter) = freshen_annotation(param_ty_term, 0)
+      #(eval.eval(s.ffi, get_env(s), fresh_ty), s)
+    }
+  }
+  // Bind variable at current level, then increment for the body
+  let #(_fresh, s) = def_var(s, name, domain_val)
+  let s = state.State(..s, level: s.level + 1)
+
+  // Increment lambda depth before inferring body (track nesting)
+  let s = state.State(..s, lambda_depth: s.lambda_depth + 1)
+  let #(body_val, body_ty, s) = infer(s, body)
+  // Decrement lambda depth after inferring the body
+  let s = state.State(..s, lambda_depth: s.lambda_depth - 1)
+
+  // Decrement level after inferring the body
+  let s = state.State(..s, level: s.level - 1)
+
+  // KEY FIX: For polymorphic lambdas, the codomain should refer to the domain,
+  // not be a separate generalized hole. When body_ty equals domain_val (e.g., x -> x),
+  // we should use the domain as the codomain after generalization.
+  let domain_forced = subst.force(s.ffi, s.subst, domain_val)
+  let codomain_forced = subst.force(s.ffi, s.subst, body_ty)
+  let domain_holes = subst.free_holes_in_value(domain_forced)
+  let codomain_holes = subst.free_holes_in_value(codomain_forced)
+  let all_holes = list.unique(list.append(domain_holes, codomain_holes))
+
+  // Filter holes: only generalize holes at current lambda depth
+  // Holes from nested lambdas (deeper depth) should NOT be generalized here
+  let current_depth = s.lambda_depth
+  let holes_to_generalize =
+    list.filter(all_holes, fn(id) {
+      case list.key_find(s.hole_depths, id) {
+        Ok(hole_depth) -> hole_depth == current_depth
+        Error(Nil) -> True  // If no depth recorded, include it (shouldn't happen)
+      }
+    })
+
+  // Always generalize for lambdas to ensure polymorphic types
+  let quote_lvl = list.length(env) + list.length(implicit) + 1
+  let #(final_implicit, final_t1, final_t2_term) = generalize_holes_wrapper(
+    holes_to_generalize,
+    implicit,
+    domain_val,
+    body_ty,
+    s,
+    s.ffi,
+    quote_lvl,
+    span,
+  )
+
+  let num_new_implicit = list.length(final_implicit) - list.length(implicit)
+  let quote_lvl = list.length(env) + list.length(implicit) + num_new_implicit + 1
+  let body_quoted = quote.quote(s.ffi, quote_lvl, body_val, get_span(body))
+  // Use the generalized codomain term (shifted for the outer context)
+  let final_t2_shifted = shift_hvar_in_term(final_t2_term, num_new_implicit)
+
+  // Build VPi environment: implicit param HVars + domain value
+  // The domain value must be included so codomain can reference it via Var(0)
+  // With absolute HVar levels, the domain is at level (s.level - 1) after decrementing
+  let implicit_hvars = case final_implicit {
+    [] -> []
+    [_] -> [ast.VNeut(ast.HVar(0), [])]
+    [_, _] -> [ast.VNeut(ast.HVar(0), []), ast.VNeut(ast.HVar(1), [])]
+    _ -> list.index_map(final_implicit, fn(_, idx) { ast.VNeut(ast.HVar(idx), []) })
+  }
+  // Domain value is at the current level (after decrementing, this is the lambda's binder level)
+  let domain_level = s.level - 1
+  let domain_hvar = ast.VNeut(ast.HVar(domain_level), [])
+  let vpi_env = list.append(implicit_hvars, [domain_hvar])
+
+  #(
+    ast.VLam(final_implicit, name, env, body_quoted),
+    ast.VPi(final_implicit, name, vpi_env, final_t1, final_t2_shifted),
+    s,
+  )
 }
 
 fn infer_app(
