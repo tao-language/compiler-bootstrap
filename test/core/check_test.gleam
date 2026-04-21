@@ -43,7 +43,7 @@ fn vhole(i) {
 // ============================================================================
 
 pub fn check_type_equal_test() {
-  let #(s2, _) = check_type(s, v32t, v32t, s1, s2)
+  let s2 = check_type(s, v32t, v32t, s1, s2)
   s2 |> should.equal(s)
 }
 
@@ -51,13 +51,13 @@ pub fn check_type_mismatch_test() {
   // FIX: After fixing unify TypeMismatch argument order,
   // expected type (v64t, second arg) is first, got type (v32t, first arg) is second.
   // Spans are also swapped: expected_span=s2, got_span=s1.
-  let #(s_result, _) = check_type(s, v32t, v64t, s1, s2)
+  let s_result = check_type(s, v32t, v64t, s1, s2)
   s_result |> should.equal(state.State(..s, errors: [state.TypeMismatch(v64t, v32t, s2, s1)]))
 }
 
 pub fn check_type_with_hole_test() {
   // When one type has a hole, it gets solved
-  let #(s_result, _) = check_type(s, vhole(0), v32t, s1, s2)
+  let s_result = check_type(s, vhole(0), v32t, s1, s2)
   s_result |> should.equal(state.State(..s, subst: [#(0, v32t)]))
 }
 

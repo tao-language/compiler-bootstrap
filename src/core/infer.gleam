@@ -167,7 +167,7 @@ pub fn infer(s: state.State, term: ast.Term) -> #(ast.Value, ast.Type, state.Sta
         Ok(ctr) -> {
           let #(params, ctr_arg_ty, ctr_ret_ty, s) = check_ctr_def(s, ctr)
           let #(_, arg_ty, s) = infer(s, arg)
-          let #(s, _) = check_type(s, arg_ty, ctr_arg_ty, get_span(arg), get_span(ctr.arg_ty))
+          let s = check_type(s, arg_ty, ctr_arg_ty, get_span(arg), get_span(ctr.arg_ty))
           let #(param_vals, s) = subst.ctr_solve_params(s, ctr, params, tag, span)
           let env = list.append(param_vals, get_env(s))
           let arg_val = eval.eval(s.ffi, env, arg)
@@ -630,7 +630,7 @@ fn infer_pattern(
       case list.key_find(s.ctrs, tag) {
         Ok(ctr) -> {
           let #(params, ctr_arg_ty, ctr_ret_ty, s) = check_ctr_def(s, ctr)
-          let #(s, _) = check_type(s, expected_ty, ctr_ret_ty, Span("", 0, 0, 0, 0), Span("", 0, 0, 0, 0))
+          let s = check_type(s, expected_ty, ctr_ret_ty, Span("", 0, 0, 0, 0), Span("", 0, 0, 0, 0))
           let #(arg_val, s) = infer_pattern(s, arg_pattern, ctr_arg_ty)
           #(ast.VCtrValue(ast.VCtr(tag, arg_val)), s)
         }
@@ -1326,9 +1326,9 @@ pub fn check_type(
   t2: ast.Value,
   t1_span: Span,
   t2_span: Span,
-) -> #(state.State, List(#(String, ast.Value))) {
-  let #(_subst, s) = unify.unify(s, 0, t1, t2, t1_span, t2_span)
-  #(s, [])
+) -> state.State {
+  let #(_sub, s) = unify.unify(s, 0, t1, t2, t1_span, t2_span)
+  s
 }
 
 fn new_hole_value(s: state.State) -> #(ast.Value, state.State) {
