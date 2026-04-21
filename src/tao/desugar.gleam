@@ -40,7 +40,6 @@ import tao/global_context.{
   type GlobalContext, type ModuleRef,
   get_module, has_module, get_module_public_names,
   module_base_name, is_prelude_module,
-  type_ast_to_core,
   tao_type_to_core_ctrs,
   tao_constructor_to_ctr_def,
   build_type_app,
