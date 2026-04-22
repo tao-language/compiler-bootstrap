@@ -399,16 +399,6 @@ pub fn subst_term_with_implicit_vars(
   )
 }
 
-fn subst_pattern_with_implicit_vars(
-  _subst: List(#(Int, ast.Value)),
-  pattern: ast.Pattern,
-) -> ast.Pattern {
-  visitor.visit_pattern(pattern,
-    fn(tag, p) { ast.PCtr(tag, p) },
-    fn(fields) { ast.PRcd(fields) },
-  )
-}
-
 fn subst_elim_with_implicit_vars(
   subst: List(#(Int, ast.Value)),
   elim: ast.Elim,

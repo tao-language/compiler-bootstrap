@@ -29,11 +29,10 @@ import core/state.{
 import gleam/float
 import gleam/int
 import gleam/list
-import gleam/option.{type Option, None, Some}
-import gleam/result
+import gleam/option.{Some}
 import gleam/string
-import syntax/grammar.{type Span}
-import syntax/source_snippet.{type Diagnostic, type Highlight, type HighlightStyle, Error, Warning, Info, Span, Secondary}
+import syntax/grammar.{type Span, Span}
+import syntax/source_snippet.{type Diagnostic, Error, Highlight, Info, Secondary, Warning}
 
 // ============================================================================
 // EMOJI CONSTANTS
