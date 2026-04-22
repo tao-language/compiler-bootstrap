@@ -403,18 +403,10 @@ fn subst_pattern_with_implicit_vars(
   subst: List(#(Int, ast.Value)),
   pattern: ast.Pattern,
 ) -> ast.Pattern {
-  case pattern {
-    ast.PAs(inner, name) -> ast.PAs(subst_pattern_with_implicit_vars(subst, inner), name)
-    ast.PCtr(tag, arg) -> ast.PCtr(tag, subst_pattern_with_implicit_vars(subst, arg))
-    ast.PLit(_) -> pattern
-    ast.PLitT(_) -> pattern
-    ast.PTyp(_) -> pattern
-    ast.PRcd(fields) -> ast.PRcd(list.map(fields, fn(pair) {
-      #(pair.0, subst_pattern_with_implicit_vars(subst, pair.1))
-    }))
-    ast.PUnit -> pattern
-    ast.PAny -> pattern
-  }
+  visitor.visit_pattern(pattern,
+    fn(tag, p) { ast.PCtr(tag, p) },
+    fn(fields) { ast.PRcd(fields) },
+  )
 }
 
 fn subst_elim_with_implicit_vars(
