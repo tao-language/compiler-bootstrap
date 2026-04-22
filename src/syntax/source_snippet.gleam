@@ -117,11 +117,11 @@ fn format_bottom_border() -> List(String) {
 fn format_lines(
   lines: List(String),
   start: Int,
-  end: Int,
+  end_line: Int,
   diagnostic: Diagnostic,
   line_num_width: Int,
 ) -> String {
-  let line_range = list.range(start, end - 1)
+  let line_range = list.range(start, end_line - 1)
   
   line_range
   |> list.map(fn(line_idx) {
@@ -242,7 +242,7 @@ fn format_footer(diagnostic: Diagnostic) -> String {
   
   case footer_items {
     [] -> ""
-    [..] -> string.join(footer_items, "\n")
+    _ -> string.join(footer_items, "\n")
   }
 }
 

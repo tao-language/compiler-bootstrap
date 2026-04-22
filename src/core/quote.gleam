@@ -122,7 +122,7 @@ fn quote_spine(
         ast.EDot(name) -> ast.Dot(base, name, s)
         ast.EApp(arg) -> ast.App(base, [], quote_loop(ffi, lvl, arg, s, steps - 1), s)
         ast.EAppImplicit(_) -> base
-        ast.EMatch(env, motive, cases) -> {
+        ast.EMatch(_env, motive, cases) -> {
           let arg_term = quote_loop(ffi, lvl, motive, s, steps - 1)
           let cases_quoted = quote_cases(ffi, lvl, cases, s, steps - 1)
           ast.Match(base, arg_term, cases_quoted, s)

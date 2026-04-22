@@ -16,7 +16,7 @@ import core/subst as subst
 
 pub fn unify(
   s: state.State,
-  lvl: Int,
+  _lvl: Int,
   v1: ast.Value,
   v2: ast.Value,
   s1: Span,
@@ -220,6 +220,8 @@ fn occurs_in_term(id: Int, term: ast.Term) -> Bool {
 
 /// Check if a hole ID appears in a pattern.
 fn occurs_in_pattern(id: Int, pattern: ast.Pattern) -> Bool {
+  // Stub: patterns don't contain holes that need checking
+  // (The id parameter is intentionally unused)
   case pattern {
     ast.PAny -> False
     ast.PAs(inner, _) -> occurs_in_pattern(id, inner)
@@ -245,106 +247,6 @@ fn occurs_elim(sub: ast.Subst, id: Int, elim: ast.Elim) -> Bool {
 fn new_var(s: state.State) -> #(ast.Value, state.State) {
   let var = ast.VNeut(ast.HVar(s.var_counter), [])
   #(var, state.State(..s, var_counter: s.var_counter + 1))
-}
-
-fn instantiate_implicit_params(
-  implicit_params: List(ast.Term),
-  s: state.State,
-) -> #(List(#(Int, Int)), state.State) {
-  instantiate_implicit_params_loop(implicit_params, 0, [], s)
-}
-
-fn instantiate_implicit_params_loop(
-  params: List(ast.Term),
-  index: Int,
-  acc: List(#(Int, Int)),
-  s: state.State,
-) -> #(List(#(Int, Int)), state.State) {
-  case params {
-    [] -> #(list.reverse(acc), s)
-    [_, ..rest] -> {
-      let #(hole_val, s) = new_hole(s)
-      let hole_id = case hole_val {
-        ast.VNeut(ast.HHole(id), []) -> id
-        _ -> 0
-      }
-      instantiate_implicit_params_loop(
-        rest,
-        index + 1,
-        [#(index, hole_id), ..acc],
-        s,
-      )
-    }
-  }
-}
-
-fn new_hole(s: state.State) -> #(ast.Value, state.State) {
-  let #(hole_val, s) = state.new_hole_unify(s)
-  #(hole_val, s)
-}
-
-fn subst_value_with_implicit_vars(
-  subst: List(#(Int, Int)),
-  value: ast.Value,
-) -> ast.Value {
-  case value {
-    ast.VNeut(ast.HVar(index), []) -> {
-      case list.key_find(subst, index) {
-        Ok(hole_id) -> ast.VNeut(ast.HHole(hole_id), [])
-        Error(Nil) -> value
-      }
-    }
-    ast.VNeut(ast.HVar(index), spine) -> {
-      case list.key_find(subst, index) {
-        Ok(hole_id) ->
-          ast.VNeut(
-            ast.HHole(hole_id),
-            list.map(spine, fn(e) { subst_elim_with_implicit_vars(subst, e) }),
-          )
-        Error(Nil) -> value
-      }
-    }
-    ast.VLam(implicit, name, env, body) -> {
-      ast.VLam(implicit, name, env, body)
-    }
-    ast.VPi(implicit, name, env, in_val, out_term) -> {
-      ast.VPi(implicit, name, env, in_val, out_term)
-    }
-    ast.VRcd(fields) -> {
-      ast.VRcd(list.map(fields, fn(kv) {
-        #(kv.0, subst_value_with_implicit_vars(subst, kv.1))
-      }))
-    }
-    ast.VCtrValue(ast.VCtr(tag, arg)) -> {
-      ast.VCtrValue(ast.VCtr(tag, subst_value_with_implicit_vars(subst, arg)))
-    }
-    ast.VCall(name, args, ret) -> {
-      let shifted_args = list.map(args, fn(a) { subst_value_with_implicit_vars(subst, a) })
-      ast.VCall(name, shifted_args, subst_value_with_implicit_vars(subst, ret))
-    }
-    ast.VFix(name, env, body) -> {
-      ast.VFix(name, env, body)
-    }
-    _ -> value
-  }
-}
-
-fn subst_elim_with_implicit_vars(
-  subst: List(#(Int, Int)),
-  elim: ast.Elim,
-) -> ast.Elim {
-  case elim {
-    ast.EDot(name) -> ast.EDot(name)
-    ast.EApp(arg) -> ast.EApp(subst_value_with_implicit_vars(subst, arg))
-    ast.EAppImplicit(arg) -> ast.EAppImplicit(subst_value_with_implicit_vars(subst, arg))
-    ast.EMatch(env, motive, cases) -> {
-      ast.EMatch(
-        list.map(env, fn(v) { subst_value_with_implicit_vars(subst, v) }),
-        subst_value_with_implicit_vars(subst, motive),
-        cases,
-      )
-    }
-  }
 }
 
 // ============================================================================

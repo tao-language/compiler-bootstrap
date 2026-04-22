@@ -129,7 +129,7 @@ fn record_fields_match(
 /// constructors of each type have been covered.
 fn check_missing(
   patterns: List(List(ast.Pattern)),
-  types: List(ast.Value),
+  _types: List(ast.Value),
   span: Span,
 ) -> List(state.Error) {
   case has_wildcard(patterns) {
@@ -170,7 +170,7 @@ fn has_wildcard(patterns: List(List(ast.Pattern))) -> Bool {
 
 pub fn get_default_cases(
   patterns: List(List(ast.Pattern)),
-  types: List(ast.Value),
+  _types: List(ast.Value),
 ) -> List(ast.Pattern) {
   // Return wildcard pattern as default case
   case patterns {

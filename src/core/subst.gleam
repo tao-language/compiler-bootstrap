@@ -315,7 +315,7 @@ fn subst_value_with_implicit_vars_loop(
       // Implicit param indices are not bound by fixpoints, so substitute in body
       ast.VFix(name, env, subst_term_with_implicit_vars(subst, body))
     }
-    ast.VPi(_, _, _, domain, codomain) -> {
+    ast.VPi(_, _, _, _domain, _codomain) -> {
       // Don't substitute under Pi binders
       value
     }
@@ -346,7 +346,7 @@ pub fn subst_term_with_implicit_vars(
     // hole: not in subst (we look up var indices), keep as-is
     fn(id, span) { ast.Hole(id, span) },
     // lam: don't substitute under binders, return term unchanged
-    fn(_, _, _, span) { term },
+    fn(_, _, _, _span) { term },
     // pi: visit both branches
     fn(implicit, name, in_t, out_t, span) { ast.Pi(implicit, name, in_t, out_t, span) },
     // app: visit fun and arg
@@ -400,7 +400,7 @@ pub fn subst_term_with_implicit_vars(
 }
 
 fn subst_pattern_with_implicit_vars(
-  subst: List(#(Int, ast.Value)),
+  _subst: List(#(Int, ast.Value)),
   pattern: ast.Pattern,
 ) -> ast.Pattern {
   visitor.visit_pattern(pattern,

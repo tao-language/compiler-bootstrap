@@ -5,7 +5,7 @@
 ///
 /// For detailed documentation see:
 /// - **[../plans/tao/12-import-system.md](../plans/tao/12-import-system.md)** - Import system specification
-import syntax/grammar.{type Span, Span}
+import syntax/grammar.{type Span}
 
 // ============================================================================
 // IMPORT TYPES

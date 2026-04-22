@@ -13,7 +13,7 @@
 import gleam/dict
 import gleam/list
 import gleam/option.{type Option, Some, None}
-import syntax/grammar.{Span}
+import syntax/grammar.{type Span}
 import core/ast as core_ast
 
 // ============================================================================

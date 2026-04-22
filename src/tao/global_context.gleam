@@ -14,9 +14,8 @@ import gleam/dict.{type Dict}
 import gleam/list
 import gleam/int
 import gleam/option.{type Option, Some, None}
-import gleam/result
 import gleam/string
-import syntax/grammar.{type ParseResult, type Span, Span}
+import syntax/grammar.{type Span, Span}
 import tao/ast.{type Module, Module as ModuleCtr, get_public_names, StmtType, type Stmt, StmtExpr, StmtImport, StmtFn, StmtLet, type Constructor, Constructor as Ctor, type ConstructorField, NamedField, UnnamedField, type TypeAst, TVar, TApp, THole, TFn, TRecord, TTuple, Param}
 import tao/import_ast.{
   ImportModule, ImportAlias, ImportSelective, ImportSelectiveAlias,
@@ -297,7 +296,7 @@ fn decl_type_to_core_ctrs(
 }
 
 /// Build type application: TypeName(param1, param2, ...)
-pub fn build_type_app(type_name: String, type_params: List(String)) -> core_ast.Term {
+pub fn build_type_app(type_name: String, _type_params: List(String)) -> core_ast.Term {
   let span = Span("type_app", 0, 0, 0, 0)
   core_ast.Ctr(type_name, core_ast.Unit(span), span)
 }

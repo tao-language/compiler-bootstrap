@@ -345,7 +345,7 @@ fn quote_spine_with_implicit(
       let arg_term = quote_with_implicit_loop(ffi, num_implicit, arg, s, lvl, steps - 1)
       ast.App(base, [arg_term], ast.Unit(s), s)
     }
-    [ast.EMatch(env, motive, cases), ..rest] -> {
+    [ast.EMatch(_env, motive, cases), ..rest] -> {
       let base = quote_spine_with_implicit(ffi, num_implicit, head, rest, s, lvl, steps - 1)
       let motive_term = quote_with_implicit_loop(ffi, num_implicit, motive, s, lvl, steps - 1)
       ast.Match(base, motive_term, cases, s)

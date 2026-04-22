@@ -16,7 +16,7 @@ import gleam/int
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
-import syntax/grammar.{ParseError, Span, type Span}
+import syntax/grammar.{ParseError, type Span}
 import syntax/source_snippet
 
 // ============================================================================
@@ -501,7 +501,7 @@ fn neutral_to_string(head, spine) -> String {
   let head_str = head_to_string(head)
   case spine {
     [] -> head_str
-    [..] -> head_str <> " ⟨" <> int.to_string(list.length(spine)) <> " operations pending⟩"
+    _ -> head_str <> " ⟨" <> int.to_string(list.length(spine)) <> " operations pending⟩"
   }
 }
 
