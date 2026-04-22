@@ -69,14 +69,17 @@ fn is_subsumed_by(pattern: List(ast.Pattern), earlier: List(ast.Pattern)) -> Boo
   case earlier {
     // Earlier pattern starts with wildcard -> current is redundant
     [ast.PAny, ..] -> True
-    // No earlier patterns -> not subsumed
-    [] -> False
-    // Both non-empty: check if current matches earlier structurally
+    // No earlier patterns left -> check if pattern is also exhausted
+    [] -> case pattern {
+      [] -> True  // Both exhausted = fully subsumed
+      [_, ..] -> False  // Earlier exhausted but pattern has more
+    }
+    // Both non-empty: check head matches, then recurse
     [e_head, ..e_rest] ->
       case pattern {
         [p_head, ..p_rest] ->
           patterns_match(p_head, e_head) && is_subsumed_by(p_rest, e_rest)
-        [] -> False  // different lengths -> not subsumed
+        [] -> False  // Pattern exhausted but earlier remains
       }
   }
 }
