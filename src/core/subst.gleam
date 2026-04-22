@@ -7,6 +7,7 @@ import syntax/grammar.{type Span}
 import core/ast as ast
 import core/state as state
 import core/eval as eval
+import core/visitor as visitor
 
 pub fn force(ffi: state.FFI, sub: ast.Subst, value: ast.Value) -> ast.Value {
   force_value(ffi, sub, value, 100)
@@ -322,85 +323,80 @@ fn subst_value_with_implicit_vars_loop(
   }
 }
 
+/// Look up a variable index in the substitution map and convert
+/// hole/var values to terms.
+fn subst_lookup(subst: List(#(Int, ast.Value)), index: Int, span: Span) -> ast.Term {
+  case list.key_find(subst, index) {
+    Ok(ast.VNeut(ast.HHole(id), _)) -> ast.Hole(id, span)
+    Ok(ast.VNeut(ast.HVar(idx), _)) -> ast.Var(idx, span)
+    _ -> ast.Var(index, span)  // not in subst, keep as-is
+  }
+}
+
 /// Substitute implicit parameter indices with their values in a term.
+/// Uses the visitor to handle recursive traversal.
 pub fn subst_term_with_implicit_vars(
   subst: List(#(Int, ast.Value)),
   term: ast.Term,
 ) -> ast.Term {
-  case term {
-    ast.Var(index, span) -> {
-      case list.key_find(subst, index) {
-        Ok(ast.VNeut(ast.HHole(id), _)) -> {
-          // Convert hole value to hole term
-          ast.Hole(id, span)
-        }
-        Ok(ast.VNeut(ast.HVar(idx), _)) -> {
-          // Convert var value to var term
-          ast.Var(idx, span)
-        }
-        Ok(_) -> term
-        Error(Nil) -> term
-      }
-    }
-    ast.Hole(_, _) -> term
-    ast.Typ(_, _) -> term
-    ast.Lit(_, _) -> term
-    ast.LitT(_, _) -> term
-    ast.Unit(_) -> term
-    ast.Err(_, _) -> term
-    ast.Ann(inner, ty, span) -> {
-      ast.Ann(subst_term_with_implicit_vars(subst, inner), ty, span)
-    }
-    ast.Lam(implicit, param, body, span) -> {
-      // Don't substitute under binders
-      term
-    }
-    ast.Pi(implicit, name, in_term, out_term, span) -> {
-      ast.Pi(implicit, name, subst_term_with_implicit_vars(subst, in_term), subst_term_with_implicit_vars(subst, out_term), span)
-    }
-    ast.App(fun, implicit, arg, span) -> {
-      ast.App(subst_term_with_implicit_vars(subst, fun), implicit, subst_term_with_implicit_vars(subst, arg), span)
-    }
-    ast.Rcd(fields, span) -> {
-      ast.Rcd(list.map(fields, fn(pair) {
-        #(pair.0, subst_term_with_implicit_vars(subst, pair.1))
-      }), span)
-    }
-    ast.Ctr(tag, arg, span) -> {
-      ast.Ctr(tag, subst_term_with_implicit_vars(subst, arg), span)
-    }
-    ast.Dot(arg, name, span) -> {
-      ast.Dot(subst_term_with_implicit_vars(subst, arg), name, span)
-    }
-    ast.Match(arg, motive, cases, span) -> {
+  visitor.visit_term(
+    term,
+    // var: look up in subst
+    fn(idx, span) { subst_lookup(subst, idx, span) },
+    // hole: not in subst (we look up var indices), keep as-is
+    fn(id, span) { ast.Hole(id, span) },
+    // lam: don't substitute under binders, return term unchanged
+    fn(_, _, _, span) { term },
+    // pi: visit both branches
+    fn(implicit, name, in_t, out_t, span) { ast.Pi(implicit, name, in_t, out_t, span) },
+    // app: visit fun and arg
+    fn(fun, _, arg, span) { ast.App(fun, [], arg, span) },
+    // match: visit arg, motive, cases
+    fn(arg, motive, cases, span) {
       ast.Match(
-        subst_term_with_implicit_vars(subst, arg),
-        subst_term_with_implicit_vars(subst, motive),
+        arg,
+        motive,
         list.map(cases, fn(c) {
           ast.Case(
-            pattern: subst_pattern_with_implicit_vars(subst, c.pattern),
-            body: subst_term_with_implicit_vars(subst, c.body),
+            pattern: visitor.visit_pattern(c.pattern,
+              fn(t, p) { ast.PCtr(t, p) },
+              fn(fs) { ast.PRcd(fs) },
+            ),
+            body: c.body,
             guard: c.guard,
             span: c.span,
           )
         }),
         span,
       )
-    }
-    ast.Call(name, typed_args, ret, span) -> {
-      let shifted_args = list.map(typed_args, fn(pair) { #(subst_term_with_implicit_vars(subst, pair.0), subst_term_with_implicit_vars(subst, pair.1)) })
-      ast.Call(name, shifted_args, subst_term_with_implicit_vars(subst, ret), span)
-    }
-    ast.Comptime(inner, span) -> {
-      ast.Comptime(subst_term_with_implicit_vars(subst, inner), span)
-    }
-    ast.Fix(name, body, span) -> {
-      ast.Fix(name, subst_term_with_implicit_vars(subst, body), span)
-    }
-    ast.Let(name, value, body, span) -> {
-      ast.Let(name, subst_term_with_implicit_vars(subst, value), subst_term_with_implicit_vars(subst, body), span)
-    }
-  }
+    },
+    // ctr: visit arg
+    fn(tag, arg, span) { ast.Ctr(tag, arg, span) },
+    // rcd: visit fields
+    fn(fields, span) { ast.Rcd(fields, span) },
+    // dot: visit arg
+    fn(arg, name, span) { ast.Dot(arg, name, span) },
+    // ann: visit inner and type
+    fn(inner, ty, span) { ast.Ann(inner, ty, span) },
+    // call: visit typed args and return
+    fn(name, typed_args, ret, span) { ast.Call(name, typed_args, ret, span) },
+    // comptime: visit inner
+    fn(inner, span) { ast.Comptime(inner, span) },
+    // fix: visit body
+    fn(name, body, span) { ast.Fix(name, body, span) },
+    // let: visit value and body
+    fn(name, value, body, span) { ast.Let(name, value, body, span) },
+    // typ: identity
+    fn(univ, span) { ast.Typ(univ, span) },
+    // lit: identity
+    fn(value, span) { ast.Lit(value, span) },
+    // lit_t: identity
+    fn(lt, span) { ast.LitT(lt, span) },
+    // unit: identity
+    fn(span) { ast.Unit(span) },
+    // err: identity
+    fn(_, span) { ast.Err("", span) },
+  )
 }
 
 fn subst_pattern_with_implicit_vars(
