@@ -2,7 +2,7 @@
 // CORE QUOTE - Reification (Value to Term)
 // ============================================================================
 import gleam/list
-import gleam/option.{type Option, None, Some}
+
 import syntax/grammar.{type Span}
 import core/ast as ast
 import core/state as state

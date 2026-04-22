@@ -11,10 +11,10 @@ import gleam/result
 import gleam/string
 import syntax/formatter.{type Doc, concat, format_binop_auto, text}
 import syntax/grammar.{
-  type Grammar, type OperatorKind, type Span, AstValue, ParensValue, TokenValue, ListValue,
-  InfixLeft, InfixRight, KindPrefix, KindPostfix,
+  type Grammar, type Span, AstValue, ParensValue, TokenValue,
+  InfixLeft,
   left_assoc_rule, rule, alt, token_pattern, parenthesized, seq, ref, keyword_pattern, many,
-  infix_binary, prefix, postfix, get_operator, get_operator_precedence,
+  infix_binary, prefix, postfix, get_operator_precedence,
 }
 import syntax/lexer.{type Token}
 

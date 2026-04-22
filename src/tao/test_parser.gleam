@@ -16,12 +16,11 @@
 /// For detailed documentation see:
 /// - **[../plans/tao/11-test-system.md](../plans/tao/11-test-system.md)** - Test system specification
 import tao/syntax.{type Expr, parse as parse_expr, type MatchClause, MatchClause, Int as EInt, Float as EFloat, Str as EStr, Var as EVar, Let as ELet, Block as EBlock, SimpleFn as ESimpleFn, App as EApp, Lambda as ELambda, BinOp as EBinOp, UnaryOp as EUnaryOp, Match as EMatch, If as EIf, For as EFor, While as EWhile, Loop as ELoop, Break as EBreak, Continue as EContinue, Test as ETest, Run as ERun, Import as EImport, Ctr as ECtr, TypeDecl as ETypeDecl, OverloadedFn as EOverloadedFn, OverloadedApp as EOverloadedApp}
-import syntax/grammar.{type ParseResult, ParseResult, type Span, Span}
+import syntax/grammar.{ParseResult, type Span, Span}
 import gleam/string
 import gleam/list
 import gleam/int
 import gleam/option.{type Option, Some, None}
-import gleam/result
 
 // ============================================================================
 // TEST AST
@@ -221,7 +220,7 @@ fn parse_test_body(
       parse_test_blocks(remaining_lines, file, acc_tests, [error, ..acc_errors], None)
     }
     
-    [first, ..rest_lines] -> {
+    [_, .._] -> {
       // Combine expression lines
       let expr_source = combine_expression_lines(expr_lines)
       
@@ -281,7 +280,7 @@ fn parse_multi_line_test(
 ) -> #(Option(Test), List(#(Int, String))) {
   // Collect all consecutive `> ` lines
   let first = #(first_line_num, first_content)
-  let #(expr_lines, remaining) = collect_all_expr_lines(lines, [first], file)
+  let #(expr_lines, remaining) = collect_all_expr_lines(lines, [first])
 
   // Combine expression lines
   let expr_source = combine_expression_lines(expr_lines)
@@ -326,7 +325,6 @@ fn parse_multi_line_test(
 fn collect_all_expr_lines(
   lines: List(#(Int, String)),
   acc: List(#(Int, String)),
-  file: String,
 ) -> #(List(#(Int, String)), List(#(Int, String))) {
   case lines {
     [] -> #(list.reverse(acc), [])
@@ -337,7 +335,7 @@ fn collect_all_expr_lines(
         True -> {
           let content = string.drop_start(trimmed, 2)
           let pair = #(line_num, content)
-          collect_all_expr_lines(rest, [pair, ..acc], file)
+          collect_all_expr_lines(rest, [pair, ..acc])
         }
         False -> #(list.reverse(acc), lines)
       }
@@ -370,7 +368,7 @@ fn parse_annotation_line(line: String, line_num: Int, file: String) -> Option(Li
 }
 
 /// Parse a single annotation from `@name` or `@name value`
-fn parse_single_annotation(content: String, line_num: Int, file: String) -> Option(Annotation) {
+fn parse_single_annotation(content: String, _line_num: Int, _file: String) -> Option(Annotation) {
   let parts = string.split(content, " ")
   case parts {
     ["@skip"] -> Some(Skip(""))
@@ -395,7 +393,7 @@ fn parse_single_annotation(content: String, line_num: Int, file: String) -> Opti
 }
 
 /// Parse a test name line: `-- Test name` (not starting with @)
-fn parse_test_name_line(line: String, line_num: Int, file: String) -> Option(String) {
+fn parse_test_name_line(line: String, _line_num: Int, _file: String) -> Option(String) {
   case string.starts_with(line, "-- ") {
     False -> None
     True -> {
@@ -761,12 +759,7 @@ fn fix_clause_file(clause: MatchClause, file: String) -> MatchClause {
   }
 }
 
-fn fix_expected_file(expected: ExpectedResult, file: String) -> ExpectedResult {
-  case expected {
-    Pattern(p) -> Pattern(p)
-    Expression(expr) -> Expression(fix_expr_file_span(expr, file))
-  }
-}
+
 
 // ============================================================================
 // ANNOTATION HELPERS

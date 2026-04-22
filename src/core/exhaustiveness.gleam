@@ -11,9 +11,6 @@ import gleam/list
 import syntax/grammar.{type Span, Span as SpanCtr}
 import core/ast as ast
 import core/state as state
-import core/list_utils as list_utils
-import gleam/option.{type Option, Some, None}
-
 /// Check exhaustiveness of pattern match cases.
 /// Returns a list of errors (MatchMissingCase, MatchRedundantCase).
 pub fn check_exhaustiveness(

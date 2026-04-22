@@ -130,7 +130,7 @@ pub fn term_to_string(term: ast.Term) -> String {
     ast.Call(name, typed_args, ret, _) ->
       name <> "(" <> list.map(typed_args, fn(pair) { term_to_string(pair.0) }) |> string.join(", ") <> ") -> " <> term_to_string(ret)
     ast.Comptime(term, _) -> "#" <> term_to_string(term)
-    ast.Fix(name, body, _) -> "fix " <> name
+    ast.Fix(name, _body, _) -> "fix " <> name
     ast.Typ(level, _) -> case level {
       0 -> "Type"
       n -> "Type" <> int.to_string(n)

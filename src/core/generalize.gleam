@@ -5,12 +5,11 @@
 /// type parameters. This enables polymorphic lambda inference.
 import gleam/int
 import gleam/list
-import syntax/grammar.{type Span, Span}
+import syntax/grammar.{type Span}
 import core/ast as ast
 import core/state as state
 import core/eval as eval
 import core/quote as quote
-import core/subst as subst
 import core/visitor as visitor
 
 pub fn generalize_holes(
@@ -18,7 +17,7 @@ pub fn generalize_holes(
   existing_implicit: List(String),
   domain: ast.Value,
   codomain: ast.Type,
-  s: state.State,
+  _s: state.State,
   ffi: state.FFI,
   lvl: Int,
   span: Span,
@@ -88,12 +87,6 @@ fn collect_names_from_fields_acc(fields: List(#(String, ast.Term)), acc: List(St
 fn collect_names_from_cases_acc(cases: List(ast.Case), acc: List(String)) -> List(String) {
   list.fold(cases, acc, fn(acc, c) {
     collect_names_from_term_acc(c.body, acc)
-  })
-}
-
-fn collect_names_from_terms_acc(terms: List(ast.Term), acc: List(String)) -> List(String) {
-  list.fold(terms, acc, fn(acc, term) {
-    collect_names_from_term_acc(term, acc)
   })
 }
 
@@ -291,7 +284,7 @@ fn quote_with_implicit_loop(
     True -> ast.Err("Step limit exceeded", s)
     False -> case value {
       ast.VNeut(ast.HVar(index), []) if index < num_implicit -> ast.Var(index, s)
-      ast.VNeut(ast.HVar(index), spine) if index < num_implicit -> {
+      ast.VNeut(ast.HVar(index), _spine) if index < num_implicit -> {
         ast.Var(index, s)
       }
       ast.VTyp(k) -> ast.Typ(k, s)

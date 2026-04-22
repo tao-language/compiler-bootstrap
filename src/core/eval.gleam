@@ -1,6 +1,6 @@
 // ============================================================================
 // CORE EVAL
-import gleam/option.{type Option, None, Some}
+import gleam/option.{None, Some}
 // ============================================================================
 /// Evaluation reduces terms to values in a given environment.
 import gleam/list
@@ -53,11 +53,11 @@ pub fn eval_with_ctor(
     ast.Pi(implicit, name, in_term, out_term, _) ->
       ast.VPi(implicit, name, env, eval_with_ctor(ffi, env, in_term, truth_ctor), out_term)
     ast.App(fun, implicit, arg, span) -> do_app(ffi, env, fun, implicit, arg, span)
-    ast.Match(arg, motive, cases, span) -> do_match(ffi, env, arg, motive, cases, span, 100, truth_ctor)
+    ast.Match(arg, _motive, cases, _span) -> do_match(ffi, env, arg, cases, 100, truth_ctor)
     ast.Call(name, typed_args, ret_type, span) -> do_call(ffi, env, name, typed_args, ret_type, span)
     ast.Comptime(term, _) -> eval_with_ctor(ffi, env, term, truth_ctor)
     ast.Fix(name, body, _) -> ast.VFix(name, env, body)
-    ast.Let(name, value, body, _) -> {
+    ast.Let(_name, value, body, _) -> {
       let val = eval_with_ctor(ffi, env, value, truth_ctor)
       eval_with_ctor(ffi, [val, ..env], body, truth_ctor)
     }
@@ -72,9 +72,9 @@ pub fn do_app(
   ffi: state.FFI,
   env: ast.Env,
   fun: ast.Term,
-  implicit: List(ast.Term),
+  _implicit: List(ast.Term),
   arg: ast.Term,
-  span: Span,
+  _span: Span,
 ) -> ast.Value {
   let fun_val = eval(ffi, env, fun)
   let arg_val = eval(ffi, env, arg)
@@ -91,7 +91,7 @@ pub fn do_app(
         _ -> fix_body
       }
       case body {
-        ast.Lam(implicit, _param, body_term, _) -> {
+        ast.Lam(_implicit, _param, body_term, _) -> {
           let self = ast.VFix(name, fix_env, fix_body)
           eval(ffi, [arg_val, self, ..fix_env], body_term)
         }
@@ -112,9 +112,9 @@ pub fn do_app_with_ctor(
   ffi: state.FFI,
   env: ast.Env,
   fun: ast.Term,
-  implicit: List(ast.Term),
+  _implicit: List(ast.Term),
   arg: ast.Term,
-  span: Span,
+  _span: Span,
   truth_ctor: String,
 ) -> ast.Value {
   let fun_val = eval_with_ctor(ffi, env, fun, truth_ctor)
@@ -130,7 +130,7 @@ pub fn do_app_with_ctor(
         _ -> fix_body
       }
       case body {
-        ast.Lam(implicit, _param, body_term, _) -> {
+        ast.Lam(_implicit, _param, body_term, _) -> {
           let self = ast.VFix(name, fix_env, fix_body)
           eval_with_ctor(ffi, [arg_val, self, ..fix_env], body_term, truth_ctor)
         }
@@ -149,7 +149,7 @@ pub fn do_app_with_ctor(
 // DOT (FIELD PROJECTION)
 // ============================================================================
 
-pub fn do_dot(ffi: state.FFI, env: ast.Env, arg: ast.Term, field: String, span: Span) -> ast.Value {
+pub fn do_dot(ffi: state.FFI, env: ast.Env, arg: ast.Term, field: String, _span: Span) -> ast.Value {
   let arg_val = eval(ffi, env, arg)
   
   case arg_val {
@@ -174,9 +174,7 @@ pub fn do_match(
   ffi: state.FFI,
   env: ast.Env,
   arg: ast.Term,
-  motive: ast.Term,
   cases: List(ast.Case),
-  span: Span,
   steps: Int,
   truth_ctor: String,
 ) -> ast.Value {
@@ -184,7 +182,7 @@ pub fn do_match(
     True -> ast.VErr
     False -> {
       let arg_val = eval(ffi, env, arg)
-      do_match_loop(ffi, env, arg_val, motive, cases, steps, truth_ctor)
+      do_match_loop(ffi, env, arg_val, cases, steps, truth_ctor)
     }
   }
 }
@@ -193,7 +191,6 @@ fn do_match_loop(
   ffi: state.FFI,
   env: ast.Env,
   arg_val: ast.Value,
-  motive: ast.Term,
   cases: List(ast.Case),
   steps: Int,
   truth_ctor: String,
@@ -208,13 +205,13 @@ fn do_match_loop(
               let guard_val = eval(ffi, list.append(match_env, env), guard)
               case guard_val, ast.is_true_value(guard_val, truth_ctor) {
                 _, True -> eval(ffi, list.append(match_env, env), first.body)
-                _, False -> do_match_loop(ffi, env, arg_val, motive, rest, steps - 1, truth_ctor)
+                _, False -> do_match_loop(ffi, env, arg_val, rest, steps - 1, truth_ctor)
               }
             }
             None -> eval(ffi, list.append(match_env, env), first.body)
           }
         }
-        Error(Nil) -> do_match_loop(ffi, env, arg_val, motive, rest, steps - 1, truth_ctor)
+        Error(Nil) -> do_match_loop(ffi, env, arg_val, rest, steps - 1, truth_ctor)
       }
     }
   }
@@ -304,7 +301,7 @@ fn do_call(
   name: String,
   typed_args: List(#(ast.Term, ast.Term)),
   ret_type: ast.Term,
-  span: Span,
+  _span: Span,
 ) -> ast.Value {
   // Extract argument terms for evaluation
   let arg_terms = list.map(typed_args, fn(pair) { eval(ffi, env, pair.0) })

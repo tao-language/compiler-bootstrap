@@ -22,7 +22,6 @@
 import gleam/list
 import syntax/grammar.{type Span}
 import core/ast as ast
-import core/state as state
 
 // ============================================================================
 // TERM TRAVERSAL
@@ -92,15 +91,18 @@ pub fn visit_term(
         visit_term(inner, var, hole, lam, pi, app, match, ctr, rcd, dot, ann, call, comptime, fix, let_, typ, lit, lit_t, unit, err),
         visit_term(type_term, var, hole, lam, pi, app, match, ctr, rcd, dot, ann, call, comptime, fix, let_, typ, lit, lit_t, unit, err),
         span)
-    ast.Call(name, typed_args, ret, span) -> {
-      let shifted_args = list.map(typed_args, fn(pair) {
-        #(
-          visit_term(pair.0, var, hole, lam, pi, app, match, ctr, rcd, dot, ann, call, comptime, fix, let_, typ, lit, lit_t, unit, err),
-          visit_term(pair.1, var, hole, lam, pi, app, match, ctr, rcd, dot, ann, call, comptime, fix, let_, typ, lit, lit_t, unit, err),
-        )
-      })
-      ast.Call(name, shifted_args, visit_term(ret, var, hole, lam, pi, app, match, ctr, rcd, dot, ann, call, comptime, fix, let_, typ, lit, lit_t, unit, err), span)
-    }
+    ast.Call(name, typed_args, ret, span) ->
+      call(
+        name,
+        list.map(typed_args, fn(pair) {
+          #(
+            visit_term(pair.0, var, hole, lam, pi, app, match, ctr, rcd, dot, ann, call, comptime, fix, let_, typ, lit, lit_t, unit, err),
+            visit_term(pair.1, var, hole, lam, pi, app, match, ctr, rcd, dot, ann, call, comptime, fix, let_, typ, lit, lit_t, unit, err),
+          )
+        }),
+        visit_term(ret, var, hole, lam, pi, app, match, ctr, rcd, dot, ann, call, comptime, fix, let_, typ, lit, lit_t, unit, err),
+        span,
+      )
     ast.Comptime(inner, span) ->
       comptime(visit_term(inner, var, hole, lam, pi, app, match, ctr, rcd, dot, ann, call, comptime, fix, let_, typ, lit, lit_t, unit, err), span)
     ast.Fix(name, body, span) ->
