@@ -333,6 +333,11 @@ case condition {
 | 2025-03 | Type aliases can be semantic | `Type = Value` documents type theory |
 | 2025-03 | Documentation belongs in docs/ | Verbose comments clutter code |
 | 2025-03 | Gleam has no `if` | Language design choice |
+| 2026-04 | Visitor callback must be invoked | Generic visitor: unused callbacks must still be invoked for their matching AST node, not just forwarded through recursion |
+| 2026-04 | Unused motive params in eval | During NbE, the motive term is only used during type-checking, never during evaluation - safe to remove from eval functions |
+| 2026-04 | Rename + update callers | When removing an unused parameter, also update ALL call sites that pass it, not just the function signature |
+| 2026-04 | _prefix blocks variable use | Once a parameter is prefixed with `_`, it CANNOT be referenced in the body - use the bare name if you still need to pass it through |
+| 2026-04 | Call callback in visitor | The `call` callback in `visit_term` was being passed to recursive calls but never actually invoked for the Call constructor - a real bug |
 
 ---
 
