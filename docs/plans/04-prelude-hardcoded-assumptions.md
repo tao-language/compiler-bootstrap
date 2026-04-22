@@ -2,6 +2,35 @@
 
 **Date:** 2026-04-21
 
+## Status: IMPLEMENTED ✅
+
+The following changes have been implemented as of this update:
+
+### Implemented Changes
+
+| Change | Status | Commit |
+|--------|--------|--------|
+| Create `LanguageConfig` record | ✅ Done | `91a54ff` |
+| Add `LanguageConfig` to `DesugarContext` | ✅ Done | `91a54ff` |
+| Use `config.truth_constructor` in `desugar_while` | ✅ Done | `91a54ff` |
+| Use `config.bool_type` in `desugar_binop` | ✅ Done | `91a54ff` |
+| Use `config.list_cons`/`config.list_nil` in list desugaring | ✅ Done | `91a54ff` |
+| Replace hardcoded operator mappings with `LanguageConfig.binary_ops` | ✅ Done | `91a54ff` |
+| Replace hardcoded unary operator mappings with `LanguageConfig.unary_ops` | ✅ Done | `91a54ff` |
+| Replace hardcoded FFI operator dispatch with `is_ffi_binary_op`/`is_ffi_unary_op` | ✅ Done | `91a54ff` |
+| Replace hardcoded primitive types with `lookup_primitive_type` | ✅ Done | `91a54ff` |
+| Add 22 comprehensive tests for `LanguageConfig` | ✅ Done | `f20b434` |
+
+**Test Results:** All **587 tests pass** (565 existing + 22 new).
+
+### Remaining Items
+
+| Item | Status | Notes |
+|------|--------|-------|
+| FFI `bool_to_value` hardcoded `"True"`/`"False"` | ⚠️ Intentionally kept | FFI is part of Tao language layer, not Core. The desugarer (compiler) now uses `LanguageConfig` so all language-specific names go through it. The FFI can be updated separately if needed. |
+| `core_term_to_term_loop` hardcoded primitive types | ⚠️ Intentionally kept | This is Core-to-Core-AST conversion. The primitive types (`I32T`, `I64T`, etc.) are part of Core's fixed type system. The desugarer lookup (`desugar_type_ast`) now uses `LanguageConfig`. |
+| Prelude path prefix in `import_resolver` | ✅ Acceptable | Filesystem convention, not a language assumption |
+
 ## Overview
 
 This document identifies all hardcoded assumptions in the compiler codebase, categorizes them by severity and type, and provides a prioritized plan for remediation. The goal is to ensure:
@@ -486,3 +515,104 @@ fn tao_primitive_types() -> PrimitiveTypes {
 3. **Keep Core primitives fixed** — they are the compilation target
 4. **The desugarer should be parameterized** on the language config
 5. **Prelude loading is already correct** — no changes needed there
+
+---
+
+## Implementation Summary
+
+### Implemented: `LanguageConfig` Module
+
+**File:** `src/tao/language_config.gleam`
+
+The `LanguageConfig` record provides a single source of truth for all language-specific names and mappings:
+
+```gleam
+pub type LanguageConfig {
+  LanguageConfig(
+    truth_constructor: String,              // "True"
+    false_constructor: String,              // "False" 
+    bool_type: String,                      // "Bool"
+    list_cons: String,                      // "Cons"
+    list_nil: String,                       // "Nil"
+    binary_ops: dict.Dict(String, String),  // "+" → "add", etc.
+    unary_ops: dict.Dict(String, String),   // "-" → "negate", etc.
+    ffi_binary_ops: dict.Dict(String, Bool), // "add" → True
+    ffi_unary_ops: dict.Dict(String, Bool),  // "negate" → True
+    primitive_types: PrimitiveTypes,
+  )
+}
+```
+
+**Helper functions:**
+- `binary_op_name(config, symbol)` → `Option(function_name)`
+- `unary_op_name(config, symbol)` → `Option(function_name)`
+- `is_ffi_binary_op(config, func_name)` → `Bool`
+- `is_ffi_unary_op(config, func_name)` → `Bool`
+- `lookup_primitive_type(ptypes, name)` → `Option(LiteralType)`
+- `primitive_type_names(ptypes)` → `List(String)`
+- `is_primitive_type(ptypes, name)` → `Bool`
+
+### DesugarContext Update
+
+**File:** `src/tao/desugar.gleam`
+
+Added `config: LanguageConfig` field to `DesugarContext`. All DesugarContext construction sites updated:
+- `desugar_module_with_ctrs` — initializes with `default_config()`
+- `add_local`, `enter_loop`, `exit_loop` — preserve config
+- `desugar_imported_module_types`, `merge_prelude_ctr_env` — preserve config
+- Record update syntax (`..acc, ...`) — automatically preserves config
+
+### Changed Patterns
+
+**Before (hardcoded):**
+```gleam
+// desugar_while
+pattern: core_ast.PCtr("True", core_ast.PUnit)
+
+// desugar_binop
+case op_name {
+  "eq" | "neq" | "lt" | "lte" | "gt" | "gte" ->
+    CoreAnn(core_call, CoreCtr("Bool", CoreUnit(span), span), span)
+  _ -> core_call
+}
+
+// desugar_list_loop
+let cons = CoreVar("Cons", span)
+#(CoreVar("Nil", span), dc)
+```
+
+**After (configurable):**
+```gleam
+// desugar_while
+let truth_ctor = dc.config.truth_constructor
+pattern: core_ast.PCtr(truth_ctor, core_ast.PUnit)
+
+// desugar_binop
+case lang_config.is_ffi_binary_op(dc.config, op_name) {
+  True ->
+    let core_call = CoreCall(op_name, [core_left, core_right], span)
+    case op_name {
+      "eq" | "neq" | "lt" | "lte" | "gt" | "gte" ->
+        CoreAnn(core_call, CoreCtr(dc.config.bool_type, CoreUnit(span), span), span)
+      _ -> core_call
+    }
+  False -> { /* user-defined function via App */ }
+}
+
+// desugar_list_loop
+let cons = CoreVar(dc.config.list_cons, span)
+#(CoreVar(dc.config.list_nil, span), dc)
+```
+
+### Test Results
+
+- **Total tests:** 587 (565 existing + 22 new)
+- **All tests pass:** ✅
+- **New test file:** `test/tao/language_config_test.gleam`
+  - Default configuration tests (truth/false constructor, bool type, list constructors)
+  - Binary operator mapping tests (+, -, *, /, ==, !=, <, >, <=, >=, and, or, ++, |>)
+  - Unary operator mapping tests (-, not)
+  - FFI operator lookup tests (arithmetic/comparison = FFI, logical = non-FFI)
+  - Primitive type lookup tests (I32, I64, U32, U64, F32, F64)
+  - is_primitive_type and primitive_type_names tests
+
