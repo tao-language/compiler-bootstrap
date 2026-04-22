@@ -14,11 +14,17 @@ import core/list_utils as list_utils
 // MAIN EVALUATION
 // ============================================================================
 
+/// Evaluate a term to a value.
+///
+/// Uses the language's default truth constructor ("True" for Tao).
+/// For custom truth constructors, use `eval_with_ffi_config`.
 pub fn eval(ffi: state.FFI, env: ast.Env, term: ast.Term) -> ast.Value {
   eval_with_ctor(ffi, env, term, "True")
 }
 
 /// Evaluate a term with a configurable truth constructor for guard evaluation.
+/// The truth constructor is used in match guard evaluation to determine
+/// whether a guard expression evaluates to true.
 pub fn eval_with_ctor(
   ffi: state.FFI,
   env: ast.Env,
@@ -306,8 +312,9 @@ fn do_call(
   let ret_val = eval_with_ctor(ffi, env, ret_type, "True")
   
   case list.key_find(ffi, name) {
-    Ok(state.Builtin(impl, _)) -> {
-      case impl(arg_terms) {
+    Ok(builtin) -> {
+      let impl_fn = state.builtin_impl(builtin)
+      case impl_fn(arg_terms) {
         Some(result) -> result
         None -> ast.VErr
       }

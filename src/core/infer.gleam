@@ -751,22 +751,16 @@ fn infer_call(
   let #(arg_vals, arg_tys, s) = infer_typed_args(s, typed_args, [], [])
 
   case list.key_find(s.ffi, name) {
-    Ok(state.Builtin(impl, _)) -> {
-      case impl(arg_vals) {
+    Ok(builtin) -> {
+      let impl_fn = state.builtin_impl(builtin)
+      let ret_type = state.builtin_ret_type(builtin)
+      case impl_fn(arg_vals) {
         Some(result_val) -> {
-          // Derive actual result type from the value
-          let actual_result_ty = case result_val {
-            ast.VCtrValue(ctr) -> {
-              case list.key_find(s.ctrs, ctr.tag) {
-                Ok(c) -> eval.eval(s.ffi, get_env(s), c.ret_ty)
-                Error(Nil) -> value_type(arg_vals, arg_tys)
-              }
-            }
-            ast.VLit(v) -> typeof_lit(v)
-            ast.VLitT(lit_ty) -> ast.VLitT(lit_ty)
-            ast.VUnit -> ast.VTyp(0)
-            _ -> value_type(arg_vals, arg_tys)
-          }
+          // Use the explicit return type from the FFI definition.
+          // Previously this derived types from runtime values, which is
+          // non-deterministic and can cause type errors. The FFI type
+          // signature is the ground truth.
+          let actual_result_ty = ret_type
           #(result_val, actual_result_ty, s)
         }
         None -> {

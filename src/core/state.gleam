@@ -10,11 +10,35 @@ pub type Permission {
   AllowWrite(path: String)
 }
 
+/// Type information for an FFI builtin function.
+///
+/// The arg_types and ret_type provide explicit type signatures.
+/// This allows the type checker to validate FFI calls without
+/// relying on runtime evaluation.
 pub type Builtin {
   Builtin(
     impl: fn(List(ast.Value)) -> Option(ast.Value),
+    /// Types of each argument (in evaluation order, reversed from call site).
+    arg_types: List(ast.Type),
+    /// Return type of the function.
+    ret_type: ast.Type,
     required_permissions: List(Permission),
   )
+}
+
+/// Get the implementation function from a Builtin.
+pub fn builtin_impl(b: Builtin) -> fn(List(ast.Value)) -> Option(ast.Value) {
+  b.impl
+}
+
+/// Get the argument types from a Builtin.
+pub fn builtin_arg_types(b: Builtin) -> List(ast.Type) {
+  b.arg_types
+}
+
+/// Get the return type from a Builtin.
+pub fn builtin_ret_type(b: Builtin) -> ast.Type {
+  b.ret_type
 }
 
 pub type FFI =
@@ -90,6 +114,9 @@ pub type PHead {
 // INITIAL STATE
 // ============================================================================
 
+/// Default initial state for Tao (truth constructor = "True").
+///
+/// For other languages, use `initial_state_with(ffi, truth_ctor)` to configure.
 pub const initial_state = State(
   ctrs: [],
   vars: [],
@@ -104,8 +131,22 @@ pub const initial_state = State(
   step_counter: 0,
   max_steps: 10000,
   ffi: [],  // FFI is populated by the language layer (Tao)
-  truth_ctor: "True",  // Set by the language layer (Tao defaults to "True")
+  truth_ctor: "True",  // Tao default; override with `with_truth_ctor`
 )
+
+/// Create an initial state with the given truth constructor.
+pub fn initial_state_with(ffi: FFI, truth_ctor: String) -> State {
+  State(
+    ..initial_state,
+    ffi: ffi,
+    truth_ctor: truth_ctor,
+  )
+}
+
+/// Set the truth constructor on a state.
+pub fn with_truth_ctor(s: State, truth_ctor: String) -> State {
+  State(..s, truth_ctor: truth_ctor)
+}
 
 // ============================================================================
 // STATE HELPERS

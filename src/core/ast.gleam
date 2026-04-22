@@ -277,11 +277,14 @@ pub fn shift_case(case_val: Case, shift: Int) -> Case {
 // ============================================================================
 
 /// Check if a value matches the given truth constructor tag.
-/// This is language-agnostic — the truth constructor name is configured by
-/// the language layer (e.g., "True" for Tao, "yes" for other languages).
 pub fn is_true_value(value: Value, truth_ctor: String) -> Bool {
   case value {
     VCtrValue(VCtr(tag, _)) if tag == truth_ctor -> True
     _ -> False
   }
+}
+
+/// Alias for is_true_value. Prefer this name for clarity.
+pub fn is_truth_value(value: Value, truth_ctor: String) -> Bool {
+  is_true_value(value, truth_ctor)
 }
