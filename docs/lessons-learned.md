@@ -338,6 +338,9 @@ case condition {
 | 2026-04 | Rename + update callers | When removing an unused parameter, also update ALL call sites that pass it, not just the function signature |
 | 2026-04 | _prefix blocks variable use | Once a parameter is prefixed with `_`, it CANNOT be referenced in the body - use the bare name if you still need to pass it through |
 | 2026-04 | Call callback in visitor | The `call` callback in `visit_term` was being passed to recursive calls but never actually invoked for the Call constructor - a real bug |
+| 2026-04 | int.range needs `to:` | The `int.range` function requires a `to:` labelled argument for the exclusive upper bound - verify with `gleam build` before committing |
+| 2026-04 | `end` is a Gleam keyword | The name `end` conflicts with Gleam's for-comprehension `end` keyword - rename to `end_line` or similar |
+| 2026-04 | Remove dead stubs carefully | Functions like `instantiate_implicit_params` in unify.gleam were never called - verify with grep before removing |
 
 ---
 
