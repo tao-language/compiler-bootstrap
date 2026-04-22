@@ -8,6 +8,7 @@ import core/ast as core_ast
 import core/state as state
 import tao/desugar.{desugar_module, desugar_expr, desugar_stmt, type DesugarContext, DesugarContext}
 import tao/global_context.{new_context, with_prelude}
+import tao/language_config.{type LanguageConfig, default_config}
 import gleeunit
 import gleeunit/should
 import syntax/grammar.{Span}
@@ -26,7 +27,7 @@ const s1 = Span("desugar_test", 1, 1, 1, 1)
 
 fn new_dc() -> DesugarContext {
   let gc = with_prelude(new_context())
-  DesugarContext(gc, "test", [], [], [], [])
+  DesugarContext(gc, "test", [], [], [], [], default_config())
 }
 
 // ============================================================================

@@ -51,6 +51,7 @@ import tao/import_ast.{
   type ImportItem, ImportName, ImportType, ImportOperator,
 }
 import core/ast as core_ast
+import tao/language_config as lang_config
 
 // ============================================================================
 // CORE TERM TYPES (simplified for desugaring)
@@ -157,13 +158,15 @@ pub type DesugarContext {
     ctrs: core_ast.CtrEnv,
     /// Annotated function types (name -> type) for module-level bindings
     annotated_types: List(#(String, CoreTerm)),
+    /// Language-specific configuration (constructors, operators, primitives)
+    config: lang_config.LanguageConfig,
   )
 }
 
 /// Add a local variable to the scope.
 fn add_local(dc: DesugarContext, name: String) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types) = dc
-  DesugarContext(global, current_module, [name, ..local_scope], loop_stack, ctrs, annotated_types)
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types, config) = dc
+  DesugarContext(global, current_module, [name, ..local_scope], loop_stack, ctrs, annotated_types, config)
 }
 
 /// Create a CoreTerm with a hole (unknown type).
@@ -175,16 +178,16 @@ fn core_hole(dc: DesugarContext, span: Span) -> #(CoreTerm, DesugarContext) {
 
 /// Enter a loop context.
 fn enter_loop(dc: DesugarContext, fix_name: String) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types) = dc
-  DesugarContext(global, current_module, local_scope, [InLoop(fix_name, BreakReturns), ..loop_stack], ctrs, annotated_types)
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types, config) = dc
+  DesugarContext(global, current_module, local_scope, [InLoop(fix_name, BreakReturns), ..loop_stack], ctrs, annotated_types, config)
 }
 
 /// Exit the current loop context.
 fn exit_loop(dc: DesugarContext) -> DesugarContext {
-  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types) = dc
+  let DesugarContext(global, current_module, local_scope, loop_stack, ctrs, annotated_types, config) = dc
   case loop_stack {
     [] -> dc  // Should not happen if well-formed
-    [_loop, ..rest] -> DesugarContext(global, current_module, local_scope, rest, ctrs, annotated_types)
+    [_loop, ..rest] -> DesugarContext(global, current_module, local_scope, rest, ctrs, annotated_types, config)
   }
 }
 
@@ -489,6 +492,7 @@ pub fn desugar_module_with_ctrs(
     loop_stack: [],
     ctrs: initial_ctrs,
     annotated_types: [],
+    config: lang_config.default_config(),
   )
 
   // Process type definitions FIRST to populate constructor environment
@@ -897,6 +901,7 @@ fn merge_imported_ctr_env(dc: DesugarContext, import_item: Import) -> DesugarCon
         loop_stack: dc.loop_stack,
         ctrs: list.append(dc.ctrs, module_ref.ctr_env),
         annotated_types: dc.annotated_types,
+        config: dc.config,
       )
     }
     None -> dc  // Module not found - continue without merging
@@ -970,6 +975,7 @@ fn merge_prelude_ctr_env(dc: DesugarContext) -> DesugarContext {
           loop_stack: acc.loop_stack,
           ctrs: list.append(acc.ctrs, module_ref.ctr_env),
           annotated_types: acc.annotated_types,
+          config: acc.config,
         )
       Error(Nil) -> acc
     }
@@ -1412,10 +1418,10 @@ fn desugar_for(
   // Bind the collection
   let collection_binding = CoreLet("_for_collection", core_collection, span)
 
-  // Build the fixpoint body: match collection { | [] -> () | x::xs -> ... }
+  // Build the fixpoint body: match collection { | <list_nil> -> () | x::<list_cons> -> ... }
   // Empty list case: return unit (loop done)
   let nil_clause = CoreCase(
-    pattern: core_ast.PCtr("Nil", core_ast.PUnit),
+    pattern: core_ast.PCtr(dc.config.list_nil, core_ast.PUnit),
     body: CoreRcd([], span),
     guard: None,
     span: span,
@@ -1424,6 +1430,7 @@ fn desugar_for(
   // Cons case: bind head to pattern, execute body, recurse
   // for x in xs { body } → match xs { | x::rest -> body; for_loop() | _ -> () }
   let loop_call = CoreApp(CoreVar("for_loop", span), CoreRcd([], span), span)
+  let list_cons = dc.config.list_cons
   
   case pattern {
     ast.PVar(name, _pattern_span) -> {
@@ -1432,7 +1439,7 @@ fn desugar_for(
       
       // Use PAs to bind the head to the pattern variable
       let cons_clause = CoreCase(
-        pattern: core_ast.PCtr("Cons", core_ast.PAs(core_ast.PAny, name)),
+        pattern: core_ast.PCtr(list_cons, core_ast.PAs(core_ast.PAny, name)),
         body: body_with_rec,
         guard: None,
         span: span,
@@ -1454,7 +1461,7 @@ fn desugar_for(
       let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
       
       let cons_clause = CoreCase(
-        pattern: core_ast.PCtr("Cons", core_ast.PAs(core_ast.PAny, "_for_head")),
+        pattern: core_ast.PCtr(list_cons, core_ast.PAs(core_ast.PAny, "_for_head")),
         body: body_with_rec,
         guard: None,
         span: span,
@@ -1476,7 +1483,7 @@ fn desugar_for(
       let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
       
       let cons_clause = CoreCase(
-        pattern: core_ast.PCtr("Cons", core_ast.PAs(core_ast.PAny, "_for_head")),
+        pattern: core_ast.PCtr(list_cons, core_ast.PAs(core_ast.PAny, "_for_head")),
         body: body_with_rec,
         guard: None,
         span: span,
@@ -1523,10 +1530,11 @@ fn desugar_while(
   let loop_call = CoreApp(CoreVar("while_loop", span), CoreRcd([], span), span)
   let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
 
-  // Build match on condition: match condition { | True -> body; loop () | _ -> () }
-  // True clause: execute body and recurse
+  // Build match on condition: match condition { | <truth_ctor> -> body; loop () | _ -> () }
+  // True clause: execute body and recurse (uses language config for truth constructor)
+  let truth_ctor = dc.config.truth_constructor
   let true_clause = CoreCase(
-    pattern: core_ast.PCtr("True", core_ast.PUnit),
+    pattern: core_ast.PCtr(truth_ctor, core_ast.PUnit),
     body: body_with_rec,
     guard: None,
     span: span,
@@ -1739,15 +1747,10 @@ fn desugar_type_ast(
   // Type ASTs are converted to Core terms
   case type_ast {
     ast.TVar(name) -> {
-      // Check if it's a builtin type name
-      case name {
-        "I32" -> #(CoreBuiltinType(name, Span(name, 0, 0, 0, 0)), dc)
-        "I64" -> #(CoreBuiltinType(name, Span(name, 0, 0, 0, 0)), dc)
-        "U32" -> #(CoreBuiltinType(name, Span(name, 0, 0, 0, 0)), dc)
-        "U64" -> #(CoreBuiltinType(name, Span(name, 0, 0, 0, 0)), dc)
-        "F32" -> #(CoreBuiltinType(name, Span(name, 0, 0, 0, 0)), dc)
-        "F64" -> #(CoreBuiltinType(name, Span(name, 0, 0, 0, 0)), dc)
-        _ -> {
+      // Check if it's a builtin type name (looked up from primitive types registry)
+      case lang_config.lookup_primitive_type(dc.config.primitive_types, name) {
+        Some(_) -> #(CoreBuiltinType(name, Span(name, 0, 0, 0, 0)), dc)
+        None -> {
           // Type variable - check if it's a known type
           case lookup_type_in_ctrs(dc.ctrs, name) {
             True -> #(CoreCtr(name, CoreUnit(Span(name, 0, 0, 0, 0)), Span(name, 0, 0, 0, 0)), dc)
@@ -1998,6 +2001,27 @@ fn build_apps(
   }
 }
 
+/// Token string representation of a binary operator (for operator map lookup).
+fn binop_token(op: BinOperator) -> String {
+  case op {
+    OpAdd -> "+"
+    OpSub -> "-"
+    OpMul -> "*"
+    OpDiv -> "/"
+    OpMod -> "%"
+    OpEq -> "=="
+    OpNeq -> "/="
+    OpLt -> "<"
+    OpGt -> ">"
+    OpLte -> "<="
+    OpGte -> ">="
+    OpAnd -> "and"
+    OpOr -> "or"
+    OpConcat -> "++"
+    OpPipe -> "|>"
+  }
+}
+
 /// Desugar binary operator to function call.
 fn desugar_binop(
   left: Expr,
@@ -2006,39 +2030,42 @@ fn desugar_binop(
   span: Span,
   dc: DesugarContext,
 ) -> #(CoreTerm, DesugarContext) {
-  // Convert operator to function name
-  let op_name = binop_to_name(op)
+  // Convert operator token to function name using the language config's operator map
+  let op_name = case lang_config.binary_op_name(dc.config, binop_token(op)) {
+    Some(name) -> name
+    None -> binop_to_name(op)  // Fallback for unknown operators
+  }
 
   // Desugar operands
   let #(core_left, dc1) = desugar_expr_core(left, dc)
   let #(core_right, dc2) = desugar_expr_core(right, dc1)
 
-  // Boolean operators (and, or) call user-defined functions via App(Var, ...)
-  // Arithmetic/comparison operators use CoreCall for FFI builtins
-  case op_name {
-    "and" | "or" -> {
+  // Operator dispatch based on language config:
+  // - FFI operators (add, sub, mul, div, eq, neq, lt, gt, lte, gte) use CoreCall
+  // - Non-FFI operators (and, or, not, concat, pipe) call user-defined functions via App
+  case lang_config.is_ffi_binary_op(dc.config, op_name) {
+    True -> {
+      // FFI builtin: use CoreCall
+      let core_call = CoreCall(op_name, [core_left, core_right], span)
+      // Wrap comparison operators in CoreAnn with the bool type from config
+      let result = case op_name {
+        "eq" | "neq" | "lt" | "lte" | "gt" | "gte" -> {
+          CoreAnn(core_call, CoreCtr(dc.config.bool_type, CoreUnit(span), span), span)
+        }
+        _ -> core_call
+      }
+      #(result, dc2)
+    }
+    False -> {
+      // User-defined function: use App(Var(name), arg) pattern
       // Build call: op_name(left, right) as App(App(Var(op_name), left), right)
       let app1 = CoreApp(CoreVar(op_name, span), core_left, span)
       #(CoreApp(app1, core_right, span), dc2)
     }
-    _ -> {
-      // Arithmetic/comparison: use CoreCall for FFI builtins
-      let core_call = CoreCall(op_name, [core_left, core_right], span)
-      #(
-        case op_name {
-          "eq" | "neq" | "lt" | "lte" | "gt" | "gte" -> {
-            // Wrap comparison operators in CoreAnn with Bool type
-            CoreAnn(core_call, CoreCtr("Bool", CoreUnit(span), span), span)
-          }
-          _ -> core_call
-        },
-        dc2,
-      )
-    }
   }
 }
 
-/// Convert binary operator to function name.
+/// Convert binary operator to function name (legacy fallback for operators not in the map).
 fn binop_to_name(op: BinOperator) -> String {
   case op {
     OpAdd -> "add"
@@ -2059,6 +2086,14 @@ fn binop_to_name(op: BinOperator) -> String {
   }
 }
 
+/// Token string representation of a unary operator (for operator map lookup).
+fn unaryop_token(op: UnaryOperator) -> String {
+  case op {
+    OpNegate -> "-"
+    OpNot -> "not"
+  }
+}
+
 /// Desugar unary operator to function call.
 fn desugar_unaryop(
   op: UnaryOperator,
@@ -2066,24 +2101,29 @@ fn desugar_unaryop(
   span: Span,
   dc: DesugarContext,
 ) -> #(CoreTerm, DesugarContext) {
-  let op_name = unaryop_to_name(op)
+  // Convert operator token to function name using the language config's operator map
+  let op_name = case lang_config.unary_op_name(dc.config, unaryop_token(op)) {
+    Some(name) -> name
+    None -> unaryop_to_name(op)  // Fallback for unknown operators
+  }
   let #(core_expr, dc1) = desugar_expr_core(expr, dc)
 
-  // Boolean not calls user-defined function via App(Var, ...)
-  // Numeric negate uses CoreCall for FFI builtin
-  case op_name {
-    "not" -> {
-      // Build call: not(expr) as App(Var(not), expr)
-      #(CoreApp(CoreVar(op_name, span), core_expr, span), dc1)
-    }
-    _ -> {
-      // Numeric negate: use CoreCall for FFI builtin
+  // Operator dispatch based on language config:
+  // - FFI operators (negate) use CoreCall
+  // - Non-FFI operators (not) call user-defined functions via App
+  case lang_config.is_ffi_unary_op(dc.config, op_name) {
+    True -> {
+      // FFI builtin: use CoreCall
       #(CoreCall(op_name, [core_expr], span), dc1)
+    }
+    False -> {
+      // User-defined function: use App(Var(name), arg) pattern
+      #(CoreApp(CoreVar(op_name, span), core_expr, span), dc1)
     }
   }
 }
 
-/// Convert unary operator to function name.
+/// Convert unary operator to function name (legacy fallback for operators not in the map).
 fn unaryop_to_name(op: UnaryOperator) -> String {
   case op {
     OpNegate -> "negate"
@@ -2362,24 +2402,24 @@ fn tao_list_pattern_to_core(
 ) -> #(core_ast.Pattern, DesugarContext) {
   case items {
     [] -> {
-      // Empty list: Nil
+      // Empty list: <list_nil>
       case rest_name {
         Some(name) -> {
           // [..rest] or [] with rest
-          let core_pattern = core_ast.PCtr("Nil", core_ast.PUnit)
+          let core_pattern = core_ast.PCtr(dc.config.list_nil, core_ast.PUnit)
           let dc1 = add_local(dc, name)
           #(core_ast.PAs(core_pattern, name), dc1)
         }
         None -> {
-          #(core_ast.PCtr("Nil", core_ast.PUnit), dc)
+          #(core_ast.PCtr(dc.config.list_nil, core_ast.PUnit), dc)
         }
       }
     }
     [first, ..rest] -> {
-      // Non-empty list: Cons(h, t)
+      // Non-empty list: <list_cons>(h, t)
       let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
       let #(core_rest, dc2) = tao_list_rest_pattern_to_core(rest, rest_name, dc1)
-      #(core_ast.PCtr("Cons", core_first), dc2)
+      #(core_ast.PCtr(dc.config.list_cons, core_first), dc2)
     }
   }
 }
@@ -2391,23 +2431,23 @@ fn tao_list_rest_pattern_to_core(
 ) -> #(core_ast.Pattern, DesugarContext) {
   case rest {
     [] -> {
-      // End of list: Nil
+      // End of list: <list_nil>
       case rest_name {
         Some(name) -> {
-          let core_pattern = core_ast.PCtr("Nil", core_ast.PUnit)
+          let core_pattern = core_ast.PCtr(dc.config.list_nil, core_ast.PUnit)
           let dc1 = add_local(dc, name)
           #(core_ast.PAs(core_pattern, name), dc1)
         }
         None -> {
-          #(core_ast.PCtr("Nil", core_ast.PUnit), dc)
+          #(core_ast.PCtr(dc.config.list_nil, core_ast.PUnit), dc)
         }
       }
     }
     [first, ..rest_rest] -> {
-      // More elements: Cons(h, t)
+      // More elements: <list_cons>(h, t)
       let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
       let #(core_rest, dc2) = tao_list_rest_pattern_to_core(rest_rest, rest_name, dc1)
-      #(core_ast.PCtr("Cons", core_first), dc2)
+      #(core_ast.PCtr(dc.config.list_cons, core_first), dc2)
     }
   }
 }
@@ -2456,14 +2496,14 @@ fn desugar_list_loop(
 ) -> #(CoreTerm, DesugarContext) {
   case exprs {
     [] -> {
-      // Nil
-      #(CoreVar("Nil", span), dc)
+      // <list_nil>
+      #(CoreVar(dc.config.list_nil, span), dc)
     }
     [expr, ..rest] -> {
       let #(core_expr, dc1) = desugar_expr_core(expr, dc)
       let #(core_rest, dc2) = desugar_list_loop(rest, span, dc1)
-      // Cons(expr, rest)
-      let cons = CoreVar("Cons", span)
+      // <list_cons>(expr, rest)
+      let cons = CoreVar(dc.config.list_cons, span)
       let app1 = CoreApp(cons, core_expr, span)
       let app2 = CoreApp(app1, core_rest, span)
       #(app2, dc2)

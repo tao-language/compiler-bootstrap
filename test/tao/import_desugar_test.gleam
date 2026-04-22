@@ -9,6 +9,7 @@ import gleam/option.{None}
 import gleam/list
 import tao/desugar.{desugar_module, desugar_import, type CoreTerm, type DesugarContext, CoreLet, CoreRcd, CoreDot, CoreVar, DesugarContext as DcCtr}
 import tao/global_context.{type GlobalContext, new_context, with_prelude}
+import tao/language_config.{default_config}
 import tao/ast.{type Module, type Stmt, Module as ModuleCtr, StmtImport}
 import tao/import_ast.{ImportModule, ImportAlias, ImportSelective, ImportName}
 import syntax/grammar.{Span}
@@ -30,6 +31,7 @@ fn create_desugar_context(ctx: GlobalContext) -> DesugarContext {
     loop_stack: [],
     ctrs: [],
     annotated_types: [],
+    config: default_config(),
   )
 }
 
