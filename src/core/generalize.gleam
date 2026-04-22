@@ -60,34 +60,19 @@ fn collect_names_from_term(term: ast.Term) -> List(String) {
   collect_names_from_term_acc(term, [])
 }
 
+/// Collect all variable names from a term, accumulating in the given list.
 fn collect_names_from_term_acc(term: ast.Term, acc: List(String)) -> List(String) {
   case term {
     ast.Typ(_, _) | ast.Lit(_, _) | ast.LitT(_, _) | ast.Var(_, _) | ast.Hole(_, _) | ast.Err(_, _) | ast.Unit(_) -> acc
     ast.Rcd(fields, _) -> collect_names_from_fields_acc(fields, acc)
     ast.Ctr(_, arg, _) -> collect_names_from_term_acc(arg, acc)
     ast.Dot(arg, _, _) -> collect_names_from_term_acc(arg, acc)
-    ast.Ann(term, typ, _) -> {
-      collect_names_from_term_acc(typ, collect_names_from_term_acc(term, acc))
-    }
-    ast.Lam(_, param, body, _) -> {
-      let #(name, _) = param
-      collect_names_from_term_acc(body, [name, ..acc])
-    }
-    ast.Pi(_, name, in_term, out_term, _) -> {
-      collect_names_from_term_acc(out_term, [name, ..collect_names_from_term_acc(in_term, acc)])
-    }
-    ast.App(fun, implicit, arg, _) -> {
-      collect_names_from_term_acc(arg, collect_names_from_term_acc(fun, acc))
-    }
-    ast.Match(arg, motive, cases, _) -> {
-      collect_names_from_cases_acc(cases, collect_names_from_term_acc(motive, collect_names_from_term_acc(arg, acc)))
-    }
-    ast.Call(_, typed_args, ret, _) -> {
-      let acc = list.fold(typed_args, acc, fn(acc, pair) {
-        collect_names_from_term_acc(pair.0, collect_names_from_term_acc(pair.1, acc))
-      })
-      collect_names_from_term_acc(ret, acc)
-    }
+    ast.Ann(term, typ, _) -> collect_names_from_term_acc(typ, collect_names_from_term_acc(term, acc))
+    ast.Lam(_, param, body, _) -> collect_names_from_term_acc(body, [param.0, ..acc])
+    ast.Pi(_, name, in_term, out_term, _) -> collect_names_from_term_acc(out_term, [name, ..collect_names_from_term_acc(in_term, acc)])
+    ast.App(fun, _implicit, arg, _) -> collect_names_from_term_acc(arg, collect_names_from_term_acc(fun, acc))
+    ast.Match(arg, motive, cases, _) -> collect_names_from_cases_acc(cases, collect_names_from_term_acc(motive, collect_names_from_term_acc(arg, acc)))
+    ast.Call(_, typed_args, ret, _) -> collect_names_from_term_acc(ret, collect_names_from_typed_args_acc(typed_args, acc))
     ast.Comptime(inner, _) -> collect_names_from_term_acc(inner, acc)
     ast.Fix(name, body, _) -> collect_names_from_term_acc(body, [name, ..acc])
     ast.Let(name, value, body, _) -> collect_names_from_term_acc(body, [name, ..collect_names_from_term_acc(value, acc)])
@@ -95,26 +80,27 @@ fn collect_names_from_term_acc(term: ast.Term, acc: List(String)) -> List(String
 }
 
 fn collect_names_from_fields_acc(fields: List(#(String, ast.Term)), acc: List(String)) -> List(String) {
-  case fields {
-    [] -> acc
-    [#(name, term), ..rest] -> collect_names_from_fields_acc(rest, [name, ..collect_names_from_term_acc(term, acc)])
-  }
+  list.fold(fields, acc, fn(acc, pair) {
+    collect_names_from_term_acc(pair.1, [pair.0, ..acc])
+  })
 }
 
 fn collect_names_from_cases_acc(cases: List(ast.Case), acc: List(String)) -> List(String) {
-  case cases {
-    [] -> acc
-    [c, ..rest] -> {
-      collect_names_from_cases_acc(rest, collect_names_from_term_acc(c.body, acc))
-    }
-  }
+  list.fold(cases, acc, fn(acc, c) {
+    collect_names_from_term_acc(c.body, acc)
+  })
 }
 
 fn collect_names_from_terms_acc(terms: List(ast.Term), acc: List(String)) -> List(String) {
-  case terms {
-    [] -> acc
-    [term, ..rest] -> collect_names_from_terms_acc(rest, collect_names_from_term_acc(term, acc))
-  }
+  list.fold(terms, acc, fn(acc, term) {
+    collect_names_from_term_acc(term, acc)
+  })
+}
+
+fn collect_names_from_typed_args_acc(args: List(#(ast.Term, ast.Term)), acc: List(String)) -> List(String) {
+  list.fold(args, acc, fn(acc, pair) {
+    collect_names_from_term_acc(pair.1, collect_names_from_term_acc(pair.0, acc))
+  })
 }
 
 fn generate_unique_names(n: Int, existing: List(String), counter: Int) -> List(String) {
