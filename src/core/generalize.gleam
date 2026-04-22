@@ -11,6 +11,7 @@ import core/state as state
 import core/eval as eval
 import core/quote as quote
 import core/subst as subst
+import core/visitor as visitor
 
 pub fn generalize_holes(
   holes: List(Int),
@@ -214,81 +215,72 @@ fn subst_elim_with_hole_vars(subst: List(#(Int, Int)), elim: ast.Elim) -> ast.El
   }
 }
 
+/// Replace holes with variables using the substitution map.
+/// Uses the generic visitor to avoid ~50 lines of recursive pattern matching.
 fn subst_term_with_hole_vars(subst: List(#(Int, Int)), term: ast.Term) -> ast.Term {
-  case term {
-    ast.Hole(id, span) -> {
+  visitor.visit_term(
+    term,
+    // var: identity
+    fn(idx, span) { ast.Var(idx, span) },
+    // hole: look up in substitution, replace with Var or keep as Hole
+    fn(id, span) {
       case list.key_find(subst, id) {
         Ok(index) -> ast.Var(index, span)
         Error(Nil) -> ast.Hole(id, span)
       }
-    }
-    ast.App(fun, impl, arg, span) ->
-      ast.App(
-        subst_term_with_hole_vars(subst, fun),
-        list.map(impl, fn(t) { subst_term_with_hole_vars(subst, t) }),
-        subst_term_with_hole_vars(subst, arg),
-        span,
-      )
-    ast.Pi(impl, name, in_t, out_t, span) ->
-      ast.Pi(
-        impl,
-        name,
-        subst_term_with_hole_vars(subst, in_t),
-        subst_term_with_hole_vars(subst, out_t),
-        span,
-      )
-    ast.Lam(impl, param, body, span) ->
-      ast.Lam(impl, param, subst_term_with_hole_vars(subst, body), span)
-    ast.Ann(inner, ty, span) ->
-      ast.Ann(subst_term_with_hole_vars(subst, inner), subst_term_with_hole_vars(subst, ty), span)
-    ast.Rcd(fields, span) ->
-      ast.Rcd(list.map(fields, fn(kv) { #(kv.0, subst_term_with_hole_vars(subst, kv.1)) }), span)
-    ast.Ctr(tag, arg, span) ->
-      ast.Ctr(tag, subst_term_with_hole_vars(subst, arg), span)
-    ast.Dot(arg, name, span) ->
-      ast.Dot(subst_term_with_hole_vars(subst, arg), name, span)
-    ast.Match(arg, motive, cases, span) ->
+    },
+    // lam: visit body
+    fn(implicit, param, body, span) { ast.Lam(implicit, param, body, span) },
+    // pi: visit both in and out
+    fn(implicit, name, in_t, out_t, span) { ast.Pi(implicit, name, in_t, out_t, span) },
+    // app: visit fun, implicit args, and arg
+    fn(fun, impl, arg, span) { ast.App(fun, impl, arg, span) },
+    // match: visit arg, motive, and each case body
+    fn(arg, motive, cases, span) {
       ast.Match(
-        subst_term_with_hole_vars(subst, arg),
-        subst_term_with_hole_vars(subst, motive),
+        arg,
+        motive,
         list.map(cases, fn(c) {
           ast.Case(
-            pattern: subst_pattern_with_hole_vars(subst, c.pattern),
-            body: subst_term_with_hole_vars(subst, c.body),
+            pattern: visitor.visit_pattern(c.pattern,
+              fn(t, p) { ast.PCtr(t, p) },
+              fn(fs) { ast.PRcd(fs) },
+            ),
+            body: c.body,
             guard: c.guard,
-            span: c.span
+            span: c.span,
           )
         }),
         span,
       )
-    ast.Call(name, typed_args, ret, span) -> {
-      let shifted_args = list.map(typed_args, fn(pair) { #(subst_term_with_hole_vars(subst, pair.0), subst_term_with_hole_vars(subst, pair.1)) })
-      ast.Call(name, shifted_args, subst_term_with_hole_vars(subst, ret), span)
-    }
-    ast.Comptime(inner, span) ->
-      ast.Comptime(subst_term_with_hole_vars(subst, inner), span)
-    ast.Fix(name, body, span) ->
-      ast.Fix(name, subst_term_with_hole_vars(subst, body), span)
-    ast.Let(name, value, body, span) ->
-      ast.Let(name, subst_term_with_hole_vars(subst, value), subst_term_with_hole_vars(subst, body), span)
-    ast.Typ(_, _) | ast.Lit(_, _) | ast.LitT(_, _) | ast.Var(_, _) | ast.Unit(_) | ast.Err(_, _) -> term
-  }
-}
-
-
-fn subst_pattern_with_hole_vars(subst: List(#(Int, Int)), pattern: ast.Pattern) -> ast.Pattern {
-  case pattern {
-    ast.PAs(inner, name) -> ast.PAs(subst_pattern_with_hole_vars(subst, inner), name)
-    ast.PCtr(tag, arg) -> ast.PCtr(tag, subst_pattern_with_hole_vars(subst, arg))
-    ast.PLit(_) -> pattern
-    ast.PLitT(_) -> pattern
-    ast.PTyp(_) -> pattern
-    ast.PRcd(fields) -> ast.PRcd(list.map(fields, fn(pair) {
-      #(pair.0, subst_pattern_with_hole_vars(subst, pair.1))
-    }))
-    ast.PUnit -> pattern
-    ast.PAny -> pattern
-  }
+    },
+    // ctr: visit arg
+    fn(tag, arg, span) { ast.Ctr(tag, arg, span) },
+    // rcd: visit field terms
+    fn(fields, span) { ast.Rcd(fields, span) },
+    // dot: visit arg
+    fn(arg, name, span) { ast.Dot(arg, name, span) },
+    // ann: visit inner and type
+    fn(inner, ty, span) { ast.Ann(inner, ty, span) },
+    // call: visit typed args and return type
+    fn(name, typed_args, ret, span) { ast.Call(name, typed_args, ret, span) },
+    // comptime: visit inner
+    fn(inner, span) { ast.Comptime(inner, span) },
+    // fix: visit body
+    fn(name, body, span) { ast.Fix(name, body, span) },
+    // let: visit value and body
+    fn(name, value, body, span) { ast.Let(name, value, body, span) },
+    // typ: identity
+    fn(univ, span) { ast.Typ(univ, span) },
+    // lit: identity
+    fn(value, span) { ast.Lit(value, span) },
+    // lit_t: identity
+    fn(lt, span) { ast.LitT(lt, span) },
+    // unit: identity
+    fn(span) { ast.Unit(span) },
+    // err: identity
+    fn(msg, span) { ast.Err(msg, span) },
+  )
 }
 
 fn quote_domain_with_implicit(
