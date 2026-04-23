@@ -31,8 +31,8 @@ import gleam/int
 import gleam/list
 import gleam/option.{Some}
 import gleam/string
-import syntax/grammar.{type Span, Span}
-import syntax/source_snippet.{type Diagnostic, Error, Highlight, Info, Secondary, Warning}
+import syntax/grammar
+import syntax/source_snippet.{type Diagnostic}
 
 // ============================================================================
 // EMOJI CONSTANTS
@@ -41,13 +41,8 @@ import syntax/source_snippet.{type Diagnostic, Error, Highlight, Info, Secondary
 const emoji_error = "❌"
 const emoji_warning = "⚠️"
 const emoji_info = "ℹ️"
-const emoji_tip = "💡"
 const emoji_note = "📝"
 const emoji_help = "🔧"
-const emoji_reference = "📚"
-const emoji_target = "🎯"
-const emoji_context = "🔍"
-const emoji_success = "✅"
 
 // ============================================================================
 // ERROR CODES
@@ -105,7 +100,7 @@ pub fn error_message(error: Error) -> String {
 // ERROR TO DIAGNOSTIC
 // ============================================================================
 
-pub fn error_to_diagnostic(error: Error, source: String, file: String) -> Diagnostic {
+pub fn error_to_diagnostic(error: Error, source: String, _file: String) -> Diagnostic {
   let code = error_code(error)
   let message = error_message(error)
   let severity = source_snippet.Error
@@ -510,7 +505,6 @@ fn type_to_string(ty: ast.Type) -> String {
     ast.VLam(_, _, _, _) -> "λ"
     ast.VPi(_, _, _, domain, _) ->
       "(" <> type_to_string(domain) <> ") → ..."
-    ast.VRcd(_) -> "{...}"
     ast.VRecord(_) -> "Record{...}"
     ast.VCall(name, _, _) -> name
     ast.VFix(_, _, _) -> "fix"
@@ -540,7 +534,6 @@ fn value_to_string(val: ast.Value) -> String {
     ast.VRecord(_) -> "Record{...}"
     ast.VCall(name, _, _) -> name <> "(...)"
     ast.VFix(_, _, _) -> "fix"
-    ast.VUnit -> "Unit"
     ast.VErr -> "⊥"
   }
 }
@@ -582,10 +575,6 @@ fn literal_type_from_value(lit: ast.Literal) -> String {
     ast.IntLit(_) -> "Int (any integer type)"
     ast.FloatLit(_) -> "Float (any float type)"
   }
-}
-
-fn value_to_type(value: ast.Value) -> ast.Type {
-  value
 }
 
 fn pattern_to_string(pattern: ast.Pattern) -> String {

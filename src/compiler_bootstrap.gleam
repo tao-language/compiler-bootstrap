@@ -364,24 +364,6 @@ fn collect_and_run_tests_from_directory(dir_path: String, verbose: Bool) -> List
   }
 }
 
-fn format_core_error(error: TypeError) -> String {
-  case error {
-    SyntaxError(_, expected, got, _) ->
-      "Syntax error: expected " <> expected <> ", got " <> got
-    TypeMismatch(_, _, _, _) ->
-      "Type error: type mismatch"
-    CtrUndefined(name, _) ->
-      "Constructor error: undefined constructor '" <> name <> "'"
-    VarUndefined(_, _) ->
-      "Variable error: undefined variable"
-    MatchMissingCase(_, _) ->
-      "Exhaustiveness error: missing case in pattern match"
-    MatchRedundantCase(_) ->
-      "Warning: redundant case in pattern match"
-    _ -> "Error (see above for details)"
-  }
-}
-
 /// Update State.ctrs with constructor definitions from desugaring.
 fn update_state_ctrs(state: State, ctrs: ast.CtrEnv) -> State {
   State(..state, ctrs: ctrs)
@@ -393,7 +375,6 @@ fn update_state_ctrs(state: State, ctrs: ast.CtrEnv) -> State {
 fn run_and_evaluate(
   term: ast.Term,
   type_state: State,
-  source: String,
   file: String,
   verbose: Bool,
 ) -> Result(String, List(TypeError)) {
@@ -691,7 +672,7 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   }
 
   // Evaluate and quote the result
-  case run_and_evaluate(parse_result.ast, type_state, file.contents, file.path, verbose) {
+  case run_and_evaluate(parse_result.ast, type_state, file.path, verbose) {
     Ok(_) -> Ok(Nil)
     Error(errors) -> Error(TypeError(errors))
   }
@@ -778,7 +759,7 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   }
 
   // Evaluate and quote the result
-  case run_and_evaluate(term, type_state, file.contents, file.path, verbose) {
+  case run_and_evaluate(term, type_state, file.path, verbose) {
     Ok(_) -> Ok(Nil)
     Error(errors) -> Error(TypeError(errors))
   }

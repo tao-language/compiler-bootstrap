@@ -191,7 +191,7 @@ pub fn file_base_name(file: String) -> String {
   // Remove extension
   case string.split(filename, ".") {
     [] -> filename
-    [name] -> filename
+    [_] -> filename
     [name, ..] -> name
   }
 }
