@@ -908,7 +908,7 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(tao_ast.Stmt) {
             }
             _ -> {
               let ast_expr = expr_to_ast(stmt_expr)
-              [tao_ast.StmtExpr(ast_expr, get_expr_span_from_syntax(stmt_expr))]
+              [tao_ast.StmtExpr(ast_expr, get_expr_span(stmt_expr))]
             }
           }
         })
@@ -916,12 +916,12 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(tao_ast.Stmt) {
       TaoIf(_, _, _, _) -> {
         // If expressions become StmtExpr
         let ast_expr = expr_to_ast(expr)
-        [tao_ast.StmtExpr(ast_expr, get_expr_span_from_syntax(expr))]
+        [tao_ast.StmtExpr(ast_expr, get_expr_span(expr))]
       }
       _ -> {
         // Other expressions become StmtExpr
         let ast_expr = expr_to_ast(expr)
-        [tao_ast.StmtExpr(ast_expr, get_expr_span_from_syntax(expr))]
+        [tao_ast.StmtExpr(ast_expr, get_expr_span(expr))]
       }
     }
   })
@@ -938,35 +938,6 @@ fn params_to_ast_params(params: List(#(String, option.Option(String))), span: Sp
   })
 }
 
-fn get_expr_span_from_syntax(expr: TaoExpr) -> Span {
-  case expr {
-    TaoVar(_, span) -> span
-    TaoInt(_, span) -> span
-    TaoFloat(_, span) -> span
-    TaoBinOp(_, _, _, span) -> span
-    TaoUnaryOp(_, _, span) -> span
-    TaoOverloadedFn(_, _, _, _, _, _, span) -> span
-    TaoOverloadedApp(_, _, span) -> span
-    TaoLet(_, _, _, _, span) -> span
-    TaoBlockExpr(_, span) -> span
-    TaoSimpleFn(_, _, _, _, span) -> span
-    TaoApp(_, _, span) -> span
-    TaoLambda(_, _, _, span) -> span
-    TaoMatch(_, _, span) -> span
-    TaoIf(_, _, _, span) -> span
-    For(_, _, _, span) -> span
-    While(_, _, span) -> span
-    Loop(_, span) -> span
-    Break(span) -> span
-    Continue(span) -> span
-    TaoStr(_, span) -> span
-    TaoTest(_, _, span) -> span
-    TaoRun(_, span) -> span
-    Import(_, span) -> span
-    Ctr(_, _, span) -> span
-    TypeDecl(_, _, _, span) -> span
-  }
-}
 
 fn debug_term(term: ast.Term) -> String {
   // Simple debug representation

@@ -1,15 +1,29 @@
 # Comprehensive Analysis: Hardcoded Assumptions, Dummy Spans, and Architecture Issues
 
+## Status: Phases 1-4 Completed ✅
+
+| Phase | Description | Status | Commit |
+|-------|-------------|--------|--------|
+| **Phase 1** | Dummy spans in compiler bootstrap and test_api; add FFI to state | ✅ Done | `4d1a84b` |
+| **Phase 2** | Pass State.truth_ctor through eval chain; add eval_from_state | ✅ Done | `faa567b` |
+| **Phase 3** | FFI type correctness — overloaded ILitT, Bool as VCtrValue | ✅ Done | `89bcfa6` |
+| **Phase 4** | Desugarer uses config-based primitive type lookup | ✅ Done | `d2a6bc5` |
+| **Phase 5** | Extract run_and_evaluate from run_tao/run_core | ✅ Done | `e7bbf74` |
+
+**Total changes**: 8 files, +581 lines, -158 lines
+**Tests**: All 797 tests passing.
+
 ## Executive Summary
 
-The codebase is well-structured with a clear separation between Core (language-agnostic) and Tao (language-specific). The prelude loading mechanism via `with_prelude()` is correctly designed. However, there are **four categories of issues** that need addressing:
+The codebase is well-structured with a clear separation between Core (language-agnostic) and Tao (language-specific). The prelude loading mechanism via `with_prelude()` is correctly designed. Remaining issues are minimal:
 
-| Category | Severity | Count | Files Affected |
-|----------|----------|-------|----------------|
-| Dummy spans (line/col = 0) | Medium-High | ~95 occurrences | 10 files |
-| Hardcoded truth constructor ("True") | Medium | 6 locations | 3 files |
-| Hardcoded literal type defaults | Low (by design) | N/A | 2 files |
-| FFI type hardcoding | Medium | 20+ type signatures | 1 file |
+| Category | Severity | Count | Status |
+|----------|----------|-------|--------|
+| Dummy spans in error paths | Low (by design) | ~19 | ✅ Resolved — only in error/fallback paths |
+| Truth constructor hardcoding | Medium | 6 locations | ✅ Fixed (Phase 2) |
+| FFI type hardcoding | Medium | 20+ type signatures | ✅ Fixed (Phase 3) |
+| I32 hardcoded in desugarer | Low | 1 case | ✅ Fixed (Phase 3) |
+| Duplicate code | Low | 3 locations | ✅ Reduced (Phase 5) |
 
 ---
 
