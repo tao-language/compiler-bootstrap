@@ -8,9 +8,12 @@ import gleam/option.{type Option, None, Some}
 import tao/language_config as lang_config
 
 /// All Tao builtin FFI operations.
+/// Constructor names come from language_config to avoid hardcoding.
 pub fn tao_ffis() -> state.FFI {
   let cfg = lang_config.default_config()
   let bool_t = lang_config.bool_type_as_core(cfg)
+  let truth_ctor = cfg.truth_constructor
+  let false_ctor = cfg.false_constructor
   [
     #("add", state.Builtin(
       impl: ffi_add,
@@ -37,37 +40,37 @@ pub fn tao_ffis() -> state.FFI {
       required_permissions: [],
     )),
     #("eq", state.Builtin(
-      impl: ffi_eq,
+      impl: fn(args) { dispatch_cmp(args, int_op_eq, float_op_eq, truth_ctor, false_ctor) },
       arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
       ret_type: bool_t,
       required_permissions: [],
     )),
     #("neq", state.Builtin(
-      impl: ffi_neq,
+      impl: fn(args) { dispatch_cmp(args, int_op_neq, float_op_neq, truth_ctor, false_ctor) },
       arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
       ret_type: bool_t,
       required_permissions: [],
     )),
     #("lt", state.Builtin(
-      impl: ffi_lt,
+      impl: fn(args) { dispatch_cmp(args, int_op_lt, float_op_lt, truth_ctor, false_ctor) },
       arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
       ret_type: bool_t,
       required_permissions: [],
     )),
     #("gt", state.Builtin(
-      impl: ffi_gt,
+      impl: fn(args) { dispatch_cmp(args, int_op_gt, float_op_gt, truth_ctor, false_ctor) },
       arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
       ret_type: bool_t,
       required_permissions: [],
     )),
     #("lte", state.Builtin(
-      impl: ffi_lte,
+      impl: fn(args) { dispatch_cmp(args, int_op_lte, float_op_lte, truth_ctor, false_ctor) },
       arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
       ret_type: bool_t,
       required_permissions: [],
     )),
     #("gte", state.Builtin(
-      impl: ffi_gte,
+      impl: fn(args) { dispatch_cmp(args, int_op_gte, float_op_gte, truth_ctor, false_ctor) },
       arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
       ret_type: bool_t,
       required_permissions: [],
@@ -142,47 +145,67 @@ fn dispatch_div(args: List(ast.Value)) -> Option(ast.Value) {
 }
 
 // ============================================================================
-// PUBLIC FFI ENTRY POINTS
+// INTERNAL FFI IMPLMENTATIONS
 // ============================================================================
 
+/// Public entry point for addition.
 pub fn ffi_add(args: List(ast.Value)) -> Option(ast.Value) {
   dispatch_arith(args, int_op_add, float_op_add)
 }
 
+/// Public entry point for subtraction.
 pub fn ffi_sub(args: List(ast.Value)) -> Option(ast.Value) {
   dispatch_arith(args, int_op_sub, float_op_sub)
 }
 
+/// Public entry point for multiplication.
 pub fn ffi_mul(args: List(ast.Value)) -> Option(ast.Value) {
   dispatch_arith(args, int_op_mul, float_op_mul)
 }
 
+/// Public entry point for division.
 pub fn ffi_div(args: List(ast.Value)) -> Option(ast.Value) {
   dispatch_div(args)
 }
 
+// ============================================================================
+// PUBLIC FFI ENTRY POINTS (for test access)
+// ============================================================================
+
+/// Public entry point for equality comparison.
 pub fn ffi_eq(args: List(ast.Value)) -> Option(ast.Value) {
-  dispatch_cmp(args, int_op_eq, float_op_eq, "True", "False")
+  let cfg = lang_config.default_config()
+  dispatch_cmp(args, int_op_eq, float_op_eq, cfg.truth_constructor, cfg.false_constructor)
 }
 
+/// Public entry point for not-equal comparison.
 pub fn ffi_neq(args: List(ast.Value)) -> Option(ast.Value) {
-  dispatch_cmp(args, int_op_neq, float_op_neq, "True", "False")
+  let cfg = lang_config.default_config()
+  dispatch_cmp(args, int_op_neq, float_op_neq, cfg.truth_constructor, cfg.false_constructor)
 }
 
+/// Public entry point for less-than comparison.
 pub fn ffi_lt(args: List(ast.Value)) -> Option(ast.Value) {
-  dispatch_cmp(args, int_op_lt, float_op_lt, "True", "False")
+  let cfg = lang_config.default_config()
+  dispatch_cmp(args, int_op_lt, float_op_lt, cfg.truth_constructor, cfg.false_constructor)
 }
 
+/// Public entry point for greater-than comparison.
 pub fn ffi_gt(args: List(ast.Value)) -> Option(ast.Value) {
-  dispatch_cmp(args, int_op_gt, float_op_gt, "True", "False")
+  let cfg = lang_config.default_config()
+  dispatch_cmp(args, int_op_gt, float_op_gt, cfg.truth_constructor, cfg.false_constructor)
 }
 
+/// Public entry point for less-than-or-equal comparison.
 pub fn ffi_lte(args: List(ast.Value)) -> Option(ast.Value) {
-  dispatch_cmp(args, int_op_lte, float_op_lte, "True", "False")
+  let cfg = lang_config.default_config()
+  dispatch_cmp(args, int_op_lte, float_op_lte, cfg.truth_constructor, cfg.false_constructor)
 }
 
+/// Public entry point for greater-than-or-equal comparison.
 pub fn ffi_gte(args: List(ast.Value)) -> Option(ast.Value) {
-  dispatch_cmp(args, int_op_gte, float_op_gte, "True", "False")
+  let cfg = lang_config.default_config()
+  dispatch_cmp(args, int_op_gte, float_op_gte, cfg.truth_constructor, cfg.false_constructor)
 }
 
 // ============================================================================
