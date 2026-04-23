@@ -1,0 +1,8 @@
+// Type Annotation Needed
+// The type checker cannot infer the type without help
+// This happens with polymorphic values or ambiguous expressions
+// Example: using a polymorphic identity function in an ambiguous context
+// Note: This may not trigger an error without proper ambiguity detection
+%let id = x -> x in
+%let result = id in
+result : Int -> Int

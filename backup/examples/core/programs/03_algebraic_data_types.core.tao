@@ -1,0 +1,10 @@
+// Algebraic Data Types (Golden Sample)
+// Note: Constructor definitions require a prelude/type definition system
+// This demonstrates the intended syntax
+
+// Intended syntax (requires future implementation):
+// data Bool = #True | #False
+// data Nat = #Zero | #Succ(Nat)
+
+// For now, use lambdas and applications
+%let ttrue = t -> f -> t in %let ffalse = t -> f -> f in ttrue

@@ -1,0 +1,15 @@
+    Running compiler_bootstrap.main
+
+error[E0106]: Unsolved hole
+  ┌─ input:3:2
+1 │ // Hole with identifier
+2 │ // Used as a placeholder during development
+3 │ ?1
+     ^
+4 │ 
+  = note: Hole #0 was not solved during type checking
+  = note: Holes are development placeholders that must be replaced before the program is complete
+  = hint: Holes are placeholders that must be filled
+  = hint: Provide a term of the expected type, or add a type annotation
+  = hint: Use holes temporarily during development, then replace them
+

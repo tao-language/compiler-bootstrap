@@ -1,0 +1,8 @@
+// Type Universes & Holes
+// Verifies Universe levels and Hole inference
+
+// Polymorphic Identity
+%let id_poly = x -> x in
+
+// Apply at a value
+id_poly(42)

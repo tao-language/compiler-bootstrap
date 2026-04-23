@@ -1,0 +1,6 @@
+// Pattern Matching Test
+// Demonstrates lambda patterns (the core language's form of pattern matching)
+// In the core language, patterns are used in lambda abstractions
+// This example shows a simple identity function
+%let id = x -> x in
+id(42)

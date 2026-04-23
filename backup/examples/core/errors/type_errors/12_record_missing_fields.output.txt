@@ -1,0 +1,15 @@
+
+error[E0111]: Cannot access field on non-record
+  ┌─ input:6:1
+3 │ // This error occurs when projecting a field that wasn't defined
+4 │ // Example: trying to access field 'z' from a record that only has 'x' and 'y'
+5 │ %let r = {x: 1, y: 2} in
+6 │ r.z
+    ^
+7 │ 
+  = note: Cannot access field `z` on this value
+  = note: Field access (.field) only works on records
+  = hint: Use a record value instead of a primitive
+  = hint: Check that you're accessing a record, not a number or other type
+  = hint: Wrap the value in a record: {value: x}.field
+

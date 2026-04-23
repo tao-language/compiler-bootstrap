@@ -1,0 +1,3 @@
+// Identity function
+// Returns its argument unchanged
+x -> x

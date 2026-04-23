@@ -1,0 +1,9 @@
+
+error[E0001]: Syntax error
+  ┌─ input:0:0
+1 │ // Parse Error: Opening brace without closing
+2 │ {x: 1
+3 │ 
+  = note: Expected: valid alternative
+  = note: Got: none
+

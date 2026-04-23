@@ -1,0 +1,6 @@
+type T = A | B
+
+// Missing case B
+match A {
+  | A -> 1
+}

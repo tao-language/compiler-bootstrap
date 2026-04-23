@@ -1,0 +1,3 @@
+// Let binding example
+// %let x = value in body  desugars to  (x -> body)(value)
+%let x = 42 in x

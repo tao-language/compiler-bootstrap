@@ -1,0 +1,5 @@
+// Comptime (Golden Sample)
+// This demonstrates the syntax for compile-time computation
+
+// Compute a value at comptime
+%comptime 15

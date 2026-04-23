@@ -1,0 +1,15 @@
+
+error[E0102]: Undefined variable
+  ┌─ input:5:1
+2 │ // Using a variable that is not defined in scope
+3 │ // This error occurs when referencing an undefined identifier
+4 │ // Example: using TODO as a placeholder for incomplete code
+5 │ TODO
+    ^^^^
+6 │ 
+  = note: Variable at index 0 is not defined in this scope
+  = note: Variables must be defined before they are used, typically in a let binding or lambda parameter
+  = hint: Check variable name and scope
+  = hint: Did you forget to define this variable?
+  = hint: Check for typos in the variable name
+

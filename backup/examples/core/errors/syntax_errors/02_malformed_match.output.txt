@@ -1,0 +1,9 @@
+
+error[E0001]: Syntax error
+  ┌─ input:0:0
+1 │ %match x ~ %Type {
+2 │   | y -> y
+3 │   | #Some(z -> z
+  = note: Expected: valid alternative
+  = note: Got: none
+

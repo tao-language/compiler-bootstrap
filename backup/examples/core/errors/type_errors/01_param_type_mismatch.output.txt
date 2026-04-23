@@ -1,0 +1,10 @@
+error[E0101]: Type mismatch
+  ┌─ input:1:1
+1 │ 42 : %Type
+    ^^ --
+2 │ 
+  = note: Int and %Type(0) are incompatible types
+  = note: The expression produces Int but %Type(0) is expected here
+  = hint: Check that the expression has the expected type
+  = hint: Consider adding a type annotation
+  = hint: Did you mean to use a different expression?

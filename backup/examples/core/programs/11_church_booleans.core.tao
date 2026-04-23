@@ -1,0 +1,7 @@
+// Boolean Logic with Church Encoding
+// Church booleans and logical operations
+
+// Church True: λt. λf. t
+// Church False: λt. λf. f
+// Test: return true
+%let ttrue = t -> f -> t in %let ffalse = t -> f -> f in ttrue

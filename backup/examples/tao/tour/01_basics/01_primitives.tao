@@ -1,0 +1,18 @@
+// Single line comments start with double slash.
+/* Multi line comments are C-style too,
+   enclosed in slash-star. */
+
+// Use a REPL-like syntax to add examples that can be tested.
+> 1 + 1
+2
+
+// You can use ~> to write it in a single line, useful for short examples.
+> 2 * 3 ~> 6
+
+// Use let to define new variables, variables are immutable by default.
+let x = 42
+> x ~> 42
+
+// Definitions can optionally have type annotations.
+let pi: F64 = 3.14  // F64 stands for a Float of 64 bits.
+> pi ~> 3.14

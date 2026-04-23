@@ -1,0 +1,4 @@
+// Syntax Recovery: Incomplete application
+// The parser should handle incomplete function application
+// and report an error for the unexpected end of input
+x(

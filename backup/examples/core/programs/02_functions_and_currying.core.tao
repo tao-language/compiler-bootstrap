@@ -1,0 +1,11 @@
+// Functions & Currying
+// Verifies Lambda syntax (x -> body) and curried application
+
+// Identity function
+%let id = x -> x in
+
+// Constant function (K combinator)
+%let k = x -> y -> x in
+
+// Apply k to 10 and 20
+k(10)(20)

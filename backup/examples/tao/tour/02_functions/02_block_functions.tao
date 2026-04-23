@@ -1,0 +1,14 @@
+// You can pass a block with {} and a sequence of statments.
+// This can be useful for more complex control flow.
+fn double(n) {
+  let result = n + n
+  return result
+}
+
+// Block functions can also be anonymous.
+let add = fn(x, y) {
+  let result = x + y
+  return result
+}
+
+> add(1, 2) ~> 3

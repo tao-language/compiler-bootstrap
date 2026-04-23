@@ -1,0 +1,3 @@
+// Parse Error: Hash without constructor
+// Hash must be followed by an identifier (constructor name)
+#

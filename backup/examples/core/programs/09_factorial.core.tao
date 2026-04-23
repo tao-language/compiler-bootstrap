@@ -1,0 +1,6 @@
+// Factorial - Full Integration Example
+// Note: This requires recursion support (%let rec).
+// The %let rec syntax is supported but full type checking for recursion is pending.
+
+// Placeholder: simple function
+%let f = x -> x in f(5)

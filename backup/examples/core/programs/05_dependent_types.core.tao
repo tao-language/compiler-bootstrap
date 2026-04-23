@@ -1,0 +1,5 @@
+// Dependent Types (Pi Types)
+// Verifies Pi type syntax
+
+// Pi type: (x : %Type) -> %Type
+(x : %Type) -> %Type

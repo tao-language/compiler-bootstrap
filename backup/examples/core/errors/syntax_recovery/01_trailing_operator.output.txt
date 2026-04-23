@@ -1,0 +1,11 @@
+
+error[E0001]: Syntax error in unexpected token after successful parse
+  ┌─ input:159:4
+2 │ // The parser should handle incomplete function application
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3 │ // and report an error for the unexpected end of input
+4 │ x(
+5 │ 
+  = note: Expected: end of input
+  = note: Got: (
+

@@ -1,0 +1,1 @@
+%let x = #Some(I32(42)) in match(x, [(#Some(n), None, n), (#None, None, I32(0))])

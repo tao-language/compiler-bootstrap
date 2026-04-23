@@ -1,0 +1,7 @@
+// Church Encoding Test
+// Demonstrates Church encoding for data types
+// Church numerals encode natural numbers as higher-order functions
+// A Church numeral n applies a function f, n times to an argument x
+%let zero = f -> x -> x in
+%let one = f -> x -> f(x) in
+one

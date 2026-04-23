@@ -1,0 +1,5 @@
+// Let Binding with Function Application
+// Demonstrates successful let-binding and function application
+
+// Identity function bound to f, then applied to 5
+%let f = x -> x in f(5)

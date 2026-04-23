@@ -1,0 +1,8 @@
+
+error[E0001]: Syntax error
+  ┌─ input:0:0
+1 │ {{{
+2 │ 
+  = note: Expected: valid alternative
+  = note: Got: none
+

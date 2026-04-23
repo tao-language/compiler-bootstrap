@@ -1,0 +1,2 @@
+// Boolean Church Encoding
+%let ttrue = t -> f -> t in ttrue

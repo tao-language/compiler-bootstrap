@@ -1,0 +1,6 @@
+// Dot on Non-Constructor
+// Trying to project a field from a non-record value
+// This error occurs when using dot notation on a primitive type
+// Example: trying to access a field on an integer
+%let x = 42 in
+x.field

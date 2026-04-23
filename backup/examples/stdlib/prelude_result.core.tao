@@ -1,0 +1,172 @@
+// Prelude Result Example
+// Demonstrates Result type and operations for error handling
+
+// ============================================================================
+// BASIC USAGE
+// ============================================================================
+
+// Create Ok and Err values
+let success: Result(I32, String) = Ok(42)
+let failure: Result(I32, String) = Err("something went wrong")
+
+// ============================================================================
+// PREDICATES
+// ============================================================================
+
+// Check if result is success or error
+let is_success = is_ok(success)    // True
+let is_error = is_err(failure)     // True
+
+// Check specific values
+let contains_42 = contains(success, 42)        // True
+let contains_error = contains_err(failure, "something went wrong")  // True
+
+// ============================================================================
+// EXTRACTION
+// ============================================================================
+
+// Unwrap (panics on Err - use carefully!)
+let value = unwrap(success)  // 42
+
+// Unwrap with default
+let default_value = unwrap_or(failure, 0)  // 0
+
+// Unwrap with error-aware default
+let error_aware = unwrap_or_else(failure, fn(e: String) -> I32 {
+  print("Error occurred: " <> e)
+  0
+})  // 0 (after printing error)
+
+// ============================================================================
+// TRANSFORMATION - MAP
+// ============================================================================
+
+// Map function over Ok value
+let doubled = map(success, fn(x: I32) -> I32 { x * 2 })  // Ok(84)
+let doubled_err = map(failure, fn(x: I32) -> I32 { x * 2 })  // Err("something went wrong")
+
+// Map function over Err value
+let error_upper = map_err(failure, fn(e: String) -> String {
+  "ERROR: " <> e
+})  // Err("ERROR: something went wrong")
+
+// Map with default
+let map_with_default = map_or(failure, 0, fn(x: I32) -> I32 { x * 2 })  // 0
+
+// ============================================================================
+// TRANSFORMATION - FLAT MAP (BIND)
+// ============================================================================
+
+// Chain operations that may fail
+let safe_divide = fn(x: I32) -> Result(I32, String) {
+  if x == 0 {
+    Err("division by zero")
+  } else {
+    Ok(100 / x)
+  }
+}
+
+let chained = and_then(success, safe_divide)  // Ok(2)
+let chained_err = and_then(failure, safe_divide)  // Err("something went wrong")
+
+// Error recovery
+let recover = fn(e: String) -> Result(I32, String) {
+  print("Recovering from error: " <> e)
+  Ok(0)
+}
+
+let recovered = or_else(failure, recover)  // Ok(0)
+
+// ============================================================================
+// COMBINATORS
+// ============================================================================
+
+// Or: use first Ok, or fallback
+let fallback = or(failure, Ok(99))  // Ok(99)
+
+// Zip: combine two Results
+let zipped = zip(success, Ok(100))  // Ok((42, 100))
+let zipped_err = zip(success, failure)  // Err("something went wrong")
+
+// ============================================================================
+// CONVERSIONS
+// ============================================================================
+
+// Convert to Option (discard error)
+let as_option = ok(success)  // Some(42)
+let as_option_none = ok(failure)  // None
+
+// Convert to Option (keep error)
+let err_option = err(failure)  // Some("something went wrong")
+
+// Convert from Option
+let from_opt: Result(I32, String) = from_option(Some(42), "was None")  // Ok(42)
+let from_opt_err: Result(I32, String) = from_option(None, "was None")  // Err("was None")
+
+// Flip Ok and Err
+let flipped = flip(success)  // Err(42)
+let flipped_err = flip(failure)  // Ok("something went wrong")
+
+// ============================================================================
+// PRACTICAL EXAMPLE: DIVISION
+// ============================================================================
+
+fn divide(a: I32, b: I32) -> Result(I32, String) {
+  if b == 0 {
+    Err("division by zero")
+  } else {
+    Ok(a / b)
+  }
+}
+
+fn safe_calculation(x: I32, y: I32) -> Result(I32, String) {
+  // Chain multiple operations
+  and_then(
+    divide(100, x),
+    fn(result1: I32) -> Result(I32, String) {
+      and_then(
+        divide(result1, y),
+        fn(result2: I32) -> Result(I32, String) {
+          Ok(result2 + 10)
+        }
+      )
+    }
+  )
+}
+
+let calc_success = safe_calculation(10, 2)  // Ok(15)
+let calc_div_zero = safe_calculation(10, 0)  // Err("division by zero")
+
+// ============================================================================
+// OUTPUT
+// ============================================================================
+
+print("=== Prelude Result Example ===")
+print("")
+
+print("Predicates:")
+print("  is_ok(Ok(42)) = " <> to_string(is_success))
+print("  is_err(Err(...)) = " <> to_string(is_error))
+print("")
+
+print("Extraction:")
+print("  unwrap(Ok(42)) = " <> int.to_string(value))
+print("  unwrap_or(Err(...), 0) = " <> int.to_string(default_value))
+print("")
+
+print("Transformation:")
+print("  map(Ok(42), *2) = Ok(" <> int.to_string(unwrap(doubled)) <> ")")
+print("  and_then(Ok(42), safe_divide) = Ok(" <> int.to_string(unwrap(chained)) <> ")")
+print("")
+
+print("Combinators:")
+print("  or(Err(...), Ok(99)) = Ok(" <> int.to_string(unwrap(fallback)) <> ")")
+print("  zip(Ok(42), Ok(100)) = Ok((42, 100))")
+print("")
+
+print("Practical Example:")
+print("  safe_calculation(10, 2) = Ok(" <> int.to_string(unwrap(calc_success)) <> ")")
+print("  safe_calculation(10, 0) = Err(...)")
+print("")
+
+print("=== Example Complete ===")

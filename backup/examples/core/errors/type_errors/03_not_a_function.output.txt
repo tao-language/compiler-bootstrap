@@ -1,0 +1,15 @@
+
+   Compiled in 0.06s
+    Running compiler_bootstrap.main
+
+error[E0103]: Cannot call non-function value
+  ┌─ :0:0
+1 │ // Type Error: Not a function
+2 │ // Trying to apply a non-function value
+3 │ 42(x)
+  = note: This value has type Int, which is not callable
+  = note: Only function values (created with ->) can be called with parentheses
+  = hint: Only functions can be called with parentheses
+  = hint: Check that you're calling a function, not a value
+  = hint: If you want a function, use a lambda: x -> expression
+

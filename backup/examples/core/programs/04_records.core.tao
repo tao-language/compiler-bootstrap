@@ -1,0 +1,5 @@
+// Records & Product Types
+// Verifies Record construction ({x: expr})
+
+// Construct a record
+{x: 10, y: 20}

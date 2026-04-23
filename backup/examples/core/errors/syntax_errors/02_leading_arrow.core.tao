@@ -1,0 +1,3 @@
+// Parse Error: Arrow without left-hand side
+// An arrow must be preceded by an identifier (lambda parameter)
+-> x

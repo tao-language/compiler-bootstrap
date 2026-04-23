@@ -1,0 +1,15 @@
+error[E0107]: Infinite type
+  ┌─ input:5:17
+2 │ // Occurs when a type would need to contain itself
+3 │ // This happens when unification tries to solve a hole with a type containing that hole
+4 │ // Example: applying a function to itself without proper type annotation
+5 │ %let f = x -> x(x) in
+                    ^
+6 │ f
+7 │ 
+  = note: Hole #3 would create an infinite type
+  = note: This happens when a type refers to itself
+  = note: Infinite types like T = T -> ? are not allowed
+  = hint: Check for recursive type definitions
+  = hint: Add a type annotation to break the cycle
+  = hint: Consider using a fixpoint combinator instead

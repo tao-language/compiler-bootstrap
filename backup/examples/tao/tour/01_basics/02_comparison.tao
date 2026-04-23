@@ -1,0 +1,14 @@
+// Comparison operators return a Bool, True or False.
+> 1 == 1 ~> True
+> 1 != 1 ~> False
+> 1 < 2 ~> True
+> 1 > 2 ~> False
+> 1 >= 1 ~> True
+> 1 <= 1 ~> True
+
+// Other Bool operators
+let x = 10
+> x == 10 ~> True
+> not (x == 10) ~> False
+> x == 0 and x == 10 ~> False
+> x == 0 or x == 10 ~> True

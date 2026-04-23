@@ -1,0 +1,7 @@
+// List Operations (Golden Sample)
+// Church-encoded lists
+
+// Nil: λc. λn. n
+// Cons: λh. λt. λc. λn. c h t
+// Create a list: cons 1 (cons 2 nil)
+(c -> n -> n)(1)((c -> n -> c(1)(n))(2)(c -> n -> n))

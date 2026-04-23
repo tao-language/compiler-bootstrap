@@ -1,0 +1,5 @@
+// Verify Literal Types and Primitives
+// This tests literal types and primitive calls
+
+// Simple identity function
+%let id = x -> x in id(42)
