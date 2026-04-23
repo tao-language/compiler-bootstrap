@@ -682,9 +682,9 @@ fn check_expected_value(
           let forced_expected = force(tao_ffis(), expected_type_state.subst, expected_value)
 
           // Compare values
-          case values_equal(forced_actual, forced_expected) {
+          case values_equal(forced_actual, forced_expected, file) {
             True -> Pass(file, line, test_expr.expression)
-            False -> Fail(file, line, test_expr.expression, test_expr.expected, format_value(forced_actual))
+            False -> Fail(file, line, test_expr.expression, test_expr.expected, format_value(forced_actual, file))
           }
         }
       }
@@ -693,8 +693,8 @@ fn check_expected_value(
 }
 
 /// Format a type value as a string for display.
-fn format_type(ty: Value) -> String {
-  let span = Span("", 0, 0, 0, 0)
+fn format_type(ty: Value, file: String) -> String {
+  let span = Span(file, 0, 0, 0, 0)
   let term = quote(tao_ffis(), 0, ty, span)
   core_syntax.format(term)
 }
@@ -746,21 +746,21 @@ fn format_type_errors(errors: List(CoreError), source: String, file: String) -> 
 }
 
 /// Check if two values are equal.
-fn values_equal(v1: Value, v2: Value) -> Bool {
+fn values_equal(v1: Value, v2: Value, file: String) -> Bool {
   // Simple structural comparison via string representation
-  value_to_string(v1) == value_to_string(v2)
+  value_to_string(v1, file) == value_to_string(v2, file)
 }
 
 /// Convert value to string for comparison.
-fn value_to_string(value: Value) -> String {
-  let span = Span("", 0, 0, 0, 0)
+fn value_to_string(value: Value, file: String) -> String {
+  let span = Span(file, 0, 0, 0, 0)
   let term = quote([], 0, value, span)
   core_syntax.format(term)
 }
 
 /// Format value for display in Fail results.
-fn format_value(value: Value) -> String {
-  value_to_string(value)
+fn format_value(value: Value, file: String) -> String {
+  value_to_string(value, file)
 }
 
 // ============================================================================

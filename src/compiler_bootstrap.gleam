@@ -11,7 +11,7 @@
 /// ```
 import argv
 import core/ast as ast
-import core/state.{type Error as TypeError, State, type State, initial_state, SyntaxError, TypeMismatch, CtrUndefined, VarUndefined, MatchMissingCase, MatchRedundantCase}
+import core/state.{type Error as TypeError, State, type State, initial_state, initial_state_with, SyntaxError, TypeMismatch, CtrUndefined, VarUndefined, MatchMissingCase, MatchRedundantCase}
 import tao/ffi.{tao_ffis}
 import core/infer.{infer}
 import core/eval.{eval}
@@ -530,9 +530,10 @@ fn check_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
       }
 
       // Run type checker on Core term
-      // Use ctrs from desugaring for exhaustiveness checking
-      let initial_state_with_ctrs = initial_state |> update_state_ctrs(dc.ctrs)
-      let #(_type_result, _type_annotation, final_state) = infer(initial_state_with_ctrs, term)
+      // Use FFI from Tao language config for annotation evaluation
+      let state_with_ffi = initial_state_with(tao_ffis(), "True")
+      let state_with_ctrs = state_with_ffi |> update_state_ctrs(dc.ctrs)
+      let #(_type_result, _type_annotation, final_state) = infer(state_with_ctrs, term)
 
       case final_state.errors {
         [_err, ..] -> {
@@ -664,8 +665,7 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   let forced_value = force(ffi, type_state.subst, value)
 
   // Quote back to normal form
-  let span = Span("", 0, 0, 0, 0)
-  let normal_form = quote(ffi, 0, forced_value, span)
+  let normal_form = quote(ffi, 0, forced_value, Span(file.path, 0, 0, 0, 0))
 
   // Format and print the result
   let formatted = core_syntax.format(normal_form)
@@ -734,7 +734,7 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   )
 
   let ctx = new_context() |> with_prelude() |> set_current_module(file.path)
-  let #(term, _dc) = desugar_module(module, ctx)
+  let #(term, dc) = desugar_module(module, ctx)
 
   case debug {
     True -> {
@@ -744,13 +744,14 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     False -> Nil
   }
 
-  // Run type checker
+  // Run type checker (with FFI for annotation evaluation)
   case verbose {
     True -> io.println("✓ Type checking...")
     False -> Nil
   }
 
-  let #(_type_result, _type_annotation, type_state) = infer(initial_state, term)
+  let initial_state_with_ctrs = initial_state_with(tao_ffis(), "True") |> update_state_ctrs(dc.ctrs)
+  let #(_type_result, _type_annotation, type_state) = infer(initial_state_with_ctrs, term)
   let type_errors = type_state.errors
 
   // Report type errors
@@ -786,8 +787,7 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   let forced_value = force(ffi, type_state.subst, value)
 
   // Quote back to normal form
-  let span = Span("", 0, 0, 0, 0)
-  let normal_form = quote(ffi, 0, forced_value, span)
+  let normal_form = quote(ffi, 0, forced_value, Span(file.path, 0, 0, 0, 0))
 
   // Format and print the result
   let formatted = core_syntax.format(normal_form)
