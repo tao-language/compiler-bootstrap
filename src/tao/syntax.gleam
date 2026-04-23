@@ -331,7 +331,7 @@ fn expr_to_ast_loop(expr: Expr) -> AstExpr {
         let ConstructorDecl(ctr_name, fields, ctr_span) = ctr
         let ast_fields = list.map(fields, fn(field_type) {
           // For now, treat field types as type variables
-          AstTVar(field_type)
+          AstTVar(field_type, ctr_span)
         })
         ast.Constructor(ctr_name, list.map(ast_fields, UnnamedField), ctr_span)
       })
@@ -374,7 +374,7 @@ fn params_to_ast(params: List(#(String, Option(String))), span: Span) -> List(Pa
   list.map(params, fn(param) {
     let #(name, type_ann) = param
     let ast_type = case type_ann {
-      Some(t) -> Some(TVar(t))
+      Some(t) -> Some(TVar(t, span))
       None -> None
     }
     AstParam(name, ast_type, span)
@@ -423,7 +423,7 @@ fn expr_to_block_stmt(expr: Expr) -> BlockStatement {
         False -> Immutable
       }
       let ast_type = case type_annotation {
-        Some(t) -> Some(TVar(t))
+        Some(t) -> Some(TVar(t, span))
         None -> None
       }
       BlockStmtLet(LetDecl(name, mutability, ast_type, expr_to_ast_loop(value), span))
@@ -433,7 +433,7 @@ fn expr_to_block_stmt(expr: Expr) -> BlockStatement {
       let ast_body = block_to_ast(body)
       let ast_params = params_to_ast(params, span)
       let ast_return_type = case return_type {
-        Some(t) -> Some(TVar(t))
+        Some(t) -> Some(TVar(t, span))
         None -> None
       }
       let lambda = AstLambda([], ast_params, ast_body, span)
@@ -465,7 +465,7 @@ fn unaryop_to_ast(op: UnaryOp) -> UnaryOperator {
 }
 
 fn param(name: String, type_: String, span: Span) -> Param {
-  AstParam(name, Some(TVar(type_)), span)
+  AstParam(name, Some(TVar(type_, span)), span)
 }
 
 // ============================================================================
@@ -3787,7 +3787,7 @@ fn extract_more_types(more_list: List(Value(a))) -> List(ConstructorField) {
     let tok_value = get_token_value_from_pair(pair)
     case tok_value {
       "" -> []
-      v -> [UnnamedField(AstTVar(v))]
+      v -> [UnnamedField(AstTVar(v, Span("ctr_field_type", 0, 0, 0, 0)))]
     }
   })
 }
@@ -3796,7 +3796,7 @@ fn extract_more_types(more_list: List(Value(a))) -> List(ConstructorField) {
 fn parse_fields_list(fields_list: List(Value(a))) -> List(ConstructorField) {
   case fields_list {
     [_, TokenValue(first_type_tok), ListValue(more_list), _] -> {
-      let first_type = AstTVar(first_type_tok.value)
+      let first_type = AstTVar(first_type_tok.value, Span(first_type_tok.value, 0, 0, 0, 0))
       let more_types = extract_more_types(more_list)
       [UnnamedField(first_type), ..more_types]
     }
@@ -4140,32 +4140,32 @@ fn extract_local_constructors_from_more(more_ctrs_val: Value(Expr)) -> List(Cons
 /// Convert an Expr (type expression) to TypeAst.
 fn expr_to_type_ast(expr: AstExpr) -> TypeAst {
   case expr {
-    AstVar(name, _span) -> AstTVar(name)
-    AstCall(fun, args, _span) -> {
+    AstVar(name, span) -> AstTVar(name, span)
+    AstCall(fun, args, type_span) -> {
       case fun {
-        AstVar(name, _span2) -> AstTApp(name, list.map(args, expr_to_type_ast))
-        _ -> AstTHole
+        AstVar(name, _) -> AstTApp(name, list.map(args, expr_to_type_ast), type_span)
+        _ -> AstTHole(type_span)
       }
     }
-    _ -> AstTHole
+    _ -> AstTHole(Span("type_hole", 0, 0, 0, 0))
   }
 }
 
 /// Convert AstType to string representation.
 fn type_to_string(t: TypeAst) -> String {
   case t {
-    AstTVar(name) -> name
-    AstTApp(name, args) -> {
+    AstTVar(name, _) -> name
+    AstTApp(name, args, _) -> {
       case args {
         [] -> name
         _ -> name <> "(" <> string_join(list.map(args, type_to_string), ", ") <> ")"
       }
     }
-    AstTFn(params, ret) -> {
+    AstTFn(params, ret, _) -> {
       "fn(" <> string_join(list.map(params, type_to_string), ", ") <> ") -> " <> type_to_string(ret)
     }
-    AstTRecord(_) -> "{...}"
-    AstTTuple(_) -> "(...)"
-    AstTHole -> "_"
+    AstTRecord(_, _) -> "{...}"
+    AstTTuple(_, _) -> "(...)"
+    AstTHole(_) -> "_"
   }
 }

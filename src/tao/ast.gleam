@@ -408,23 +408,23 @@ pub type Pattern {
 
 pub type TypeAst {
   /// Type variable: a, b, t
-  TVar(String)
+  TVar(name: String, span: Span)
 
   /// Type application: Maybe(a), List(Int)
-  TApp(String, List(TypeAst))
+  TApp(name: String, args: List(TypeAst), span: Span)
 
   /// Function type: (Int, Int) -> Int
-  TFn(List(TypeAst), TypeAst)
+  TFn(args: List(TypeAst), ret: TypeAst, span: Span)
 
   /// Record type: { x: Int, y: Int }
-  TRecord(List(#(String, TypeAst)))
+  TRecord(fields: List(#(String, TypeAst)), span: Span)
 
   /// Tuple type: (Int, String)
   /// Unit type: ()
-  TTuple(List(TypeAst))
+  TTuple(args: List(TypeAst), span: Span)
 
   /// Hole: _
-  THole
+  THole(span: Span)
 }
 
 // Note: No primitive types! Bool, String, Unit are all defined in stdlib:

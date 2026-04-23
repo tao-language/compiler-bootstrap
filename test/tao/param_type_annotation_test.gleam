@@ -46,7 +46,7 @@ fn not(a: Bool) -> Bool {
       StmtFn(_, _, params, _, _, _) -> {
         list.any(params, fn(p) {
           case p.type_annotation {
-            Some(TVar(name)) -> name == "Bool"
+            Some(TVar(name, _)) -> name == "Bool"
             Some(_) -> False
             None -> False
           }
@@ -99,7 +99,7 @@ fn and(a: Bool, b: Bool) -> Bool {
       StmtFn(_, _, params, _, _, _) -> {
         let count = list.fold(params, 0, fn(pacc, p) {
           case p.type_annotation {
-            Some(TVar(_)) -> pacc + 1
+            Some(TVar(_, _)) -> pacc + 1
             _ -> pacc
           }
         })

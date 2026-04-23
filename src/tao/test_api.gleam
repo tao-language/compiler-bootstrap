@@ -778,7 +778,7 @@ pub fn exprs_to_stmts(exprs: List(Expr)) -> List(t.Stmt) {
           case ctr {
             TaoCtrDecl(ctr_name, fields, ctr_span) -> {
               let ast_fields = list.map(fields, fn(field_type_str) {
-                t.UnnamedField(t.TVar(field_type_str))
+                t.UnnamedField(t.TVar(field_type_str, ctr_span))
               })
               t.Constructor(ctr_name, ast_fields, ctr_span)
             }
@@ -791,14 +791,14 @@ pub fn exprs_to_stmts(exprs: List(Expr)) -> List(t.Stmt) {
         let ast_params = list.map(params, fn(param) {
           let #(pname, ptype) = param
           let ast_type = case ptype {
-            Some(t) -> Some(t.TVar(t))
+            Some(t) -> Some(t.TVar(t, span))
             None -> None
           }
           t.Param(pname, ast_type, span)
         })
         let ast_body = block_to_ast(body)
         let ast_return_type = case return_type {
-          Some(t) -> Some(t.TVar(t))
+          Some(t) -> Some(t.TVar(t, span))
           None -> None
         }
         t.StmtFn(name, [], ast_params, ast_return_type, ast_body, span)
@@ -810,7 +810,7 @@ pub fn exprs_to_stmts(exprs: List(Expr)) -> List(t.Stmt) {
         // Let bindings should be StmtLet, not StmtExpr
         let ast_value = expr_to_ast(value)
         let ast_type = case type_annotation {
-          Some(t) -> Some(t.TVar(t))
+          Some(t) -> Some(t.TVar(t, span))
           None -> None
         }
         t.StmtLet(name, mutable, ast_type, ast_value, span)

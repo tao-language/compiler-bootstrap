@@ -384,12 +384,12 @@ pub fn constructor_field_to_type(field: ConstructorField) -> core_ast.Term {
 /// building should use `build_core_type_from_ast` instead.
 pub fn type_ast_to_core(t: TypeAst) -> core_ast.Term {
   case t {
-    TVar(name) -> core_ast.Ctr(name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("type", 0, 0, 0, 0))
-    TApp(name, _args) -> core_ast.Ctr(name, core_ast.Unit(Span("unit", 0, 0, 0, 0)), Span("tapp", 0, 0, 0, 0))
-    TFn(_, _) -> core_ast.Typ(1, Span("fn", 0, 0, 0, 0))
-    TRecord(_) -> core_ast.Typ(0, Span("rcd", 0, 0, 0, 0))
-    TTuple(_) -> core_ast.Typ(0, Span("tuple", 0, 0, 0, 0))
-    THole -> core_ast.Hole(0, Span("hole", 0, 0, 0, 0))
+    TVar(name, span) -> core_ast.Ctr(name, core_ast.Unit(span), span)
+    TApp(name, _, span) -> core_ast.Ctr(name, core_ast.Unit(span), span)
+    TFn(_, _, span) -> core_ast.Typ(1, span)
+    TRecord(_, span) -> core_ast.Typ(0, span)
+    TTuple(_, span) -> core_ast.Typ(0, span)
+    THole(span) -> core_ast.Hole(0, span)
   }
 }
 
@@ -451,14 +451,14 @@ fn exprs_to_stmts(exprs: List(Expr)) -> List(Stmt) {
         let ast_params = list.map(params, fn(param) {
           let #(pname, ptype) = param
           let ast_type = case ptype {
-            Some(type_name) -> Some(TVar(type_name))
+            Some(type_name) -> Some(TVar(type_name, span))
             None -> None
           }
           Param(pname, ast_type, span)
         })
         let ast_body = block_to_ast(body)
         let ast_return_type = case return_type {
-          Some(type_name) -> Some(TVar(type_name))
+          Some(type_name) -> Some(TVar(type_name, span))
           None -> None
         }
         StmtFn(name, [], ast_params, ast_return_type, ast_body, span)
@@ -466,7 +466,7 @@ fn exprs_to_stmts(exprs: List(Expr)) -> List(Stmt) {
       // Let binding at module level: let x = expr
       ExprLet(name, mutable, type_annotation, value, span) -> {
         let ast_type = case type_annotation {
-          Some(type_name) -> Some(TVar(type_name))
+          Some(type_name) -> Some(TVar(type_name, span))
           None -> None
         }
         let ast_value = expr_to_ast(value)

@@ -884,7 +884,7 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(tao_ast.Stmt) {
         let ast_params = params_to_ast_params(params, span)
         let ast_body = expr_to_ast(body)
         let ast_return_type = case return_type {
-          Some(t) -> Some(tao_ast.TVar(t))
+          Some(t) -> Some(tao_ast.TVar(t, span))
           None -> None
         }
         [tao_ast.StmtFn(name, [], ast_params, ast_return_type, ast_body, span)]
@@ -902,7 +902,7 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(tao_ast.Stmt) {
               let ast_params = params_to_ast_params(params, span)
               let ast_body = expr_to_ast(body)
               let ast_return_type = case return_type {
-                Some(t) -> Some(tao_ast.TVar(t))
+                Some(t) -> Some(tao_ast.TVar(t, span))
                 None -> None
               }
               [tao_ast.StmtFn(name, [], ast_params, ast_return_type, ast_body, span)]
@@ -932,7 +932,7 @@ fn params_to_ast_params(params: List(#(String, option.Option(String))), span: Sp
   list.map(params, fn(param) {
     let #(name, type_opt) = param
     let type_ann = case type_opt {
-      Some(t) -> Some(tao_ast.TVar(t))
+      Some(t) -> Some(tao_ast.TVar(t, span))
       None -> None
     }
     tao_ast.Param(name, type_ann, span)

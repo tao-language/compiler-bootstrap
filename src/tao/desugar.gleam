@@ -253,14 +253,14 @@ pub fn process_type_definitions(
 /// Returns the Core type and updated context.
 fn build_core_type_from_ast(t: TypeAst, dc: DesugarContext, span: Span) -> #(CoreTerm, DesugarContext) {
   case t {
-    TVar(name) -> {
+    TVar(name, _) -> {
       // Check if it's a type defined in the current context (including prelude)
       case lookup_type_in_ctrs(dc.ctrs, name) {
         True -> #(CoreCtr(name, CoreUnit(span), span), dc)
         False -> core_hole(dc, span)  // Unknown type, use hole placeholder
       }
     }
-    TApp(type_name, args) -> {
+    TApp(type_name, args, _) -> {
       // Type application: Option(Bool), List(I32), etc.
       let #(base, dc0) = case lookup_type_in_ctrs(dc.ctrs, type_name) {
         True -> #(CoreCtr(type_name, CoreUnit(span), span), dc)
@@ -269,20 +269,20 @@ fn build_core_type_from_ast(t: TypeAst, dc: DesugarContext, span: Span) -> #(Cor
       let #(core_args, dc1) = build_core_type_args(args, dc0, span)
       #(build_type_applications(base, core_args, span), dc1)
     }
-    TFn(params, ret) -> {
+    TFn(params, ret, _) -> {
       // Function type: (I32, Bool) -> Bool
       let #(core_params, dc1) = build_core_type_args(params, dc, span)
       let #(core_ret, dc2) = build_core_type_from_ast(ret, dc1, span)
       let fn_type = build_fn_type(core_params, core_ret, span)
       #(fn_type, dc2)
     }
-    TRecord(_fields) -> {
+    TRecord(_fields, _) -> {
       core_hole(dc, span)
     }
-    TTuple(_elems) -> {
+    TTuple(_elems, _) -> {
       core_hole(dc, span)
     }
-    THole -> {
+    THole(_) -> {
       core_hole(dc, span)
     }
   }
@@ -1746,7 +1746,7 @@ fn desugar_type_ast(
 ) -> #(CoreTerm, DesugarContext) {
   // Type ASTs are converted to Core terms
   case type_ast {
-    ast.TVar(name) -> {
+    ast.TVar(name, _) -> {
       // Check if it's a builtin type name (looked up from primitive types registry)
       case lang_config.lookup_primitive_type(dc.config.primitive_types, name) {
         Some(_) -> #(CoreBuiltinType(name, Span(name, 0, 0, 0, 0)), dc)
@@ -1759,7 +1759,7 @@ fn desugar_type_ast(
         }
       }
     }
-    ast.TApp(name, args) -> {
+    ast.TApp(name, args, _) -> {
       // Type application - build nested applications
       let #(core_args, dc1) = desugar_type_args(args, dc)
       let base = case lookup_type_in_ctrs(dc.ctrs, name) {
@@ -1769,16 +1769,16 @@ fn desugar_type_ast(
       let core_type = build_core_type_app(base, core_args, Span(name, 0, 0, 0, 0))
       #(core_type, dc1)
     }
-    ast.TFn(_, _) -> {
+    ast.TFn(_, _, _) -> {
       #(CoreHole(-1, Span("fn", 0, 0, 0, 0)), dc)
     }
-    ast.TRecord(_) -> {
+    ast.TRecord(_, _) -> {
       #(CoreHole(-1, Span("record", 0, 0, 0, 0)), dc)
     }
-    ast.TTuple(_) -> {
+    ast.TTuple(_, _) -> {
       #(CoreHole(-1, Span("tuple", 0, 0, 0, 0)), dc)
     }
-    ast.THole -> {
+    ast.THole(_) -> {
       #(CoreHole(-1, Span("_", 0, 0, 0, 0)), dc)
     }
   }

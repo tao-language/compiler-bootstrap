@@ -241,7 +241,7 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(Stmt) {
         // Convert let expression to StmtLet
         let ast_value = expr_to_ast(value)
         let ast_type = case type_annotation {
-          Some(t) -> Some(TVar(t))
+          Some(t) -> Some(TVar(t, span))
           None -> None
         }
         [StmtLet(name, mutable, ast_type, ast_value, span)]
@@ -251,14 +251,14 @@ fn exprs_to_stmts(exprs: List(TaoExpr)) -> List(Stmt) {
         let ast_params = list.map(params, fn(param) {
           let #(pname, ptype) = param
           let ast_type = case ptype {
-            Some(t) -> Some(TVar(t))
+            Some(t) -> Some(TVar(t, span))
             None -> None
           }
           Param(pname, ast_type, span)
         })
         let ast_body = block_to_ast(body)
         let ast_return_type = case return_type {
-          Some(t) -> Some(TVar(t))
+          Some(t) -> Some(TVar(t, span))
           None -> None
         }
         [StmtFn(name, [], ast_params, ast_return_type, ast_body, span)]
