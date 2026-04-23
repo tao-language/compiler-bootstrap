@@ -14,10 +14,11 @@ import core/ast as ast
 import core/state.{type Error as TypeError, State, type State, initial_state, initial_state_with, SyntaxError, TypeMismatch, CtrUndefined, VarUndefined, MatchMissingCase, MatchRedundantCase}
 import tao/ffi.{tao_ffis}
 import core/infer.{infer}
-import core/eval.{eval, eval_from_state}
+import core/eval.{eval_from_state}
 import core/quote.{quote}
 import core/subst.{force}
 import core/syntax as core_syntax
+import syntax/error_reporter
 import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var as TaoVar, Int as TaoInt, Float as TaoFloat, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlockExpr, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, Str as TaoStr, Test as TaoTest, Run as TaoRun, If as TaoIf, For, While, Loop, Break, Continue, Import, Ctr, TypeDecl, expr_to_ast}
 import tao/desugar.{desugar_module}
 import tao/global_context.{new_context, with_prelude, set_current_module}
@@ -32,7 +33,6 @@ import gleam/list
 import gleam/string
 import gleam/option.{Some, None}
 import simplifile
-import syntax/error_reporter
 import exit_code
 
 // ============================================================================
@@ -386,6 +386,50 @@ fn update_state_ctrs(state: State, ctrs: ast.CtrEnv) -> State {
   State(..state, ctrs: ctrs)
 }
 
+/// Evaluate and quote a Core term, printing the formatted result.
+/// On success, returns the formatted string.
+/// On error, reports errors to stdout and returns an empty string.
+fn run_and_evaluate(
+  term: ast.Term,
+  type_state: State,
+  source: String,
+  file: String,
+  verbose: Bool,
+) -> Result(String, List(TypeError)) {
+  // Evaluate the term (even with errors, for debugging)
+  case verbose {
+    True -> io.println("✓ Evaluating...")
+    False -> Nil
+  }
+
+  let env = []
+  let ffi = tao_ffis()
+  let eval_state = initial_state_with(ffi, "True")
+  let value = eval_from_state(eval_state, env, term)
+  // Force the value with the substitution from type checking to solve any holes
+  let forced_value = force(ffi, type_state.subst, value)
+
+  // Quote back to normal form
+  let normal_form = quote(ffi, 0, forced_value, Span(file, 0, 0, 0, 0))
+
+  // Format and print the result
+  let formatted = core_syntax.format(normal_form)
+
+  case type_state.errors {
+    [_, ..] -> {
+      // Report errors
+      io.println("")
+      io.println("-----------------------------------------------------------")
+      io.println(formatted)
+      Error(type_state.errors)
+    }
+    [] -> {
+      io.println(formatted)
+      Ok(formatted)
+    }
+  }
+}
+
 // ============================================================================
 // CHECK COMMAND
 // ============================================================================
@@ -594,13 +638,11 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   }
 
   let parse_result = core_syntax.parse(file.contents)
+  let parse_errors = parse_result.errors
 
   // Handle parse errors
-  let parse_errors = parse_result.errors
-  
   case parse_errors {
     [_err, ..] -> {
-      // Report parse errors
       io.println("")
       parse_errors |> list.each(fn(err) {
         let diagnostic = error_reporter.parse_error_to_diagnostic(err, file.contents, file.path)
@@ -615,7 +657,6 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
         }
         False -> Nil
       }
-
       case verbose {
         True -> io.println("✓ Parsed successfully")
         False -> Nil
@@ -630,13 +671,12 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   }
 
   let #(_type_result, _type_annotation, type_state) = infer(initial_state, parse_result.ast)
-  let type_errors = type_state.errors
 
   // Report type errors
-  case type_errors {
-    _ -> {
+  case type_state.errors {
+    [_err, ..] -> {
       io.println("")
-      type_errors |> list.each(fn(e) {
+      type_state.errors |> list.each(fn(e) {
         let diagnostic = error_reporter.type_error_to_diagnostic(e, file.contents, file.path)
         io.println(error_reporter.format_diagnostic(diagnostic, file.contents))
       })
@@ -649,40 +689,10 @@ fn run_core(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     }
   }
 
-  // Combine all errors
-  let has_errors = { parse_errors |> list.is_empty } == False || { type_errors |> list.is_empty } == False
-
-  // Evaluate the term (even with errors, for debugging)
-  case verbose {
-    True -> io.println("✓ Evaluating...")
-    False -> Nil
-  }
-
-  let env = []
-  let ffi = tao_ffis()
-  let type_state = initial_state_with(ffi, "True")
-  let value = eval_from_state(type_state, env, parse_result.ast)
-  // Force the value with the substitution from type checking to solve any holes
-  let forced_value = force(ffi, type_state.subst, value)
-
-  // Quote back to normal form
-  let normal_form = quote(ffi, 0, forced_value, Span(file.path, 0, 0, 0, 0))
-
-  // Format and print the result
-  let formatted = core_syntax.format(normal_form)
-
-  // If there were errors, print delimiter before result
-  case has_errors {
-    True -> {
-      io.println("")
-      io.println("-----------------------------------------------------------")
-      io.println(formatted)
-      Error(TypeError(type_errors))
-    }
-    False -> {
-      io.println(formatted)
-      Ok(Nil)
-    }
+  // Evaluate and quote the result
+  case run_and_evaluate(parse_result.ast, type_state, file.contents, file.path, verbose) {
+    Ok(_) -> Ok(Nil)
+    Error(errors) -> Error(TypeError(errors))
   }
 }
 
@@ -693,13 +703,11 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
   }
 
   let parse_result = tao_parse(file.contents)
-
-  // Handle parse errors
   let parse_errors = parse_result.errors
 
+  // Handle parse errors
   case parse_errors {
     [_err, ..] -> {
-      // Report parse errors
       io.println("")
       parse_errors |> list.each(fn(err) {
         let diagnostic = error_reporter.parse_error_to_diagnostic(err, file.contents, file.path)
@@ -708,12 +716,9 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     }
     [] -> {
       case debug {
-        True -> {
-          io.println("Tao AST parsed successfully")
-        }
+        True -> io.println("Tao AST parsed successfully")
         False -> Nil
       }
-
       case verbose {
         True -> io.println("✓ Parsed Tao successfully")
         False -> Nil
@@ -753,13 +758,12 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
   let initial_state_with_ctrs = initial_state_with(tao_ffis(), "True") |> update_state_ctrs(dc.ctrs)
   let #(_type_result, _type_annotation, type_state) = infer(initial_state_with_ctrs, term)
-  let type_errors = type_state.errors
 
   // Report type errors
-  case type_errors {
-    _ -> {
+  case type_state.errors {
+    [_err, ..] -> {
       io.println("")
-      type_errors |> list.each(fn(e) {
+      type_state.errors |> list.each(fn(e) {
         let diagnostic = error_reporter.type_error_to_diagnostic(e, file.contents, file.path)
         io.println(error_reporter.format_diagnostic(diagnostic, file.contents))
       })
@@ -772,40 +776,10 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     }
   }
 
-  // Combine all errors
-  let has_errors = { parse_errors |> list.is_empty } == False || { type_errors |> list.is_empty } == False
-
-  // Evaluate the term (even with errors, for debugging)
-  case verbose {
-    True -> io.println("✓ Evaluating...")
-    False -> Nil
-  }
-
-  let env = []
-  let ffi = tao_ffis()
-  let eval_state = initial_state_with(ffi, "True")
-  let value = eval_from_state(eval_state, env, term)
-  // Force the value with the substitution from type checking to solve any holes
-  let forced_value = force(ffi, type_state.subst, value)
-
-  // Quote back to normal form
-  let normal_form = quote(ffi, 0, forced_value, Span(file.path, 0, 0, 0, 0))
-
-  // Format and print the result
-  let formatted = core_syntax.format(normal_form)
-
-  // If there were errors, print delimiter before result
-  case has_errors {
-    True -> {
-      io.println("")
-      io.println("-----------------------------------------------------------")
-      io.println(formatted)
-      Error(TypeError(type_errors))
-    }
-    False -> {
-      io.println(formatted)
-      Ok(Nil)
-    }
+  // Evaluate and quote the result
+  case run_and_evaluate(term, type_state, file.contents, file.path, verbose) {
+    Ok(_) -> Ok(Nil)
+    Error(errors) -> Error(TypeError(errors))
   }
 }
 
