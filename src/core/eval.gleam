@@ -17,9 +17,14 @@ import core/list_utils as list_utils
 /// Evaluate a term to a value.
 ///
 /// Uses the language's default truth constructor ("True" for Tao).
-/// For custom truth constructors, use `eval_with_ffi_config`.
+/// For custom truth constructors, use `eval_with_ctor`.
 pub fn eval(ffi: state.FFI, env: ast.Env, term: ast.Term) -> ast.Value {
   eval_with_ctor(ffi, env, term, "True")
+}
+
+/// Evaluate a term with the truth constructor from a given state.
+pub fn eval_from_state(s: state.State, env: ast.Env, term: ast.Term) -> ast.Value {
+  eval_with_ctor(s.ffi, env, term, s.truth_ctor)
 }
 
 /// Evaluate a term with a configurable truth constructor for guard evaluation.
@@ -54,7 +59,7 @@ pub fn eval_with_ctor(
       ast.VPi(implicit, name, env, eval_with_ctor(ffi, env, in_term, truth_ctor), out_term)
     ast.App(fun, implicit, arg, span) -> do_app(ffi, env, fun, implicit, arg, span)
     ast.Match(arg, _motive, cases, _span) -> do_match(ffi, env, arg, cases, 100, truth_ctor)
-    ast.Call(name, typed_args, ret_type, span) -> do_call(ffi, env, name, typed_args, ret_type, span)
+    ast.Call(name, typed_args, ret_type, span) -> do_call(ffi, env, name, typed_args, ret_type, span, truth_ctor)
     ast.Comptime(term, _) -> eval_with_ctor(ffi, env, term, truth_ctor)
     ast.Fix(name, body, _) -> ast.VFix(name, env, body)
     ast.Let(_name, value, body, _) -> {
@@ -302,11 +307,12 @@ fn do_call(
   typed_args: List(#(ast.Term, ast.Term)),
   ret_type: ast.Term,
   _span: Span,
+  truth_ctor: String,
 ) -> ast.Value {
   // Extract argument terms for evaluation
   let arg_terms = list.map(typed_args, fn(pair) { eval(ffi, env, pair.0) })
   // Evaluate return type annotation (for correctness, not for computation)
-  let ret_val = eval_with_ctor(ffi, env, ret_type, "True")
+  let ret_val = eval_with_ctor(ffi, env, ret_type, truth_ctor)
   
   case list.key_find(ffi, name) {
     Ok(builtin) -> {
