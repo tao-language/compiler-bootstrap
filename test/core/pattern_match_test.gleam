@@ -38,6 +38,7 @@ const s2 = Span("pattern_match_test", 2, 2, 2, 2)
 const s3 = Span("pattern_match_test", 3, 3, 3, 3)
 const s4 = Span("pattern_match_test", 4, 4, 4, 4)
 const s5 = Span("pattern_match_test", 5, 5, 5, 5)
+const span = Span("pattern_match_test", 10, 10, 10, 10)
 
 fn i32(n, span) {
   ast.Lit(ast.I32(n), span)
@@ -67,12 +68,12 @@ fn lam(name, body, span) {
   ast.Lam([], #(name, ast.Hole(-1, s1)), body, span)
 }
 
-fn pany() {
-  ast.PAny
+fn pany(s) {
+  ast.PAny(s)
 }
 
-fn pvar(x) {
-  ast.PAs(ast.PAny, x)
+fn pvar(x, s) {
+  ast.PAs(ast.PAny(s), x, s)
 }
 
 fn var(i, span) {
@@ -95,8 +96,8 @@ pub fn match_multiple_cases_two_test() {
   // Match with two cases: | 0 -> 1 | _ -> 2
   let motive = lam("p", i32t(s0), s0)
   let cases = [
-    case_(ast.PLit(ast.I32(0)), i32(1, s1), s1),
-    case_(pany(), i32(2, s2), s2),
+    case_(ast.PLit(ast.I32(0), s1), i32(1, s1), s1),
+    case_(pany(s1), i32(2, s2), s2),
   ]
   let term = match_(i32(5, s3), motive, cases, s4)
   let #(val, ty, s2) = infer(s, term)
@@ -121,9 +122,9 @@ pub fn match_multiple_cases_three_test() {
   // Match with three cases: | 0 -> 1 | 1 -> 2 | _ -> 3
   let motive = lam("p", i32t(s0), s0)
   let cases = [
-    case_(ast.PLit(ast.I32(0)), i32(1, s1), s1),
-    case_(ast.PLit(ast.I32(1)), i32(2, s2), s2),
-    case_(pany(), i32(3, s3), s3),
+    case_(ast.PLit(ast.I32(0), s1), i32(1, s1), s1),
+    case_(ast.PLit(ast.I32(1), s2), i32(2, s2), s2),
+    case_(pany(s1), i32(3, s3), s3),
   ]
   let term = match_(i32(0, s4), motive, cases, s5)
   let #(val, ty, s2) = infer(s, term)
@@ -148,9 +149,9 @@ pub fn match_multiple_cases_middle_test() {
   // Match with three cases, middle one matches
   let motive = lam("p", i32t(s0), s0)
   let cases = [
-    case_(ast.PLit(ast.I32(0)), i32(1, s1), s1),
-    case_(ast.PLit(ast.I32(1)), i32(2, s2), s2),
-    case_(pany(), i32(3, s3), s3),
+    case_(ast.PLit(ast.I32(0), s1), i32(1, s1), s1),
+    case_(ast.PLit(ast.I32(1), s2), i32(2, s2), s2),
+    case_(pany(s1), i32(3, s3), s3),
   ]
   let term = match_(i32(1, s4), motive, cases, s5)
   let #(val, ty, s2) = infer(s, term)
@@ -183,7 +184,7 @@ pub fn match_guard_true_test() {
   // For now, test that guards are parsed and type-checked
   // Full guard evaluation requires boolean type support
   let cases = [
-    case_(pvar("x"), i32(1, s1), s1),
+    case_(pvar("x", s1), i32(1, s1), s1),
   ]
   let term = match_(i32(5, s2), motive, cases, s3)
   let #(val, ty, s2) = infer(s, term)
@@ -213,8 +214,8 @@ pub fn match_hole_motive_infer_int_test() {
   // This is the common case for Tao: match 0 { | 0 -> 1 | _ -> 2 }
   let motive = lam("p", ast.Hole(-1, s0), s0)  // Hole motive
   let cases = [
-    case_(ast.PLit(ast.I32(0)), i32(1, s1), s1),
-    case_(pany(), i32(2, s2), s2),
+    case_(ast.PLit(ast.I32(0), s1), i32(1, s1), s1),
+    case_(pany(s1), i32(2, s2), s2),
   ]
   let term = match_(i32(0, s3), motive, cases, s4)
   let #(val, ty, s2) = infer(s, term)
@@ -243,8 +244,8 @@ pub fn match_hole_motive_infer_mismatch_test() {
   // First clause returns Int, second returns I64 - should report error
   let motive = lam("p", ast.Hole(-1, s0), s0)  // Hole motive
   let cases = [
-    case_(ast.PLit(ast.I32(0)), i32(1, s1), s1),
-    case_(pany(), i64(2, s2), s2),  // Different type!
+    case_(ast.PLit(ast.I32(0), s1), i32(1, s1), s1),
+    case_(pany(s1), i64(2, s2), s2),  // Different type!
   ]
   let term = match_(i32(0, s3), motive, cases, s4)
   let result = infer(s, term)
@@ -267,8 +268,8 @@ pub fn match_hole_motive_infer_string_test() {
   // (Using I64 instead of String since core doesn't have string literals)
   let motive = lam("p", ast.Hole(-1, s0), s0)  // Hole motive
   let cases = [
-    case_(ast.PLit(ast.I32(0)), i64(100, s1), s1),
-    case_(pany(), i64(200, s2), s2),
+    case_(ast.PLit(ast.I32(0), s1), i64(100, s1), s1),
+    case_(pany(s1), i64(200, s2), s2),
   ]
   let term = match_(i32(0, s3), motive, cases, s4)
   let #(val, ty, s2) = infer(s, term)
@@ -301,8 +302,8 @@ pub fn match_dependent_motive_explicit_test() {
   // For simplicity, we use a concrete dependent type here
   let motive = lam("p", i32t(s0), s0)  // Non-dependent, but explicitly provided
   let cases = [
-    case_(ast.PLit(ast.I32(0)), i32(1, s1), s1),
-    case_(pany(), i32(2, s2), s2),
+    case_(ast.PLit(ast.I32(0), s1), i32(1, s1), s1),
+    case_(pany(s1), i32(2, s2), s2),
   ]
   let term = match_(i32(0, s3), motive, cases, s4)
   let #(val, ty, s2) = infer(s, term)
@@ -328,7 +329,7 @@ pub fn match_dependent_motive_with_var_test() {
   let motive = lam("p", i32t(s0), s0)
   let cases = [
     // Pattern binds x, body uses x
-    case_(pvar("x"), var(0, s1), s1),
+    case_(pvar("x", s1), var(0, s1), s1),
   ]
   let term = match_(i32(42, s2), motive, cases, s3)
   let #(val, ty, s2) = infer(s, term)
@@ -357,8 +358,8 @@ pub fn match_exhaustiveness_redundant_case_test() {
   // Second case is redundant (first case matches everything)
   let motive = lam("p", i32t(s0), s0)
   let cases = [
-    case_(pany(), i32(1, s1), s1),
-    case_(pany(), i32(2, s2), s2),
+    case_(pany(s1), i32(1, s1), s1),
+    case_(pany(s1), i32(2, s2), s2),
   ]
   let term = match_(i32(5, s3), motive, cases, s4)
   let #(_, _, s2) = infer(s, term)
@@ -375,7 +376,7 @@ pub fn match_exhaustiveness_wildcard_is_exhaustive_test() {
   // Wildcard pattern should be recognized as exhaustive
   let motive = lam("p", i32t(s0), s0)
   let cases = [
-    case_(pany(), i32(100, s1), s1),
+    case_(pany(s1), i32(100, s1), s1),
   ]
   let term = match_(i32(5, s2), motive, cases, s3)
   let #(_, _, s2) = infer(s, term)
@@ -392,7 +393,7 @@ pub fn match_exhaustiveness_as_wildcard_is_exhaustive_test() {
   // As-pattern with wildcard should be recognized as exhaustive
   let motive = lam("p", i32t(s0), s0)
   let cases = [
-    case_(ast.PAs(ast.PAny, "x"), i32(100, s1), s1),
+    case_(ast.PAs(ast.PAny(s1), "x", s1), i32(100, s1), s1),
   ]
   let term = match_(i32(5, s2), motive, cases, s3)
   let #(_, _, s2) = infer(s, term)
@@ -409,7 +410,7 @@ pub fn match_exhaustiveness_missing_case_test() {
   // Missing wildcard should produce exhaustiveness error
   let motive = lam("p", i32t(s0), s0)
   let cases = [
-    case_(ast.PLit(ast.I32(0)), i32(1, s1), s1),
+    case_(ast.PLit(ast.I32(0), s1), i32(1, s1), s1),
   ]
   let term = match_(i32(5, s2), motive, cases, s3)
   let #(_, _, s2) = infer(s, term)

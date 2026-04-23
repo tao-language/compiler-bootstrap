@@ -224,28 +224,31 @@ fn do_match_loop(
 
 pub fn do_match_pattern(pattern: ast.Pattern, value: ast.Value) -> Result(ast.Env, Nil) {
   case pattern {
-    ast.PAny -> Ok([value])
-    ast.PAs(p, _name) -> {
+    ast.PAny(_span) -> Ok([value])
+    ast.PAs(p, _name, _span) -> {
       // Bind the matched value, then recurse into inner pattern
       case do_match_pattern(p, value) {
         Ok(inner_env) -> Ok([value, ..inner_env])
         Error(Nil) -> Error(Nil)
       }
     }
-    ast.PTyp(_) -> Ok([value])
-    ast.PLit(lit) -> {
+    ast.PTyp(_, _span) -> Ok([value])
+    ast.PLit(lit, _span) -> {
+      // span is already matched in pattern
       case value {
         ast.VLit(lit2) if lit == lit2 -> Ok([])
         _ -> Error(Nil)
       }
     }
-    ast.PLitT(lit_t) -> {
+    ast.PLitT(lit_t, _span) -> {
+      // span is already matched in pattern
       case value {
         ast.VLitT(lit_t2) if lit_t == lit_t2 -> Ok([])
         _ -> Error(Nil)
       }
     }
-    ast.PRcd(fields) -> {
+    ast.PRcd(fields, _span) -> {
+      // span is already matched in pattern
       case value {
         ast.VRcd(value_fields) -> {
           do_match_record_fields(fields, value_fields, [])
@@ -253,7 +256,8 @@ pub fn do_match_pattern(pattern: ast.Pattern, value: ast.Value) -> Result(ast.En
         _ -> Error(Nil)
       }
     }
-    ast.PCtr(tag, arg_pattern) -> {
+    ast.PCtr(tag, arg_pattern, _span) -> {
+      // span is already matched in pattern
       case value {
         ast.VCtrValue(ast.VCtr(tag2, arg_val)) if tag == tag2 -> {
           case do_match_pattern(arg_pattern, arg_val) {
@@ -264,7 +268,8 @@ pub fn do_match_pattern(pattern: ast.Pattern, value: ast.Value) -> Result(ast.En
         _ -> Error(Nil)
       }
     }
-    ast.PUnit -> {
+    ast.PUnit(_span) -> {
+      // span is already matched in pattern
       case value {
         ast.VUnit -> Ok([])
         _ -> Error(Nil)

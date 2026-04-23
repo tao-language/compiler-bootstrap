@@ -86,18 +86,18 @@ pub fn type_to_string(ty: ast.Type) -> String {
 
 pub fn pattern_to_string(pattern: ast.Pattern) -> String {
   case pattern {
-    ast.PAny -> "_"
-    ast.PAs(pat, name) -> name <> "@" <> pattern_to_string(pat)
-    ast.PTyp(level) -> case level {
+    ast.PAny(_span) -> "_"
+    ast.PAs(pat, name, _span) -> name <> "@" <> pattern_to_string(pat)
+    ast.PTyp(level, _span) -> case level {
       0 -> "%Type"
       n -> "%Type" <> int.to_string(n)
     }
-    ast.PLit(lit) -> literal_to_string(lit)
-    ast.PLitT(lit) -> literal_type_to_string(lit)
-    ast.PRcd(fields) -> "{ " <> list.map(fields, fn(f) { f.0 <> " = ..." })
+    ast.PLit(lit, _span) -> literal_to_string(lit)
+    ast.PLitT(lit, _span) -> literal_type_to_string(lit)
+    ast.PRcd(fields, _span) -> "{ " <> list.map(fields, fn(f) { f.0 <> " = ..." })
     |> string.join(", ") <> " }"
-    ast.PCtr(tag, arg) -> tag <> "(" <> pattern_to_string(arg) <> ")"
-    ast.PUnit -> "Unit"
+    ast.PCtr(tag, arg, _span) -> tag <> "(" <> pattern_to_string(arg) <> ")"
+    ast.PUnit(_span) -> "Unit"
   }
 }
 

@@ -221,16 +221,15 @@ fn occurs_in_term(id: Int, term: ast.Term) -> Bool {
 /// Check if a hole ID appears in a pattern.
 fn occurs_in_pattern(id: Int, pattern: ast.Pattern) -> Bool {
   // Stub: patterns don't contain holes that need checking
-  // (The id parameter is intentionally unused)
   case pattern {
-    ast.PAny -> False
-    ast.PAs(inner, _) -> occurs_in_pattern(id, inner)
-    ast.PTyp(_) -> False
-    ast.PLit(_) -> False
-    ast.PLitT(_) -> False
-    ast.PRcd(fields) -> list.any(fields, fn(kv) { occurs_in_pattern(id, kv.1) })
-    ast.PCtr(_, arg) -> occurs_in_pattern(id, arg)
-    ast.PUnit -> False
+    ast.PAny(_span) -> False
+    ast.PAs(inner, _, _span) -> occurs_in_pattern(id, inner)
+    ast.PTyp(_, _span) -> False
+    ast.PLit(_, _span) -> False
+    ast.PLitT(_, _span) -> False
+    ast.PRcd(fields, _span) -> list.any(fields, fn(kv) { occurs_in_pattern(id, kv.1) })
+    ast.PCtr(_, arg, _span) -> occurs_in_pattern(id, arg)
+    ast.PUnit(_span) -> False
   }
 }
 

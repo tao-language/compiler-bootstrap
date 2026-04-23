@@ -217,28 +217,28 @@ fn named_case_to_de_bruijn(named_case: NamedCase, env: List(String)) -> Case {
 /// Note: Patterns don't bind variables, so no environment needed.
 fn named_pattern_to_de_bruijn(pattern: NamedPattern) -> Pattern {
   case pattern {
-    NPAny(_span) -> PAny
-    NPAs(inner, name, _span) -> {
+    NPAny(span) -> PAny(span)
+    NPAs(inner, name, span) -> {
       let inner_db = named_pattern_to_de_bruijn(inner)
-      PAs(inner_db, name)
+      PAs(inner_db, name, span)
     }
-    NPTyp(level, _span) -> PTyp(level)
-    NPLit(value, _span) -> PLit(value)
-    NPLitT(typ, _span) -> PLitT(typ)
-    NPRcd(fields, _span) -> {
+    NPTyp(level, span) -> PTyp(level, span)
+    NPLit(value, span) -> PLit(value, span)
+    NPLitT(typ, span) -> PLitT(typ, span)
+    NPRcd(fields, span) -> {
       let fields_db =
         fields
         |> list.map(fn(f) {
           let #(name, pat) = f
           #(name, named_pattern_to_de_bruijn(pat))
         })
-      PRcd(fields_db)
+      PRcd(fields_db, span)
     }
-    NPCtr(tag, arg, _span) -> {
+    NPCtr(tag, arg, span) -> {
       let arg_db = named_pattern_to_de_bruijn(arg)
-      PCtr(tag, arg_db)
+      PCtr(tag, arg_db, span)
     }
-    NPUnit(_span) -> PUnit
+    NPUnit(span) -> PUnit(span)
   }
 }
 
@@ -1744,14 +1744,14 @@ fn format_term(
 /// Format a pattern.
 fn format_pattern(pattern: Pattern) -> formatter.Doc {
   case pattern {
-    PAny -> formatter.text("_")
-    PAs(inner, name) ->
+    PAny(_span) -> formatter.text("_")
+    PAs(inner, name, _span) ->
       formatter.concat([
         formatter.text(name),
         formatter.text(" @ "),
         format_pattern(inner),
       ])
-    PTyp(level) -> {
+    PTyp(level, _span) -> {
       case level {
         0 -> formatter.text("%Type")
         _ ->
@@ -1762,7 +1762,7 @@ fn format_pattern(pattern: Pattern) -> formatter.Doc {
           ])
       }
     }
-    PLit(value) -> {
+    PLit(value, _span) -> {
       case value {
         I32(n) -> formatter.text(int.to_string(n))
         I64(n) -> formatter.text(int.to_string(n))
@@ -1774,7 +1774,7 @@ fn format_pattern(pattern: Pattern) -> formatter.Doc {
         FloatLit(f) -> formatter.text(float.to_string(f))
       }
     }
-    PLitT(typ) -> {
+    PLitT(typ, _span) -> {
       case typ {
         I32T -> formatter.text("%I32")
         I64T -> formatter.text("%I64")
@@ -1786,7 +1786,7 @@ fn format_pattern(pattern: Pattern) -> formatter.Doc {
         FLitT -> formatter.text("%Float")
       }
     }
-    PRcd(fields) -> {
+    PRcd(fields, _span) -> {
       let field_docs =
         fields
         |> list.map(fn(f) {
@@ -1803,7 +1803,7 @@ fn format_pattern(pattern: Pattern) -> formatter.Doc {
         formatter.text("}"),
       ])
     }
-    PCtr(tag, arg) ->
+    PCtr(tag, arg, _span) ->
       formatter.concat([
         formatter.text("#"),
         formatter.text(tag),
@@ -1811,7 +1811,7 @@ fn format_pattern(pattern: Pattern) -> formatter.Doc {
         format_pattern(arg),
         formatter.text(")"),
       ])
-    PUnit ->
+    PUnit(_span) ->
       formatter.text("Unit")
   }
 }

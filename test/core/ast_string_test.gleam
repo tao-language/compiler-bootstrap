@@ -150,25 +150,25 @@ pub fn type_to_string_var_test() {
 // ============================================================================
 
 pub fn pattern_to_string_any_test() {
-  ast_string.pattern_to_string(ast.PAny) |> should.equal("_")
+  ast_string.pattern_to_string(ast.PAny(span)) |> should.equal("_")
 }
 
 pub fn pattern_to_string_unit_test() {
-  ast_string.pattern_to_string(ast.PUnit) |> should.equal("Unit")
+  ast_string.pattern_to_string(ast.PUnit(span)) |> should.equal("Unit")
 }
 
 pub fn pattern_to_string_ctr_test() {
-  ast_string.pattern_to_string(ast.PCtr("Just", ast.PAny)) |> should.equal("Just(_)")
+  ast_string.pattern_to_string(ast.PCtr("Just", ast.PAny(span), span)) |> should.equal("Just(_)")
 }
 
 pub fn pattern_to_string_as_test() {
-  let pat = ast.PAs(ast.PAny, "x")
+  let pat = ast.PAs(ast.PAny(span), "x", span)
   ast_string.pattern_to_string(pat) |> should.equal("x@_")
 }
 
 pub fn pattern_to_string_ptyp_test() {
-  ast_string.pattern_to_string(ast.PTyp(0)) |> should.equal("%Type")
-  ast_string.pattern_to_string(ast.PTyp(2)) |> should.equal("%Type2")
+  ast_string.pattern_to_string(ast.PTyp(0, span)) |> should.equal("%Type")
+  ast_string.pattern_to_string(ast.PTyp(2, span)) |> should.equal("%Type2")
 }
 
 // ============================================================================

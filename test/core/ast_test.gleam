@@ -175,7 +175,7 @@ pub fn shift_term_lam_test() {
 
 pub fn shift_case_returns_case_test() {
   let case_val = ast.Case(
-    pattern: ast.PUnit,
+    pattern: ast.PUnit(span),
     body: ast.Typ(0, span),
     guard: option.None,
     span: span,

@@ -73,7 +73,7 @@ pub fn visit_term(
         visit_term(motive, var, hole, lam, pi, app, match, ctr, rcd, dot, ann, call, comptime, fix, let_, typ, lit, lit_t, unit, err),
         list.map(cases, fn(c) {
           ast.Case(
-            pattern: visit_pattern(c.pattern, fn(t, p) { ast.PCtr(t, p) }, fn(fs) { ast.PRcd(fs) }),
+            pattern: visit_pattern(c.pattern, fn(t, p, s) { ast.PCtr(t, p, s) }, fn(fs, s) { ast.PRcd(fs, s) }),
             body: visit_term(c.body, var, hole, lam, pi, app, match, ctr, rcd, dot, ann, call, comptime, fix, let_, typ, lit, lit_t, unit, err),
             guard: c.guard,
             span: c.span,
@@ -128,25 +128,25 @@ pub fn visit_term(
 /// Visit a pattern with callbacks for constructors that may contain sub-patterns.
 pub fn visit_pattern(
   pattern: ast.Pattern,
-  p_ctr: fn(String, ast.Pattern) -> ast.Pattern,
-  p_rcd: fn(List(#(String, ast.Pattern))) -> ast.Pattern,
+  p_ctr: fn(String, ast.Pattern, Span) -> ast.Pattern,
+  p_rcd: fn(List(#(String, ast.Pattern)), Span) -> ast.Pattern,
 ) -> ast.Pattern {
   visit_pattern_inner(pattern, p_ctr, p_rcd)
 }
 
 fn visit_pattern_inner(
   pattern: ast.Pattern,
-  p_ctr: fn(String, ast.Pattern) -> ast.Pattern,
-  p_rcd: fn(List(#(String, ast.Pattern))) -> ast.Pattern,
+  p_ctr: fn(String, ast.Pattern, Span) -> ast.Pattern,
+  p_rcd: fn(List(#(String, ast.Pattern)), Span) -> ast.Pattern,
 ) -> ast.Pattern {
   case pattern {
-    ast.PAny -> ast.PAny
-    ast.PAs(inner, name) -> ast.PAs(visit_pattern_inner(inner, p_ctr, p_rcd), name)
-    ast.PTyp(univ) -> ast.PTyp(univ)
-    ast.PLit(lit) -> ast.PLit(lit)
-    ast.PLitT(lit_t) -> ast.PLitT(lit_t)
-    ast.PRcd(fields) -> p_rcd(list.map(fields, fn(f) { #(f.0, visit_pattern_inner(f.1, p_ctr, p_rcd)) }))
-    ast.PCtr(tag, arg) -> p_ctr(tag, visit_pattern_inner(arg, p_ctr, p_rcd))
-    ast.PUnit -> ast.PUnit
+    ast.PAny(span) -> ast.PAny(span)
+    ast.PAs(inner, name, span) -> ast.PAs(visit_pattern_inner(inner, p_ctr, p_rcd), name, span)
+    ast.PTyp(univ, span) -> ast.PTyp(univ, span)
+    ast.PLit(lit, span) -> ast.PLit(lit, span)
+    ast.PLitT(lit_t, span) -> ast.PLitT(lit_t, span)
+    ast.PRcd(fields, span) -> p_rcd(list.map(fields, fn(f) { #(f.0, visit_pattern_inner(f.1, p_ctr, p_rcd)) }), span)
+    ast.PCtr(tag, arg, span) -> p_ctr(tag, visit_pattern_inner(arg, p_ctr, p_rcd), span)
+    ast.PUnit(span) -> ast.PUnit(span)
   }
 }

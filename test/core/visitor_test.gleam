@@ -11,6 +11,7 @@ import gleam/option.{None}
 
 const s0 = Span("visitor_test", 0, 0, 0, 0)
 const s1 = Span("visitor_test", 1, 1, 1, 1)
+const dummy_span = Span("visitor_test", 10, 10, 10, 10)
 
 fn eq_terms(a: ast.Term, b: ast.Term) -> Bool { a == b }
 fn eq_patterns(a: ast.Pattern, b: ast.Pattern) -> Bool { a == b }
@@ -145,7 +146,7 @@ pub fn visitor_hole_to_var_nested_test() {
 pub fn visitor_match_test() {
   let arg = var_(0, s0)
   let motive = ast.Typ(0, s1)
-  let case1 = ast.Case(ast.PAny, var_(0, s1), guard: None, span: s1)
+  let case1 = ast.Case(ast.PAny(dummy_span), var_(0, s1), guard: None, span: s1)
   let cases = [case1]
   let term = ast.Match(arg, motive: motive, cases: cases, span: s0)
   let c = mk_callbacks()
@@ -235,93 +236,93 @@ pub fn visitor_error_term_test() {
 // --- PATTERN VISITOR TESTS ---
 
 pub fn visitor_pattern_ctr_test() {
-  let pattern = ast.PCtr("Some", ast.PAny)
+  let pattern = ast.PCtr("Some", ast.PAny(dummy_span), dummy_span)
   let result = visitor.visit_pattern(
     pattern,
-    fn(tag, arg) { ast.PCtr(tag, arg) },
-    fn(fields) { ast.PRcd(fields) },
+    fn(tag, arg, s) { ast.PCtr(tag, arg, s) },
+    fn(fields, s) { ast.PRcd(fields, s) },
   )
-  eq_patterns(result, ast.PCtr("Some", ast.PAny)) |> should.equal(True)
+  eq_patterns(result, ast.PCtr("Some", ast.PAny(dummy_span), dummy_span)) |> should.equal(True)
 }
 
 pub fn visitor_pattern_rcd_test() {
-  let pattern = ast.PRcd([#("x", ast.PAny), #("y", ast.PAny)])
+  let pattern = ast.PRcd([#("x", ast.PAny(dummy_span)), #("y", ast.PAny(dummy_span))], dummy_span)
   let result = visitor.visit_pattern(
     pattern,
-    fn(tag, arg) { ast.PCtr(tag, arg) },
-    fn(fields) { ast.PRcd(fields) },
+    fn(tag, arg, s) { ast.PCtr(tag, arg, s) },
+    fn(fields, s) { ast.PRcd(fields, s) },
   )
   eq_patterns(result, pattern) |> should.equal(True)
 }
 
 pub fn visitor_pattern_as_test() {
-  let pattern = ast.PAs(ast.PAny, "x")
+  let pattern = ast.PAs(ast.PAny(dummy_span), "x", dummy_span)
   let result = visitor.visit_pattern(
     pattern,
-    fn(tag, arg) { ast.PCtr(tag, arg) },
-    fn(fields) { ast.PRcd(fields) },
+    fn(tag, arg, s) { ast.PCtr(tag, arg, s) },
+    fn(fields, s) { ast.PRcd(fields, s) },
   )
-  eq_patterns(result, ast.PAs(ast.PAny, "x")) |> should.equal(True)
+  eq_patterns(result, ast.PAs(ast.PAny(dummy_span), "x", dummy_span)) |> should.equal(True)
 }
 
 pub fn visitor_pattern_nested_as_ctr_test() {
-  let pattern = ast.PAs(ast.PCtr("Some", ast.PAny), "wrapped")
+  let pattern = ast.PAs(ast.PCtr("Some", ast.PAny(dummy_span), dummy_span), "wrapped", dummy_span)
   let result = visitor.visit_pattern(
     pattern,
-    fn(tag, arg) { ast.PCtr(tag, arg) },
-    fn(fields) { ast.PRcd(fields) },
+    fn(tag, arg, s) { ast.PCtr(tag, arg, s) },
+    fn(fields, s) { ast.PRcd(fields, s) },
   )
-  eq_patterns(result, ast.PAs(ast.PCtr("Some", ast.PAny), "wrapped")) |> should.equal(True)
+  eq_patterns(result, ast.PAs(ast.PCtr("Some", ast.PAny(dummy_span), dummy_span), "wrapped", dummy_span)) |> should.equal(True)
 }
 
 pub fn visitor_pattern_unit_test() {
-  let pattern = ast.PUnit
+  let pattern = ast.PUnit(dummy_span)
   let result = visitor.visit_pattern(
     pattern,
-    fn(tag, arg) { ast.PCtr(tag, arg) },
-    fn(fields) { ast.PRcd(fields) },
+    fn(tag, arg, s) { ast.PCtr(tag, arg, s) },
+    fn(fields, s) { ast.PRcd(fields, s) },
   )
-  eq_patterns(result, ast.PUnit) |> should.equal(True)
+  eq_patterns(result, ast.PUnit(dummy_span)) |> should.equal(True)
 }
 
 pub fn visitor_pattern_any_test() {
-  let pattern = ast.PAny
+  let pattern = ast.PAny(dummy_span)
   let result = visitor.visit_pattern(
     pattern,
-    fn(tag, arg) { ast.PCtr(tag, arg) },
-    fn(fields) { ast.PRcd(fields) },
+    fn(tag, arg, s) { ast.PCtr(tag, arg, s) },
+    fn(fields, s) { ast.PRcd(fields, s) },
   )
-  eq_patterns(result, ast.PAny) |> should.equal(True)
+  eq_patterns(result, ast.PAny(dummy_span)) |> should.equal(True)
 }
 
 pub fn visitor_pattern_lit_t_test() {
-  let pattern = ast.PLitT(ast.I32T)
+  let pattern = ast.PLitT(ast.I32T, dummy_span)
   let result = visitor.visit_pattern(
     pattern,
-    fn(tag, arg) { ast.PCtr(tag, arg) },
-    fn(fields) { ast.PRcd(fields) },
+    fn(tag, arg, s) { ast.PCtr(tag, arg, s) },
+    fn(fields, s) { ast.PRcd(fields, s) },
   )
-  eq_patterns(result, ast.PLitT(ast.I32T)) |> should.equal(True)
+  eq_patterns(result, ast.PLitT(ast.I32T, dummy_span)) |> should.equal(True)
 }
 
 pub fn visitor_pattern_typ_test() {
-  let pattern = ast.PTyp(0)
+  let pattern = ast.PTyp(0, dummy_span)
   let result = visitor.visit_pattern(
     pattern,
-    fn(tag, arg) { ast.PCtr(tag, arg) },
-    fn(fields) { ast.PRcd(fields) },
+    fn(tag, arg, s) { ast.PCtr(tag, arg, s) },
+    fn(fields, s) { ast.PRcd(fields, s) },
   )
-  eq_patterns(result, ast.PTyp(0)) |> should.equal(True)
+  eq_patterns(result, ast.PTyp(0, dummy_span)) |> should.equal(True)
 }
 
 pub fn visitor_pattern_lit_test() {
-  let pattern = ast.PLit(ast.I32(42))
+  let pattern = ast.PLit(ast.I32(42), dummy_span)
   let result = visitor.visit_pattern(
     pattern,
-    fn(tag, arg) { ast.PCtr(tag, arg) },
-    fn(fields) { ast.PRcd(fields) },
+    fn(tag, arg, s) { ast.PCtr(tag, arg, s) },
+    fn(fields, s) { ast.PRcd(fields, s) },
   )
-  eq_patterns(result, ast.PLit(ast.I32(42))) |> should.equal(True)
+  eq_patterns(result, ast.PLit(ast.I32(42), dummy_span)) |> should.equal(True)
 }
 
 pub fn main() {

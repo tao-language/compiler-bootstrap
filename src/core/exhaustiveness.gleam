@@ -19,7 +19,7 @@ pub fn check_exhaustiveness(
   span: Span,
 ) -> List(state.Error) {
   case patterns {
-    [] -> [state.MatchMissingCase(span, ast.PAny)]
+    [] -> [state.MatchMissingCase(span, ast.PAny(span))]
     _ -> {
       let redundant = find_redundant_cases(patterns)
       let missing = check_missing(patterns, types, span)
@@ -65,7 +65,7 @@ fn find_redundant_cases(patterns: List(List(ast.Pattern))) -> List(state.Error) 
 fn is_subsumed_by(pattern: List(ast.Pattern), earlier: List(ast.Pattern)) -> Bool {
   case earlier {
     // Earlier pattern starts with wildcard -> current is redundant
-    [ast.PAny, ..] -> True
+    [ast.PAny(_), ..] -> True
     // No earlier patterns left -> check if pattern is also exhausted
     [] -> case pattern {
       [] -> True  // Both exhausted = fully subsumed
@@ -85,23 +85,23 @@ fn is_subsumed_by(pattern: List(ast.Pattern), earlier: List(ast.Pattern)) -> Boo
 /// PAny only matches PAny here — wildcard subsumption is handled in is_subsumed_by.
 fn patterns_match(p1: ast.Pattern, p2: ast.Pattern) -> Bool {
   case p1, p2 {
-    ast.PAny, ast.PAny -> True
+    ast.PAny(_), ast.PAny(_) -> True
     // Two as-patterns match if inner patterns match
-    ast.PAs(inner1, _), ast.PAs(inner2, _) -> patterns_match(inner1, inner2)
+    ast.PAs(inner1, _, _), ast.PAs(inner2, _, _) -> patterns_match(inner1, inner2)
     // Two constructors match if same tag and inner patterns match
-    ast.PCtr(tag1, p1_inner), ast.PCtr(tag2, p2_inner) ->
+    ast.PCtr(tag1, p1_inner, _), ast.PCtr(tag2, p2_inner, _) ->
       tag1 == tag2 && patterns_match(p1_inner, p2_inner)
     // Two literals match if equal
-    ast.PLit(l1), ast.PLit(l2) -> l1 == l2
+    ast.PLit(l1, _), ast.PLit(l2, _) -> l1 == l2
     // Two literal types match if equal
-    ast.PLitT(t1), ast.PLitT(t2) -> t1 == t2
+    ast.PLitT(t1, _), ast.PLitT(t2, _) -> t1 == t2
     // Two record patterns match if same fields and inner patterns match
-    ast.PRcd(fields1), ast.PRcd(fields2) ->
+    ast.PRcd(fields1, _), ast.PRcd(fields2, _) ->
       record_fields_match(fields1, fields2)
     // Type patterns match if types are equal
-    ast.PTyp(t1), ast.PTyp(t2) -> t1 == t2
+    ast.PTyp(t1, _), ast.PTyp(t2, _) -> t1 == t2
     // Unit pattern matches only unit pattern
-    ast.PUnit, ast.PUnit -> True
+    ast.PUnit(_), ast.PUnit(_) -> True
     // Everything else doesn't match
     _, _ -> False
   }
@@ -137,7 +137,7 @@ fn check_missing(
     False -> {
       // Check if all patterns are literals without wildcard (incomplete)
       case all_non_exhaustive(patterns) {
-        True -> [state.MatchMissingCase(span, ast.PAny)]
+        True -> [state.MatchMissingCase(span, ast.PAny(span))]
         False -> []
       }
     }
@@ -149,7 +149,7 @@ fn all_non_exhaustive(patterns: List(List(ast.Pattern))) -> Bool {
   list.all(patterns, fn(patterns_row) {
     list.all(patterns_row, fn(p) {
       case p {
-        ast.PLit(_) -> True
+        ast.PLit(_, _) -> True
         _ -> False
       }
     })
@@ -161,7 +161,7 @@ fn has_wildcard(patterns: List(List(ast.Pattern))) -> Bool {
   list.any(patterns, fn(patterns_row) {
     list.any(patterns_row, fn(p) {
       case p {
-        ast.PAny -> True
+        ast.PAny(_) -> True
         _ -> False
       }
     })
@@ -174,7 +174,7 @@ pub fn get_default_cases(
 ) -> List(ast.Pattern) {
   // Return wildcard pattern as default case
   case patterns {
-    [] -> [ast.PAny]
-    _ -> [ast.PAny]
+    [] -> [ast.PAny(SpanCtr("", 0, 0, 0, 0))]
+    _ -> [ast.PAny(SpanCtr("", 0, 0, 0, 0))]
   }
 }

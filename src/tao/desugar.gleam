@@ -1421,7 +1421,7 @@ fn desugar_for(
   // Build the fixpoint body: match collection { | <list_nil> -> () | x::<list_cons> -> ... }
   // Empty list case: return unit (loop done)
   let nil_clause = CoreCase(
-    pattern: core_ast.PCtr(dc.config.list_nil, core_ast.PUnit),
+    pattern: core_ast.PCtr(dc.config.list_nil, core_ast.PUnit(span), span),
     body: CoreRcd([], span),
     guard: None,
     span: span,
@@ -1433,13 +1433,13 @@ fn desugar_for(
   let list_cons = dc.config.list_cons
   
   case pattern {
-    ast.PVar(name, _pattern_span) -> {
+    ast.PVar(name, pattern_span) -> {
       // for x in collection { body } → match collection { | x::rest -> body; for_loop() | _ -> () }
       let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
       
       // Use PAs to bind the head to the pattern variable
       let cons_clause = CoreCase(
-        pattern: core_ast.PCtr(list_cons, core_ast.PAs(core_ast.PAny, name)),
+        pattern: core_ast.PCtr(list_cons, core_ast.PAs(core_ast.PAny(pattern_span), name, pattern_span), pattern_span),
         body: body_with_rec,
         guard: None,
         span: span,
@@ -1456,12 +1456,12 @@ fn desugar_for(
       let result = CoreDoBlock([collection_binding], fix, span)
       #(result, dc4)
     }
-    ast.PAny(_pattern_span) -> {
+    ast.PAny(pattern_span) -> {
       // for _ in collection { body } → match collection { | _::rest -> body; for_loop() | _ -> () }
       let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
       
       let cons_clause = CoreCase(
-        pattern: core_ast.PCtr(list_cons, core_ast.PAs(core_ast.PAny, "_for_head")),
+        pattern: core_ast.PCtr(list_cons, core_ast.PAs(core_ast.PAny(pattern_span), "_for_head", pattern_span), pattern_span),
         body: body_with_rec,
         guard: None,
         span: span,
@@ -1483,7 +1483,7 @@ fn desugar_for(
       let body_with_rec = CoreDoBlock(core_body_stmts, loop_call, span)
       
       let cons_clause = CoreCase(
-        pattern: core_ast.PCtr(list_cons, core_ast.PAs(core_ast.PAny, "_for_head")),
+        pattern: core_ast.PCtr(list_cons, core_ast.PAs(core_ast.PAny(span), "_for_head", span), span),
         body: body_with_rec,
         guard: None,
         span: span,
@@ -1534,7 +1534,7 @@ fn desugar_while(
   // True clause: execute body and recurse (uses language config for truth constructor)
   let truth_ctor = dc.config.truth_constructor
   let true_clause = CoreCase(
-    pattern: core_ast.PCtr(truth_ctor, core_ast.PUnit),
+    pattern: core_ast.PCtr(truth_ctor, core_ast.PUnit(span), span),
     body: body_with_rec,
     guard: None,
     span: span,
@@ -1542,7 +1542,7 @@ fn desugar_while(
 
   // Default clause: return unit (exit loop)
   let default_clause = CoreCase(
-    pattern: core_ast.PAny,
+    pattern: core_ast.PAny(span),
     body: CoreRcd([], span),
     guard: None,
     span: span,
@@ -2276,51 +2276,51 @@ fn tao_pattern_to_core_pattern(
   dc: DesugarContext,
 ) -> #(core_ast.Pattern, DesugarContext) {
   case pattern {
-    ast.PVar(name, _pattern_span) -> {
+    ast.PVar(name, pattern_span) -> {
       // Variable pattern: bind to as-pattern
-      let core_pattern = core_ast.PAs(core_ast.PAny, name)
+      let core_pattern = core_ast.PAs(core_ast.PAny(pattern_span), name, pattern_span)
       let dc1 = add_local(dc, name)
       #(core_pattern, dc1)
     }
-    ast.PAny(_pattern_span) -> {
+    ast.PAny(pattern_span) -> {
       // Wildcard pattern (AST)
-      #(core_ast.PAny, dc)
+      #(core_ast.PAny(pattern_span), dc)
     }
-    ast.PLit(literal, _pattern_span) -> {
+    ast.PLit(literal, pattern_span) -> {
       // Literal pattern
       let core_lit = tao_literal_to_core_literal(literal)
-      #(core_ast.PLit(core_lit), dc)
+      #(core_ast.PLit(core_lit, pattern_span), dc)
     }
-    ast.PCtr(name, args, _pattern_span) -> {
+    ast.PCtr(name, args, pattern_span) -> {
       // Constructor pattern
-      tao_ctr_pattern_to_core(name, args, dc)
+      tao_ctr_pattern_to_core(name, args, dc, pattern_span)
     }
-    ast.PRecord(field_names, _pattern_span) -> {
+    ast.PRecord(field_names, pattern_span) -> {
       // Record pattern: {x, y} → {x = x, y = y}
       let core_fields = list.map(field_names, fn(field_name) {
-        #(field_name, core_ast.PAs(core_ast.PAny, field_name))
+        #(field_name, core_ast.PAs(core_ast.PAny(pattern_span), field_name, pattern_span))
       })
       let dc1 = list.fold(field_names, dc, fn(acc, name) {
         add_local(acc, name)
       })
-      #(core_ast.PRcd(core_fields), dc1)
+      #(core_ast.PRcd(core_fields, pattern_span), dc1)
     }
-    ast.PTuple(items, _pattern_span) -> {
+    ast.PTuple(items, pattern_span) -> {
       // Tuple pattern: (a, b) → record with numeric fields
-      tao_tuple_pattern_to_core(items, dc)
+      tao_tuple_pattern_to_core(items, dc, pattern_span)
     }
-    ast.PList(items, rest_name, _pattern_span) -> {
+    ast.PList(items, rest_name, pattern_span) -> {
       // List pattern: [h, ..t] or [a, b, c]
-      tao_list_pattern_to_core(items, rest_name, dc)
+      tao_list_pattern_to_core(items, rest_name, dc, pattern_span)
     }
-    ast.POr(_patterns, _pattern_span) -> {
+    ast.POr(_patterns, pattern_span) -> {
       // Or pattern: simplified to core_ast.PAny (full support needs core changes)
-      #(core_ast.PAny, dc)
+      #(core_ast.PAny(pattern_span), dc)
     }
-    ast.PAs(inner_pattern, alias, _pattern_span) -> {
+    ast.PAs(inner_pattern, alias, pattern_span) -> {
       // As pattern: x @ Some(_)
       let #(core_inner, dc1) = tao_pattern_to_core_pattern(inner_pattern, dc)
-      let core_pattern = core_ast.PAs(core_inner, alias)
+      let core_pattern = core_ast.PAs(core_inner, alias, pattern_span)
       let dc2 = add_local(dc1, alias)
       #(core_pattern, dc2)
     }
@@ -2332,15 +2332,16 @@ fn tao_ctr_pattern_to_core(
   name: String,
   args: List(Pattern),
   dc: DesugarContext,
+  span: Span,
 ) -> #(core_ast.Pattern, DesugarContext) {
   case args {
     [] -> {
       // Nullary constructor
-      #(core_ast.PCtr(name, core_ast.PUnit), dc)
+      #(core_ast.PCtr(name, core_ast.PUnit(span), span), dc)
     }
     [first, ..rest] -> {
       // Build nested constructor pattern
-      tao_ctr_pattern_to_core_loop(name, [first, ..rest], dc)
+      tao_ctr_pattern_to_core_loop(name, [first, ..rest], dc, span)
     }
   }
 }
@@ -2349,21 +2350,22 @@ fn tao_ctr_pattern_to_core_loop(
   name: String,
   args: List(Pattern),
   dc: DesugarContext,
+  span: Span,
 ) -> #(core_ast.Pattern, DesugarContext) {
   case args {
     [] -> {
-      #(core_ast.PUnit, dc)
+      #(core_ast.PUnit(span), dc)
     }
     [first] -> {
       // Last argument
       let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
-      #(core_ast.PCtr(name, core_first), dc1)
+      #(core_ast.PCtr(name, core_first, span), dc1)
     }
     [first, ..rest] -> {
       // Build nested pattern
       let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
-      let #(core_rest, dc2) = tao_ctr_pattern_to_core_loop(name, rest, dc1)
-      #(core_ast.PCtr(name, core_first), dc2)
+      let #(core_rest, dc2) = tao_ctr_pattern_to_core_loop(name, rest, dc1, span)
+      #(core_ast.PCtr(name, core_first, span), dc2)
     }
   }
 }
@@ -2372,8 +2374,9 @@ fn tao_ctr_pattern_to_core_loop(
 fn tao_tuple_pattern_to_core(
   items: List(Pattern),
   dc: DesugarContext,
+  span: Span,
 ) -> #(core_ast.Pattern, DesugarContext) {
-  tao_tuple_pattern_loop(items, 0, [], dc)
+  tao_tuple_pattern_loop(items, 0, [], dc, span)
 }
 
 fn tao_tuple_pattern_loop(
@@ -2381,15 +2384,16 @@ fn tao_tuple_pattern_loop(
   index: Int,
   acc: List(#(String, core_ast.Pattern)),
   dc: DesugarContext,
+  span: Span,
 ) -> #(core_ast.Pattern, DesugarContext) {
   case items {
     [] -> {
-      #(core_ast.PRcd(list.reverse(acc)), dc)
+      #(core_ast.PRcd(list.reverse(acc), span), dc)
     }
     [item, ..rest] -> {
       let field_name = int.to_string(index)
       let #(core_item, dc1) = tao_pattern_to_core_pattern(item, dc)
-      tao_tuple_pattern_loop(rest, index + 1, [#(field_name, core_item), ..acc], dc1)
+      tao_tuple_pattern_loop(rest, index + 1, [#(field_name, core_item), ..acc], dc1, span)
     }
   }
 }
@@ -2399,6 +2403,7 @@ fn tao_list_pattern_to_core(
   items: List(Pattern),
   rest_name: Option(String),
   dc: DesugarContext,
+  span: Span,
 ) -> #(core_ast.Pattern, DesugarContext) {
   case items {
     [] -> {
@@ -2406,20 +2411,20 @@ fn tao_list_pattern_to_core(
       case rest_name {
         Some(name) -> {
           // [..rest] or [] with rest
-          let core_pattern = core_ast.PCtr(dc.config.list_nil, core_ast.PUnit)
+          let core_pattern = core_ast.PCtr(dc.config.list_nil, core_ast.PUnit(span), span)
           let dc1 = add_local(dc, name)
-          #(core_ast.PAs(core_pattern, name), dc1)
+          #(core_ast.PAs(core_pattern, name, span), dc1)
         }
         None -> {
-          #(core_ast.PCtr(dc.config.list_nil, core_ast.PUnit), dc)
+          #(core_ast.PCtr(dc.config.list_nil, core_ast.PUnit(span), span), dc)
         }
       }
     }
     [first, ..rest] -> {
       // Non-empty list: <list_cons>(h, t)
       let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
-      let #(core_rest, dc2) = tao_list_rest_pattern_to_core(rest, rest_name, dc1)
-      #(core_ast.PCtr(dc.config.list_cons, core_first), dc2)
+      let #(core_rest, dc2) = tao_list_rest_pattern_to_core(rest, rest_name, dc1, span)
+      #(core_ast.PCtr(dc.config.list_cons, core_first, span), dc2)
     }
   }
 }
@@ -2428,26 +2433,27 @@ fn tao_list_rest_pattern_to_core(
   rest: List(Pattern),
   rest_name: Option(String),
   dc: DesugarContext,
+  span: Span,
 ) -> #(core_ast.Pattern, DesugarContext) {
   case rest {
     [] -> {
       // End of list: <list_nil>
       case rest_name {
         Some(name) -> {
-          let core_pattern = core_ast.PCtr(dc.config.list_nil, core_ast.PUnit)
+          let core_pattern = core_ast.PCtr(dc.config.list_nil, core_ast.PUnit(span), span)
           let dc1 = add_local(dc, name)
-          #(core_ast.PAs(core_pattern, name), dc1)
+          #(core_ast.PAs(core_pattern, name, span), dc1)
         }
         None -> {
-          #(core_ast.PCtr(dc.config.list_nil, core_ast.PUnit), dc)
+          #(core_ast.PCtr(dc.config.list_nil, core_ast.PUnit(span), span), dc)
         }
       }
     }
     [first, ..rest_rest] -> {
       // More elements: <list_cons>(h, t)
       let #(core_first, dc1) = tao_pattern_to_core_pattern(first, dc)
-      let #(core_rest, dc2) = tao_list_rest_pattern_to_core(rest_rest, rest_name, dc1)
-      #(core_ast.PCtr(dc.config.list_cons, core_first), dc2)
+      let #(core_rest, dc2) = tao_list_rest_pattern_to_core(rest_rest, rest_name, dc1, span)
+      #(core_ast.PCtr(dc.config.list_cons, core_first, span), dc2)
     }
   }
 }

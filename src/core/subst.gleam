@@ -359,8 +359,8 @@ pub fn subst_term_with_implicit_vars(
         list.map(cases, fn(c) {
           ast.Case(
             pattern: visitor.visit_pattern(c.pattern,
-              fn(t, p) { ast.PCtr(t, p) },
-              fn(fs) { ast.PRcd(fs) },
+              fn(t, p, _) { ast.PCtr(t, p, c.span) },
+              fn(fs, _) { ast.PRcd(fs, c.span) },
             ),
             body: c.body,
             guard: c.guard,

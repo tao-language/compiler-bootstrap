@@ -670,26 +670,26 @@ fn infer_pattern(
   expected_ty: ast.Type,
 ) -> #(ast.Value, state.State) {
   case pattern {
-    ast.PAs(inner_pattern, name) -> {
+    ast.PAs(inner_pattern, name, span) -> {
       let hole_val = ast.VNeut(ast.HHole(0), [])
       let #(_fresh, s) = def_var(s, name, expected_ty)
       infer_pattern(s, inner_pattern, expected_ty)
     }
-    ast.PCtr(tag, arg_pattern) -> {
+    ast.PCtr(tag, arg_pattern, span) -> {
       case list.key_find(s.ctrs, tag) {
         Ok(ctr) -> {
           let #(params, ctr_arg_ty, ctr_ret_ty, s) = check_ctr_def(s, ctr)
-          let s = check_type(s, expected_ty, ctr_ret_ty, Span("", 0, 0, 0, 0), Span("", 0, 0, 0, 0))
+          let s = check_type(s, expected_ty, ctr_ret_ty, span, span)
           let #(arg_val, s) = infer_pattern(s, arg_pattern, ctr_arg_ty)
           #(ast.VCtrValue(ast.VCtr(tag, arg_val)), s)
         }
         Error(Nil) -> {
-          let s = state.State(..s, errors: [state.CtrUndefined(tag, Span("", 0, 0, 0, 0)), ..s.errors])
+          let s = state.State(..s, errors: [state.CtrUndefined(tag, span), ..s.errors])
           #(ast.VErr, s)
         }
       }
     }
-    ast.PLit(literal) -> {
+    ast.PLit(literal, span) -> {
       let val = case literal {
         ast.I32(n) -> ast.VLit(ast.I32(n))
         ast.I64(n) -> ast.VLit(ast.I64(n))
@@ -702,14 +702,27 @@ fn infer_pattern(
       }
       #(val, s)
     }
-    ast.PLitT(lit_type) -> #(ast.VLitT(lit_type), s)
-    ast.PTyp(k) -> #(ast.VTyp(k), s)
-    ast.PRcd(fields) -> {
+    ast.PLitT(lit_type, span) -> {
+      let _span = span
+      #(ast.VLitT(lit_type), s)
+    }
+    ast.PTyp(k, span) -> {
+      let _span = span
+      #(ast.VTyp(k), s)
+    }
+    ast.PRcd(fields, span) -> {
+      let _span = span
       let #(field_vals, s) = infer_pattern_fields(s, fields)
       #(ast.VRcd(field_vals), s)
     }
-    ast.PUnit -> #(ast.VUnit, s)
-    ast.PAny -> #(ast.VNeut(ast.HHole(0), []), s)
+    ast.PUnit(span) -> {
+      let _span = span
+      #(ast.VUnit, s)
+    }
+    ast.PAny(span) -> {
+      let _span = span
+      #(ast.VNeut(ast.HHole(0), []), s)
+    }
   }
 }
 
@@ -1067,16 +1080,16 @@ fn shift_hvar_in_term(term: ast.Term, shift: Int) -> ast.Term {
 
 fn shift_hvar_in_pattern(pattern: ast.Pattern, shift: Int) -> ast.Pattern {
   case pattern {
-    ast.PAs(inner, name) -> ast.PAs(shift_hvar_in_pattern(inner, shift), name)
-    ast.PCtr(tag, arg) -> ast.PCtr(tag, shift_hvar_in_pattern(arg, shift))
-    ast.PLit(_) -> pattern
-    ast.PLitT(_) -> pattern
-    ast.PTyp(_) -> pattern
-    ast.PRcd(fields) -> ast.PRcd(list.map(fields, fn(pair) {
+    ast.PAs(inner, name, span) -> ast.PAs(shift_hvar_in_pattern(inner, shift), name, span)
+    ast.PCtr(tag, arg, span) -> ast.PCtr(tag, shift_hvar_in_pattern(arg, shift), span)
+    ast.PLit(value, span) -> ast.PLit(value, span)
+    ast.PLitT(value, span) -> ast.PLitT(value, span)
+    ast.PTyp(level, span) -> ast.PTyp(level, span)
+    ast.PRcd(fields, span) -> ast.PRcd(list.map(fields, fn(pair) {
       #(pair.0, shift_hvar_in_pattern(pair.1, shift))
-    }))
-    ast.PUnit -> pattern
-    ast.PAny -> pattern
+    }), span)
+    ast.PUnit(span) -> ast.PUnit(span)
+    ast.PAny(span) -> ast.PAny(span)
   }
 }
 

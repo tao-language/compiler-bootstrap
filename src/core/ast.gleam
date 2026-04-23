@@ -104,14 +104,14 @@ pub fn get_span(term: Term) -> Span {
 // ============================================================================
 
 pub type Pattern {
-  PAny
-  PAs(pattern: Pattern, name: String)
-  PTyp(universe: Int)
-  PLit(value: Literal)
-  PLitT(value: LiteralType)
-  PRcd(fields: List(#(String, Pattern)))
-  PCtr(tag: String, arg: Pattern)
-  PUnit
+  PAny(span: Span)
+  PAs(pattern: Pattern, name: String, span: Span)
+  PTyp(universe: Int, span: Span)
+  PLit(value: Literal, span: Span)
+  PLitT(value: LiteralType, span: Span)
+  PRcd(fields: List(#(String, Pattern)), span: Span)
+  PCtr(tag: String, arg: Pattern, span: Span)
+  PUnit(span: Span)
 }
 
 pub type Case {

@@ -431,7 +431,7 @@ pub fn subst_term_implicit_pi_test() {
 
 pub fn subst_term_implicit_match_test() {
   // Match: arg and motive are visited, case body is visited
-  let pattern = ast.PCtr("Some", ast.PAny)
+  let pattern = ast.PCtr("Some", ast.PAny(span), span)
   let term = ast.Match(
     arg: ast.Var(0, span),
     motive: ast.Var(1, span),

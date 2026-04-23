@@ -590,14 +590,14 @@ fn value_to_type(value: ast.Value) -> ast.Type {
 
 fn pattern_to_string(pattern: ast.Pattern) -> String {
   case pattern {
-    ast.PAny -> "_"
-    ast.PAs(pat, name) -> name <> "@" <> pattern_to_string(pat)
-    ast.PTyp(_) -> "ast.Type"
-    ast.PLit(lit) -> literal_to_string(lit)
-    ast.PLitT(lit) -> literal_type_to_string(lit)
-    ast.PRcd(fields) -> "{ " <> list.map(fields, fn(f) { f.0 <> " = ..." }) |> string.join(", ") <> " }"
-    ast.PCtr(tag, arg) -> tag <> "(" <> pattern_to_string(arg) <> ")"
-    ast.PUnit -> "Unit"
+    ast.PAny(_span) -> "_"
+    ast.PAs(pat, name, _span) -> name <> "@" <> pattern_to_string(pat)
+    ast.PTyp(_, _span) -> "ast.Type"
+    ast.PLit(lit, _span) -> literal_to_string(lit)
+    ast.PLitT(lit, _span) -> literal_type_to_string(lit)
+    ast.PRcd(fields, _span) -> "{ " <> list.map(fields, fn(f) { f.0 <> " = ..." }) |> string.join(", ") <> " }"
+    ast.PCtr(tag, arg, _span) -> tag <> "(" <> pattern_to_string(arg) <> ")"
+    ast.PUnit(_span) -> "Unit"
   }
 }
 
