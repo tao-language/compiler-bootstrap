@@ -107,9 +107,9 @@ pub fn test_typed_call_infer_eq_bool_test() {
   let #(_val, ty, s) = infer(s, eq_call)
   
   list.is_empty(s.errors) |> should.be_true
-  // Result type should be Bool (VTyp(0))
+  // Result type should be Bool (VCtrValue(VCtr("Bool", VUnit)))
   case ty {
-    ast.VTyp(0) -> True |> should.be_true
+    ast.VCtrValue(ast.VCtr("Bool", _)) -> True |> should.be_true
     _ -> False |> should.be_true
   }
 }

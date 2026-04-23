@@ -57,7 +57,7 @@ fn eq_call_with_types(args: List(#(ast.Term, ast.Term)), ret: ast.Term) -> ast.T
 }
 
 pub fn ffi_eq_returns_bool_type_test() {
-  // eq(I32(1): I32, I32(1): I32) -> Bool should return value True with type Bool (VTyp(0))
+  // eq(I32(1): I32, I32(1): I32) -> Bool should return value True with type Bool (VCtrValue(VCtr("Bool", VUnit)))
   let eq_call = eq_call_with_types([
     #(ast.Lit(ast.I32(1), span()), ast.Typ(0, span())),
     #(ast.Lit(ast.I32(1), span()), ast.Typ(0, span())),
@@ -66,15 +66,15 @@ pub fn ffi_eq_returns_bool_type_test() {
   let #(_val, ty, s) = infer(state_with_bool_ctrs(), eq_call)
   list.is_empty(s.errors) |> should.be_true
 
-  // The type should be VTyp(0) (Bool type level), not ILitT
+  // The type should be VCtrValue(VCtr("Bool", VUnit)), not ILitT
   case ty {
-    ast.VTyp(0) -> True |> should.be_true
+    ast.VCtrValue(ast.VCtr("Bool", _)) -> True |> should.be_true
     _ -> False |> should.be_true
   }
 }
 
 pub fn ffi_lt_returns_bool_type_test() {
-  // lt(I32(1): I32, I32(2): I32) -> Bool should return value True with type Bool (VTyp(0))
+  // lt(I32(1): I32, I32(2): I32) -> Bool should return value True with type Bool (VCtrValue(VCtr("Bool", VUnit)))
   let lt_call = eq_call_with_types([
     #(ast.Lit(ast.I32(1), span()), ast.Typ(0, span())),
     #(ast.Lit(ast.I32(2), span()), ast.Typ(0, span())),
@@ -83,9 +83,9 @@ pub fn ffi_lt_returns_bool_type_test() {
   let #(_val, ty, s) = infer(state_with_bool_ctrs(), lt_call)
   list.is_empty(s.errors) |> should.be_true
 
-  // The type should be VTyp(0) (Bool type level), not ILitT
+  // The type should be VCtrValue(VCtr("Bool", VUnit)), not ILitT
   case ty {
-    ast.VTyp(0) -> True |> should.be_true
+    ast.VCtrValue(ast.VCtr("Bool", _)) -> True |> should.be_true
     _ -> False |> should.be_true
   }
 }
@@ -110,9 +110,9 @@ pub fn ffi_eq_true_value_test() {
     _ -> False |> should.be_true
   }
 
-  // Also verify type is correct (VTyp(0) = Bool)
+  // Also verify type is correct (VCtrValue(VCtr("Bool", VUnit)) = Bool)
   case ty {
-    ast.VTyp(0) -> True |> should.be_true
+    ast.VCtrValue(ast.VCtr("Bool", _)) -> True |> should.be_true
     _ -> False |> should.be_true
   }
 }
@@ -132,9 +132,9 @@ pub fn ffi_eq_false_value_test() {
     _ -> False |> should.be_true
   }
 
-  // Also verify type is correct (VTyp(0) = Bool)
+  // Also verify type is correct (VCtrValue(VCtr("Bool", VUnit)) = Bool)
   case ty {
-    ast.VTyp(0) -> True |> should.be_true
+    ast.VCtrValue(ast.VCtr("Bool", _)) -> True |> should.be_true
     _ -> False |> should.be_true
   }
 }
@@ -159,9 +159,9 @@ pub fn ffi_eq_with_overloaded_literals_test() {
     _ -> False |> should.be_true
   }
 
-  // Type should be VTyp(0) (Bool), not VLitT(ILitT)
+  // Type should be VCtrValue(VCtr("Bool", VUnit)) (Bool), not VLitT(ILitT)
   case ty {
-    ast.VTyp(0) -> True |> should.be_true
+    ast.VCtrValue(ast.VCtr("Bool", _)) -> True |> should.be_true
     _ -> False |> should.be_true
   }
 }
@@ -187,7 +187,7 @@ pub fn ffi_eq_with_floats_test() {
   }
 
   case ty {
-    ast.VTyp(0) -> True |> should.be_true
+    ast.VCtrValue(ast.VCtr("Bool", _)) -> True |> should.be_true
     _ -> False |> should.be_true
   }
 }

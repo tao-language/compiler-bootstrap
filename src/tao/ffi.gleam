@@ -5,68 +5,71 @@
 import core/ast as ast
 import core/state as state
 import gleam/option.{type Option, None, Some}
+import tao/language_config as lang_config
 
 /// All Tao builtin FFI operations.
 pub fn tao_ffis() -> state.FFI {
+  let cfg = lang_config.default_config()
+  let bool_t = lang_config.bool_type_as_core(cfg)
   [
     #("add", state.Builtin(
       impl: ffi_add,
-      arg_types: [ast.VLitT(ast.I32T), ast.VLitT(ast.I32T)],
-      ret_type: ast.VLitT(ast.I32T),
+      arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
+      ret_type: ast.VLitT(ast.ILitT),
       required_permissions: [],
     )),
     #("sub", state.Builtin(
       impl: ffi_sub,
-      arg_types: [ast.VLitT(ast.I32T), ast.VLitT(ast.I32T)],
-      ret_type: ast.VLitT(ast.I32T),
+      arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
+      ret_type: ast.VLitT(ast.ILitT),
       required_permissions: [],
     )),
     #("mul", state.Builtin(
       impl: ffi_mul,
-      arg_types: [ast.VLitT(ast.I32T), ast.VLitT(ast.I32T)],
-      ret_type: ast.VLitT(ast.I32T),
+      arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
+      ret_type: ast.VLitT(ast.ILitT),
       required_permissions: [],
     )),
     #("div", state.Builtin(
       impl: ffi_div,
-      arg_types: [ast.VLitT(ast.I32T), ast.VLitT(ast.I32T)],
-      ret_type: ast.VLitT(ast.I32T),
+      arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
+      ret_type: ast.VLitT(ast.ILitT),
       required_permissions: [],
     )),
     #("eq", state.Builtin(
       impl: ffi_eq,
-      arg_types: [ast.VLitT(ast.I32T), ast.VLitT(ast.I32T)],
-      ret_type: ast.VTyp(0),  // Bool type
+      arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
+      ret_type: bool_t,
       required_permissions: [],
     )),
     #("neq", state.Builtin(
       impl: ffi_neq,
-      arg_types: [ast.VLitT(ast.I32T), ast.VLitT(ast.I32T)],
-      ret_type: ast.VTyp(0),
+      arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
+      ret_type: bool_t,
       required_permissions: [],
     )),
     #("lt", state.Builtin(
       impl: ffi_lt,
-      arg_types: [ast.VLitT(ast.I32T), ast.VLitT(ast.I32T)],
-      ret_type: ast.VTyp(0),
+      arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
+      ret_type: bool_t,
       required_permissions: [],
     )),
     #("gt", state.Builtin(
       impl: ffi_gt,
-      arg_types: [ast.VLitT(ast.I32T), ast.VLitT(ast.I32T)],
-      ret_type: ast.VTyp(0),
+      arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
+      ret_type: bool_t,
       required_permissions: [],
     )),
     #("lte", state.Builtin(
       impl: ffi_lte,
-      arg_types: [ast.VLitT(ast.I32T), ast.VLitT(ast.I32T)],
-      ret_type: ast.VTyp(0),
+      arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
+      ret_type: bool_t,
       required_permissions: [],
     )),
     #("gte", state.Builtin(
       impl: ffi_gte,
-      arg_types: [ast.VLitT(ast.I32T), ast.VLitT(ast.I32T)],
-      ret_type: ast.VTyp(0),
+      arg_types: [ast.VLitT(ast.ILitT), ast.VLitT(ast.ILitT)],
+      ret_type: bool_t,
       required_permissions: [],
     )),
   ]

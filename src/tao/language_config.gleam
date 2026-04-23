@@ -162,3 +162,10 @@ pub fn default_primitive_types() -> PrimitiveTypes {
     #("F64", core_ast.F64T),
   ])
 }
+
+/// Convert the bool_type string from LanguageConfig to a Core type reference.
+/// Used by the FFI layer to specify the return type of comparison operators.
+pub fn bool_type_as_core(config: LanguageConfig) -> core_ast.Type {
+  // Create a type reference to the Bool constructor: VCtrValue(VCtr("Bool", VUnit))
+  core_ast.VCtrValue(core_ast.VCtr(config.bool_type, core_ast.VUnit))
+}
