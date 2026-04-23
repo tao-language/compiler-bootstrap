@@ -22,6 +22,7 @@ import syntax/error_reporter
 import tao/syntax.{parse as tao_parse, get_expr_span, type Expr as TaoExpr, Var as TaoVar, Int as TaoInt, Float as TaoFloat, BinOp as TaoBinOp, UnaryOp as TaoUnaryOp, OverloadedFn as TaoOverloadedFn, OverloadedApp as TaoOverloadedApp, Let as TaoLet, Block as TaoBlockExpr, SimpleFn as TaoSimpleFn, App as TaoApp, Lambda as TaoLambda, Match as TaoMatch, Str as TaoStr, Test as TaoTest, Run as TaoRun, If as TaoIf, For, While, Loop, Break, Continue, Import, Ctr, TypeDecl, expr_to_ast}
 import tao/desugar.{desugar_module}
 import tao/global_context.{new_context, with_prelude, set_current_module}
+import tao/language_config as lang_config
 import tao/compiler.{compile_files, compile_single_file, type CompileResult, type CompileErrorType, ParseError as CompilerParseError, ImportError as CompilerImportError, CircularImport as CompilerCircularImport, ModuleNotFound as CompilerModuleNotFound}
 import tao/ast as tao_ast
 import syntax/grammar.{ParseError as GrammarParseError, type ParseError as GrammarParseErrorType, type Span, Span}
@@ -404,7 +405,7 @@ fn run_and_evaluate(
 
   let env = []
   let ffi = tao_ffis()
-  let eval_state = initial_state_with(ffi, "True")
+  let eval_state = initial_state_with(ffi, lang_config.default_config().truth_constructor)
   let value = eval_from_state(eval_state, env, term)
   // Force the value with the substitution from type checking to solve any holes
   let forced_value = force(ffi, type_state.subst, value)
@@ -575,7 +576,7 @@ fn check_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
 
       // Run type checker on Core term
       // Use FFI from Tao language config for annotation evaluation
-      let state_with_ffi = initial_state_with(tao_ffis(), "True")
+      let state_with_ffi = initial_state_with(tao_ffis(), lang_config.default_config().truth_constructor)
       let state_with_ctrs = state_with_ffi |> update_state_ctrs(dc.ctrs)
       let #(_type_result, _type_annotation, final_state) = infer(state_with_ctrs, term)
 
@@ -756,7 +757,7 @@ fn run_tao(file: File, verbose: Bool, debug: Bool) -> Result(Nil, Error) {
     False -> Nil
   }
 
-  let initial_state_with_ctrs = initial_state_with(tao_ffis(), "True") |> update_state_ctrs(dc.ctrs)
+  let initial_state_with_ctrs = initial_state_with(tao_ffis(), lang_config.default_config().truth_constructor) |> update_state_ctrs(dc.ctrs)
   let #(_type_result, _type_annotation, type_state) = infer(initial_state_with_ctrs, term)
 
   // Report type errors
