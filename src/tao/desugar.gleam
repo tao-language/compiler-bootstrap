@@ -2683,7 +2683,7 @@ pub fn make_module_field(
 
 /// Convert a simplified CoreTerm to core/core.Term.
 pub fn core_term_to_term(term: CoreTerm) -> core_ast.Term {
-  core_term_to_term_loop(term, [], [])
+  core_term_to_term_loop(term, [], [], lang_config.default_primitive_types())
 }
 
 /// Convert a CoreTerm to a core AST term with annotated types.
@@ -2693,13 +2693,14 @@ pub fn core_term_to_term_with_annotations(
   term: CoreTerm,
   annotated_types: List(#(String, CoreTerm)),
 ) -> core_ast.Term {
-  core_term_to_term_loop(term, [], annotated_types)
+  core_term_to_term_loop(term, [], annotated_types, lang_config.default_primitive_types())
 }
 
 fn core_term_to_term_loop(
   term: CoreTerm,
   env: List(String),
   annotated_types: List(#(String, CoreTerm)),
+  ptypes: lang_config.PrimitiveTypes,
 ) -> core_ast.Term {
   // Debug: print the term being converted
   // io.println("Converting: " <> debug_core_term(term) <> " with env: " <> inspect(env))
@@ -2729,7 +2730,7 @@ fn core_term_to_term_loop(
       // Convert CoreCall to core/core.Call with typed args
       // Each arg gets paired with a type hole for inference
       let typed_args = list.map(args, fn(a) {
-        let converted = core_term_to_term_loop(a, env, annotated_types)
+        let converted = core_term_to_term_loop(a, env, annotated_types, ptypes)
         #(converted, core_ast.Hole(-1, span))
       })
       let ret_type = core_ast.Hole(-1, span)
@@ -2746,7 +2747,7 @@ fn core_term_to_term_loop(
       core_ast.Lam(
         implicit: [],
         param: #(param, core_ast.Hole(-1, span)),
-        body: core_term_to_term_loop(body, [param, ..env], annotated_types),
+        body: core_term_to_term_loop(body, [param, ..env], annotated_types, ptypes),
         span: span,
       )
     }
@@ -2755,8 +2756,8 @@ fn core_term_to_term_loop(
       // Use the annotated type for the parameter type
       core_ast.Lam(
         implicit: [],
-        param: #(param, core_term_to_term_loop(param_type, env, annotated_types)),
-        body: core_term_to_term_loop(body, [param, ..env], annotated_types),
+        param: #(param, core_term_to_term_loop(param_type, env, annotated_types, ptypes)),
+        body: core_term_to_term_loop(body, [param, ..env], annotated_types, ptypes),
         span: span,
       )
     }
@@ -2773,11 +2774,11 @@ fn core_term_to_term_loop(
           // The Fix's own name binding ([fix_name, ..env]) is sufficient.
           let fix_term = core_ast.Fix(
             fix_name,
-            core_term_to_term_loop(fix_body, [fix_name, ..env], annotated_types),
+            core_term_to_term_loop(fix_body, [fix_name, ..env], annotated_types, ptypes),
             span,
           )
           // Convert the body with name in env
-          let body_term = core_term_to_term_loop(body, [name, ..env], annotated_types)
+          let body_term = core_term_to_term_loop(body, [name, ..env], annotated_types, ptypes)
           // Emit Let: let name = fix_value in body_term
           core_ast.Let(name, fix_term, body_term, span)
         }
@@ -2792,9 +2793,9 @@ fn core_term_to_term_loop(
             _, _ -> env
           }
           core_ast.App(
-            fun: core_term_to_term_loop(fun, env, annotated_types),
+            fun: core_term_to_term_loop(fun, env, annotated_types, ptypes),
             implicit: [],
-            arg: core_term_to_term_loop(arg, arg_env, annotated_types),
+            arg: core_term_to_term_loop(arg, arg_env, annotated_types, ptypes),
             span: span,
           )
         }
@@ -2803,14 +2804,14 @@ fn core_term_to_term_loop(
     CoreRcd(fields, span) -> {
       core_ast.Rcd(
         fields: list.map(fields, fn(pair) {
-          #(pair.0, core_term_to_term_loop(pair.1, env, annotated_types))
+          #(pair.0, core_term_to_term_loop(pair.1, env, annotated_types, ptypes))
         }),
         span: span,
       )
     }
     CoreDot(record, field, span) -> {
       core_ast.Dot(
-        arg: core_term_to_term_loop(record, env, annotated_types),
+        arg: core_term_to_term_loop(record, env, annotated_types, ptypes),
         field: field,
         span: span,
       )
@@ -2818,26 +2819,21 @@ fn core_term_to_term_loop(
     CoreLet(name, value, span) -> {
       // Let bindings are handled by CoreDoBlock - this shouldn't be reached
       // Just convert the value and ignore the binding
-      core_term_to_term_loop(value, env, annotated_types)
+      core_term_to_term_loop(value, env, annotated_types, ptypes)
     }
     CoreDoBlock(stmts, result, span) -> {
       let sequential_core = build_sequential_term(stmts, result, span, annotated_types)
-      core_term_to_term_loop(sequential_core, env, annotated_types)
+      core_term_to_term_loop(sequential_core, env, annotated_types, ptypes)
     }
     CoreTyp(universe, span) -> {
       // Convert CoreTyp to core/core.Typ (type universe)
       core_ast.Typ(universe: universe, span: span)
     }
     CoreBuiltinType(name, span) -> {
-      // Convert builtin type names to proper LiteralType terms
-      case name {
-        "I32" -> core_ast.LitT(typ: core_ast.I32T, span: span)
-        "I64" -> core_ast.LitT(typ: core_ast.I64T, span: span)
-        "U32" -> core_ast.LitT(typ: core_ast.U32T, span: span)
-        "U64" -> core_ast.LitT(typ: core_ast.U64T, span: span)
-        "F32" -> core_ast.LitT(typ: core_ast.F32T, span: span)
-        "F64" -> core_ast.LitT(typ: core_ast.F64T, span: span)
-        _ -> core_ast.Hole(id: -1, span: span)  // Unknown type
+      // Convert builtin type names to proper LiteralType terms using config
+      case lang_config.lookup_primitive_type(ptypes, name) {
+        Some(typ) -> core_ast.LitT(typ: typ, span: span)
+        None -> core_ast.Hole(id: -1, span: span)  // Unknown type
       }
     }
     CoreHole(id, span) -> {
@@ -2869,14 +2865,14 @@ fn core_term_to_term_loop(
       // enclosing lambdas/lets/fixes. Using the current env ensures correct
       // De Bruijn indices.
       core_ast.Match(
-        arg: core_term_to_term_loop(arg, env, annotated_types),
-        motive: core_term_to_term_loop(motive, env, annotated_types),
+        arg: core_term_to_term_loop(arg, env, annotated_types, ptypes),
+        motive: core_term_to_term_loop(motive, env, annotated_types, ptypes),
         cases: list.map(cases, fn(core_case) {
           case core_case {
             CoreCase(pat, body, guard, cspan) -> {
-              let body_term = core_term_to_term_loop(body, env, annotated_types)
+              let body_term = core_term_to_term_loop(body, env, annotated_types, ptypes)
               let guard_term = case guard {
-                Some(g) -> Some(core_term_to_term_loop(g, env, annotated_types))
+                Some(g) -> Some(core_term_to_term_loop(g, env, annotated_types, ptypes))
                 None -> None
               }
               core_ast.Case(pat, body_term, guard_term, cspan)
@@ -2888,27 +2884,27 @@ fn core_term_to_term_loop(
     }
     CoreFix(name, body, span) -> {
       // Convert CoreFix to core/core.Fix
-      core_ast.Fix(name, core_term_to_term_loop(body, [name, ..env], annotated_types), span)
+      core_ast.Fix(name, core_term_to_term_loop(body, [name, ..env], annotated_types, ptypes), span)
     }
     CoreCtr(tag, arg, span) -> {
       // Convert CoreCtr to core/core.Ctr
-      core_ast.Ctr(tag, core_term_to_term_loop(arg, env, annotated_types), span)
+      core_ast.Ctr(tag, core_term_to_term_loop(arg, env, annotated_types, ptypes), span)
     }
     CorePi(implicit, name, domain, codomain, span) -> {
       // Convert CorePi to core/core.Pi (dependent function type)
       core_ast.Pi(
         implicit: implicit,
         name: name,
-        in_term: core_term_to_term_loop(domain, env, annotated_types),
-        out_term: core_term_to_term_loop(codomain, env, annotated_types),
+        in_term: core_term_to_term_loop(domain, env, annotated_types, ptypes),
+        out_term: core_term_to_term_loop(codomain, env, annotated_types, ptypes),
         span: span,
       )
     }
     CoreAnn(term, typ, span) -> {
       // Convert CoreAnn to core/core.Ann (type annotation)
       core_ast.Ann(
-        core_term_to_term_loop(term, env, annotated_types),
-        core_term_to_term_loop(typ, env, annotated_types),
+        core_term_to_term_loop(term, env, annotated_types, ptypes),
+        core_term_to_term_loop(typ, env, annotated_types, ptypes),
         span,
       )
     }
