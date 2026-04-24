@@ -1,10 +1,10 @@
 // Core infer - Bidirectional Type Checking
 // Type checker with bidirectional inference and checking.
 
-import core/ast.{type Term, type Type, type Literal, type Case, Var, Lam, App, Lit, Ctr, Match, Hole, Err, LInt, LFloat, LString}
+import core/ast.{type Term, type Type, type Literal, type Case, Var, Lam, App, Lit, Ctr, Match, Hole, Err, LInt, LFloat, LString, TVar, TPi, TForAll}
 import core/state.{type State}
-import core/unify
 import gleam/list
+import gleam/int
 
 /// Infer the type of a term
 pub fn infer_term(state: State, term: Term) -> Result(State, String) {
@@ -23,11 +23,12 @@ pub fn infer_term(state: State, term: Term) -> Result(State, String) {
 }
 
 /// Check a term against an expected type
+/// For prototype: just infer the term type (full checking requires storing inferred type)
 pub fn check_term(state: State, term: Term, expected: Type) -> Result(State, String) {
   case infer_term(state, term) {
     Ok(st) -> {
-      // For prototype, we just return the state after inference
-      // In a full implementation, we'd unify inferred type with expected
+      // TODO: Implement full type checking by storing and unifying inferred types
+      // For now, just return the state after inference
       Ok(st)
     }
     Error(e) -> Error(e)
@@ -102,5 +103,19 @@ fn infer_match(state: State, scrutinee: Term, cases: List(Case)) -> Result(State
       })
     }
     Error(e) -> Error(e)
+  }
+}
+
+/// Type stringification for debugging
+pub fn type_to_string(typ: Type) -> String {
+  case typ {
+    TVar(id) ->
+      case id < 0 {
+        True -> "??"
+        False -> "a" <> int.to_string(id)
+      }
+    TPi(_, arg, body) ->
+      "(" <> type_to_string(arg) <> " -> " <> type_to_string(body) <> ")"
+    TForAll(_, body) -> "∀" <> type_to_string(body)
   }
 }
