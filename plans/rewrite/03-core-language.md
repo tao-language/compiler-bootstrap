@@ -201,7 +201,7 @@ pub fn check_exhaustiveness(
 
 ```gleam
 /// Evaluate a term to a value with FFI built-in on an environment
-pub fn evaluate(ffi: List(FfiEntry), env: Env, term: Term) -> Value
+pub fn eval(ffi: List(FfiEntry), env: Env, term: Term) -> Value
 
 /// Apply a value to an argument (part of neutral spine evaluation)
 pub fn do_app(function: Value, arg: Value) -> Value
@@ -301,8 +301,7 @@ pub type Error {
 pub type State {
   State(
     ctrs: CtrEnv,              // Constructor definitions
-    truth_ctor: String,        // Truth constructor name ("True" or "true")
-    false_ctor: String,        // False constructor name
+    truth_ctor: String,        // Truth constructor name ("True" or "true"), false is != true
     holes: List(#(Int, Value)),  // Unsolved holes: id → type
     subst: Subst,              // Unification substitutions
     errors: List(Error),       // Accumulated errors
@@ -356,7 +355,7 @@ Quote transforms a `Value` back to `Term` by re-wrapping evaluated lambdas. It n
 ### 5. Holes Use Negative IDs for Synthesis
 
 ```
-Hole(-1) → synthesized during infer (positive ID assigned during unification)
+Hole(-1) → synthesized during infer (positive ID assigned during infer)
 Hole(1)  → verified against during check (positive ID given by caller)
 ```
 
