@@ -101,7 +101,7 @@ pub type Value {
   VPi(implicit: List(String), name: String, env: Env, in_val: Value, out_term: Term)  // Pi type
   VCtrValue(tag: String, arg: Value)               // Constructor value
   VUnit                                              // Unit value ()
-  VCall(name: String, args: List(Value), ret: Value)  // FFI call result
+  VCall(name: String, args: List(#(Value, Value)), ret: Value)  // FFI call result
   VFix(name: String, env: Env, body: Term)         // Recursion fixpoint
   VErr                                               // Error value
 }
