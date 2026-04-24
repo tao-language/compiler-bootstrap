@@ -2,99 +2,128 @@
 // Uses De Bruijn indices for syntax (Term), De Bruijn levels for semantics (Value).
 
 import gleam/list
+import gleam/int
 
-// Type System
+// =============================================================================
+// CORE TYPES
+// =============================================================================
 
-/// Core types
+/// Core types for type checking
 pub type Type {
-  /// Type variable (holes for inference)
-  TVar(Int)
-  /// Function type: A -> B
-  TPi(String, Type, Type)
-  /// Universal quantification: ∀a. Type
-  TForAll(String, Type)
+  TVar(id: Int)
+  TPi(name: String, arg: Type, body: Type)
+  TForAll(name: String, body: Type)
 }
 
-/// Core terms (De Bruijn indices: Var(0) = closest binder above)
+// =============================================================================
+// CORE TERMS (De Bruijn indices: Var(0) = closest binder above)
+// =============================================================================
+
+/// Core terms (syntax)
 pub type Term {
-  /// Variable reference
-  Var(String, Int)
-  /// Lambda abstraction: Lam(name, arg_type, body)
-  Lam(String, Type, Term)
-  /// Application
-  App(Term, Term)
-  /// Integer literal
-  IntLit(Int)
-  /// Float literal
-  FloatLit(Float)
-  /// String literal
-  StringLit(String)
-  /// Pattern variable (for pattern matching)
-  PatternVar(String)
-  /// Pattern constructor
-  PatternConstr(String, List(Term))
-  /// Pattern match
-  Match(Term, List(MatchCase))
+  Var(name: String, index: Int)
+  Lam(param: String, body: Term)
+  App(fun: Term, arg: Term)
+  Lit(value: Literal)
+  Ctr(tag: String, args: List(Term))
+  Match(scrutinee: Term, cases: List(Case))
+  Hole(id: Int)
+  Err(message: String)
 }
 
-/// Match case for pattern matching
-pub type MatchCase {
-  MatchCase(pattern: Pattern, body: Term)
+/// A case in a match expression
+pub type Case {
+  Case(pattern: Pattern, body: Term)
 }
 
 /// Patterns (for pattern matching in match expressions)
 pub type Pattern {
-  /// Variable pattern
-  PatVar(String)
-  /// Constructor pattern
-  PatConstr(String, List(Pattern))
-  /// Literal pattern
-  PatLit(Literal)
+  PatVar(name: String)
+  PatConstr(tag: String, arg: Pattern)
+  PatLit(value: Literal)
+  PatAny
 }
 
 /// Literals
 pub type Literal {
-  LInt(Int)
-  LFloat(Float)
-  LString(String)
+  LInt(value: Int)
+  LFloat(value: Float)
+  LString(value: String)
 }
+
+// =============================================================================
+// CORE VALUES (De Bruijn levels: Var(0) = innermost binder)
+// =============================================================================
 
 /// Core values (evaluated results)
 pub type Value {
   /// Closure: variable at level, body, and environment
-  Closure(String, Term, List(Value))
+  Closure(param: String, body: Term, env: List(Value))
   /// Integer value
-  IntVal(Int)
+  IntVal(value: Int)
   /// Float value
-  FloatVal(Float)
+  FloatVal(value: Float)
   /// String value
-  StringVal(String)
+  StringVal(value: String)
+  /// Constructor value
+  CtrVal(tag: String, arg: Value)
+  /// Literal value (for matching)
+  LitVal(value: Literal)
+  /// Hole value (for type inference)
+  HoleVal(id: Int)
+  /// Error value
+  ErrVal
 }
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
 
 /// Get the free variables in a term (naive, not using set)
 pub fn free_vars(term: Term) -> List(String) {
   case term {
-    Var(name, _idx) -> [name]
-    Lam(name, _, body) ->
+    Var(name, _) -> [name]
+    Lam(param, body) ->
       list.append(
         free_vars(body),
-        case name {
+        case param {
           "" -> []
-          _ -> [name]
+          _ -> [param]
         },
       )
-    App(lhs, rhs) ->
-      list.append(free_vars(lhs), free_vars(rhs))
-    IntLit(_) -> []
-    FloatLit(_) -> []
-    StringLit(_) -> []
-    PatternVar(_) -> []
-    PatternConstr(_, args) -> list.fold(args, [], fn(acc, arg) { list.append(acc, free_vars(arg)) })
-    Match(scrutinee, cases) -> {
-      let rest = list.fold(cases, [], fn(acc, match_case) {
-        list.append(acc, free_vars(match_case.body))
+    App(fun, arg) ->
+      list.append(free_vars(fun), free_vars(arg))
+    Lit(_) -> []
+    Ctr(_, args) -> list.fold(args, [], fn(acc, arg) { list.append(acc, free_vars(arg)) })
+    Match(scrutinee, cases) ->
+      list.fold(cases, free_vars(scrutinee), fn(acc, case_) {
+        list.append(acc, free_vars(case_.body))
       })
-      list.append(free_vars(scrutinee), rest)
-    }
+    Hole(_) -> []
+    Err(_) -> []
+  }
+}
+
+/// Get the free variables in a type
+pub fn free_vars_type(typ: Type) -> List(String) {
+  case typ {
+    TVar(id) ->
+      case id < 0 {
+        True -> ["??"]
+        False -> ["a" <> int.to_string(id)]
+      }
+    TPi(name, arg, body) ->
+      list.append(
+        free_vars_type(arg),
+        case name {
+          "" -> free_vars_type(body)
+          _ -> [name] |> list.append(free_vars_type(body))
+        },
+      )
+    TForAll(name, body) ->
+      case name {
+        "" -> free_vars_type(body)
+        _ -> free_vars_type(body)
+      }
   }
 }

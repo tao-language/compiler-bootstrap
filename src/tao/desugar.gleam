@@ -2,17 +2,20 @@
 // Converts high-level Tao expressions to core terms with De Bruijn indices.
 
 import tao/ast as tao
-import core/ast.{type Term, type Type, type Pattern, type Literal, PatVar, PatLit, PatConstr, PatternConstr, Match, MatchCase, Var, Lam, App, IntLit, FloatLit, StringLit, TVar, LInt, LFloat, LString}
+import core/ast.{type Term, type Type, type Pattern, type Literal, PatVar, PatConstr, Lit, Ctr, Match, Var, Lam, App, Hole, Err, LInt, LFloat, LString, Case, TVar}
 import gleam/list
 
-// ============================================================================
-// TAo to CoRE DESUGARING
-// ============================================================================
+// =============================================================================
+// TAO TO CORE DESUGARING
+// =============================================================================
 
 /// Desugar a Tao expression to a Core term
 pub fn desugar_expr(expr: tao.Expr, env: List(#(String, Type))) -> Result(#(Term, List(#(String, Type))), String) {
   case expr {
-    tao.Var(name, _) -> Ok(#(Var(name, 0), env))
+    tao.Var(name, _) -> case env_index(env, name, 0) {
+      Ok(idx) -> Ok(#(Var(name: name, index: idx), env))
+      Error(e) -> Error(e)
+    }
     tao.Lit(lit, _) -> Ok(#(term_from_literal(lit), env))
     tao.Lambda(params, body, _) -> desugar_lambda(params, body, env)
     tao.Call(fun, args, _) -> desugar_call(fun, args, env)
@@ -21,7 +24,7 @@ pub fn desugar_expr(expr: tao.Expr, env: List(#(String, Type))) -> Result(#(Term
     tao.Match(arg, cases, _) -> desugar_match(arg, cases, env)
     tao.If(cond, then_, else_, _) -> desugar_if(cond, then_, else_, env)
     tao.Ann(term, typ, _) -> desugar_ann(term, typ, env)
-    tao.Hole(_) -> Ok(#(Var("??", -1), env))
+    tao.Hole(_) -> Ok(#(Hole(id: -1), env))
     tao.Record(fields, _) -> desugar_record(fields, env)
     tao.Dot(record, field, _) -> desugar_dot(record, field, env)
   }
@@ -56,9 +59,21 @@ pub fn desugar_stmt(stmt: tao.Stmt, env: List(#(String, Type))) -> Result(#(Term
 /// Convert a Tao literal to a Core term
 fn term_from_literal(lit: tao.Literal) -> Term {
   case lit {
-    tao.IntLit(n) -> IntLit(n)
-    tao.FloatLit(n) -> FloatLit(n)
-    tao.StringLit(s) -> StringLit(s)
+    tao.IntLit(n) -> Lit(LInt(n))
+    tao.FloatLit(n) -> Lit(LFloat(n))
+    tao.StringLit(s) -> Lit(LString(s))
+  }
+}
+
+/// Find the index of a variable in the environment (De Bruijn index)
+fn env_index(env: List(#(String, Type)), name: String, acc: Int) -> Result(Int, String) {
+  case env {
+    [] -> Error("Unknown variable: " <> name)
+    [ #(n, _), ..rest ] ->
+      case n == name {
+        True -> Ok(acc)
+        False -> env_index(rest, name, acc + 1)
+      }
   }
 }
 
@@ -70,7 +85,7 @@ fn desugar_lambda(params: List(tao.Param), body: tao.Expr, env: List(#(String, T
       let param_env = list.append(env, [ #(param.name, TVar(0)) ])
       case desugar_expr(body, param_env) {
         Ok(#(body_term, _)) -> {
-          let result = Ok(#(Lam(param.name, TVar(0), body_term), env))
+          let result = Ok(#(Lam(param: param.name, body: body_term), env))
           result
         }
         Error(e) -> Error(e)
@@ -84,14 +99,15 @@ fn desugar_lambda(params: List(tao.Param), body: tao.Expr, env: List(#(String, T
 fn desugar_call(fun: tao.Expr, args: List(tao.Expr), env: List(#(String, Type))) -> Result(#(Term, List(#(String, Type))), String) {
   case desugar_expr(fun, env) {
     Ok(#(fun_term, new_env)) -> {
-      case list.map(args, fn(arg) {
+      case list.try_map(args, fn(arg) {
         case desugar_expr(arg, new_env) {
-          Ok(#(arg_term, _)) -> arg_term
-          Error(e) -> panic as e
+          Ok(#(arg_term, _)) -> Ok(arg_term)
+          Error(e) -> Error(e)
         }
       }) {
-        [arg] -> Ok(#(App(fun_term, arg), new_env))
-        _ -> Error("Only single-argument calls supported in prototype")
+        Ok([arg]) -> Ok(#(App(fun: fun_term, arg: arg), new_env))
+        Ok(_) -> Error("Only single-argument calls supported in prototype")
+        Error(e) -> Error(e)
       }
     }
     Error(e) -> Error(e)
@@ -105,7 +121,13 @@ fn desugar_binop(left: tao.Expr, op: tao.BinOp, right: tao.Expr, env: List(#(Str
       case desugar_expr(right, new_env) {
         Ok(#(right_term, final_env)) -> {
           let func_name = binop_to_func_name(op)
-          Ok(#(App(Var(func_name, 0), App(Var(func_name, 0), right_term)), final_env))
+          Ok(#(App(
+            fun: Var(name: func_name, index: 0),
+            arg: App(
+              fun: Var(name: func_name, index: 0),
+              arg: right_term,
+            ),
+          ), final_env))
         }
         Error(e) -> Error(e)
       }
@@ -133,13 +155,14 @@ fn binop_to_func_name(op: tao.BinOp) -> String {
 
 /// Desugar a constructor
 fn desugar_ctr(name: String, args: List(tao.Expr), env: List(#(String, Type))) -> Result(#(Term, List(#(String, Type))), String) {
-  case list.map(args, fn(arg) {
+  case list.try_map(args, fn(arg) {
     case desugar_expr(arg, env) {
-      Ok(#(arg_term, _)) -> arg_term
-      Error(e) -> panic as e
+      Ok(#(arg_term, _)) -> Ok(arg_term)
+      Error(e) -> Error(e)
     }
   }) {
-    _ -> Ok(#(PatternConstr(name, []), env))
+    Ok(arg_terms) -> Ok(#(Ctr(tag: name, args: arg_terms), env))
+    Error(e) -> Error(e)
   }
 }
 
@@ -148,7 +171,7 @@ fn desugar_match(arg: tao.Expr, cases: List(tao.MatchClause), env: List(#(String
   case desugar_expr(arg, env) {
     Ok(#(arg_term, new_env)) -> {
       // Simplified: just return a placeholder match case
-      Ok(#(Match(arg_term, [MatchCase(pattern: PatVar("_"), body: IntLit(0))]), new_env))
+      Ok(#(Match(scrutinee: arg_term, cases: [Case(pattern: PatVar(name: "_"), body: Lit(LInt(0)))]), new_env))
     }
     Error(e) -> Error(e)
   }
@@ -158,12 +181,20 @@ fn desugar_match(arg: tao.Expr, cases: List(tao.MatchClause), env: List(#(String
 fn pat_to_pattern(pat: tao.Pattern) -> Pattern {
   case pat {
     tao.PatVar(name, _) -> PatVar(name)
-    tao.PatLit(lit, _) -> PatLit(LInt(0))
+    tao.PatLit(lit, _) -> PatConstr(tag: "lit", arg: PatVar(name: "lit"))
     tao.PatConstr(name, patterns, _) -> {
-      let inner_pats = list.map(patterns, pat_to_pattern)
-      PatConstr(name, inner_pats)
+      case patterns {
+        [] -> PatVar(name)
+        [first] -> PatConstr(tag: name, arg: pat_to_pattern(first))
+        _ -> {
+          case list.last(patterns) {
+            Ok(last) -> PatConstr(tag: name, arg: pat_to_pattern(last))
+            Error(_) -> PatVar(name)
+          }
+        }
+      }
     }
-    tao.PatDot(record, field, _) -> PatVar(field)
+    tao.PatDot(record, field, _) -> PatVar(name: field)
   }
 }
 
@@ -176,10 +207,13 @@ fn desugar_if(cond: tao.Expr, then_: tao.Expr, else_: tao.Expr, env: List(#(Stri
           case desugar_expr(else_, env2) {
             Ok(#(else_term, final_env)) -> {
               // If is desugared to a match on True/False
-              Ok(#(Match(cond_term, [
-                MatchCase(pattern: PatVar("true"), body: then_term),
-                MatchCase(pattern: PatVar("false"), body: else_term),
-              ]), final_env))
+              Ok(#(Match(
+               scrutinee: cond_term,
+                cases: [
+                  Case(pattern: PatVar(name: "true"), body: then_term),
+                  Case(pattern: PatVar(name: "false"), body: else_term),
+                ],
+              ), final_env))
             }
             Error(e) -> Error(e)
           }
@@ -200,20 +234,21 @@ fn desugar_ann(term: tao.Expr, typ: tao.TypeAst, env: List(#(String, Type))) -> 
 
 /// Desugar a record
 fn desugar_record(fields: List(#(String, tao.Expr)), env: List(#(String, Type))) -> Result(#(Term, List(#(String, Type))), String) {
-  case list.map(fields, fn(f) {
+  case list.try_map(fields, fn(f) {
     case desugar_expr(f.1, env) {
-      Ok(#(term, _)) -> #(f.0, term)
-      Error(e) -> panic as e
+      Ok(#(term, _)) -> Ok(#(f.0, term))
+      Error(e) -> Error(e)
     }
   }) {
-    _ -> Ok(#(PatternConstr("record", []), env))
+    Ok(field_terms) -> Ok(#(Ctr(tag: "record", args: [Lit(LInt(0))]), env))
+    Error(e) -> Error(e)
   }
 }
 
 /// Desugar a field access
 fn desugar_dot(record: tao.Expr, field: String, env: List(#(String, Type))) -> Result(#(Term, List(#(String, Type))), String) {
   case desugar_expr(record, env) {
-    Ok(#(record_term, new_env)) -> Ok(#(PatternConstr(field, []), new_env))
+    Ok(#(_, new_env)) -> Ok(#(Var(name: field, index: 0), new_env))
     Error(e) -> Error(e)
   }
 }

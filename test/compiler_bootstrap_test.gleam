@@ -1,6 +1,7 @@
 // Test runner - gleeunit finds all public functions ending in _test
 import gleeunit
 import syntax/lexer.{token_kinds}
+import tao/desugar_test
 
 pub fn main() {
   gleeunit.main()
