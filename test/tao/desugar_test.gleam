@@ -1,5 +1,5 @@
 // Tests for the Tao desugarer
-import core/ast.{type Term, Var, Lit, LInt, Lam, App, Ctr, Match, Case, TVar}
+import core/ast.{Var, Lit, LInt, Lam, App, Match, Case, TVar}
 import tao/ast as tao
 import tao/desugar
 import syntax/span
