@@ -101,7 +101,7 @@ pub type Value {
   VPi(implicit: List(String), name: String, env: Env, in_val: Value, out_term: Term)  // Pi type
   VCtrValue(tag: String, arg: Value)               // Constructor value
   VUnit                                              // Unit value ()
-  VCall(name: String, args: List(Value), ret: Value)  // FFI call result
+  VCall(name: String, args: List(#(Value, Value)), ret: Value)  // FFI call result
   VFix(name: String, env: Env, body: Term)         // Recursion fixpoint
   VErr                                               // Error value
 }
@@ -200,14 +200,8 @@ pub fn check_exhaustiveness(
 ### eval.gleam — Normalization by Evaluation
 
 ```gleam
-/// Evaluate a term to a value in an empty environment
-pub fn evaluate(term: Term) -> Value
-
-/// Evaluate a term with an initial environment
-pub fn evaluate_with_env(env: Env, term: Term) -> Value
-
-/// Evaluate a term with FFI builtins
-pub fn evaluate_with_ffi(ffi: List(FfiEntry), term: Term) -> Value
+/// Evaluate a term to a value with FFI built-in on an environment
+pub fn eval(ffi: List(FfiEntry), env: Env, term: Term) -> Value
 
 /// Apply a value to an argument (part of neutral spine evaluation)
 pub fn do_app(function: Value, arg: Value) -> Value
@@ -218,10 +212,7 @@ pub fn do_app(function: Value, arg: Value) -> Value
 ```gleam
 /// Quote a value back to a term (re-wrapping lambdas)
 /// DOES NOT call eval — quote is purely syntactic
-pub fn quote(value: Value) -> Term
-
-/// Quote a value in a given environment
-pub fn quote_with_env(env: Env, value: Value) -> Term
+pub fn quote(env: Env, value: Value) -> Term
 ```
 
 ### unify.gleam — Higher-Order Unification
@@ -307,8 +298,7 @@ pub type Error {
 pub type State {
   State(
     ctrs: CtrEnv,              // Constructor definitions
-    truth_ctor: String,        // Truth constructor name ("True" or "true")
-    false_ctor: String,        // False constructor name
+    truth_ctor: String,        // Truth constructor name ("True" or "true"), false is != true
     holes: List(#(Int, Value)),  // Unsolved holes: id → type
     subst: Subst,              // Unification substitutions
     errors: List(Error),       // Accumulated errors
@@ -362,7 +352,7 @@ Quote transforms a `Value` back to `Term` by re-wrapping evaluated lambdas. It n
 ### 5. Holes Use Negative IDs for Synthesis
 
 ```
-Hole(-1) → synthesized during infer (positive ID assigned during unification)
+Hole(-1) → synthesized during infer (positive ID assigned during infer)
 Hole(1)  → verified against during check (positive ID given by caller)
 ```
 

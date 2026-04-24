@@ -81,6 +81,9 @@ pub type Expr {
   
   /// Comptime: comptime expr
   Comptime(Expr, span: Span)
+
+  /// Block expression (mutable vars, loops, etc.)
+  Block(List(Stmt), span: Span)
 }
 
 /// Binary operators (desugared to Core function calls)
@@ -132,12 +135,14 @@ pub type Stmt {
   
   /// type Name = Ctor | Ctor(args) | ...
   TypeDef(String, List(String), List(Constructor), span: Span)
+
+  /// Test as example, REPL style
+  /// > expression
+  /// result
+  Test(name: String, expr: Expr, expect: Pattern, Span)
   
   /// Expression statement: expr
   ExprStmt(Expr, span: Span)
-  
-  /// Block statement (mutable vars, loops, etc.)
-  Block(List(Stmt), span: Span)
 }
 ```
 
@@ -155,8 +160,8 @@ pub type TypeAst {
   /// Function type: (Int, Int) -> Int
   TFn(List(TypeAst), TypeAst, span: Span)
   
-  /// Record type: { x: Int, y: Int }
-  TRecord(List(#(String, TypeAst)), span: Span)
+  /// Record type: { x: Int, y: Int = 0 }
+  TRecord(List(#(String, TypeAst, Option(Expr))), span: Span)
   
   /// Tuple type: (Int, String)
   TTuple(List(TypeAst), span: Span)
@@ -188,8 +193,8 @@ pub type Pattern {
 ```gleam
 /// Import item (selective or wildcard)
 pub type ImportItem {
-  ImportAll              // import path *
-  ImportSelective(List(ImportName))  // import path { name1, name2 as n2 }
+  ImportAll(String)              // import path *
+  ImportSelective(String, Option(String), List(ImportName))  // import path as alias { name1, name2 as n2 }
 }
 
 pub type ImportName {
@@ -204,14 +209,9 @@ pub type ImportName {
 pub type Constructor {
   Constructor(
     name: String,
-    fields: List(ConstructorField),
+    fields: List(#(String, TypeAst, Option(Expr))), // name, type, default valu
     span: Span,
   )
-}
-
-pub type ConstructorField {
-  NamedField(String, TypeAst)   // Some(value: a)
-  UnnamedField(TypeAst)         // Some(a)
 }
 ```
 
@@ -223,7 +223,7 @@ All Tao high-level features are desugared to Core terms:
 
 | Tao Feature | Desugars To | Core Term |
 |-------------|-------------|-----------|
-| `fn f(x) { e }` | `let f = fn(x) { e }` | `Let("f", Lam(("x", e)), body)` |
+| `fn f(x) { e }` | `let f = fn(x) => e` | `Let("f", Lam(("x", e)), body)` |
 | `let x = e` | (same) | `Let("x", e, body)` |
 | `a + b` | `add(a, b)` | `Call("add", [a, b])` |
 | `-x` | `negate(x)` | `Call("negate", [x])` |

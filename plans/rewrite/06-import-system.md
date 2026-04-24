@@ -18,7 +18,7 @@ import std/io *
 import std/math { sin, cos, tan as tangent }
 
 // Type import (imports the type and its constructors)
-import data/maybe { Option, Some, None }
+import data/maybe { Option }  // Some and None are automatically imported
 
 // Relative import
 import ./utils { helper_function }
@@ -68,6 +68,7 @@ pub type ImportItem {
   /// import path { name1, name2 as n2 }
   ImportSelective(
     path: String,
+    alias: Option(String),
     names: List(ImportName),
     span: Span,
   )
