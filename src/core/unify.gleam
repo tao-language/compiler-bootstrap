@@ -10,13 +10,28 @@ import gleam/int
 pub fn unify(state: State, t1: Type, t2: Type) -> Result(State, String) {
   case t1, t2 {
     TVar(id1), TVar(id2) if id1 == id2 -> Ok(state)
-    TVar(id1), _ -> Ok(bind_hole(state, id1, t2))
+    TVar(id1), _ -> {
+      // Occurs check: prevent binding a hole to a type containing itself
+      case occurs_check(id1, t2) {
+        True -> Error("Occurs check failed: variable " <> int.to_string(id1) <> " found in type")
+        False -> Ok(bind_hole(state, id1, t2))
+      }
+    }
     _, TVar(id) ->
       case lookup_hole(state, id) {
         Ok(typ) -> unify(state, t1, typ)
         Error(_) -> unify(state, t1, t2)
       }
     _, _ -> unify_simple(state, t1, t2)
+  }
+}
+
+/// Check if a hole ID appears in a type (occurs check)
+fn occurs_check(id: Int, typ: Type) -> Bool {
+  case typ {
+    TVar(other_id) -> id == other_id
+    TPi(_, arg, body) -> occurs_check(id, arg) || occurs_check(id, body)
+    TForAll(_, body) -> occurs_check(id, body)
   }
 }
 
