@@ -44,13 +44,8 @@ fn infer_var(state: State, name: String) -> Result(State, String) {
 }
 
 /// Infer lambda type
-fn infer_lam(state: State, param: String, body: Term) -> Result(State, String) {
-  let new_state = state.State(
-    env: state.State(..state).env,
-    errors: state.State(..state).errors,
-    hole_bindings: state.State(..state).hole_bindings,
-  )
-  case infer_term(new_state, body) {
+fn infer_lam(state: State, _param: String, body: Term) -> Result(State, String) {
+  case infer_term(state, body) {
     Ok(st) -> Ok(st)
     Error(e) -> Error(e)
   }
@@ -85,7 +80,7 @@ fn infer_ctr(state: State) -> Result(State, String) {
 }
 
 /// Infer hole type
-fn infer_hole(state: State, id: Int) -> Result(State, String) {
+fn infer_hole(state: State, _id: Int) -> Result(State, String) {
   // Holes are untyped placeholders resolved during unification
   Ok(state)
 }

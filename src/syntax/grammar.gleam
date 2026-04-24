@@ -139,7 +139,7 @@ fn parse_alternatives(alternatives: List(Alternative(a)), state: State(a), rules
 }
 
 fn parse_alternative(alt: Alternative(a), state: State(a), rules_dict: List(#(String, Rule(a)))) -> State(a) {
-  let State(remaining: tokens, errors: errs, values: acc) = state
+  let State(remaining: tokens, errors: errs, values: _acc) = state
   case parse_pattern(alt.pattern, State(..state, values: []), rules_dict) {
     State(values: vals, errors: new_errs, remaining: _) ->
       State(remaining: tokens, errors: list.append(errs, new_errs), values: [alt.constructor(vals)])
@@ -195,7 +195,7 @@ fn parse_seq(patterns: List(Pattern(a)), state: State(a), rules_dict: List(#(Str
     [] -> state
     [first, ..rest] ->
       case parse_pattern(first, state, rules_dict) {
-        State(values: [val], errors: errs, remaining: remaining) ->
+        State(values: [_], errors: errs, remaining: remaining) ->
           parse_seq(rest, State(remaining: remaining, errors: errs, values: []), rules_dict)
         s -> s
       }
@@ -204,7 +204,7 @@ fn parse_seq(patterns: List(Pattern(a)), state: State(a), rules_dict: List(#(Str
 
 fn parse_many(pattern: Pattern(a), state: State(a), rules_dict: List(#(String, Rule(a)))) -> State(a) {
   case parse_pattern(pattern, state, rules_dict) {
-    State(values: [val], errors: errs, remaining: remaining) ->
+    State(values: [_], errors: errs, remaining: remaining) ->
       parse_many(pattern, State(remaining: remaining, errors: errs, values: []), rules_dict)
     s -> s
   }
@@ -332,12 +332,12 @@ pub fn format_flat(doc: Doc) -> String {
     Line -> " "
     HardLine -> "\n"
     Group(inner) -> format_flat(inner)
-    Nest(n, inner) -> format_flat(inner)  // Nesting ignored in flat layout
+    Nest(_n, inner) -> format_flat(inner)  // Nesting ignored in flat layout
     Concat(docs) -> string.join(list.map(docs, format_flat), "")
   }
 }
 
 /// Format a document to a string (with simple layout)
-pub fn format_doc(doc: Doc, width: Int) -> String {
+pub fn format_doc(doc: Doc, _width: Int) -> String {
   format_flat(doc)
 }

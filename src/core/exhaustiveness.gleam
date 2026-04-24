@@ -20,7 +20,7 @@ pub fn check_exhaustive(state: State, scrutinee_type: Type, cases: List(Case)) -
 }
 
 /// Check if patterns cover all cases for a type
-fn check_patterns(_state: State, typ: Type, cases: List(Case)) -> Bool {
+fn check_patterns(_state: State, _typ: Type, cases: List(Case)) -> Bool {
   case cases {
     [] -> False
     _ -> {
@@ -32,8 +32,3 @@ fn check_patterns(_state: State, typ: Type, cases: List(Case)) -> Bool {
   }
 }
 
-/// Check if a pattern is exhaustive for a type
-fn is_exhaustive_for_type(typ: Type) -> Bool {
-  // Simplified: assume exhaustiveness for now
-  True
-}

@@ -2,7 +2,7 @@
 // Converts high-level Tao expressions to core terms with De Bruijn indices.
 
 import tao/ast as tao
-import core/ast.{type Term, PatVar, PatConstr, Lit, Ctr, Match, Var, Lam, App, Hole, Err, LInt, LFloat, LString, Case, TVar}
+import core/ast.{type Term, type Type, PatVar, Lit, Ctr, Match, Var, Lam, App, Hole, Case, LInt, LFloat, LString, TVar}
 import gleam/list
 
 // =============================================================================
@@ -204,7 +204,7 @@ fn desugar_if(cond: tao.Expr, then_: tao.Expr, else_: tao.Expr, env: List(#(Stri
 }
 
 /// Desugar a type annotation
-fn desugar_ann(term: tao.Expr, typ: tao.TypeAst, env: List(#(String, Type))) -> Result(#(Term, List(#(String, Type))), String) {
+fn desugar_ann(term: tao.Expr, _typ: tao.TypeAst, env: List(#(String, Type))) -> Result(#(Term, List(#(String, Type))), String) {
   case desugar_expr(term, env) {
     Ok(#(term_term, new_env)) -> Ok(#(term_term, new_env))
     Error(e) -> Error(e)
@@ -219,7 +219,7 @@ fn desugar_record(fields: List(#(String, tao.Expr)), env: List(#(String, Type)))
       Error(e) -> Error(e)
     }
   }) {
-    Ok(field_terms) -> Ok(#(Ctr(tag: "record", args: [Lit(LInt(0))]), env))
+    Ok(_field_terms) -> Ok(#(Ctr(tag: "record", args: [Lit(LInt(0))]), env))
     Error(e) -> Error(e)
   }
 }

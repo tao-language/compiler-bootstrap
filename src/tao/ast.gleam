@@ -2,7 +2,7 @@
 // Tao is the user-facing language that desugars to Core.
 
 import syntax/span.{type Span}
-import gleam/option.{type Option, None}
+import gleam/option.{type Option}
 
 // ============================================================================
 // TAo EXPRESSIONS
