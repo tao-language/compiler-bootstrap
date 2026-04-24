@@ -108,7 +108,7 @@ pub fn parse(grammar: Grammar(a), source: String) -> ParseResult(a) {
   let initial = State(remaining: tokens, errors: [], values: [])
   case parse_rule(grammar.start, initial, rules_dict) {
     State(values: [val], errors: errs, ..) -> ParseResult(ast: val, errors: errs)
-    State(values: values, errors: errs, ..) -> ParseResult(ast: panic, errors: errs)
+    State(values: _values, errors: errs, ..) -> ParseResult(ast: panic, errors: errs)
   }
 }
 

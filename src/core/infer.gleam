@@ -1,7 +1,7 @@
 // Core infer - Bidirectional Type Checking
 // Type checker with bidirectional inference and checking.
 
-import core/ast.{type Term, type Type, type Literal, type Case, Var, Lam, App, Lit, Ctr, Match, Hole, Err, LInt, LFloat, LString, TVar, TPi, TForAll}
+import core/ast.{type Term, type Type, type Case, Var, Lam, App, Lit, Ctr, Match, Hole, Err, LInt, LFloat, LString, TVar, TPi, TForAll}
 import core/state.{type State}
 import gleam/list
 import gleam/int
@@ -24,7 +24,7 @@ pub fn infer_term(state: State, term: Term) -> Result(State, String) {
 
 /// Check a term against an expected type
 /// For prototype: just infer the term type (full checking requires storing inferred type)
-pub fn check_term(state: State, term: Term, expected: Type) -> Result(State, String) {
+pub fn check_term(state: State, term: Term, _expected: Type) -> Result(State, String) {
   case infer_term(state, term) {
     Ok(st) -> {
       // TODO: Implement full type checking by storing and unifying inferred types
@@ -38,7 +38,7 @@ pub fn check_term(state: State, term: Term, expected: Type) -> Result(State, Str
 /// Infer variable type
 fn infer_var(state: State, name: String) -> Result(State, String) {
   case state.lookup_env(state, name) {
-    Ok(typ) -> Ok(state)
+    Ok(_) -> Ok(state)
     Error(_) -> Error("Unknown variable: " <> name)
   }
 }

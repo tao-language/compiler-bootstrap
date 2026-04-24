@@ -3,7 +3,7 @@
 // ============================================================================
 /// Tests for the syntax/grammar module (parser + formatter).
 import gleeunit
-import syntax/grammar.{type Doc, empty, text, line, space, hardline, concat, append, group, nest, join, space_sep, comma_sep, parens, braces, brackets, format_flat}
+import syntax/grammar.{empty, text, line, space, hardline, concat, append, group, nest, join, space_sep, comma_sep, parens, braces, brackets, format_flat}
 
 pub fn main() {
   gleeunit.main()

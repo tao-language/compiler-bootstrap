@@ -2,7 +2,7 @@
 // Converts high-level Tao expressions to core terms with De Bruijn indices.
 
 import tao/ast as tao
-import core/ast.{type Term, type Type, type Pattern, type Literal, PatVar, PatConstr, Lit, Ctr, Match, Var, Lam, App, Hole, Err, LInt, LFloat, LString, Case, TVar}
+import core/ast.{type Term, PatVar, PatConstr, Lit, Ctr, Match, Var, Lam, App, Hole, Err, LInt, LFloat, LString, Case, TVar}
 import gleam/list
 
 // =============================================================================
@@ -117,7 +117,7 @@ fn desugar_call(fun: tao.Expr, args: List(tao.Expr), env: List(#(String, Type)))
 /// Desugar a binary operation
 fn desugar_binop(left: tao.Expr, op: tao.BinOp, right: tao.Expr, env: List(#(String, Type))) -> Result(#(Term, List(#(String, Type))), String) {
   case desugar_expr(left, env) {
-    Ok(#(left_term, new_env)) ->
+    Ok(#(_left_term, new_env)) ->
       case desugar_expr(right, new_env) {
         Ok(#(right_term, final_env)) -> {
           let func_name = binop_to_func_name(op)
@@ -167,34 +167,13 @@ fn desugar_ctr(name: String, args: List(tao.Expr), env: List(#(String, Type))) -
 }
 
 /// Desugar a match expression
-fn desugar_match(arg: tao.Expr, cases: List(tao.MatchClause), env: List(#(String, Type))) -> Result(#(Term, List(#(String, Type))), String) {
+fn desugar_match(arg: tao.Expr, _cases: List(tao.MatchClause), env: List(#(String, Type))) -> Result(#(Term, List(#(String, Type))), String) {
   case desugar_expr(arg, env) {
     Ok(#(arg_term, new_env)) -> {
       // Simplified: just return a placeholder match case
       Ok(#(Match(scrutinee: arg_term, cases: [Case(pattern: PatVar(name: "_"), body: Lit(LInt(0)))]), new_env))
     }
     Error(e) -> Error(e)
-  }
-}
-
-/// Convert a Tao pattern to a Core pattern
-fn pat_to_pattern(pat: tao.Pattern) -> Pattern {
-  case pat {
-    tao.PatVar(name, _) -> PatVar(name)
-    tao.PatLit(lit, _) -> PatConstr(tag: "lit", arg: PatVar(name: "lit"))
-    tao.PatConstr(name, patterns, _) -> {
-      case patterns {
-        [] -> PatVar(name)
-        [first] -> PatConstr(tag: name, arg: pat_to_pattern(first))
-        _ -> {
-          case list.last(patterns) {
-            Ok(last) -> PatConstr(tag: name, arg: pat_to_pattern(last))
-            Error(_) -> PatVar(name)
-          }
-        }
-      }
-    }
-    tao.PatDot(record, field, _) -> PatVar(name: field)
   }
 }
 

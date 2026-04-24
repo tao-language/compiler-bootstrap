@@ -3,7 +3,7 @@
 // ============================================================================
 /// State management for type checking and evaluation.
 
-import core/ast.{type Type, type Term, type Value}
+import core/ast.{type Type, type Value}
 import gleam/list
 import gleam/int
 

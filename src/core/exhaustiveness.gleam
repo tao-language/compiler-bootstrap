@@ -4,7 +4,7 @@
 /// Uses Maranget's algorithm to check pattern match coverage.
 /// A match is exhaustive if every possible value is covered.
 
-import core/ast.{type Type, type Term, type Pattern, type Case}
+import core/ast.{type Type, type Case}
 import core/state.{type State}
 
 // ============================================================================
@@ -20,7 +20,7 @@ pub fn check_exhaustive(state: State, scrutinee_type: Type, cases: List(Case)) -
 }
 
 /// Check if patterns cover all cases for a type
-fn check_patterns(state: State, typ: Type, cases: List(Case)) -> Bool {
+fn check_patterns(_state: State, typ: Type, cases: List(Case)) -> Bool {
   case cases {
     [] -> False
     _ -> {

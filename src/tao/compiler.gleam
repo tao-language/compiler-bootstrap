@@ -2,7 +2,7 @@
 // Compiles Tao source code to Core terms and evaluates them.
 
 import core/ast.{type Term, type Value, type Type, Lit, LInt, IntVal, TVar}
-import tao/ast.{type Module, type Stmt, type Expr, Let, Fn, Expr as ExprStmt} as tao
+import tao/ast.{type Module, type Stmt, Let, Fn, Expr as ExprStmt} as tao
 import tao/desugar
 import gleam/list
 import core/eval
