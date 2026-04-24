@@ -1,101 +1,121 @@
 // Core evaluation - Normalization by Evaluation (NBE)
 // Normalizes terms to values by evaluation.
 // Values use De Bruijn levels (Var(0) = innermost binder).
+//
+// Terms use De Bruijn indices (Var(0) = closest binder above).
+// Values use De Bruijn levels (Var(0) = innermost binder).
+// The environment is a list of values where index 0 is the innermost binding.
 
-import core/ast.{type Term, type Value, type Literal, type Case, type Pattern, Lit, LInt, LFloat, LString, PatLit, PatConstr, PatVar, PatAny, Closure, IntVal, FloatVal, StringVal, CtrVal, LitVal, HoleVal, ErrVal}
-import core/state
+import core/ast.{type Term, type Value, type Literal, type Case, type Pattern, Var, Lam, App, Lit, LInt, LFloat, LString, Ctr, Match, Hole, Err, PatLit, PatConstr, PatVar, PatAny, Closure, IntVal, FloatVal, StringVal, CtrVal, LitVal, HoleVal, ErrVal}
 import gleam/list
-import gleam/int
 
-/// Evaluate a term to a value
-pub fn eval(state: state.State, term: Term) -> Result(Value, String) {
-  eval_term(state, term)
+/// Evaluate a term to a value with a De Bruijn level environment
+pub fn eval(env: List(Value), term: Term) -> Result(Value, String) {
+  eval_term(env, term)
 }
 
 /// Evaluate a term to a value
-fn eval_term(state: state.State, term: Term) -> Result(Value, String) {
+fn eval_term(env: List(Value), term: Term) -> Result(Value, String) {
   case term {
-    ast.Var(name, idx) -> eval_var(state, idx)
-    ast.Lam(param, body) -> {
-      // Lambda is already a value - wrap in Closure
-      let value = Closure(param: param, body: body, env: [])
-      Ok(value)
+    Var(_, idx) -> eval_var(env, idx)
+    Lam(param, body) -> {
+      // Lambda is already a value - capture the current environment
+      Ok(Closure(param: param, body: body, env: env))
     }
-    ast.App(fun, arg) -> {
-      case eval_term(state, fun) {
-        Ok(Closure(_, body, _)) -> eval_term(state, body)
-        Ok(fun) -> {
-          case eval_term(state, arg) {
-            Ok(arg_val) -> eval_app(state, fun, arg_val)
+    App(fun, arg) -> {
+      case eval_term(env, fun) {
+        Ok(Closure(param: _, body: closure_body, env: closure_env)) -> {
+          // Apply: evaluate arg in current env, then body in extended env
+          case eval_term(env, arg) {
+            Ok(arg_val) -> eval_term([arg_val, ..closure_env], closure_body)
+            Error(e) -> Error(e)
+          }
+        }
+        Ok(fun_val) -> {
+          // Fun is a value but not a closure - need to apply it
+          case eval_term(env, arg) {
+            Ok(arg_val) -> eval_app(fun_val, arg_val)
             Error(e) -> Error(e)
           }
         }
         Error(e) -> Error(e)
       }
     }
-    ast.Lit(LInt(n)) -> Ok(IntVal(n))
-    ast.Lit(LFloat(n)) -> Ok(FloatVal(n))
-    ast.Lit(LString(s)) -> Ok(StringVal(s))
-    ast.Ctr(tag, args) -> {
-      case eval_ctr_args(state, args) {
-        Ok(args_val) -> Ok(CtrVal(tag: tag, arg: args_val))
-        Error(e) -> Error(e)
-      }
+    Lit(LInt(n)) -> Ok(IntVal(n))
+    Lit(LFloat(n)) -> Ok(FloatVal(n))
+    Lit(LString(s)) -> Ok(StringVal(s))
+    Ctr(tag, args) -> case eval_ctr_args(env, args) {
+      Ok(args_val) -> Ok(CtrVal(tag: tag, arg: args_val))
+      Error(e) -> Error(e)
     }
-    ast.Match(scrutinee, cases) -> eval_match(state, scrutinee, cases)
-    ast.Hole(id) -> Ok(HoleVal(id: id))
-    ast.Err(message) -> Error(message)
+    Match(scrutinee, cases) -> eval_match(env, scrutinee, cases)
+    Hole(id) -> Ok(HoleVal(id: id))
+    Err(message) -> Error(message)
   }
 }
 
 /// Evaluate constructor arguments
-fn eval_ctr_args(state: state.State, args: List(Term)) -> Result(Value, String) {
+fn eval_ctr_args(env: List(Value), args: List(Term)) -> Result(Value, String) {
   case args {
     [] -> Ok(LitVal(LInt(0)))  // Empty constructor
-    [arg] -> eval_term(state, arg)
+    [arg] -> eval_term(env, arg)
     _ -> {
-      // For multi-arg constructors, return the last argument as the value
-      case list.last(args) {
-        Ok(arg) -> eval_term(state, arg)
-        Error(_) -> Ok(LitVal(LInt(0)))
+      // For multi-arg constructors, evaluate all and return last as value
+      case list.try_map(args, fn(a) { eval_term(env, a) }) {
+        Ok(vals) -> case list.last(vals) {
+          Ok(last) -> Ok(last)
+          Error(_) -> Ok(LitVal(LInt(0)))
+        }
+        Error(e) -> Error(e)
       }
     }
   }
 }
 
-/// Evaluate a variable reference
-fn eval_var(state: state.State, idx: Int) -> Result(Value, String) {
-  case env_to_list(state), idx {
-    [val], 0 -> Ok(val)
-    [_, ..rest], n -> eval_var(state, n - 1)
-    _, _ -> Error("Variable not found: " <> int.to_string(idx))
+/// Evaluate a variable reference (De Bruijn level)
+/// Var(0) = innermost binding = env[0]
+fn eval_var(env: List(Value), idx: Int) -> Result(Value, String) {
+  case env_drop_to(env, idx) {
+    [val] -> Ok(val)
+    _ -> Error("Variable not found at level " <> int_to_string(idx))
   }
 }
 
-/// Evaluate application
-fn eval_app(state: state.State, fun: Value, arg_val: Value) -> Result(Value, String) {
-  case fun {
-    Closure(_, body, _) -> eval_term(state, body)
-    _ -> Error("Not a function")
+/// Drop the first n elements from the environment (converts De Bruijn level to index)
+/// env_drop_to([v2, v1, v0], 0) = [v0]  (innermost binding)
+/// env_drop_to([v2, v1, v0], 1) = [v1]  (next innermost)
+fn env_drop_to(env: List(Value), idx: Int) -> List(Value) {
+  case env, idx {
+    _, 0 -> env
+    [_, ..rest], _ if idx > 0 -> env_drop_to(rest, idx - 1)
+    _, _ -> []
+  }
+}
+
+/// Evaluate application of a non-lambda value
+fn eval_app(fun_val: Value, _arg_val: Value) -> Result(Value, String) {
+  case fun_val {
+    Closure(_, _, _) -> Error("Should have been handled in eval_term")
+    _ -> Error("Not a function: " <> value_to_string(fun_val))
   }
 }
 
 /// Evaluate a match expression
-fn eval_match(state: state.State, scrutinee: Term, cases: List(Case)) -> Result(Value, String) {
-  case eval_term(state, scrutinee) {
-    Ok(value) -> eval_match_value(state, value, cases)
+fn eval_match(env: List(Value), scrutinee: Term, cases: List(Case)) -> Result(Value, String) {
+  case eval_term(env, scrutinee) {
+    Ok(value) -> eval_match_value(value, cases)
     Error(e) -> Error(e)
   }
 }
 
 /// Evaluate match with a value
-fn eval_match_value(state: state.State, value: Value, cases: List(Case)) -> Result(Value, String) {
+fn eval_match_value(value: Value, cases: List(Case)) -> Result(Value, String) {
   case cases {
     [] -> Error("No matching case")
     [first, ..rest] -> {
       case match_value(value, first.pattern) {
         Ok(result) -> Ok(result)
-        Error(_) -> eval_match_value(state, value, rest)
+        Error(_) -> eval_match_value(value, rest)
       }
     }
   }
@@ -116,37 +136,57 @@ fn match_value(value: Value, pattern: Pattern) -> Result(Value, String) {
   }
 }
 
-/// Match a literal value against a literal pattern
-fn match_literal(value: Literal, pattern: Literal) -> Bool {
-  case value, pattern {
-    LInt(n), LInt(m) -> n == m
-    LFloat(n), LFloat(m) -> n == m
-    LString(s), LString(m) -> s == m
-    _, _ -> False
+/// Convert integer to string
+fn int_to_string(n: Int) -> String {
+  case n < 0 {
+    True -> "-" <> int_to_string(-n)
+    False -> case n {
+      0 -> "0"
+      _ -> int_to_string(n / 10) <> int_digit_to_char(n % 10)
+    }
   }
 }
 
-/// Convert environment to list
-fn env_to_list(state: state.State) -> List(Value) {
-  // This is a simplified version - in practice, we'd need proper De Bruijn level management
-  []
+fn int_digit_to_char(d: Int) -> String {
+  case d {
+    0 -> "0"
+    1 -> "1"
+    2 -> "2"
+    3 -> "3"
+    4 -> "4"
+    5 -> "5"
+    6 -> "6"
+    7 -> "7"
+    8 -> "8"
+    9 -> "9"
+    _ -> ""
+  }
 }
 
-/// Evaluate a list of values
-pub fn eval_list(state: state.State, values: List(Value)) -> Result(List(Value), String) {
-  case values {
-    [] -> Ok([])
-    [v] ->
-      case v {
-        Closure(_, body, _) -> {
-          let new_state = state.State(..state)
-          case eval_term(new_state, body) {
-            Ok(val) -> Ok([val])
-            Error(e) -> Error(e)
-          }
-        }
-        _ -> Ok([v])
-      }
-    _ -> Error("Not a single value")
+/// Convert value to string for debugging
+fn value_to_string(val: Value) -> String {
+  case val {
+    Closure(param, _, _) -> "<lambda " <> param <> ">"
+    IntVal(n) -> "Int(" <> int_to_string(n) <> ")"
+    FloatVal(n) -> "Float(" <> float_to_string(n) <> ")"
+    StringVal(s) -> "String(" <> s <> ")"
+    CtrVal(tag, _) -> "Ctr(" <> tag <> ")"
+    LitVal(lit) -> "Lit(" <> literal_to_string(lit) <> ")"
+    HoleVal(id) -> "Hole(" <> int_to_string(id) <> ")"
+    ErrVal -> "Err"
+  }
+}
+
+fn float_to_string(f: Float) -> String {
+  case f {
+    _ -> "<float>"
+  }
+}
+
+fn literal_to_string(lit: Literal) -> String {
+  case lit {
+    LInt(n) -> int_to_string(n)
+    LFloat(n) -> float_to_string(n)
+    LString(s) -> s
   }
 }

@@ -1,33 +1,27 @@
 // Tao Compiler - Multi-file compilation pipeline
-// Compiles Tao source code to Core terms.
+// Compiles Tao source code to Core terms and evaluates them.
 
-import core/state.{type State, new_state, type FfiEntry, Env}
-import core/ast.{type Term, type Value, Var, Lam, App, Lit, Ctr, Match, Hole, Err, IntVal, FloatVal, StringVal, Closure, CtrVal, LitVal, HoleVal, ErrVal, LInt, LFloat, LString}
+import core/ast.{type Term, type Value, type Type, Lit, LInt, IntVal, TVar}
 import tao/ast.{type Module, type Stmt, type Expr, Let, Fn, Expr as ExprStmt} as tao
 import tao/desugar
-import core/eval as eval
+import gleam/list
+import core/eval
 
-/// Compile a Tao module to a Core term
-pub fn compile_module(module: Module, ffi: List(FfiEntry)) -> Result(#(Term, Value), List(String)) {
-  let env = Env(
-    bindings: [],
-    ffi: ffi,
-  )
-  let state = new_state(env)
-  
-  case compile_stmts(module.statements, state) {
+/// Compile a Tao module to a Core term and evaluate it
+pub fn compile_module(module: Module) -> Result(#(Term, Value), List(String)) {
+  case compile_stmts(module.statements, []) {
     Ok(#(term, value)) -> Ok(#(term, value))
     Error(errors) -> Error(errors)
   }
 }
 
 /// Compile a list of statements
-fn compile_stmts(stmts: List(Stmt), state: State) -> Result(#(Term, Value), List(String)) {
+fn compile_stmts(stmts: List(Stmt), env: List(#(String, Type))) -> Result(#(Term, Value), List(String)) {
   case stmts {
     [] -> Ok(#(Lit(LInt(0)), IntVal(0)))
     [first, ..rest] -> {
-      case compile_stmt(first, state) {
-        Ok(new_state) -> compile_stmts(rest, new_state)
+      case compile_stmt(first, env) {
+        Ok(#(new_env, result)) -> compile_stmts(rest, new_env)
         Error(errors) -> Error(errors)
       }
     }
@@ -35,53 +29,41 @@ fn compile_stmts(stmts: List(Stmt), state: State) -> Result(#(Term, Value), List
 }
 
 /// Compile a single statement
-fn compile_stmt(stmt: Stmt, state: State) -> Result(State, List(String)) {
+fn compile_stmt(stmt: Stmt, env: List(#(String, Type))) -> Result(#(List(#(String, Type)), #(Term, Value)), List(String)) {
   case stmt {
     Let(name, value, _) -> {
-      case compile_expr(value, state) {
-        Ok(#(_term, _value)) -> {
-          let new_state = state.State(
-            env: state.State(..state).env,
-            errors: state.State(..state).errors,
-            hole_bindings: state.State(..state).hole_bindings,
-          )
-          Ok(new_state)
+      case compile_expr(value, env) {
+        Ok(#(term, value)) -> {
+          let new_env = list.append(env, [ #(name, TVar(0)) ])
+          Ok(#(new_env, #(term, value)))
         }
         Error(errors) -> Error(errors)
       }
     }
     Fn(name, _params, body, _) -> {
-      let new_state = state.State(
-        env: state.State(..state).env,
-        errors: state.State(..state).errors,
-        hole_bindings: state.State(..state).hole_bindings,
-      )
-      Ok(new_state)
-    }
-    ExprStmt(expr, _) -> {
-      case compile_expr(expr, state) {
-        Ok(#(_term, _value)) -> Ok(state)
+      case compile_expr(body, env) {
+        Ok(#(term, value)) -> {
+          let new_env = list.append(env, [ #(name, TVar(1)) ])
+          Ok(#(new_env, #(term, value)))
+        }
         Error(errors) -> Error(errors)
       }
     }
-    _ -> Ok(state)
+    ExprStmt(expr, _) -> {
+      case compile_expr(expr, env) {
+        Ok(#(_term, _value)) -> Ok(#(env, #(Lit(LInt(0)), IntVal(0))))
+        Error(errors) -> Error(errors)
+      }
+    }
+    _ -> Ok(#(env, #(Lit(LInt(0)), IntVal(0))))
   }
 }
 
 /// Compile an expression to a Core term and value
-fn compile_expr(expr: Expr, state: State) -> Result(#(Term, Value), List(String)) {
-  case desugar.desugar_expr(expr, state.env.bindings) {
-    Ok(#(term, new_env)) -> {
-      let new_env2 = Env(
-        bindings: new_env,
-        ffi: state.env.ffi,
-      )
-      let new_state = state.State(
-        env: new_env2,
-        errors: state.State(..state).errors,
-        hole_bindings: state.State(..state).hole_bindings,
-      )
-      case eval.eval(new_state, term) {
+fn compile_expr(expr: Expr, env: List(#(String, Type))) -> Result(#(Term, Value), List(String)) {
+  case desugar.desugar_expr(expr, env) {
+    Ok(#(term, _new_env)) -> {
+      case eval.eval([], term) {
         Ok(value) -> Ok(#(term, value))
         Error(e) -> Error([e])
       }
