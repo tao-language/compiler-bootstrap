@@ -2,7 +2,7 @@
 // Compiles Tao source code to Core terms.
 
 import core/state.{type State, new_state, type FfiEntry, Env}
-import core/ast.{type Term, type Value, type Type, Var, Lam, App, Lit, Ctr, Match, Hole, Err, IntVal, FloatVal, StringVal, Closure, CtrVal, LitVal, HoleVal, ErrVal, LInt, LFloat, LString}
+import core/ast.{type Term, type Value, Var, Lam, App, Lit, Ctr, Match, Hole, Err, IntVal, FloatVal, StringVal, Closure, CtrVal, LitVal, HoleVal, ErrVal, LInt, LFloat, LString}
 import tao/ast.{type Module, type Stmt, type Expr, Let, Fn, Expr as ExprStmt} as tao
 import tao/desugar
 import core/eval as eval
