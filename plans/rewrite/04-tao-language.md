@@ -135,6 +135,11 @@ pub type Stmt {
   
   /// type Name = Ctor | Ctor(args) | ...
   TypeDef(String, List(String), List(Constructor), span: Span)
+
+  /// Test as example, REPL style
+  /// > expression
+  /// result
+  Test(name: String, expr: Expr, expect: Pattern, Span)
   
   /// Expression statement: expr
   ExprStmt(Expr, span: Span)
