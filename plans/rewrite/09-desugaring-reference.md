@@ -420,10 +420,10 @@ Call("test", [String("addition"), App(App(Var("=="), App(App(Var("+"), Lit(ILit(
 
 | Tao Feature | Desugars To | Core Term |
 |-------------|-------------|-----------|
-| `fn f(x) { e }` | `let f = fn(x) { e }` | `Let("f", Lam(("x", e)), body)` |
+| `fn f(x) { e }` | `let f = fn(x) { e }` | `Let("f", Lam(("x", Hole(-1)), e), body)` |
 | `let x = e` | (same) | `Let("x", e, body)` |
-| `a + b` | `+(a, b)` | `Call("add", [a, b])` |
-| `-x` | `negate(x)` | `Call("negate", [x])` |
+| `a + b` | `+(a, b)` | `App(Var("+"), App(App(Var("+"), a), b))` |
+| `-x` | `negate(x)` | `App(Var("-"), x)` |
 | `if c { a } else { b }` | `match c { | True -> a | False -> b }` | `Match(c, [Case(True, a), Case(False, b)])` |
 | `for x in c { e }` | `foldl(\(acc, x) -> e, (), c)` | `App(Lam((acc, x), e), Unit(), c)` |
 | `while c { e }` | `fix loop -> if c { e; loop }` | `Fix("loop", If(c, e, Call("loop", [])))` |
@@ -438,3 +438,5 @@ Call("test", [String("addition"), App(App(Var("=="), App(App(Var("+"), Lit(ILit(
 | `comptime { e }` | (evaluated at compile time) | `Comptime(e)` |
 | `run e` | (evaluated and printed) | `Call("run", [e])` |
 | `test "name" { e }` | (evaluated as test) | `Call("test", ["name", e])` |
+
+**Note on operators:** Operators (`+`, `-`, etc.) desugar to function calls with operator names. The function `"+"` handles overloading via pattern matching on argument types (see 10-operator-overloading.md). Single-definition functions and overloaded functions both use the same pattern-matching mechanism.

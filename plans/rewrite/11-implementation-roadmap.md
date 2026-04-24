@@ -2,35 +2,24 @@
 
 ## Overview
 
-This roadmap breaks the rewrite into **7 phases**, each producing a working, testable increment. The MVP is delivered in Phase 3, and all remaining features are added incrementally.
+This roadmap breaks the rewrite into **5 phases**, each producing a working increment. The MVP CLI (run/check/test) is delivered in Phase 3. All remaining features are added incrementally.
 
-## Phase 0: Setup and Migration (1-2 days)
+## Quick Reference: What's Built When
 
-### Goals
-- Create the new directory structure
-- Back up the existing codebase
-- Set up build configuration
+```
+Phase 1  → Lexer + Core types         → No runnable code
+Phase 2  → Parser + Type Checker + NBE → `tao run <file>` works
+Phase 3  → Tao + Desugar + Test API   → `tao run`, `tao check`, `tao test` all work
+Phase 4  → Multi-file + Import        → Full compilation
+Phase 5  → Extended Features + Polish → Full design
+```
 
-### Tasks
-1. Create `plans/rewrite/` directory (done ✓)
-2. Create new directory structure under `src/` and `test/`
-3. Move existing code to `old/` directory
-4. Update `gleam.toml` for new structure
-5. Create basic project structure files
-
-### Deliverables
-- `old/` directory contains the complete existing codebase
-- New directory structure is set up
-- `gleam test` passes (empty test suite)
-
-## Phase 1: Grammar Library (3-4 days)
+## Phase 1: Lexer + Core Types (2-3 days)
 
 ### Goals
-- Language-agnostic grammar library that both Core and Tao use
-- Robust tokenizer
-- Parser combinator DSL
-- Document algebra and layout algorithm
-- Parse error accumulation
+- Tokenizer with span tracking
+- Core AST types (Term, Value, Pattern, Literal, State, Error, FfiEntry)
+- Basic utilities (shift, error_term, make_neut)
 
 ### Tasks
 
@@ -39,146 +28,119 @@ This roadmap breaks the rewrite into **7 phases**, each producing a working, tes
 - Support all token types: Integer, Float, String, Name, Op, Keyword, Comment
 - Handle escape sequences in strings
 - Handle comments (single-line and block)
-- Handle Unicode
 
 **Tests:** tokenization of every token type, position tracking, escape sequences, comments, empty input
 
-#### 1.2 Grammar DSL (src/syntax/grammar.gleam)
-- Implement pattern types: Token, Keyword, Op, Ref, Seq, Opt, Many, Choice, Parens, Delimited
-- Implement operator types: Prefix, Postfix, Infix
-- Implement parser combinator functions: alt, ref, seq, opt, many, choice, sep1, delimited
-- Implement grammar definition API: rule, left_assoc_rule, right_assoc_rule
-- Implement parse error types and accumulation
-
-**Tests:** every combinator, error accumulation, span accuracy, empty input
-
-#### 1.3 Formatter (src/syntax/formatter.gleam)
-- Implement document algebra: Empty, Text, Line, HardLine, Group, Nest, Concat
-- Implement layout algorithms: render, format_to_string
-- Implement layout helpers: join, space_sep, comma_sep, parens, braces, brackets
-- Implement grammar-guided formatting: format_binop_with_grammar
-
-**Tests:** document operations, layout decisions, precedence-based wrapping, empty docs
-
-#### 1.4 Error Reporter (src/syntax/error_reporter.gleam)
-- Implement parse error formatting with source context
-- Implement span highlighting
-- Implement note and hint formatting
-
-**Tests:** error formatting for every parse error type, span accuracy
-
-### Phase 1 Testing Criteria
-- ✅ All 100+ lexer tests pass
-- ✅ All 50+ grammar combinator tests pass
-- ✅ All 20+ formatter tests pass
-- ✅ Golden tests (parse → format → parse) pass for both Core and Tao
-- ✅ Error accumulation works correctly for all error types
-
-## Phase 2: Core Language (5-7 days)
-
-### Goals
-- Language-agnostic core language implementation
-- Bidirectional type inference/checking
-- Normalization by evaluation
-- Quote (Value → Term)
-- Unification and substitution
-- Generalization
-- Exhaustiveness checking
-
-### Tasks
-
-#### 2.1 Core AST (src/core/ast.gleam)
+#### 1.2 Core AST (src/core/ast.gleam)
 - Define Term, Value, Pattern, Case, Head, Elim types
-- Define LitValue, LitType, CtrDef, CtrEnv types
-- Define Env, Context, Subst types
+- Define Literal { Int, Float, String }, Env, Subst types
 - Implement shift_term, error_term, make_neut, make_hole_neut, make_var_neut
 
 **Tests:** every type constructor, shift operations, equality checks
 
-#### 2.2 Core Syntax (src/core/syntax.gleam)
-- Define Core grammar (using grammar library)
-- Implement Core parser
-- Implement Core formatter
-- Implement parse → format → parse round-trip
-
-**Tests:** every Core syntax form, span accuracy, round-trip
-
-#### 2.3 State (src/core/state.gleam)
+#### 1.3 State (src/core/state.gleam)
 - Define State, FfiEntry, Error types
 - Implement initial_state, with_err, continue_with_errors
-- Implement error accumulation utilities
 
 **Tests:** state manipulation, error accumulation, FFI entry creation
 
-#### 2.4 Unification (src/core/unify.gleam)
+### Phase 1 Testing Criteria
+- ✅ All 30+ lexer tests pass
+- ✅ All 20+ AST tests pass
+- ✅ State error accumulation works correctly
+
+## Phase 2: Parser + Core Type Checker + Run CLI (4-5 days)
+
+### Goals
+- Core parser + formatter
+- Bidirectional type inference/checking
+- Normalization by evaluation
+- Quote (Value → Term)
+- Unification + substitution + generalization
+- Exhaustiveness checking
+- **CLI `run` command works**
+
+### Tasks
+
+#### 2.1 Grammar DSL + Core Parser (src/syntax/grammar.gleam, src/core/syntax.gleam)
+- Implement parser combinator DSL (Seq, Opt, Many, Choice, Ref, Tok, Kw, Op)
+- Define Core grammar
+- Implement Core parser
+- Implement Core formatter (optional, for debugging)
+
+**Tests:** every combinator, Core syntax form, span accuracy
+
+#### 2.2 Unification (src/core/unify.gleam)
 - Implement unify function
 - Implement occurs check
-- Implement literal type unification (ILitT, FLitT)
 - Implement hole instantiation (positive/negative IDs)
 
-**Tests:** every type pair, occurs check, literal type resolution, hole instantiation
+**Tests:** every type pair, occurs check, hole instantiation
 
-#### 2.5 Substitution (src/core/subst.gleam)
+#### 2.3 Substitution (src/core/subst.gleam)
 - Implement force (evaluate through substitution)
 - Implement force_levels_to_indices (value → term)
 - Implement shift_term (already in ast)
 
 **Tests:** force on every value type, level-to-index conversion, shift operations
 
-#### 2.6 Generalization (src/core/generalize.gleam)
+#### 2.4 Generalization (src/core/generalize.gleam)
 - Implement generalize (quantify holes)
-- Handle implicit parameters
 
-**Tests:** generalization of every type form, implicit param handling
+**Tests:** generalization of every type form
 
-#### 2.7 Evaluation (src/core/eval.gleam)
+#### 2.5 Evaluation (src/core/eval.gleam)
 - Implement evaluate (NBE)
 - Implement evaluate_with_ffi
 - Implement do_app (neutral spine application)
-- Implement neutral spine evaluation
 
-**Tests:** every value form, step limit, FFI calls, neutral spine
+**Tests:** every value form, FFI calls, neutral spine
 
-#### 2.8 Quote (src/core/quote.gleam)
+#### 2.6 Quote (src/core/quote.gleam)
 - Implement quote (Value → Term)
-- Implement quote_with_env
 - Verify quote does NOT call eval (critical invariant)
 
 **Tests:** every value form, quote ≠ eval, nested lambda quoting
 
-#### 2.9 Type Inference (src/core/infer.gleam)
-- Implement infer (synthesis)
-- Implement check (verification)
+#### 2.7 Type Inference (src/core/infer.gleam)
+- Implement infer (synthesis) — returns #(Term, Value, State)
+- Implement check (verification) — returns #(Term, Value, State)
 - Implement infer_pattern
 - Implement infer_match
 - Implement infer_fix
-- Implement infer_comptime
 - Implement all error cases
 
 **Tests:** every term form, every error case, type mismatch accumulation
 
-#### 2.10 Exhaustiveness (src/core/exhaustiveness.gleam)
+#### 2.8 Exhaustiveness (src/core/exhaustiveness.gleam)
 - Implement check_exhaustiveness (Maranget's algorithm)
 - Implement is_redundant
 - Handle guards conservatively
 
-**Tests:** every pattern combination, redundant cases, missing cases, guards
+**Tests:** every pattern combination, redundant cases, missing cases
+
+#### 2.9 CLI Run Command (src/cli/run.gleam)
+- Implement run mode: parse → desugar (identity) → type check → evaluate → print
+- Handle errors from all phases
+- Return appropriate exit codes
+
+**Tests:** run simple Core programs, run with errors, run with type errors
 
 ### Phase 2 Testing Criteria
-- ✅ All 200+ core unit tests pass
+- ✅ All 80+ core tests pass
 - ✅ Every function has example-based tests
-- ✅ Golden tests (term → eval → quote → term) pass
-- ✅ Round-trip (parse → format → parse) passes
-- ✅ Church numerals work correctly
-- ✅ Exhaustiveness checking catches all missing/redundant cases
+- ✅ `tao run` compiles and evaluates a simple Core program
+- ✅ Type errors are reported correctly
+- ✅ Exhaustiveness checking catches missing/redundant cases
+- ✅ Quote round-trip works (term → eval → quote → term)
 
-## Phase 3: Tao Language MVP (5-7 days)
+## Phase 3: Tao + Desugaring + Test Framework (4-5 days)
 
 ### Goals
 - Tao high-level language
 - Desugaring to Core
-- Basic compilation pipeline
-- Test framework
+- **CLI `check` and `test` commands work**
+- Test framework with REPL-style tests
 
 ### Tasks
 
@@ -186,30 +148,25 @@ This roadmap breaks the rewrite into **7 phases**, each producing a working, tes
 - Define Expr, Stmt, Pattern, TypeAst types
 - Define Literal, BinOp, UnaryOp, RecordField, MatchClause types
 - Define Param, Constructor, ConstructorField types
-- Define ImportItem, ImportName types
-- Implement span helpers: span_from_expr, span_from_pattern, span_from_stmt
 
-**Tests:** every type constructor, span helpers, structural equality
+**Tests:** every type constructor, structural equality
 
-#### 3.2 Tao Lexer (src/tao/lexer.gleam)
-- Extend base lexer with Tao-specific tokens
-- Support Tao keywords: fn, let, mut, in, match, case, type, of, import, as, test, run, comptime, if, else, for, while, loop, break, continue, return, yield
-
-**Tests:** every Tao keyword, operator, and literal type
-
-#### 3.3 Tao Syntax (src/tao/syntax.gleam)
-- Define Tao grammar (using grammar library)
+#### 3.2 Tao Syntax (src/tao/syntax.gleam)
+- Define Tao grammar (using grammar DSL from Phase 2)
 - Implement Tao parser
 - Implement Tao formatter
 - Implement parse → format → parse round-trip
 
 **Tests:** every Tao syntax form, span accuracy, round-trip
 
-#### 3.4 Desugar (src/tao/desugar.gleam)
+#### 3.3 Desugar (src/tao/desugar.gleam)
 - Implement desugar_expr (every Tao expression → Core term)
 - Implement desugar_stmt (every Tao statement → Core term)
 - Implement desugar_module (module → Core term)
-- Implement loop context tracking (break/continue)
+- Implement unified function/operator handling:
+  - Track all definitions per name (single or multiple)
+  - Always generate pattern match on implicit argument types
+  - Single definition → one-branch match; multiple → multi-branch match
 
 **Desugar tests:** every high-level feature:
 - Lambda abstraction
@@ -219,46 +176,52 @@ This roadmap breaks the rewrite into **7 phases**, each producing a working, tes
 - If-else
 - For loop
 - While loop
-- Loop (infinite)
-- Break/continue
-- Yield/generator
-- Mutable variables
-- Record update
 - Pipe operator
-- Result bind
-- Comptime block
-- Run statement
-- Test statement
+- Binary operators (a + b → "+"(a, b))
 
-#### 3.5 Compiler Pipeline (src/tao/compiler.gleam)
-- Implement compile_tao (full pipeline)
+#### 3.4 Compiler Pipeline (src/tao/compiler.gleam)
+- Implement compile_tao (full pipeline: parse → desugar → check)
 - Implement compile_core (Core only pipeline)
 - Implement error collection across phases
 
 **Tests:** every pipeline stage, error accumulation, partial results
 
-#### 3.6 Test API (src/tao/test_api.gleam)
-- Implement test framework
-- Implement expect assertions
-- Implement test execution
+#### 3.5 Test Framework (src/tao/test_api.gleam)
+- Implement REPL-style test extraction from `/// > expr ~> result` comments
+- Implement test execution with assertion checking
+- Implement test result reporting
 
-**Tests:** test framework basic operations, assertion failures
+**Tests:** test extraction, assertion pass, assertion fail, no tests found
+
+#### 3.6 CLI Check Command (src/cli/check.gleam)
+- Implement check mode: parse → desugar → type check → report type or errors
+- Don't evaluate — only type check
+
+**Tests:** check simple Tao programs, check with type errors, check with no errors
+
+#### 3.7 CLI Test Command (src/cli/test.gleam)
+- Implement test mode: find test statements → compile → evaluate → report results
+- Handle test failures gracefully
+
+**Tests:** tests with assertions, tests without assertions, no test statements
 
 ### Phase 3 Testing Criteria
-- ✅ All 100+ Tao unit tests pass
-- ✅ All 50+ desugar tests pass
-- ✅ All 30+ compiler tests pass
-- ✅ MVP can compile a complete Tao program (fibonacci, map/filter)
-- ✅ Test framework works correctly
+- ✅ All 60+ Tao tests pass
+- ✅ All 30+ desugar tests pass
+- ✅ All 20+ compiler tests pass
+- ✅ **`tao run <file>` works** for Tao programs
+- ✅ **`tao check <file>` works** for Tao programs
+- ✅ **`tao test <file>` works** for Tao programs
+- ✅ Test framework extracts and runs REPL-style tests
+- ✅ Fibonacci, map/filter compile and run correctly
 - ✅ Error accumulation works across all phases
 
-## Phase 4: Module System (3-4 days)
+## Phase 4: Multi-file + Import System (3-4 days)
 
 ### Goals
 - Multi-file compilation
-- Import resolution
+- Import resolution with graceful degradation
 - Module dependency tracking
-- Circular import detection
 
 ### Tasks
 
@@ -266,6 +229,7 @@ This roadmap breaks the rewrite into **7 phases**, each producing a working, tes
 - Define LanguageConfig type
 - Implement default_config()
 - Implement config-based type/operator lookup
+- Track truth/false constructor names
 
 **Tests:** config lookup for every type/operator
 
@@ -279,10 +243,12 @@ This roadmap breaks the rewrite into **7 phases**, each producing a working, tes
 
 #### 4.3 Import Resolver (src/tao/import_resolver.gleam)
 - Implement import resolution (module lookup, name lookup)
-- Implement graceful degradation: module-not-found → empty module + error, name-not-found → deferred to type checker
+- Implement graceful degradation:
+  - **module-not-found** → empty module + error to state
+  - **name-not-found** → defer to type checker (no error here)
 - Implement selective and wildcard imports
 
-**Tests:** every import variant, module-not-found, name-not-found (deferred), error cases
+**Tests:** every import variant, module-not-found (empty + error), name-not-found (deferred), error cases
 
 #### 4.4 Multi-file Compilation (src/tao/compiler.gleam)
 - Extend compile_tao with multi-file support
@@ -294,146 +260,71 @@ This roadmap breaks the rewrite into **7 phases**, each producing a working, tes
 - ✅ All 40+ import tests pass
 - ✅ Multi-file compilation works correctly
 - ✅ Module-not-found handled gracefully (empty module + error)
-- ✅ Name-not-found deferred to type checker
+- ✅ Name-not-found deferred to type checker (VarUndefined error)
 - ✅ Selective and wildcard imports work
 
-## Phase 5: Error Handling & Diagnostics (2-3 days)
+## Phase 5: Extended Features + Polish (3-4 days)
 
 ### Goals
-- Comprehensive error reporting
-- Source context formatting
-- Error code system
+- Full literal type system (ILit/FLit, I32T/I64T/etc.)
+- Operator overloading via pattern matching
+- Better error messages with codes and source context
+- Optional: Comptime, Streams, Record update
 
 ### Tasks
 
-#### 5.1 Error Formatter (src/core/error_formatter.gleam)
-- Implement format_diagnostic for every TypeError
-- Implement source span highlighting
-- Implement note and hint formatting
+#### 5.1 Literal Types (src/core/ast.gleam, src/core/unify.gleam)
+- Extend Literal → LitValue { ILit, FLit, StrLit }
+- Add LitType { I32T, I64T, U32T, U64T, F32T, F64T, ILitT, FLitT }
+- Implement literal type unification (ILitT ↔ I32T, FLitT ↔ F64T, etc.)
+- Update VLit to carry LitValue
 
-**Tests:** every error type formatted correctly, span accuracy
+**Tests:** integer literal polymorphism (1 as I32 or I64), float literal (3.14 can't be I32), cross-type rejection
 
-#### 5.2 Error Reporter (src/syntax/error_reporter.gleam)
-- Implement parse error formatting
-- Implement import error formatting
+#### 5.2 Operator Overloading (src/core/ast.gleam, src/core/infer.gleam)
+- Extend FfiEntry to take fn(List(#(Value, Value))) -> Option(Value)
+- Desugar overloaded functions to pattern match on implicit argument types
+- Update VCall to pass (value, type) pairs to FFI
 
-**Tests:** every error type formatted correctly
+**Tests:** overloaded add (I32 + I32 → I32, F64 + F64 → F64), single-definition pattern match, no-overload case, ambiguous overload error
 
-#### 5.3 Tao Error Reporter (src/tao/error_reporter.gleam)
-- Implement Tao-specific error formatting
-- Integrate with Core error formatter
+#### 5.3 Error System (src/core/error.gleam, src/cli/*.gleam)
+- Add error codes (E0001=Parse syntax, E0101=Type mismatch, etc.)
+- Add notes and hints to errors
+- Implement source context formatting
+- Update CLI output with formatted errors
 
-**Tests:** every Tao error type formatted correctly
+**Tests:** every error type formatted correctly, accurate spans, error codes documented
+
+#### 5.4 Extended Features (as needed)
+- Comptime: Add Comptime to Term, evaluate at compile time
+- Streams: Add yield to Expr, Stream type in stdlib
+- Record update: Add record update desugar
+- Truth/false constructor: Add to State, match on True/False in FFI
 
 ### Phase 5 Testing Criteria
-- ✅ All 50+ error formatting tests pass
-- ✅ Every error has accurate spans
-- ✅ Error output is human-readable with source context
-- ✅ All 30+ error codes are documented
-
-## Phase 6: High-Level Features (3-4 days)
-
-### Goals
-- All remaining high-level features
-- Generator/Stream support
-- Record update syntax
-- Optional chaining
-
-### Tasks
-
-#### 6.1 Generator Support
-- Implement Stream type in stdlib
-- Implement yield desugaring
-- Implement Stream helpers (map, filter, fold)
-
-**Tests:** Stream creation, Stream operations, yield desugaring
-
-#### 6.2 Record Update
-- Implement record update syntax desugaring
-- Implement partial record update
-
-**Tests:** complete record update, partial record update
-
-#### 6.3 Optional Chaining
-- Implement optional chaining desugaring
-- Implement Result.unwrap and Error handling
-
-**Tests:** optional chaining, Result handling
-
-#### 6.4 Performance Optimizations
-- Implement NBE optimizations (step limit)
-- Implement term normalization during type checking
-- Implement caching for repeated evaluations
-
-**Tests:** performance benchmarks, step limit behavior
-
-### Phase 6 Testing Criteria
-- ✅ All 60+ high-level feature tests pass
-- ✅ Generators work correctly
-- ✅ Record update works correctly
-- ✅ Optional chaining works correctly
-- ✅ Performance is acceptable
-
-## Phase 7: Integration & Polish (2-3 days)
-
-### Goals
-- End-to-end tests
-- Documentation
-- CLI improvements
-- Final cleanup
-
-### Tasks
-
-#### 7.1 End-to-End Tests
-- Implement e2e_test.gleam
-- Test complete Tao programs (fib, map/filter, generators)
-- Test Core programs from examples
-
-**Tests:** every example program
-
-#### 7.2 Documentation
-- Update README.md
-- Document new architecture
-- Add usage examples
-
-#### 7.3 CLI Improvements
-- Improve error output formatting
-- Add --list flag for tests
-- Add --filter flag for test names
-
-#### 7.4 Final Cleanup
-- Remove duplicate code
-- Verify all tests pass
-- Verify no import cycles
-- Verify no hardcoded assumptions
-
-### Phase 7 Testing Criteria
-- ✅ All 500+ tests pass
-- ✅ All examples work correctly
-- ✅ No import cycles
-- ✅ No hardcoded assumptions (dummy spans, truth constructors, etc.)
-- ✅ CLI is user-friendly
-- ✅ Documentation is complete
+- ✅ All 50+ extended feature tests pass
+- ✅ Literal type system handles all cases from 03-core-language.md
+- ✅ Operator overloading works (pattern matching, single and multiple definitions)
+- ✅ Error codes are consistent and documented
+- ✅ Source context formatting is human-readable
 
 ## Summary
 
-| Phase | Days | Features | Test Count |
-|-------|------|----------|------------|
-| 0: Setup | 1-2 | Directory structure, backup | 0 |
-| 1: Grammar | 3-4 | Lexer, parser, formatter | 170+ |
-| 2: Core | 5-7 | Type checking, evaluation, quoting | 200+ |
-| 3: Tao MVP | 5-7 | Desugaring, compilation, tests | 180+ |
-| 4: Modules | 3-4 | Import system, multi-file | 40+ |
-| 5: Errors | 2-3 | Error reporting, diagnostics | 50+ |
-| 6: Features | 3-4 | Generators, record update, optional chaining | 60+ |
-| 7: Polish | 2-3 | E2E tests, docs, CLI | 50+ |
-| **Total** | **24-34** | **Complete language** | **~750** |
+| Phase | Days | Features | CLI Commands | Test Count |
+|-------|------|----------|-------------|------------|
+| 1: Lexer + Core Types | 2-3 | Tokenizer, Core AST, State, Error | — | 30+ |
+| 2: Parser + Core + **Run** | 4-5 | Parser, type checker, NBE, Quote, CLI | `run` ✅ | 80+ |
+| 3: Tao + **Check + Test** | 4-5 | Tao parser, desugarer, test framework | `run`, `check`, `test` ✅ | 110+ |
+| 4: Multi-file + Import | 3-4 | Import system, module loading | `run`, `check`, `test` ✅ | 40+ |
+| 5: Extended + Polish | 3-4 | Literal types, overloading, errors | `run`, `check`, `test` ✅ | 50+ |
+| **Total** | **16-21** | **Complete language** | **Full CLI** | **~310** |
 
 ## Risk Mitigation
 
 | Risk | Mitigation |
 |------|-----------|
-| Grammar library is too complex | Build incrementally, test each combinator |
+| Grammar DSL is too complex | Build incrementally, test each combinator |
 | Core type checking is buggy | Start with simple terms, gradually add complexity |
 | Desugaring is error-prone | Write desugar tests for each feature independently |
 | Import resolution is inconsistent | Always: module-not-found → empty module + error, name-not-found → deferred to type checker |
@@ -443,12 +334,12 @@ This roadmap breaks the rewrite into **7 phases**, each producing a working, tes
 ## Success Criteria
 
 1. ✅ All existing examples still work (fibonacci, Church numerals, higher-order functions)
-2. ✅ All existing tests pass (700+ tests)
-3. ✅ No import cycles
-4. ✅ No hardcoded assumptions
+2. ✅ `tao run`, `tao check`, `tao test` all work from Phase 3 onwards
+3. ✅ No circular imports (modules desugared independently)
+4. ✅ No hardcoded assumptions (dummy spans, truth constructors, etc.)
 5. ✅ Every function has example-based tests
 6. ✅ Error accumulation works correctly at every phase
 7. ✅ Parser, formatter, type checker, evaluator all recover from errors
-8. ✅ Multi-file compilation works correctly
+8. ✅ Multi-file compilation works correctly (Phase 4)
 9. ✅ Import system handles all variants (selective, wildcard); module-not-found → empty module + error; name-not-found deferred to type checker
-10. ✅ High-level features desugar correctly to Core
+10. ✅ Operator overloading via pattern matching on implicit parameters (Phase 5)

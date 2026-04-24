@@ -40,8 +40,13 @@ test/
 │   ├── desugar_test.gleam     # Desugaring correctness tests
 │   ├── compiler_test.gleam    # Multi-file compilation tests
 │   ├── import_test.gleam      # Module import system tests
+│   ├── test_api_test.gleam    # Test framework (REPL-style extraction)
 │   ├── examples_test.gleam    # End-to-end example programs
 │   └── golden_test.gleam      # Tao → desugar → compile → format round-trip
+├── cli/
+│   ├── run_test.gleam         # Run mode tests
+│   ├── check_test.gleam       # Check mode tests
+│   └── test_test.gleam        # Test mode tests (run test statements)
 └── integration/
     └── e2e_test.gleam         # Full pipeline tests (Tao source → Core value)
 ```
@@ -830,6 +835,48 @@ test "complete pipeline: generator stream" {
 | `tao/import` | 95% | Every import variant, circular detection |
 | Integration | 90% | Every end-to-end example |
 
+## Tao Test Framework (REPL Style)
+
+Tests in Tao source files use a REPL-style syntax with `///` doc comments:
+
+```tao
+// Example: test statements in a Tao file
+
+/// > 1 + 2 ~> 3
+/// > "hello" <> " world" ~> "hello world"
+/// > fib(10) ~> 55
+
+fn fib(n) {
+  // ...
+}
+```
+
+**How it works:**
+1. The Tao parser extracts `/// > expr ~> expected` from doc comments
+2. Each line becomes a `TestStatement` in the AST
+3. The test framework compiles and evaluates each expression
+4. The result is compared against the expected value
+
+**Test framework in `test_api.gleam`:**
+- `extract_tests(source)` → List(TestStatement)
+- `run_tests(tests, context)` → List(TestResult)
+- `run_tests_in_file(path, context)` → List(TestResult)
+
+**CLI `tao test` command:**
+- Scans source files for test statements
+- Runs each test
+- Reports: pass count, fail count, total
+- Failed tests show expected vs. actual values
+
+**Test result format:**
+```gleam
+pub type TestResult {
+  Pass(test_name: Option(String))
+  Fail(test_name: Option(String), expected: Value, actual: Value)
+  Skipped(test_name: Option(String), reason: String)
+}
+```
+
 ## Running Tests
 
 ```bash
@@ -850,4 +897,9 @@ gleam test --tag golden
 
 # Run only unit tests
 gleam test --tag unit
+
+# Run Tao tests (test statements in source files)
+tao test main.tao
+tao test --filter "addition"  # Run only tests matching "addition"
+tao test --list               # List all test names
 ```

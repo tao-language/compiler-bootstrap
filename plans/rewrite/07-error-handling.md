@@ -225,8 +225,9 @@ hint: Consider adding a type annotation
 
 **Note on error codes:**
 - These codes are **not** based on any standard specification (e.g., Rust's E-prefix codes). They were chosen ad-hoc.
-- The rationale was: `E` prefix (for Error), followed by a 3-digit code with the first digit indicating phase (0=Parse, 1=Type, 2=Pattern, 3=Import, 5=Comptime) and the remaining digits being a sequential error number.
+- The rationale was: `E` prefix (for Error), followed by a 3-digit code with the first digit indicating phase (0=Parse, 1=Type, 2=Pattern, 3=Import, 4=Function, 5=Comptime) and the remaining digits being a sequential error number.
 - **Circular import (E0302)** has been removed from the error codes — circular imports are not possible since every module is desugared independently.
+- **Simplified vs Full design**: The simplified design (Phase 1-2) has no error codes — just descriptive messages. Error codes are added in Phase 5 as part of the polish phase. This allows MVP iteration without code maintenance overhead, then adds codes once the error taxonomy stabilizes.
 - **Usefulness for AI assistants**: The codes themselves are not particularly useful without the semantic description. They are primarily useful as stable identifiers for tooling (e.g., suppressing specific error types via `// no-error: E0101`). For human readability, the error message and span context are far more important than the code.
 
 ## Error Propagation
