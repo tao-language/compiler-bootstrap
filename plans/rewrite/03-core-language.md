@@ -200,14 +200,8 @@ pub fn check_exhaustiveness(
 ### eval.gleam — Normalization by Evaluation
 
 ```gleam
-/// Evaluate a term to a value in an empty environment
-pub fn evaluate(term: Term) -> Value
-
-/// Evaluate a term with an initial environment
-pub fn evaluate_with_env(env: Env, term: Term) -> Value
-
-/// Evaluate a term with FFI builtins
-pub fn evaluate_with_ffi(ffi: List(FfiEntry), term: Term) -> Value
+/// Evaluate a term to a value with FFI built-in on an environment
+pub fn evaluate(ffi: List(FfiEntry), env: Env, term: Term) -> Value
 
 /// Apply a value to an argument (part of neutral spine evaluation)
 pub fn do_app(function: Value, arg: Value) -> Value
