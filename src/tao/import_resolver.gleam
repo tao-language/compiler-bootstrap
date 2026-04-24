@@ -2,7 +2,7 @@
 // Resolves import statements in Tao modules.
 
 import tao/ast.{type Module, type Stmt, Import, Module}
-import syntax/span.{type Span, dummy}
+import syntax/span.{dummy}
 
 // ============================================================================
 // TAo IMPORT RESOLUTION

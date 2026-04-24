@@ -1,9 +1,9 @@
 // Tao FFI - Built-in functions
 // Defines the FFI functions available in Tao.
 
-import core/ast.{type Type, TPi, TVar, IntVal}
+import core/ast.{TPi, TVar, IntVal}
 import core/state.{type FfiEntry, FfiEntry}
-import gleam/list
+
 
 // ============================================================================
 // TAo FFI BUILTINS

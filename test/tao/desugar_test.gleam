@@ -5,6 +5,7 @@ import tao/desugar
 import syntax/span
 import gleam/option.{type Option, None}
 
+
 pub fn test_desugar_var() {
   let env = [#("x", TVar(0))]
   let expr = tao.Var("x", span.dummy())
@@ -63,7 +64,7 @@ pub fn test_desugar_lambda() {
   let expr = tao.Lambda([param], body, span.dummy())
   case desugar.desugar_expr(expr, env) {
     Ok(#(term, _)) -> case term {
-      Lam(param, body) -> case body {
+      Lam(_param, body) -> case body {
         Var(name, index) -> {
           assert name == "x"
           assert index == 0
@@ -84,7 +85,7 @@ pub fn test_desugar_call() {
   let expr = tao.Call(fun, [arg], span.dummy())
   case desugar.desugar_expr(expr, env) {
     Ok(#(term, _)) -> case term {
-      App(fun, arg) -> case fun {
+      App(fun, _arg) -> case fun {
         Var(name, index) -> {
           assert name == "add"
           assert index == 0

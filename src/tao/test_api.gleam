@@ -2,7 +2,7 @@
 // Simple test framework for Tao.
 
 import core/ast.{type Term, type Value}
-import core/state
+
 
 // ============================================================================
 // TAo TEST EXECUTION
