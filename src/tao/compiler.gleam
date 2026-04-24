@@ -5,7 +5,7 @@ import core/state.{type State, new_state, type FfiEntry, Env}
 import core/ast.{type Term, type Value, type Type, Var, Lam, App, Lit, Ctr, Match, Hole, Err, IntVal, FloatVal, StringVal, Closure, CtrVal, LitVal, HoleVal, ErrVal, LInt, LFloat, LString}
 import tao/ast.{type Module, type Stmt, type Expr, Let, Fn, Expr as ExprStmt} as tao
 import tao/desugar
-import gleam/list
+import core/eval as eval
 
 /// Compile a Tao module to a Core term
 pub fn compile_module(module: Module, ffi: List(FfiEntry)) -> Result(#(Term, Value), List(String)) {
@@ -68,28 +68,23 @@ fn compile_stmt(stmt: Stmt, state: State) -> Result(State, List(String)) {
   }
 }
 
-/// Evaluate a Core term to a Value (simplified prototype version)
-fn evaluate_term(term: Term) -> Value {
-  case term {
-    Var(_, _) -> IntVal(0)
-    Lit(LInt(n)) -> IntVal(n)
-    Lit(LFloat(f)) -> FloatVal(f)
-    Lit(LString(s)) -> StringVal(s)
-    Lam(_, body) -> Closure(param: "x", body: body, env: [])
-    App(_, _) -> IntVal(0)
-    Ctr(_, _) -> CtrVal(tag: "ctr", arg: IntVal(0))
-    Match(_, _) -> IntVal(0)
-    Hole(id) -> HoleVal(id)
-    Err(_) -> ErrVal
-  }
-}
-
 /// Compile an expression to a Core term and value
 fn compile_expr(expr: Expr, state: State) -> Result(#(Term, Value), List(String)) {
   case desugar.desugar_expr(expr, state.env.bindings) {
-    Ok(#(term, _new_env)) -> {
-      let value = evaluate_term(term)
-      Ok(#(term, value))
+    Ok(#(term, new_env)) -> {
+      let new_env2 = Env(
+        bindings: new_env,
+        ffi: state.env.ffi,
+      )
+      let new_state = state.State(
+        env: new_env2,
+        errors: state.State(..state).errors,
+        hole_bindings: state.State(..state).hole_bindings,
+      )
+      case eval.eval(new_state, term) {
+        Ok(value) -> Ok(#(term, value))
+        Error(e) -> Error([e])
+      }
     }
     Error(e) -> Error([e])
   }
