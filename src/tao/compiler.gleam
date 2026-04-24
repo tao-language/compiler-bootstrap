@@ -1,14 +1,14 @@
 // Tao Compiler - Multi-file compilation pipeline
 // Compiles Tao source code to Core terms and evaluates them.
 
-import core/ast.{type Term, type Value, type Type, Lit, LInt, IntVal, TVar} as core_ast
+import core/ast as core_ast
 import tao/ast as tao_ast
 import tao/desugar
 import gleam/list
 import core/eval as core_eval
 
 /// Compile a Tao module to a Core term and evaluate it
-pub fn compile_module(module: tao_ast.Module) -> Result(#(Term, Value), List(String)) {
+pub fn compile_module(module: tao_ast.Module) -> Result(#(core_ast.Term, core_ast.Value), List(String)) {
   case compile_stmts(module.statements, []) {
     Ok(#(term, value)) -> Ok(#(term, value))
     Error(errors) -> Error(errors)
@@ -16,7 +16,7 @@ pub fn compile_module(module: tao_ast.Module) -> Result(#(Term, Value), List(Str
 }
 
 /// Compile a list of statements
-fn compile_stmts(stmts: List(tao_ast.Stmt), env: List(#(String, Type))) -> Result(#(Term, Value), List(String)) {
+fn compile_stmts(stmts: List(tao_ast.Stmt), env: List(#(String, core_ast.Type))) -> Result(#(core_ast.Term, core_ast.Value), List(String)) {
   case stmts {
     [] -> Ok(#(core_ast.Lit(core_ast.LInt(0)), core_ast.IntVal(0)))
     [first, ..rest] -> {
@@ -29,7 +29,7 @@ fn compile_stmts(stmts: List(tao_ast.Stmt), env: List(#(String, Type))) -> Resul
 }
 
 /// Compile a single statement
-fn compile_stmt(stmt: tao_ast.Stmt, env: List(#(String, Type))) -> Result(#(List(#(String, Type)), #(Term, Value)), List(String)) {
+fn compile_stmt(stmt: tao_ast.Stmt, env: List(#(String, core_ast.Type))) -> Result(#(List(#(String, core_ast.Type)), #(core_ast.Term, core_ast.Value)), List(String)) {
   case stmt {
     tao_ast.Let(name, value, _) -> {
       case compile_expr(value, env) {
@@ -60,7 +60,7 @@ fn compile_stmt(stmt: tao_ast.Stmt, env: List(#(String, Type))) -> Result(#(List
 }
 
 /// Compile an expression to a Core term and value
-fn compile_expr(expr: tao_ast.Expr, env: List(#(String, Type))) -> Result(#(Term, Value), List(String)) {
+fn compile_expr(expr: tao_ast.Expr, env: List(#(String, core_ast.Type))) -> Result(#(core_ast.Term, core_ast.Value), List(String)) {
   case desugar.desugar_expr(expr, env) {
     Ok(#(term, _new_env)) -> {
       case core_eval.eval([], term) {
