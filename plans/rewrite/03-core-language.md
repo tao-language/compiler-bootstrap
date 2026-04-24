@@ -212,10 +212,7 @@ pub fn do_app(function: Value, arg: Value) -> Value
 ```gleam
 /// Quote a value back to a term (re-wrapping lambdas)
 /// DOES NOT call eval — quote is purely syntactic
-pub fn quote(value: Value) -> Term
-
-/// Quote a value in a given environment
-pub fn quote_with_env(env: Env, value: Value) -> Term
+pub fn quote(env: Env, value: Value) -> Term
 ```
 
 ### unify.gleam — Higher-Order Unification
