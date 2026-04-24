@@ -58,8 +58,8 @@ pub fn visit_term(
   fix: fn(String, Term, Span) -> Term,
   let_: fn(String, Term, Term, Span) -> Term,
   typ: fn(Int, Span) -> Term,
-  lit: fn(Literal, Span) -> Term,
-  lit_t: fn(LiteralType, Span) -> Term,
+  lit: fn(LitValue, Span) -> Term,
+  lit_t: fn(LitType, Span) -> Term,
   unit: fn(Span) -> Term,
   err: fn(String, Span) -> Term,
 ) -> Term
@@ -209,7 +209,7 @@ should("format pi type term") {
 }
 
 should("format value with neutral spine") {
-  let value = VNeut(HVar(0), [EApp(VLit(I32(42)))])
+  let value = VNeut(HVar(0), [EApp(VLit(ILit(42)))])
   value_to_string(value) == "x 42"
 }
 ```

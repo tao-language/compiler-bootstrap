@@ -337,11 +337,11 @@ pub fn parse(grammar: Grammar, source: String) -> #(Expr, List(ParseError))
 /// Desugar expression to core term
 pub fn desugar(expr: Expr, ctx: Context) -> #(Term, List(Error))
 
-/// Infer type of term
-pub fn infer(state: State, term: Term) -> State
+/// Infer type of term — returns (resolved term, inferred type, updated state)
+pub fn infer(state: State, term: Term) -> #(Term, Value, State)
 
-/// Check term against expected type
-pub fn check(state: State, term: Term, expected: Value) -> State
+/// Check term against expected type — returns (resolved term, verified type, updated state)
+pub fn check(state: State, term: Term, expected: Value) -> #(Term, Value, State)
 
 /// Evaluate term to value
 pub fn evaluate(term: Term) -> Value

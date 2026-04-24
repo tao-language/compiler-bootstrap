@@ -320,29 +320,29 @@ The `Stream` type is defined in the Tao stdlib, not in Core:
 type Stream(a) = Cons(head: a, tail: Stream(a)) | Empty
 ```
 
-### Operator Overloading
+### Function and Operator Resolution
+
+**Unified approach:** The desugarer tracks **all definitions** for each function and operator (whether one or multiple). **Every** function/operator call desugars to a pattern match on argument types, regardless of whether there's one definition or many. This simplifies everything — there's only one way to handle functions.
 
 ```gleam
-/// Operator resolution in Tao
-pub type OverloadMode {
-  LiteralOverload    // 42 can be Int or Float (ILitT / FLitT)
-  FunctionOverload   // Same function name with different types (handled by Tao FFI)
-}
+// Single definition — still pattern matches (one branch)
+// fn abs(Int) -> Int { ... }
+// → Core: \implicit -> match implicit {
+//       #(I32T) -> %i32_abs
+//     }
+
+// Multiple definitions — pattern matches with multiple branches
+// fn add(Int, Int) -> Int { ... }
+// fn add(Float, Float) -> Float { ... }
+// → Core: \implicit -> match implicit {
+//       #(I32T, I32T) -> %i32_add
+//       #(F64T, F64T) -> %f64_add
+//     }
 ```
 
-**Literal overloading:** During type checking in Core, `ILitT` unifies with any concrete integer type (I32T, I64T, etc.), and `FLitT` unifies with any float type. This provides automatic literal overloading.
+FFI entries are single-target — each FFI entry calls one concrete implementation like `%i32_add`, `%f32_add`. The pattern match resolves at compile time via NbE.
 
-**Function overloading:** Tao supports FFI-based function overloading. The same name can have multiple FFI entries with different argument types. The type checker tries each in order:
-
-```gleam
-// In ffi.gleam — Tao can define multiple entries for the same name
-let ffi_entries = [
-  #("add", int_add, [I32T, I32T], I32T),    // add(Int, Int) -> Int
-  #("add", float_add, [F64T, F64T], F64T),  // add(Float, Float) -> Float
-]
-
-// During type checking, unify arguments against each entry in order
-```
+**Desugarer context:** The Tao desugarer maintains a map `fn_name → List((arg_types, ret_type, body))` for each function/operator. During desugaring, this is turned into a single function value that pattern matches on the implicit argument types and branches to the appropriate FFI call or inline body.
 
 ## Language Configuration
 
@@ -463,7 +463,6 @@ pub type ImportResolution {
 
 pub type ImportError {
   ModuleNotFound(path: String)
-  CircularImport(from: String, to: String)
   ImportError(message: String, span: Span)
 }
 ```
@@ -510,7 +509,7 @@ should("compile a complete Tao program") {
   let source = read_file("examples/tao/programs/fib.tao")
   let result = compile(source)
   result.errors == []
-  result.value == VLit(I32(55))  // fib(10)
+  result.value == VLit(ILit(55))  // fib(10)
 }
 ```
 

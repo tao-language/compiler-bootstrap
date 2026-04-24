@@ -4,9 +4,10 @@
 
 1. **Everything is a let binding** — Imports desugar to `let` bindings
 2. **No runtime overhead** — Imports are resolved at compile time only
-3. **Circular import detection** — Detected at compile time before any evaluation
+3. **No circular imports** — Every module is desugared independently, so there are no inter-module dependencies
 4. **Selective and wildcard imports** — Both supported at the syntax level
 5. **Type and constructor imports** — Types and their constructors can be imported separately
+6. **Graceful degradation** — Module-not-found creates empty bindings with error; name-not-found is deferred to type checker
 
 ## Import Syntax
 
@@ -115,24 +116,19 @@ pub type GlobalContext {
 ```gleam
 /// Result of resolving an import
 pub type ImportResult {
-  /// Import resolved successfully
+  /// Import resolved successfully (or partially — some names may not be found)
   Success(
     module: Module,
     bindings: List(#(String, Term)),  // name → resolved term
   )
-  
-  /// Import failed with errors
-  Error(ImportError)
-}
-
-pub type ImportError {
-  ModuleNotFound(path: String, span: Span)
-  CircularImport(from: String, to: String, span: Span)
-  ParseError(path: String, errors: List(ParseError))
-  TypeError(path: String, errors: List(TypeError))
-  NameNotFound(name: String, available: List(String), span: Span)
 }
 ```
+
+**Error handling strategy:**
+- **Module not found**: Append an error to the state and define it as an empty module. The import continues with empty bindings.
+- **Name not found**: Do nothing — just keep going. The type checker will later find the variable is undefined. No error is generated at import resolution time.
+- **Parse errors and type errors**: Handled as usual, appended to state errors.
+- **Circular imports**: Not an issue because every module is desugared independently, so there are no inter-module dependencies at the desugaring stage.
 
 ## Desugaring: Import → Core
 
@@ -182,33 +178,27 @@ The constructor `Some` and `None` are resolved through the `CtrEnv` during type 
 ## Module Loading Pipeline
 
 ```gleam
-/// Load and compile a module (recursively loading dependencies)
-pub fn load_module(path: String, ctx: GlobalContext) -> Result(Module, ImportError) {
+/// Load and compile a module
+pub fn load_module(path: String, ctx: GlobalContext) -> Module {
   // Check if already loaded
   case list.find(ctx.modules, fn(m) -> m.path == path) {
-    Ok(module) -> Ok(module)
+    Ok(module) -> module
     Error(_) -> {
-      // Check for circular imports
-      case is_circular(path, ctx.loaded_modules) {
-        True -> Error(CircularImport(path, "current", ctx.current_span))
-        False -> {
-          // Parse
-          let source = read_file(path)
-          let parse_result = parse(source, path)
-          
-          // Desugar
-          let desugar_result = desugar(parse_result.ast, ctx)
-          
-          // Type check
-          let type_result = type_check(desugar_result.term, ctx)
-          
-          // Build module
-          let module = build_module(path, parse_result.ast, desugar_result.term, type_result)
-          
-          // Add to context
-          Ok(update_context(ctx, module))
-        }
-      }
+      // Parse
+      let source = read_file(path)
+      let parse_result = parse(source, path)
+      
+      // Desugar (independent of other modules)
+      let desugar_result = desugar(parse_result.ast, ctx)
+      
+      // Type check
+      let type_result = type_check(desugar_result.term, ctx)
+      
+      // Build module (errors accumulated in state)
+      let module = build_module(path, parse_result.ast, desugar_result.term, type_result)
+      
+      // Add to context
+      update_context(ctx, module)
     }
   }
 }
@@ -253,51 +243,19 @@ pub fn get_type_constructors(stmts: List(Stmt)) -> List(#(String, List(String)))
 
 ## Test API
 
-The test framework uses the import system:
+Tests use the `Test` statement with REPL-style single-line syntax:
 
 ```tao
-// Tao source
-import std/test { test, expect }
-import my_module { add }
-
-test "addition" {
-  expect(1 + 1 == 2)
-}
-
-test "imported function" {
-  expect(add(1, 2) == 3)
-}
+/// > 1 + 1 ~> 2
+/// > add(1, 2) ~> 3
 ```
 
-```gleam
-// Desugars to Core
-let test = @std_test.test
-let expect = @std_test.expect
-let add = @my_module.add
+Each `///` comment containing `> expr ~> expected` is a test. The `Test` statement takes:
+- A name (from the doc comment or auto-generated)
+- An expression to evaluate
+- An expected result pattern
 
-test("addition", expect(eq(+(1, 2), 2)))
-test("imported function", expect(add(1, 2) == 3))
-```
-
-## Circular Import Detection
-
-```gleam
-/// Detect circular imports by tracking loading order
-pub fn is_circular(current: String, loaded: List(String)) -> Bool {
-  loaded |> list.contains(current)
-}
-
-/// Track module loading order
-pub fn update_context(ctx: GlobalContext, module: Module) -> GlobalContext {
-  let updated_modules = [module, ..ctx.modules]
-  let updated_loaded = list.append(module.dependencies, ctx.loaded_modules)
-  
-  ctx |> {
-    .modules = updated_modules
-    .loaded_modules = updated_loaded
-  }
-}
-```
+The test framework evaluates the expression at compile time (comptime) and compares the result against the expected value. No import of a test module is needed — tests are first-class language constructs that desugar to Core terms.
 
 ## Example: Complete Import Flow
 

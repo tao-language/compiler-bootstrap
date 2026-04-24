@@ -2,56 +2,59 @@
 
 ## Design Philosophy
 
-1. **Literal overloading** — Integer and float literals resolve to concrete types during type inference
-2. **Function overloading** — Same name, different types (resolved by unification)
-3. **Operator desugaring** — Operators become function calls (no special compiler handling)
-4. **No runtime overhead** — All overloading is resolved at compile time
+1. **Literal overloading** — Integer and float literals resolve to concrete types during type inference (handled in Core, see 03-core-language.md)
+2. **Function overloading via pattern matching** — Same name with different types resolved by pattern matching on implicit parameters (application argument types)
+3. **FFI calls single targets** — FFI entries call one concrete target function with no overloads (`%i32_add`, `%f32_add`, etc.)
+4. **Operator desugaring** — Operators are just functions with special names and syntax sugar for precedence. Calling them and their overloads is treated just as regular functions.
+5. **No runtime overhead** — All overloading is resolved by NbE at compile time since most types are known at compile time
+6. **No methods** — There are no methods in this language, only functions and operators. Binary functions use `infix` notation, and `|>` pipe is available.
+7. **Dependent types** — Different definitions can return different types, so overloading tests dependent types.
 
 ## Literal Overloading
 
 ### Type System
 
-```gleam
-/// Resolved literal type (concrete)
-pub type LiteralType {
-  I32T  // 32-bit signed integer
-  I64T  // 64-bit signed integer
-  U32T  // 32-bit unsigned integer
-  U64T  // 64-bit unsigned integer
-  F32T  // 32-bit float
-  F64T  // 64-bit float
-}
+See 03-core-language.md for the full `LitType` definition. The key types are:
 
-/// Overloaded literal type (during inference)
-/// ILitT unifies with any integer LiteralType
-/// FLitT unifies with any float LiteralType
-pub type LiteralType {
-  ILitT  // Overloaded integer literal type
-  FLitT  // Overloaded float literal type
+```gleam
+/// Literal type — concrete during type checking, generic during inference
+pub type LitType {
+  // Concrete types — specific bit-width and signedness
+  I32T   // 32-bit signed integer
+  I64T   // 64-bit signed integer
+  U32T   // 32-bit unsigned integer
+  U64T   // 64-bit unsigned integer
+  F32T   // 32-bit float
+  F64T   // 64-bit float
+  
+  // Generic types — used during inference when type is not yet resolved
+  ILitT  // Generic integer literal type (unifies with I32T, I64T, U32T, U64T)
+  FLitT  // Generic float literal type (unifies with F32T, F64T)
 }
 ```
 
 ### Unification Rules
 
 ```gleam
-/// Unify two literal types
-fn unify_literal_type(expected: LiteralType, actual: LiteralType) -> State {
+/// Unify two literal types — returns State (success) or State with error (failure)
+fn unify_literal_type(expected: LitType, actual: LitType) -> State {
   case expected, actual {
     // Concrete matches concrete
     (_, concrete) when is_concrete(concrete) -> State // Already unified
     
-    // Overloaded matches any concrete
+    // Integer literal type matches any concrete integer type
     (ILitT, I32T) | (ILitT, I64T) | (ILitT, U32T) | (ILitT, U64T) -> State
-    (ILitT, FLitT) -> State
+    // Float literal type matches any concrete float type
     (FLitT, F32T) | (FLitT, F64T) -> State
     
-    // Concrete matches overloaded
+    // Concrete integer type matches integer literal type
     (I32T, ILitT) | (I64T, ILitT) | (U32T, ILitT) | (U64T, ILitT) -> State
-    (I32T, FLitT) | (F64T, FLitT) -> State
+    // Concrete float type matches float literal type
+    (F32T, FLitT) | (F64T, FLitT) -> State
     
-    // Overloaded matches overloaded (unresolved — wait for context)
-    (ILitT, FLitT) -> State
-    (FLitT, ILitT) -> State
+    // FAIL: integer and float literal types are incompatible
+    (ILitT, FLitT) -> State // Error: cannot unify integer with float
+    (FLitT, ILitT) -> State // Error: cannot unify float with integer
   }
 }
 ```
@@ -63,10 +66,10 @@ fn unify_literal_type(expected: LiteralType, actual: LiteralType) -> State {
 let x: Int = 42
 
 // Desugars to Core
-let x = Lit(I32(42))  // I32(42) is an untyped literal
+let x = Lit(ILit(42))  // ILit(42) is an untyped integer literal
 
 // Type checking
-// 1. Infer type of Lit(I32(42)) → ILitT (overloaded integer)
+// 1. Infer type of Lit(ILit(42)) → ILitT (overloaded integer)
 // 2. Check against annotation Int (which is I32T)
 // 3. Unify(ILitT, I32T) → ILitT resolved to I32T
 // 4. Result: x has type I32T
@@ -79,10 +82,10 @@ let x = Lit(I32(42))  // I32(42) is an untyped literal
 let x: Float = 3.14
 
 // Desugars to Core
-let x = Lit(F64(3.14))  // F64(3.14) is an untyped literal
+let x = Lit(FLit(3.14))  // FLit(3.14) is an untyped float literal
 
 // Type checking
-// 1. Infer type of Lit(F64(3.14)) → FLitT (overloaded float)
+// 1. Infer type of Lit(FLit(3.14)) → FLitT (overloaded float)
 // 2. Check against annotation Float (which is F64T)
 // 3. Unify(FLitT, F64T) → FLitT resolved to F64T
 // 4. Result: x has type F64T
@@ -90,277 +93,236 @@ let x = Lit(F64(3.14))  // F64(3.14) is an untyped literal
 
 ## Function Overloading
 
-### FFI-Based Overloading
+### Core Principle: Pattern Matching on Implicit Parameters
+
+Function overloading is handled through **pattern matching**, not FFI resolution. A Tao function with multiple type signatures desugars to a function that first pattern matches on the implicit parameter (the application argument types), then branches to the appropriate definition.
+
+`Lam` can receive implicit parameters — this is how the overloading is encoded in the Core language.
+
+### FFI: Single Target Functions
+
+FFI entries call one concrete target function with **no overloads**:
 
 ```gleam
-/// Function overloading is achieved through FFI entries
-/// Each FFI entry has a name, implementation, argument types, and return type
+/// FFI builtin definition
 pub type FfiEntry {
   FfiEntry(
-    name: String,              // Function name (e.g., "add")
-    impl: fn(List(Value)) -> Option(Value),  // Implementation
-    arg_types: List(Value),    // Expected argument types
-    ret_type: Value,           // Return type
+    name: String,
+    impl: fn(List(#(Value, Value))) -> Option(Value),  // (value, type) pairs
+    ret_type: Value,  // Return type
   )
 }
 ```
 
-### Resolution Process
+FFI receives **both the argument values and their types** as `List(#(Value, Value))`. Each FFI entry is a single concrete target — there are no overloaded FFI entries.
+
+Example FFI entries for addition:
+```gleam
+FfiEntry(name: "%i32_add", impl: int_add_impl, ret_type: I32T)
+FfiEntry(name: "%f32_add", impl: float_add_impl, ret_type: F32T)
+FfiEntry(name: "%i64_add", impl: int64_add_impl, ret_type: I64T)
+```
+
+### Desugaring: Overloaded Function → Pattern Match
+
+An overloaded function like:
+
+```tao
+fn add(Int, Int) -> Int { a + b }
+fn add(Float, Float) -> Float { a + b }
+```
+
+desugars to a Core term that pattern matches on the implicit application argument type:
 
 ```gleam
-/// Resolve a function call by trying each FFI entry in order
-fn resolve_call(state: State, name: String, args: List(Value)) -> State {
-  // Get all FFI entries for this name
-  let entries = list.filter(state.ffi, fn(entry) -> entry.name == name)
-  
-  // Try each entry in order
-  try_entry(state, entries, 0, args)
-}
-
-/// Try a specific FFI entry
-fn try_entry(state: State, entries: List(FfiEntry), index: Int, args: List(Value)) -> State {
-  case list.get(entries, index) {
-    Ok(entry) -> {
-      // Try to unify args with entry.arg_types
-      let unified_state = unify_list(state, args, entry.arg_types)
-      
-      case has_unsolved_holes(unified_state) {
-        True -> try_entry(unified_state, entries, index + 1, args)  // Try next entry
-        False -> unified_state  // Found a match
-      }
-    }
-    Error(_) -> state  // No more entries to try
+/// The overloaded "add" desugars to:
+let add = \(implicit_args) ->
+  match implicit_args {
+    | #(I32T, I32T) -> %i32_add
+    | #(I64T, I64T) -> %i64_add
+    | #(F32T, F32T) -> %f32_add
+    | #(F64T, F64T) -> %f64_add
   }
-}
 ```
 
-### Example: Add Function Overloading
+This is a single function that returns different function values depending on the implicit parameter type. NbE resolves the match at compile time.
 
-```gleam
-// FFI entries for "add"
-let add_entries = [
-  FfiEntry(
-    name: "add",
-    impl: fn(args) -> int_add(args),
-    arg_types: [I32T, I32T],
-    ret_type: I32T,
-  ),
-  FfiEntry(
-    name: "add",
-    impl: fn(args) -> int64_add(args),
-    arg_types: [I64T, I64T],
-    ret_type: I64T,
-  ),
-  FfiEntry(
-    name: "add",
-    impl: fn(args) -> float_add(args),
-    arg_types: [F64T, F64T],
-    ret_type: F64T,
-  ),
-]
+### Different Return Types: Dependent Types
 
-// Tao source
-fn add_i32(a: Int, b: Int) -> Int { a + b }
-fn add_f64(a: Float, b: Float) -> Float { a + b }
-fn add_mixed(a: Int, b: Float) -> Float { a + b }  // Error: types don't match any entry
+Different definitions can return different types. For example:
+
+```tao
+fn concat(String, String) -> String { /* string concat */ }
+fn concat(List(a), List(a)) -> List(a) { /* list append */ }
 ```
+
+This tests dependent types — the return type depends on the argument types. The pattern match on implicit args determines both the branch and the return type.
 
 ## Operator Desugaring
 
-### Tao Operator → Core Function Call
+### Operators Are Just Functions
 
-All operators are desugared to Core function calls. This means:
+Operators are just functions with special names and syntax sugar for precedence. Calling them and overloads is treated just as regular functions.
 
-1. **Operators are just functions** — `+` is the same as `add`
-2. **No special compiler handling** — Operators go through the same FFI resolution
-3. **Type inference works the same** — Operator types are resolved like any other function
+The operator `(+)` desugars to a function called `"+"` which pattern matches on the argument types and branches to `%i32_add`, `%f32_add`, etc. The operator syntax is purely syntactic sugar — behind the scenes it's a regular function call with an overloaded name.
 
 ### Operator Resolution Table
 
-| Operator | Desugars To | FFI Name |
-|----------|-------------|----------|
-| `+` | `add(a, b)` | `"add"` |
-| `-` | `sub(a, b)` | `"sub"` |
-| `*` | `mul(a, b)` | `"mul"` |
-| `/` | `div(a, b)` | `"div"` |
-| `%` | `mod(a, b)` | `"mod"` |
-| `==` | `eq(a, b)` | `"eq"` |
-| `!=` | `neq(a, b)` | `"neq"` |
-| `<` | `lt(a, b)` | `"lt"` |
-| `>` | `gt(a, b)` | `"gt"` |
-| `<=` | `lte(a, b)` | `"lte"` |
-| `>=` | `gte(a, b)` | `"gte"` |
-| `&&` | `and(a, b)` | `"and"` |
-| `\|\|` | `or(a, b)` | `"or"` |
-| `.` | `dot(record, field)` | `"dot"` (record field access) |
-| `|>` | `pipe(x, f)` | `"pipe"` |
-| `<>` | `concat(a, b)` | `"concat"` |
+| Operator | Desugars To | FFI Names (overloaded) |
+|----------|-------------|----------------------|
+| `+` | `+(a, b)` | `%i32_add`, `%i64_add`, `%f32_add`, `%f64_add` |
+| `-` | `- (a, b)` | `%i32_sub`, `%i64_sub`, `%f32_sub`, `%f64_sub` |
+| `*` | `* (a, b)` | `%i32_mul`, `%i64_mul`, `%f32_mul`, `%f64_mul` |
+| `/` | `/ (a, b)` | `%i32_div`, `%i64_div`, `%f32_div`, `%f64_div` |
+| `%` | `mod(a, b)` | `%i32_mod`, `%i64_mod`, `%f32_mod`, `%f64_mod` |
+| `==` | `== (a, b)` | `%eq` (polymorphic) |
+| `!=` | `!= (a, b)` | `%neq` (polymorphic) |
+| `<` | `< (a, b)` | `%i32_lt`, `%i64_lt`, `%f32_lt`, `%f64_lt` |
+| `>` | `> (a, b)` | `%i32_gt`, `%i64_gt`, `%f32_gt`, `%f64_gt` |
+| `<=` | `<= (a, b)` | `%i32_lte`, `%i64_lte`, `%f32_lte`, `%f64_lte` |
+| `>=` | `>= (a, b)` | `%i32_gte`, `%i64_gte`, `%f32_gte`, `%f64_gte` |
+| `&&` | `and(a, b)` | `%bool_and` |
+| `\|\|` | `or(a, b)` | `%bool_or` |
+| `.` | `dot(record, field)` | `%dot` (record field access) |
+| `|>` | `pipe(x, f)` | `%pipe` |
+| `<>` | `<> (a, b)` | `%concat` (polymorphic append) |
 
 ### Unary Operators
 
-| Operator | Desugars To | FFI Name |
+| Operator | Desugars To | FFI Names |
 |----------|-------------|----------|
-| `-x` | `negate(x)` | `"negate"` |
-| `!x` | `not(x)` | `"not"` |
+| `-x` | `negate(x)` | `%i32_neg`, `%i64_neg`, `%f32_neg`, `%f64_neg` |
+| `!x` | `not(x)` | `%bool_not` |
 
-### Example: Operator Type Resolution
+### Example: Operator Overloading Resolution
 
 ```gleam
 // Tao source
 let x = 1 + 2
 
-// Desugars to Core
-let x = Call("add", [Lit(I32(1)), Lit(I32(2))], Hole(-1))
+// Desugars to Core — the "+" function pattern matches on argument types
+let x = App("+", [Lit(ILit(1)), Lit(ILit(2))])
 
 // Type checking
-// 1. Infer type of Lit(I32(1)) → ILitT
-// 2. Infer type of Lit(I32(2)) → ILitT
-// 3. Look up FFI entries for "add"
-// 4. Try [I32T, I32T] → ILitT unifies with I32T ✓
-// 5. Result: Call("add", [Lit(I32(1)), Lit(I32(2))], I32T)
+// 1. Infer type of Lit(ILit(1)) → ILitT
+// 2. Infer type of Lit(ILit(2)) → ILitT
+// 3. "+" desugars to: \implicit -> match implicit { #(ILitT,ILitT) -> %i32_add }
+// 4. NbE resolves the match to %i32_add
+// 5. Call(%i32_add, [I32(1), I32(2)]) → I32(3)
+// 6. Result: x has type I32 with value 3
 ```
 
-## Method Overloading (ADT Constructors)
+## Note: No Methods
 
-### Constructor Resolution
+There are no methods in this language — only functions and operators. Binary functions use `infix` notation and there's `|>` pipe. Constructors are handled by the type checker looking them up in the constructor environment (CtrEnv), not as methods. See 03-core-language.md for constructor resolution details.
 
-```gleam
-/// Constructor resolution during type checking
-/// Constructors are looked up in the constructor environment (CtrEnv)
-fn resolve_constructor(state: State, name: String) -> State {
-  case list.find(state.ctrs, fn(#(ctor_name, _)) -> ctor_name == name) {
-    Ok((name, CtrDef(_, arg_ty, ret_ty))) -> {
-      // Constructor found, create term with resolved type
-      Ok(TermCtrRef(name, arg_ty, ret_ty))
-    }
-    Error(_) -> Error(CtrUndefined(name, state))
-  }
-}
-```
-
-### Example: Constructor Resolution
-
-```gleam
-// Tao source
-type Option(a) = Some(a) | None
-
-let x: Option(Int) = Some(42)
-
-// Desugars to Core
-let x = Ctr("Some", Lit(I32(42)))
-
-// Type checking
-// 1. Infer type of Lit(I32(42)) → ILitT
-// 2. Look up constructor "Some" in CtrEnv
-// 3. "Some" has type Πa. a → Option(a)
-// 4. Unify(ILitT, a) → a = I32T
-// 5. Result: Ctr("Some", Lit(I32(42))) has type Option(I32T)
-```
-
-## Test Cases for Operator Overloading
+## Test Cases
 
 ### Literal Overloading Tests
 
 ```gleam
 should("resolve integer literal to I32") {
-  let state = initial_state([], tao_ffis(), "True", "False")
-  let result = check(state, Lit(I32(42)), I32T)
+  let state = initial_state([])
+  let result = check(state, Lit(ILit(42)), I32T)
   case result {
-    State(errors: [], ctrs: _) -> True  // Unification succeeds
+    #(term, I32T, State(errors: [], ctrs: _)) -> True  // Unification succeeds
     _ -> False
   }
 }
 
-should("resolve float literal to F64") {
-  let state = initial_state([], tao_ffis(), "True", "False")
-  let result = check(state, Lit(F64(3.14)), F64T)
+should("resolve integer literal to U64") {
+  let state = initial_state([])
+  let result = check(state, Lit(ILit(42)), U64T)
   case result {
-    State(errors: [], ctrs: _) -> True
+    #(term, U64T, State(errors: [], ctrs: _)) -> True  // ILitT unifies with U64T
     _ -> False
   }
 }
 
-should("allow mixed literal and concrete types") {
-  let state = initial_state([], tao_ffis(), "True", "False")
-  let result = check(state, Lit(I32(42)), I64T)  // I32 literal against I64 type
+should("reject float literal as integer type") {
+  let state = initial_state([])
+  let result = check(state, Lit(FLit(3.14)), I32T)
   case result {
-    State(errors: [], ctrs: _) -> True  // ILitT unifies with I64T
+    #(term, _, State(errors: [TypeMismatch(_, _, _, _)], _)) -> True  // FLitT cannot unify with I32T
     _ -> False
   }
 }
 
-should("resolve add(42, 1) to I32 when both args are integer literals") {
-  let state = initial_state([], tao_ffis(), "True", "False")
-  let add_term = Call("add", [Lit(I32(42)), Lit(I32(1))], Hole(-1))
-  let result = infer(state, add_term)
+should("resolve 1 + 2 to I32 when both args are integer literals") {
+  let state = initial_state([])
+  let plus = Lam(("implicit", App("%i32_add", [Var(1, span), Var(0, span)]), span))  // overloaded + pattern matches on implicit
+  let term = App(plus, [Lit(ILit(1)), Lit(ILit(2))])
+  let result = infer(state, term)
   case result {
-    State(errors: [], ctrs: _) -> True  // Resolves to I32 + I32 → I32
+    #(term, I32T, State(errors: [], ctrs: _)) -> True  // NbE resolves to I32 + I32 → I32
     _ -> False
   }
 }
 
-should("resolve add(1.0, 2.0) to F64 when both args are float literals") {
-  let state = initial_state([], tao_ffis(), "True", "False")
-  let add_term = Call("add", [Lit(F64(1.0)), Lit(F64(2.0))], Hole(-1))
-  let result = infer(state, add_term)
+should("resolve 1.0 + 2.0 to F64 when both args are float literals") {
+  let state = initial_state([])
+  // Similar test for float
+  let result = infer(state, App(plus, [Lit(FLit(1.0)), Lit(FLit(2.0))]))
   case result {
-    State(errors: [], ctrs: _) -> True  // Resolves to F64 + F64 → F64
+    #(term, F64T, State(errors: [], ctrs: _)) -> True  // NbE resolves to F64 + F64 → F64
     _ -> False
   }
 }
 ```
 
-### Function Overloading Tests
+### Function Overloading (Pattern Match) Tests
 
 ```gleam
-should("resolve add(Int, Int) when both args are I32") {
-  let state = initial_state([], tao_ffis(), "True", "False")
-  let add_term = Call("add", [Lit(I32(1)), Lit(I32(2))], Hole(-1))
-  let result = infer(state, add_term)
+should("resolve add via pattern match when both args are I32") {
+  let state = initial_state([])
+  // "+" desugars to: \implicit -> match implicit { #(I32T,I32T) -> %i32_add }
+  let plus = Lam(("implicit", Match(Var(0, span), [
+    Case(PCtr(2, [PTyp(I32T), PTyp(I32T)], span), Hole(1, span), None, span),
+  ]), span))
+  let result = infer(state, App(plus, [Lit(ILit(1)), Lit(ILit(2))]))
   case result {
-    State(errors: [], ctrs: _) -> True  // Matches [I32T, I32T] → I32T
+    #(term, I32T, State(errors: [], ctrs: _)) -> True  // Pattern match resolves to %i32_add
     _ -> False
   }
 }
 
-should("resolve add(Float, Float) when both args are F64") {
-  let state = initial_state([], tao_ffis(), "True", "False")
-  let add_term = Call("add", [Lit(F64(1.0)), Lit(F64(2.0))], Hole(-1))
-  let result = infer(state, add_term)
+should("resolve add via pattern match when both args are F64") {
+  let state = initial_state([])
+  // Similar for F64
+  let result = infer(state, App(plus, [Lit(FLit(1.0)), Lit(FLit(2.0))]))
   case result {
-    State(errors: [], ctrs: _) -> True  // Matches [F64T, F64T] → F64T
+    #(term, F64T, State(errors: [], ctrs: _)) -> True  // Pattern match resolves to %f64_add
     _ -> False
   }
 }
 
-should("fail add(Int, Float) — no matching entry") {
-  let state = initial_state([], tao_ffis(), "True", "False")
-  let add_term = Call("add", [Lit(I32(1)), Lit(F64(2.0))], Hole(-1))
-  let result = infer(state, add_term)
+should("fail add(Int, Float) — no matching pattern") {
+  let state = initial_state([])
+  let result = infer(state, App(plus, [Lit(ILit(1)), Lit(FLit(2.0))]))
   case result {
-    State(errors: [TypeMismatch(_, _, _, _)], _) -> True  // No matching FFI entry
+    #(term, _, State(errors: [MatchMissingCase(_, _, _)], _)) -> True  // No matching branch
     _ -> False
   }
 }
 ```
 
-### Constructor Resolution Tests
+### Constructor Tests
 
 ```gleam
 should("resolve Some(42) to Option(I32)") {
-  let state = initial_state([("Some", CtrDef([], Hole(-1), Ctr("Option", Hole(-1), Span)))], tao_ffis(), "True", "False")
-  let result = infer(state, Ctr("Some", Lit(I32(42))))
+  let state = initial_state([("Some", CtrDef([], Hole(-1), Ctr("Option", Hole(-1), Span)))])
+  let result = infer(state, Ctr("Some", Lit(ILit(42))))
   case result {
-    State(errors: [], ctrs: _) -> True
+    #(term, CtrValue("Option", ...), State(errors: [], ctrs: _)) -> True
     _ -> False
   }
 }
 
 should("fail undefined constructor") {
-  let state = initial_state([], tao_ffis(), "True", "False")
-  let result = infer(state, Ctr("Undefined", Lit(I32(42))))
+  let state = initial_state([])
+  let result = infer(state, Ctr("Undefined", Lit(ILit(42))))
   case result {
-    State(errors: [CtrUndefined("Undefined", _)], _) -> True
+    #(term, _, State(errors: [CtrUndefined("Undefined", _)], _)) -> True
     _ -> False
   }
 }

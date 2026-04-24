@@ -312,7 +312,7 @@ test "check lambda with correct type annotation" {
 test "infer type mismatch accumulates error" {
   // let x: Int = "hello"
   let state = initial_state([], [], "", "")
-  let result = check(state, Lit(String("hello")), VLit(I32(0)))
+  let result = check(state, Lit(String("hello")), VLit(ILit(0)))
   
   case result {
     State(errors: [TypeMismatch(_, _, _, _)], _) -> True
@@ -324,7 +324,7 @@ test "infer application of identity function" {
   // (fn(x) { x }) 42
   let body = Var(0, "x")
   let lam = Lam(("x", Hole(-1)), body)
-  let app = App(lam, Lit(I32(42)))
+  let app = App(lam, Lit(ILit(42)))
   
   let state = initial_state([], [], "", "")
   let result = infer(state, app)
@@ -372,7 +372,7 @@ test "handle constructor undefined error" {
 
 test "infer let binding" {
   // let x = 42; x
-  let let_term = Let("x", Lit(I32(42)), Var(0, "x"))
+  let let_term = Let("x", Lit(ILit(42)), Var(0, "x"))
   let state = initial_state([], [], "", "")
   let result = infer(state, let_term)
   
@@ -405,20 +405,20 @@ test "evaluate identity function application" {
   // (fn(x) { x }) 42 → 42
   let body = Var(0, "x")
   let lam = Lam(("x", Hole(-1)), body)
-  let app = App(lam, Lit(I32(42)))
+  let app = App(lam, Lit(ILit(42)))
   
   let result = evaluate(app)
   case result {
-    VLit(I32(42)) -> True
+    VLit(ILit(42)) -> True
     _ -> False
   }
 }
 
 test "evaluate constant" {
   // 42 → 42
-  let result = evaluate(Lit(I32(42)))
+  let result = evaluate(Lit(ILit(42)))
   case result {
-    VLit(I32(42)) -> True
+    VLit(ILit(42)) -> True
     _ -> False
   }
 }
@@ -428,12 +428,12 @@ test "evaluate nested lambda" {
   let body = App(App(Var(0, "+"), Var(1, "x")), Var(0, "y"))
   let inner_lam = Lam(("y", Hole(-1)), body)
   let outer_lam = Lam(("x", Hole(-1)), inner_lam)
-  let app1 = App(outer_lam, Lit(I32(1)))
-  let app2 = App(app1, Lit(I32(2)))
+  let app1 = App(outer_lam, Lit(ILit(1)))
+  let app2 = App(app1, Lit(ILit(2)))
   
   let result = evaluate(app2)
   case result {
-    VLit(I32(3)) -> True
+    VLit(ILit(3)) -> True
     _ -> False
   }
 }
@@ -453,12 +453,12 @@ test "evaluate Church numeral 2" {
 
 test "evaluate addition FFI" {
   // +(42, 1) → 43
-  let add = Call("add", [Lit(I32(42)), Lit(I32(1))], Hole(-1))
+  let add = Call("add", [Lit(ILit(42)), Lit(ILit(1))], Hole(-1))
   let state = initial_state([], tao_ffis(), "True", "False")
   let result = evaluate_with_ffi(state.ffi, add)
   
   case result {
-    VLit(I32(43)) -> True
+    VLit(ILit(43)) -> True
     _ -> False
   }
 }
@@ -496,10 +496,10 @@ test "quote lambda value back to term" {
 }
 
 test "quote literal value" {
-  let value = VLit(I32(42))
+  let value = VLit(ILit(42))
   let result = quote(value)
   case result {
-    Lit(I32(42)) -> True
+    Lit(ILit(42)) -> True
     _ -> False
   }
 }
@@ -541,7 +541,7 @@ import core/state.{State}
 
 test "unify two identical values" {
   let state = initial_state([], [], "", "")
-  let result = unify(state, VLit(I32(42)), VLit(I32(42)))
+  let result = unify(state, VLit(ILit(42)), VLit(ILit(42)))
   case result {
     State(errors: [], _) -> True
     _ -> False
@@ -599,7 +599,7 @@ test "compile simple addition" {
   let source = "let x = 42 + 1; x"
   let result = compile_tao(source, "test.tao")
   result.errors == []
-  result.value == VLit(I32(43))
+  result.value == VLit(ILit(43))
 }
 
 test "compile function definition and call" {
@@ -609,7 +609,7 @@ test "compile function definition and call" {
   """
   let result = compile_tao(source, "test.tao")
   result.errors == []
-  result.value == VLit(I32(3))
+  result.value == VLit(ILit(3))
 }
 
 test "compile fibonacci" {
@@ -630,7 +630,7 @@ test "compile fibonacci" {
   """
   let result = compile_tao(source, "test.tao")
   result.errors == []
-  result.value == VLit(I32(8))
+  result.value == VLit(ILit(8))
 }
 
 test "compile with parse errors accumulates errors" {
@@ -659,17 +659,27 @@ test "compile imported module" {
   ]
   let result = compile_multi_module(modules, "main.tao")
   result.errors == []
-  result.value == VLit(I32(3))
+  result.value == VLit(ILit(3))
 }
 
-test "detect circular import" {
+test "module not found creates empty bindings" {
   let modules = [
-    #("a.tao", "import b { foo }"),
-    #("b.tao", "import a { bar }"),
+    #("a.tao", "import nonexistent { foo }\nlet x = foo"),
   ]
   let result = compile_multi_module(modules, "a.tao")
   case result {
-    Error(CircularImport(_, _, _)) -> True
+    State(errors: [ImportError.ModuleNotFound(_, _)], _) -> True  // Error accumulated in state
+    _ -> False
+  }
+}
+
+test "name not found deferred to type checker" {
+  let modules = [
+    #("a.tao", "import b { undefined_name }"),
+  ]
+  let result = compile_multi_module(modules, "a.tao")
+  case result {
+    State(errors: [TypeError.VarUndefined(_, _)], _) -> True  // Type checker catches undefined name
     _ -> False
   }
 }
@@ -745,7 +755,7 @@ test "complete pipeline: fib(10) = 55" {
   """
   let result = compile_tao(source, "fib.tao")
   result.errors == []
-  result.value == VLit(I32(55))
+  result.value == VLit(ILit(55))
 }
 
 test "complete pipeline: map and filter" {
@@ -777,7 +787,7 @@ test "complete pipeline: map and filter" {
   let result = compile_tao(source, "map_filter.tao")
   result.errors == []
   // evens should be [2, 4]
-  result.value == VList([VLit(I32(2)), VLit(I32(4))])
+  result.value == VList([VLit(ILit(2)), VLit(ILit(4))])
 }
 
 test "complete pipeline: generator stream" {
@@ -797,7 +807,7 @@ test "complete pipeline: generator stream" {
   """
   let result = compile_tao(source, "stream.tao")
   result.errors == []
-  result.value == VList([VLit(I32(1)), VLit(I32(2)), VLit(I32(3))])
+  result.value == VList([VLit(ILit(1)), VLit(ILit(2)), VLit(ILit(3))])
 }
 ```
 

@@ -236,36 +236,40 @@ pub fn check_term(term: CoreTerm, ctx: GlobalContext) -> CheckResult {
     false_ctor: ctx.config.false_constructor,
   )
   
-  // Infer the type
-  let inferred_state = core_infer.infer(initial_state, term)
+  // Infer: returns (resolved term, inferred type, updated state)
+  let (resolved_term, inferred_type, inferred_state) = core_infer.infer(initial_state, term)
   
   // Check for unsolved holes
   let final_state = check_holes(inferred_state)
   
   CheckResult(
-    term: term,          // Term with holes potentially solved
-    type_: find_top_level_type(final_state),
+    term: resolved_term,    // Term with holes resolved
+    type_: inferred_type,   // Inferred type
     errors: final_state.errors,
   )
 }
 
 /// Infer the type of a term (bidirectional inference)
-pub fn infer(state: State, term: CoreTerm) -> State {
-  case term {
-    CoreVar(index) -> infer_var(state, index)
-    CoreLam(param, body) -> infer_lambda(state, param, body)
-    CoreApp(fun, arg) -> infer_app(state, fun, arg)
-    CorePi(domain, codomain) -> infer_pi(state, domain, codomain)
-    CoreLit(literal) -> infer_literal(state, literal)
-    CoreCtr(tag, arg) -> infer_constructor(state, tag, arg)
-    CoreMatch(arg, motive, cases) -> infer_match(state, arg, motive, cases)
-    CoreLet(name, value, body) -> infer_let(state, name, value, body)
-    CoreFix(name, body) -> infer_fix(state, name, body)
-    CoreCall(name, args, ret) -> infer_call(state, name, args, ret)
-    CoreComptime(inner) -> infer_comptime(state, inner)
-    CoreHole(id) -> infer_hole(state, id)
-    CoreErr(msg) -> state  // Already an error, propagate
+/// Returns: (resolved term, inferred type, updated state)
+pub fn infer(state: State, term: CoreTerm) -> #(CoreTerm, Value, State) {
+  let (resolved_term, inferred_type, new_state) = {
+    case term {
+      CoreVar(index) -> infer_var(state, index)
+      CoreLam(param, body) -> infer_lambda(state, param, body)
+      CoreApp(fun, arg) -> infer_app(state, fun, arg)
+      CorePi(domain, codomain) -> infer_pi(state, domain, codomain)
+      CoreLit(literal) -> infer_literal(state, literal)
+      CoreCtr(tag, arg) -> infer_constructor(state, tag, arg)
+      CoreMatch(arg, motive, cases) -> infer_match(state, arg, motive, cases)
+      CoreLet(name, value, body) -> infer_let(state, name, value, body)
+      CoreFix(name, body) -> infer_fix(state, name, body)
+      CoreCall(name, args, ret) -> infer_call(state, name, args, ret)
+      CoreComptime(inner) -> infer_comptime(state, inner)
+      CoreHole(id) -> infer_hole(state, id)
+      CoreErr(msg) -> #(term, VErr, state)
+    }
   }
+  #(resolved_term, inferred_type, new_state)
 }
 ```
 
@@ -352,7 +356,7 @@ should("compile fibonacci and return correct value") {
   
   let result = compile_tao(source, "test.tao")
   result.errors == []
-  result.value == VLit(I32(8))  // fib(6)
+  result.value == VLit(ILit(8))  // fib(6)
 }
 
 should("accumulate multiple parse errors") {
@@ -371,6 +375,6 @@ should("type check and evaluate a simple program") {
   
   let result = compile_core(source, "test.core.tao")
   result.errors == []
-  result.value == VLit(I32(43))
+  result.value == VLit(ILit(43))
 }
 ```

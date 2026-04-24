@@ -30,30 +30,39 @@ src/core/
 
 ### Literals
 
+Literals are handled gracefully to support both explicit type annotations and inference:
+- `(1 : I32)` is valid — integer literal with explicit I32 type
+- `(1 : U64)` is valid — integer literal with explicit U64 type (integer literals are polymorphic over integer types)
+- `(3.14 : I32)` is **an error** — float literal cannot coerce to integer type
+- `(1 + 2)` with no annotation resolves to a concrete type based on context
+
 ```gleam
-/// Untyped literals — type inference determines the concrete type.
-pub type Literal {
-  I32(value: Int)
-  I64(value: Int)
-  U32(value: Int)
-  U64(value: Int)
-  F32(value: Float)
-  F64(value: Float)
-  String(value: String)
+/// Core literal value — the numeric value itself
+pub type LitValue {
+  ILit(value: Int)     // Integer literal value (source: 42, -1, 0, etc.)
+  FLit(value: Float)   // Float literal value (source: 3.14, -0.5, etc.)
+  StrLit(value: String) // String literal value
 }
 
-/// Resolved literal type after type inference.
-pub type LiteralType {
-  I32T  // 32-bit signed integer
-  I64T  // 64-bit signed integer
-  U32T  // 32-bit unsigned integer
-  U64T  // 64-bit unsigned integer
-  F32T  // 32-bit float
-  F64T  // 64-bit float
+/// Literal type — either concrete or generic during inference
+pub type LitType {
+  // Concrete types — specific bit-width and signedness
+  I32T   // 32-bit signed integer
+  I64T   // 64-bit signed integer
+  U32T   // 32-bit unsigned integer
+  U64T   // 64-bit unsigned integer
+  F32T   // 32-bit float
+  F64T   // 64-bit float
+  
+  // Generic types — used during inference when type is not yet resolved
+  ILitT  // Generic integer literal type (unifies with I32T, I64T, U32T, U64T)
+  FLitT  // Generic float literal type (unifies with F32T, F64T)
 }
 ```
 
-**Design rationale:** Literal types are separate from the values themselves. Type inference resolves an untyped `I32(42)` to the type `I32T`. Overloaded literals (ILitT, FLitT) are used during unification to match any concrete literal type.
+**Design rationale:** There is a single `ILit` literal value and a single `FLit` literal value (not per-type variants). The type system distinguishes between concrete types (`I32T`, `U64T`, etc.) and generic literal types (`ILitT`, `FLitT`). 
+
+Checking a literal against a specific type validates compatibility: integer literals can unify with any integer type (`ILitT` ↔ `I32T`, `ILitT` ↔ `U64T`), but float literals cannot unify with integer types. When inferring on a generic numeric literal without context, the result is a generic literal type (`ILitT` or `FLitT`) which can later be unified with a more specific type from context. A float literal like `3.14` explicitly annotated as `: I32` is an error because `FLitT` does not unify with integer types.
 
 ### Term (Syntax — De Bruijn Indices)
 
@@ -62,14 +71,14 @@ pub type LiteralType {
 /// All terms carry source spans for error reporting.
 pub type Term {
   Typ(universe: Int, span: Span)      // Type universe (Type, Type@1, etc.)
-  Lit(value: Literal, span: Span)     // Typed literal
+  Lit(value: LitValue, span: Span)    // Literal value (ILit, FLit, StrLit)
   Var(index: Int, span: Span)         // De Bruijn index variable
   Hole(id: Int, span: Span)           // Metavariable for inference
   Err(message: String, span: Span)    // Error placeholder
   Lam(param: #(String, Term), body: Term, span: Span)  // Lambda
   App(fun: Term, arg: Term, span: Span)                  // Application
   Pi(domain: Term, codomain: Term, span: Span)          // Pi type (dependent function)
-  LitT(typ: LiteralType, span: Span)                    // Literal type (I32T, F64T, etc.)
+  LitT(typ: LitType, span: Span)                        // Literal type term (I32T, ILitT, etc.)
   Ctr(tag: String, arg: Term, span: Span)               // Constructor
   Rcd(fields: List(#(String, Term)), span: Span)        // Record
   Dot(record: Term, field: String, span: Span)          // Field access
@@ -93,8 +102,8 @@ pub type Type = Value
 /// Uses neutral spine representation for efficient application.
 pub type Value {
   VTyp(universe: Int)                              // Universe Type(n)
-  VLit(value: Literal)                             // Evaluated literal
-  VLitT(typ: LiteralType)                          // Evaluated literal type
+  VLit(value: LitValue)                            // Evaluated literal (ILit, FLit, StrLit)
+  VLitT(typ: LitType)                              // Evaluated literal type (I32T, ILitT, etc.)
   VNeut(head: Head, spine: List(Elim))             // Neutral term (not a lambda)
   VRcd(fields: List(#(String, Value)))             // Evaluated record
   VLam(implicit: List(String), name: String, env: Env, body: Term)  // Lambda
@@ -134,7 +143,7 @@ pub type Pattern {
   PAs(pattern: Pattern, name: String, span: Span)
   PTyp(universe: Int, span: Span)
   PLit(value: Literal, span: Span)
-  PLitT(typ: LiteralType, span: Span)
+  PLitT(typ: LitType, span: Span)
   PRcd(fields: List(#(String, Pattern)), span: Span)
   PCtr(tag: String, arg: Pattern, span: Span)
   PUnit(span: Span)
@@ -177,12 +186,12 @@ pub type Context = List(#(String, #(Value, Type)))
 
 ```gleam
 /// Infer the type of a term (synthesis)
-/// Returns updated state with the inferred type
-pub fn infer(state: State, term: Term) -> State
+/// Returns: (term with holes resolved, inferred type, updated state)
+pub fn infer(state: State, term: Term) -> #(Term, Value, State)
 
 /// Check that a term has the expected type (verification)
-/// Returns updated state (may accumulate errors)
-pub fn check(state: State, term: Term, expected: Value) -> State
+/// Returns: (term with holes resolved, verified type, updated state)
+pub fn check(state: State, term: Term, expected: Value) -> #(Term, Value, State)
 
 /// Infer a pattern against an expected type
 /// Returns updated state with pattern bindings
@@ -307,12 +316,11 @@ pub type State {
   )
 }
 
-/// FFI builtin definition
+/// FFI builtin definition — each FFI entry is a single concrete target, no overloads
 pub type FfiEntry {
   FfiEntry(
     name: String,
-    impl: fn(List(Value)) -> Option(Value),
-    arg_types: List(Value),   // Expected argument types
+    impl: fn(List(#(Value, Value))) -> Option(Value),  // (value, type) pairs for arguments
     ret_type: Value,          // Return type
   )
 }

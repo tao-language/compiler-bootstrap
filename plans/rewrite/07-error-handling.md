@@ -88,12 +88,12 @@ pub type TypeError {
 /// Import resolution errors
 pub type ImportError {
   ModuleNotFound(path: String, span: Span)
-  CircularImport(from: String, to: String, span: Span)
   ParseError(path: String, errors: List(ParseError))
   TypeError(path: String, errors: List(TypeError))
-  NameNotFound(name: String, available: List(String), span: Span)
 }
 ```
+
+**Note:** `NameNotFound` is not an import error — name resolution is deferred to the type checker. `CircularImport` is removed since modules are desugared independently.
 
 **Import error recovery:**
 - If a module fails to load, create an error binding that produces `Err("module not found")`
@@ -218,9 +218,16 @@ hint: Consider adding a type annotation
 | E0202 | Pattern | Match not exhaustive |
 | E0203 | Pattern | Redundant pattern |
 | E0301 | Import | Module not found |
-| E0302 | Import | Circular import |
-| E0303 | Import | Name not found in module |
+| E0401 | Function | Function not found |
+| E0402 | Function | Overload not found (no matching signature) |
+| E0403 | Function | Overload ambiguous (multiple matches) |
 | E0501 | Comptime | Permission denied |
+
+**Note on error codes:**
+- These codes are **not** based on any standard specification (e.g., Rust's E-prefix codes). They were chosen ad-hoc.
+- The rationale was: `E` prefix (for Error), followed by a 3-digit code with the first digit indicating phase (0=Parse, 1=Type, 2=Pattern, 3=Import, 5=Comptime) and the remaining digits being a sequential error number.
+- **Circular import (E0302)** has been removed from the error codes — circular imports are not possible since every module is desugared independently.
+- **Usefulness for AI assistants**: The codes themselves are not particularly useful without the semantic description. They are primarily useful as stable identifiers for tooling (e.g., suppressing specific error types via `// no-error: E0101`). For human readability, the error message and span context are far more important than the code.
 
 ## Error Propagation
 
@@ -288,13 +295,11 @@ should("accumulate type errors for multiple type mismatches") {
 ### Import Error Test
 
 ```gleam
-should("detect circular imports") {
-  let mod_a = "import b { foo }"
-  let mod_b = "import a { bar }"
-  
-  let result = compile_with_modules(#(mod_a, mod_b))
+should("handle module not found gracefully") {
+  let source = "import nonexistent { foo }\nlet x = foo"
+  let result = compile_with_imports(source)
   case result {
-    Error(CircularImport(_, _, _)) -> True
+    State(errors: [ImportError.ModuleNotFound(_, _)], _) -> True  // Module not found error
     _ -> False
   }
 }
@@ -302,7 +307,7 @@ should("detect circular imports") {
 
 ### Error Span Accuracy Test
 
-```glem
+```gleam
 should("produce accurate spans for type errors") {
   let source = "let x: Int = 3.14"
   let result = compile_core(source)

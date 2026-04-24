@@ -53,7 +53,7 @@ let x = 42
 
 ### Desugared Core
 ```gleam
-Let("x", Lit(I32(42)), Hole(-1))
+Let("x", Lit(ILit(42)), Hole(-1))
 ```
 
 ### Multiple Let Bindings (Sequential)
@@ -66,7 +66,7 @@ y
 
 ### Desugared Core
 ```gleam
-Let("x", Lit(I32(42)), Let("y", App(App(Var("+"), Var(1, "x")), Lit(I32(1))), Var(0, "y")))
+Let("x", Lit(ILit(42)), Let("y", App(App(Var("+"), Var(1, "x")), Lit(ILit(1))), Var(0, "y")))
 ```
 
 ## Pattern Matching
@@ -87,7 +87,7 @@ Match(
   Hole(-1),  // motive (inferred)
   [
     Case(PCtr("Some", PVar("y")), Var(0, "y"), None),
-    Case(PCtr("None", Unit()), Lit(I32(0)), None),
+    Case(PCtr("None", Unit()), Lit(ILit(0)), None),
   ],
 )
 ```
@@ -107,8 +107,8 @@ Match(
   Var(0, "x"),
   Hole(-1),
   [
-    Case(PCtr("Some", PVar("y")), Var(0, "y"), Some(App(App(Var(">"), Var(0, "y")), Lit(I32(0))))),
-    Case(PAny(), Lit(I32(0)), None),
+    Case(PCtr("Some", PVar("y")), Var(0, "y"), Some(App(App(Var(">"), Var(0, "y")), Lit(ILit(0))))),
+    Case(PAny(), Lit(ILit(0)), None),
   ],
 )
 ```
@@ -159,7 +159,7 @@ for x in [1, 2, 3] {
 
 ### Desugared Core
 ```gleam
-Let("iter", Call("iterator", [List([Lit(I32(1)), Lit(I32(2)), Lit(I32(3))])]),
+Let("iter", Call("iterator", [List([Lit(ILit(1)), Lit(ILit(2)), Lit(ILit(3))])]),
 Let("loop", Fix("loop",
   Match(Call("next", Var(0, "iter")),
     Hole(-1),
@@ -188,11 +188,11 @@ while x > 0 {
 ### Desugared Core
 ```gleam
 Let("loop", Fix("loop",
-  Match(App(App(Var(">"), Var(0, "x")), Lit(I32(0))),
+  Match(App(App(Var(">"), Var(0, "x")), Lit(ILit(0))),
     Hole(-1),
     [
       Case(PCtr("True", PAny()),
-        App(Call("=", Var(0, "x"), App(App(Var("-"), Var(0, "x")), Lit(I32(1))))),
+        App(Call("=", Var(0, "x"), App(App(Var("-"), Var(0, "x")), Lit(ILit(1))))),
         App(Var(1, "loop"), Unit())),
       Case(PCtr("False", PAny()), Unit(), None),
     ],
@@ -226,13 +226,13 @@ for x in [1, 2, 3, 4, 5] {
 
 ### Desugared Core
 ```gleam
-Let("iter", Call("iterator", [List([Lit(I32(1)), Lit(I32(2)), Lit(I32(3)), Lit(I32(4)), Lit(I32(5))])]),
+Let("iter", Call("iterator", [List([Lit(ILit(1)), Lit(ILit(2)), Lit(ILit(3)), Lit(ILit(4)), Lit(ILit(5))])]),
 Let("loop", Fix("loop",
   Match(Call("next", Var(0, "iter")),
     Hole(-1),
     [
       Case(PCtr("Some", PVar("x")),
-        Match(App(App(Var("=="), Var(0, "x")), Lit(I32(3))),
+        Match(App(App(Var("=="), Var(0, "x")), Lit(ILit(3))),
           Hole(-1),
           [
             Case(PCtr("True", PAny()), Call("break", [Var(2, "loop"), Unit()]), None),
@@ -276,7 +276,7 @@ Let("range", Lam(("start", Hole(-1)), Lam(("end", Hole(-1)),
     [
       Case(PCtr("True", PAny()), Call("Stream.empty", [])),
       Case(PCtr("False", PAny()),
-        App(App(Call("Stream.cons", [Var(1, "start")])), App(Var(2, "range"), App(App(Var("+"), Var(1, "start")), Lit(I32(1))), Var(0, "end")))),
+        App(App(Call("Stream.cons", [Var(1, "start")])), App(Var(2, "range"), App(App(Var("+"), Var(1, "start")), Lit(ILit(1))), Var(0, "end")))),
       None),
     ],
   ),
@@ -296,9 +296,9 @@ counter = counter + 1
 
 ### Desugared Core
 ```gleam
-Let("counter_0", Lit(I32(0)),
-Let("counter_1", App(App(Var("+"), Var(0, "counter_0")), Lit(I32(1))),
-Let("counter_2", App(App(Var("+"), Var(0, "counter_1")), Lit(I32(1))),
+Let("counter_0", Lit(ILit(0)),
+Let("counter_1", App(App(Var("+"), Var(0, "counter_0")), Lit(ILit(1))),
+Let("counter_2", App(App(Var("+"), Var(0, "counter_1")), Lit(ILit(1))),
 Var(0, "counter_2"))))
 ```
 
@@ -314,7 +314,7 @@ Var(0, "counter_2"))))
 ### Desugared Core
 ```gleam
 Let("_old", Var(0, "person"),
-Let("age", Lit(I32(30)),
+Let("age", Lit(ILit(30)),
 Rcd([
   #("name", Dot("_old", "name")),
   #("age", Var(0, "age")),
@@ -332,7 +332,7 @@ Rcd([
 
 ### Desugared Core
 ```gleam
-App(App(Call("*"), App(Call("+"), Lit(I32(1)), Lit(I32(1)))), Lit(I32(2)))
+App(App(Call("*"), App(Call("+"), Lit(ILit(1)), Lit(ILit(1)))), Lit(ILit(2)))
 ```
 
 **Key insight:** `x |> f` desugars to `f(x)`. Pipe operators are right-associative.
@@ -380,7 +380,7 @@ comptime {
 ### Desugared Core
 ```gleam
 Comptime(
-  Let("x", Lit(I32(42)), App(App(Var("+"), Var(0, "x")), Lit(I32(1)))),
+  Let("x", Lit(ILit(42)), App(App(Var("+"), Var(0, "x")), Lit(ILit(1)))),
 )
 ```
 
@@ -395,7 +395,7 @@ run 42 + 1
 
 ### Desugared Core
 ```gleam
-Call("run", [App(App(Var("+"), Lit(I32(42))), Lit(I32(1)))], Hole(-1))
+Call("run", [App(App(Var("+"), Lit(ILit(42))), Lit(ILit(1)))], Hole(-1))
 ```
 
 **Key insight:** `run` is an FFI builtin that prints the evaluated result.
@@ -411,7 +411,7 @@ test "addition" {
 
 ### Desugared Core
 ```gleam
-Call("test", [String("addition"), App(App(Var("=="), App(App(Var("+"), Lit(I32(1)), Lit(I32(1)))), Lit(I32(2)))]), Hole(-1))
+Call("test", [String("addition"), App(App(Var("=="), App(App(Var("+"), Lit(ILit(1)), Lit(ILit(1)))), Lit(ILit(2)))]), Hole(-1))
 ```
 
 **Key insight:** `test` is an FFI builtin that runs the body and reports pass/fail.

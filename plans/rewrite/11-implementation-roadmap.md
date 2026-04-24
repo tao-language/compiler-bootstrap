@@ -89,7 +89,7 @@ This roadmap breaks the rewrite into **7 phases**, each producing a working, tes
 
 #### 2.1 Core AST (src/core/ast.gleam)
 - Define Term, Value, Pattern, Case, Head, Elim types
-- Define Literal, LiteralType, CtrDef, CtrEnv types
+- Define LitValue, LitType, CtrDef, CtrEnv types
 - Define Env, Context, Subst types
 - Implement shift_term, error_term, make_neut, make_hole_neut, make_var_neut
 
@@ -278,23 +278,23 @@ This roadmap breaks the rewrite into **7 phases**, each producing a working, tes
 **Tests:** module loading, constructor environment, type conversion
 
 #### 4.3 Import Resolver (src/tao/import_resolver.gleam)
-- Implement import resolution
-- Implement circular import detection
+- Implement import resolution (module lookup, name lookup)
+- Implement graceful degradation: module-not-found → empty module + error, name-not-found → deferred to type checker
 - Implement selective and wildcard imports
 
-**Tests:** every import variant, circular detection, error cases
+**Tests:** every import variant, module-not-found, name-not-found (deferred), error cases
 
 #### 4.4 Multi-file Compilation (src/tao/compiler.gleam)
 - Extend compile_tao with multi-file support
-- Implement dependency resolution
 - Implement module merging
 
-**Tests:** every file combination, import variants, circular imports
+**Tests:** every file combination, import variants, error cases
 
 ### Phase 4 Testing Criteria
 - ✅ All 40+ import tests pass
 - ✅ Multi-file compilation works correctly
-- ✅ Circular imports are detected
+- ✅ Module-not-found handled gracefully (empty module + error)
+- ✅ Name-not-found deferred to type checker
 - ✅ Selective and wildcard imports work
 
 ## Phase 5: Error Handling & Diagnostics (2-3 days)
@@ -436,7 +436,7 @@ This roadmap breaks the rewrite into **7 phases**, each producing a working, tes
 | Grammar library is too complex | Build incrementally, test each combinator |
 | Core type checking is buggy | Start with simple terms, gradually add complexity |
 | Desugaring is error-prone | Write desugar tests for each feature independently |
-| Import system is circular | Detect circular imports early, fail fast |
+| Import resolution is inconsistent | Always: module-not-found → empty module + error, name-not-found → deferred to type checker |
 | Error accumulation is incomplete | Test every error path explicitly |
 | Performance is poor | Profile early, optimize NBE step limit |
 
@@ -450,5 +450,5 @@ This roadmap breaks the rewrite into **7 phases**, each producing a working, tes
 6. ✅ Error accumulation works correctly at every phase
 7. ✅ Parser, formatter, type checker, evaluator all recover from errors
 8. ✅ Multi-file compilation works correctly
-9. ✅ Import system handles all variants (selective, wildcard, circular)
+9. ✅ Import system handles all variants (selective, wildcard); module-not-found → empty module + error; name-not-found deferred to type checker
 10. ✅ High-level features desugar correctly to Core
