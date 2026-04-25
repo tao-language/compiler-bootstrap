@@ -124,25 +124,6 @@ pub fn error_term(message: String, span: Span) -> Term {
   Err(message, span)
 }
 
-/// Extract the span from a term.
-pub fn get_span(term: Term) -> Span {
-  case term {
-    Var(_, span) -> span
-    Hole(_, span) -> span
-    Lam(_, _, span) -> span
-    App(_, _, span) -> span
-    Pi(_, _, span) -> span
-    Lit(_, span) -> span
-    Ctr(_, _, span) -> span
-    Match(_, _, span) -> span
-    Let(_, _, _, span) -> span
-    Ann(_, _, span) -> span
-    Unit(span) -> span
-    Typ(span) -> span
-    Err(_, span) -> span
-  }
-}
-
 // ============================================================================
 // TERM SHIFTING (De Bruijn index manipulation)
 // ============================================================================
@@ -182,7 +163,7 @@ fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
     Ctr(tag, arg, span) -> Ctr(tag, shift_term_from(arg, shift, from), span)
     Match(arg, cases, span) ->
       Match(shift_term_from(arg, shift, from),
-            list.map(cases, fn(c) { shift_case(c, shift, from) }),
+            list.map(cases, fn(c) { Case(c.pattern, shift_term_from(c.body, shift, from), c.span) }),
             span)
     Let(name, value, body, span) ->
       Let(name,
@@ -199,9 +180,7 @@ fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
   }
 }
 
-fn shift_case(case_: Case, shift: Int, from: Int) -> Case {
-  Case(case_.pattern, shift_term_from(case_.body, shift, from), case_.span)
-}
+
 
 // ============================================================================
 // STRING REPRESENTATION (Debug)
