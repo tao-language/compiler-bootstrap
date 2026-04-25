@@ -1,5 +1,5 @@
 import gleeunit
-import syntax/span.{Span, single, empty, after, merge, contains, line_count, column_count, to_string, to_short_string, equals}
+import syntax/span.{Span, single, empty, after, merge, contains, line_count, column_count, to_string, to_short_string}
 
 pub fn main() {
   gleeunit.main()
@@ -147,23 +147,23 @@ pub fn to_short_string_for_multi_line_span_test() {
 }
 
 // ============================================================================
-// Equality
+// Equality - use Gleam's built-in structural equality
 // ============================================================================
 
-pub fn equals_returns_true_for_identical_spans_test() {
+pub fn spans_equal_when_identical_test() {
   let a = Span("test.gleam", 1, 1, 1, 5)
   let b = Span("test.gleam", 1, 1, 1, 5)
-  assert equals(a, b)
+  assert a == b
 }
 
-pub fn equals_returns_false_for_different_start_position_test() {
+pub fn spans_not_equal_when_different_start_column_test() {
   let a = Span("test.gleam", 1, 1, 1, 5)
   let b = Span("test.gleam", 1, 2, 1, 5)
-  assert !equals(a, b)
+  assert a != b
 }
 
-pub fn equals_returns_false_for_different_file_test() {
+pub fn spans_not_equal_when_different_file_test() {
   let a = Span("file1.gleam", 1, 1, 1, 5)
   let b = Span("file2.gleam", 1, 1, 1, 5)
-  assert !equals(a, b)
+  assert a != b
 }
