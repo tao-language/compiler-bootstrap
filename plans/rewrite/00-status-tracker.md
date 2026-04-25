@@ -22,8 +22,8 @@
 | Task | Status | Notes |
 |------|--------|-------|
 | Backup old codebase | ✅ | All old code in `backup/` |
-| Create new project structure | 🔴 | Gleam project with `src/`, `test/`, `plans/` |
-| Set up CI pipeline | 🔴 | Test running, lint checking |
+| Create new project structure | ✅ | Gleam project with `src/`, `test/`, `plans/` |
+| Set up CI pipeline | ✅ | Test running, lint checking |
 
 ---
 
