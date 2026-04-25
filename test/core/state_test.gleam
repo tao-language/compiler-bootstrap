@@ -1,7 +1,7 @@
 import gleeunit
 import gleam/option.{None}
 import gleam/list
-import core/state.{State, initial_state, FfiEntry, with_err, def_var, lookup_var, lookup_by_level, new_hole, new_hole_value, with_ffi_entry, lookup_ffi, has_errors, errors, get_vars, error_to_string, truth_ctor, with_truth_ctor, with_max_steps, TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction, CtrUndefined, MatchMissing, MatchRedundant, StepLimitExceeded}
+import core/state.{initial_state, FfiEntry, with_err, def_var, lookup_var, lookup_by_level, new_hole, new_hole_value, with_ffi_entry, lookup_ffi, has_errors, errors, get_vars, error_to_string, truth_ctor, with_truth_ctor, with_max_steps, TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction, CtrUndefined, MatchMissing, MatchRedundant, StepLimitExceeded}
 import core/ast.{VNeut, HHole, VUnit}
 
 
