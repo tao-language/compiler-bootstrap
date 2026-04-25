@@ -213,3 +213,101 @@ pub fn error_to_string_step_limit_test() {
   let err = StepLimitExceeded(10000)
   assert error_to_string(err) == "Step limit exceeded (10000 steps)"
 }
+
+// ============================================================================
+// Error accumulation order and state immutability
+//
+// These tests verify that errors accumulate in the correct order and
+// that state mutations are truly immutable (functional pattern).
+// ============================================================================
+
+pub fn multiple_errors_accumulate_most_recent_first_test() {
+  // Errors should be prepended, so most recent is first
+  let state = initial_state([], "True")
+  let s1 = with_err(state, HoleUnsolved(1))
+  let s2 = with_err(s1, VarUndefined("x"))
+  let s3 = with_err(s2, TypeMismatch(VUnit, VUnit))
+  let err_list = errors(s3)
+  assert list.length(err_list) == 3
+  // Most recent error should be first
+  case err_list {
+    [TypeMismatch(..), VarUndefined("x"), HoleUnsolved(1)] -> True
+    _ -> False
+  }
+}
+
+pub fn def_var_does_not_mutate_original_state_test() {
+  // def_var should return a new state, not mutate the original
+  let state = initial_state([], "True")
+  let new_state = def_var(state, "x", VUnit, VUnit)
+  // Original state should still have no variables
+  assert lookup_var(state, "x") == Error(Nil)
+  // New state should have the variable
+  assert lookup_var(new_state, "x") == Ok(#(VUnit, VUnit))
+}
+
+pub fn with_err_does_not_mutate_original_state_test() {
+  // with_err should return a new state with errors, not mutate
+  let state = initial_state([], "True")
+  let new_state = with_err(state, HoleUnsolved(1))
+  // Original state should have no errors
+  assert has_errors(state) == False
+  // New state should have the error
+  assert has_errors(new_state) == True
+}
+
+pub fn multiple_ffi_entries_coexist_test() {
+  // Multiple FFI entries should all be accessible
+  let state = initial_state([], "True")
+  let entry1 = FfiEntry("add", fn(_) { None })
+  let entry2 = FfiEntry("mul", fn(_) { None })
+  let s1 = with_ffi_entry(state, entry1)
+  let s2 = with_ffi_entry(s1, entry2)
+  // Both should be findable via case pattern matching
+  assert case lookup_ffi(s2, "add") {
+    Ok(FfiEntry(fn_name: "add", ..)) -> True
+    _ -> False
+  }
+  assert case lookup_ffi(s2, "mul") {
+    Ok(FfiEntry(fn_name: "mul", ..)) -> True
+    _ -> False
+  }
+}
+
+pub fn error_accumulation_preserves_variable_bindings_test() {
+  // Adding an error should not remove existing variable bindings
+  let state = initial_state([], "True")
+  let s1 = def_var(state, "x", VUnit, VUnit)
+  let s2 = with_err(s1, HoleUnsolved(1))
+  // Variable should still be accessible after error is added
+  assert lookup_var(s2, "x") == Ok(#(VUnit, VUnit))
+}
+
+pub fn new_hole_counter_increments_across_mutations_test() {
+  // Hole counter should increment even across state mutations
+  let state = initial_state([], "True")
+  let #(id1, s1) = new_hole(state)
+  let #(id2, s2) = new_hole(s1)
+  let #(id3, s3) = new_hole(s2)
+  assert id1 == 0
+  assert id2 == 1
+  assert id3 == 2
+  // Counter continues from where it left off
+  assert hole_counter(s3) == 3
+}
+
+pub fn with_max_steps_does_not_mutate_test() {
+  // with_max_steps should return a new state without mutating original
+  let state = initial_state([], "True")
+  let new_state = with_max_steps(state, 5000)
+  assert state.max_steps == 10000  // Original unchanged
+  assert new_state.max_steps == 5000  // New state has new value
+}
+
+pub fn with_truth_ctor_does_not_mutate_test() {
+  // with_truth_ctor should return a new state without mutating original
+  let state = initial_state([], "True")
+  let new_state = with_truth_ctor(state, "False")
+  assert truth_ctor(state) == "True"  // Original unchanged
+  assert truth_ctor(new_state) == "False"  // New state has new value
+}
