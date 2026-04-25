@@ -1,7 +1,6 @@
-import gleeunit
-import syntax/lexer.{tokenize, tokenize_with_filename, Token}
 import gleam/list
-import gleam/int
+import gleeunit
+import syntax/lexer.{Token, tokenize, tokenize_with_filename}
 
 pub fn main() {
   gleeunit.main()
@@ -55,7 +54,8 @@ pub fn tokenize_large_integer_test() {
   let tokens = tokenize("123456789")
   assert list.length(tokens) == 2
   assert case tokens {
-    [Token(kind: "Integer", value: "123456789", ..), Token(kind: "Eof", ..)] -> True
+    [Token(kind: "Integer", value: "123456789", ..), Token(kind: "Eof", ..)] ->
+      True
     _ -> False
   }
 }
@@ -99,7 +99,8 @@ pub fn tokenize_string_with_newline_escape_test() {
   let tokens = tokenize("\"hello\\nworld\"")
   assert list.length(tokens) == 2
   assert case tokens {
-    [Token(kind: "String", value: "hello\nworld", ..), Token(kind: "Eof", ..)] -> True
+    [Token(kind: "String", value: "hello\nworld", ..), Token(kind: "Eof", ..)] ->
+      True
     _ -> False
   }
 }
@@ -108,7 +109,8 @@ pub fn tokenize_string_with_tab_escape_test() {
   let tokens = tokenize("\"hello\\tworld\"")
   assert list.length(tokens) == 2
   assert case tokens {
-    [Token(kind: "String", value: "hello\tworld", ..), Token(kind: "Eof", ..)] -> True
+    [Token(kind: "String", value: "hello\tworld", ..), Token(kind: "Eof", ..)] ->
+      True
     _ -> False
   }
 }
@@ -117,7 +119,8 @@ pub fn tokenize_string_with_escaped_quote_test() {
   let tokens = tokenize("\"say \\\"hi\\\"\"")
   assert list.length(tokens) == 2
   assert case tokens {
-    [Token(kind: "String", value: "say \"hi\"", ..), Token(kind: "Eof", ..)] -> True
+    [Token(kind: "String", value: "say \"hi\"", ..), Token(kind: "Eof", ..)] ->
+      True
     _ -> False
   }
 }
@@ -126,7 +129,8 @@ pub fn tokenize_string_with_escaped_backslash_test() {
   let tokens = tokenize("\"hello\\\\world\"")
   assert list.length(tokens) == 2
   assert case tokens {
-    [Token(kind: "String", value: "hello\\world", ..), Token(kind: "Eof", ..)] -> True
+    [Token(kind: "String", value: "hello\\world", ..), Token(kind: "Eof", ..)] ->
+      True
     _ -> False
   }
 }
@@ -215,11 +219,13 @@ pub fn tokenize_single_char_operators_test() {
   let tokens = tokenize("+ - * /")
   assert list.length(tokens) == 5
   assert case tokens {
-    [Token(kind: "Op", value: "+", ..),
-     Token(kind: "Op", value: "-", ..),
-     Token(kind: "Op", value: "*", ..),
-     Token(kind: "Op", value: "/", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Op", value: "+", ..),
+      Token(kind: "Op", value: "-", ..),
+      Token(kind: "Op", value: "*", ..),
+      Token(kind: "Op", value: "/", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -228,15 +234,17 @@ pub fn tokenize_multi_char_operators_test() {
   let tokens = tokenize("-> == != <= >= && || ..")
   assert list.length(tokens) == 9
   assert case tokens {
-    [Token(kind: "Op", value: "->", ..),
-     Token(kind: "Op", value: "==", ..),
-     Token(kind: "Op", value: "!=", ..),
-     Token(kind: "Op", value: "<=", ..),
-     Token(kind: "Op", value: ">=", ..),
-     Token(kind: "Op", value: "&&", ..),
-     Token(kind: "Op", value: "||", ..),
-     Token(kind: "Op", value: "..", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Op", value: "->", ..),
+      Token(kind: "Op", value: "==", ..),
+      Token(kind: "Op", value: "!=", ..),
+      Token(kind: "Op", value: "<=", ..),
+      Token(kind: "Op", value: ">=", ..),
+      Token(kind: "Op", value: "&&", ..),
+      Token(kind: "Op", value: "||", ..),
+      Token(kind: "Op", value: "..", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -249,9 +257,11 @@ pub fn tokenize_parentheses_test() {
   let tokens = tokenize("()")
   assert list.length(tokens) == 3
   assert case tokens {
-    [Token(kind: "Punct", value: "(", ..),
-     Token(kind: "Punct", value: ")", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Punct", value: "(", ..),
+      Token(kind: "Punct", value: ")", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -260,9 +270,11 @@ pub fn tokenize_braces_test() {
   let tokens = tokenize("{}")
   assert list.length(tokens) == 3
   assert case tokens {
-    [Token(kind: "Punct", value: "{", ..),
-     Token(kind: "Punct", value: "}", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Punct", value: "{", ..),
+      Token(kind: "Punct", value: "}", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -271,9 +283,11 @@ pub fn tokenize_brackets_test() {
   let tokens = tokenize("[]")
   assert list.length(tokens) == 3
   assert case tokens {
-    [Token(kind: "Punct", value: "[", ..),
-     Token(kind: "Punct", value: "]", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Punct", value: "[", ..),
+      Token(kind: "Punct", value: "]", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -282,10 +296,12 @@ pub fn tokenize_comma_semicolon_colon_test() {
   let tokens = tokenize("; , :")
   assert list.length(tokens) == 4
   assert case tokens {
-    [Token(kind: "Punct", value: ";", ..),
-     Token(kind: "Punct", value: ",", ..),
-     Token(kind: "Punct", value: ":", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Punct", value: ";", ..),
+      Token(kind: "Punct", value: ",", ..),
+      Token(kind: "Punct", value: ":", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -307,11 +323,13 @@ pub fn skip_single_line_comment_with_code_after_test() {
   let tokens = tokenize("// comment\nlet x = 42")
   assert list.length(tokens) == 5
   assert case tokens {
-    [Token(kind: "Keyword", value: "let", ..),
-     Token(kind: "Name", value: "x", ..),
-     Token(kind: "Punct", value: "=", ..),
-     Token(kind: "Integer", value: "42", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Keyword", value: "let", ..),
+      Token(kind: "Name", value: "x", ..),
+      Token(kind: "Punct", value: "=", ..),
+      Token(kind: "Integer", value: "42", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -329,9 +347,11 @@ pub fn skip_block_comment_with_code_after_test() {
   let tokens = tokenize("/* comment */ let x")
   assert list.length(tokens) == 3
   assert case tokens {
-    [Token(kind: "Keyword", value: "let", ..),
-     Token(kind: "Name", value: "x", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Keyword", value: "let", ..),
+      Token(kind: "Name", value: "x", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -371,11 +391,13 @@ pub fn tokenize_let_binding_test() {
   let tokens = tokenize("let x = 42")
   assert list.length(tokens) == 5
   assert case tokens {
-    [Token(kind: "Keyword", value: "let", ..),
-     Token(kind: "Name", value: "x", ..),
-     Token(kind: "Punct", value: "=", ..),
-     Token(kind: "Integer", value: "42", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Keyword", value: "let", ..),
+      Token(kind: "Name", value: "x", ..),
+      Token(kind: "Punct", value: "=", ..),
+      Token(kind: "Integer", value: "42", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -384,11 +406,13 @@ pub fn tokenize_function_application_test() {
   let tokens = tokenize("f(x)")
   assert list.length(tokens) == 5
   assert case tokens {
-    [Token(kind: "Name", value: "f", ..),
-     Token(kind: "Punct", value: "(", ..),
-     Token(kind: "Name", value: "x", ..),
-     Token(kind: "Punct", value: ")", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Name", value: "f", ..),
+      Token(kind: "Punct", value: "(", ..),
+      Token(kind: "Name", value: "x", ..),
+      Token(kind: "Punct", value: ")", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -397,11 +421,13 @@ pub fn tokenize_lambda_expression_test() {
   let tokens = tokenize("λx.x")
   assert list.length(tokens) == 5
   assert case tokens {
-    [Token(kind: "Lambda", value: "λ", ..),
-     Token(kind: "Name", value: "x", ..),
-     Token(kind: "Punct", value: ".", ..),
-     Token(kind: "Name", value: "x", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Lambda", value: "λ", ..),
+      Token(kind: "Name", value: "x", ..),
+      Token(kind: "Punct", value: ".", ..),
+      Token(kind: "Name", value: "x", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -423,9 +449,11 @@ pub fn tokenize_integer_followed_by_dot_as_integer_test() {
   let tokens = tokenize("42 .")
   assert list.length(tokens) == 3
   assert case tokens {
-    [Token(kind: "Integer", value: "42", ..),
-     Token(kind: "Punct", value: ".", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Integer", value: "42", ..),
+      Token(kind: "Punct", value: ".", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -452,9 +480,11 @@ pub fn tokenize_only_underscores_is_name_test() {
   let tokens = tokenize("__")
   assert list.length(tokens) == 3
   assert case tokens {
-    [Token(kind: "Op", value: "_", ..),
-     Token(kind: "Op", value: "_", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Op", value: "_", ..),
+      Token(kind: "Op", value: "_", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -481,9 +511,11 @@ pub fn tokenize_consecutive_operators_test() {
   let tokens = tokenize("++")
   assert list.length(tokens) == 3
   assert case tokens {
-    [Token(kind: "Op", value: "+", ..),
-     Token(kind: "Op", value: "+", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Op", value: "+", ..),
+      Token(kind: "Op", value: "+", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -492,10 +524,12 @@ pub fn tokenize_mixed_multi_char_operators_test() {
   let tokens = tokenize("-> <<")
   assert list.length(tokens) == 4
   assert case tokens {
-    [Token(kind: "Op", value: "->", ..),
-     Token(kind: "Op", value: "<", ..),
-     Token(kind: "Op", value: "<", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Op", value: "->", ..),
+      Token(kind: "Op", value: "<", ..),
+      Token(kind: "Op", value: "<", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -504,9 +538,11 @@ pub fn tokenize_whitespace_between_operators_test() {
   let tokens = tokenize("- >")
   assert list.length(tokens) == 3
   assert case tokens {
-    [Token(kind: "Op", value: "-", ..),
-     Token(kind: "Op", value: ">", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Op", value: "-", ..),
+      Token(kind: "Op", value: ">", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -515,9 +551,11 @@ pub fn tokenize_block_comment_with_newlines_test() {
   let tokens = tokenize("/*\n * comment\n */ let x")
   assert list.length(tokens) == 3
   assert case tokens {
-    [Token(kind: "Keyword", value: "let", ..),
-     Token(kind: "Name", value: "x", ..),
-     Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Keyword", value: "let", ..),
+      Token(kind: "Name", value: "x", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -542,16 +580,23 @@ pub fn tokenize_number_at_end_of_input_test() {
 
 pub fn tokenize_multiple_eof_tokens_is_error_test() {
   let tokens = tokenize("")
-  let eof_count = tokens
-  |> list.filter(fn(t) { t.kind == "Eof" })
-  |> list.length
+  let eof_count =
+    tokens
+    |> list.filter(fn(t) { t.kind == "Eof" })
+    |> list.length
   assert eof_count == 1
 }
 
 pub fn tokenize_span_has_correct_filename_when_provided_test() {
   let tokens = tokenize_with_filename("let x = 42", "module.tao")
   let all_have_filename = case tokens {
-    [Token(span: s1, ..), Token(span: s2, ..), Token(span: s3, ..), Token(span: s4, ..), Token(span: eof, ..)] ->
+    [
+      Token(span: s1, ..),
+      Token(span: s2, ..),
+      Token(span: s3, ..),
+      Token(span: s4, ..),
+      Token(span: eof, ..),
+    ] ->
       s1.file == "module.tao"
       && s2.file == "module.tao"
       && s3.file == "module.tao"

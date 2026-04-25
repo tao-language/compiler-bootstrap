@@ -105,26 +105,14 @@ pub fn contains(outer: Span, inner: Span) -> Bool {
 
 /// Check if outer starts at or before inner.
 fn starts_at_or_before(outer: Span, inner: Span) -> Bool {
-  case outer, inner {
-    outer, inner if outer.start_line < inner.start_line -> True
-    outer, inner
-      if outer.start_line == inner.start_line
-      && outer.start_col <= inner.start_col ->
-      True
-    _, _ -> False
-  }
+  outer.start_line < inner.start_line
+  || { outer.start_line == inner.start_line && outer.start_col <= inner.start_col }
 }
 
 /// Check if outer ends at or after inner.
 fn ends_at_or_after(outer: Span, inner: Span) -> Bool {
-  case outer, inner {
-    outer, inner if outer.end_line > inner.end_line -> True
-    outer, inner
-      if outer.end_line == inner.end_line
-      && outer.end_col >= inner.end_col ->
-      True
-    _, _ -> False
-  }
+  outer.end_line > inner.end_line
+  || { outer.end_line == inner.end_line && outer.end_col >= inner.end_col }
 }
 
 /// Get the number of lines covered by this span.
@@ -138,11 +126,6 @@ fn ends_at_or_after(outer: Span, inner: Span) -> Bool {
 /// ```
 pub fn line_count(span: Span) -> Int {
   span.end_line - span.start_line + 1
-}
-
-/// Get the filename for this span.
-pub fn file(span: Span) -> String {
-  span.file
 }
 
 /// Get the number of columns (characters) covered by this span.
