@@ -80,19 +80,13 @@ pub fn contains(outer: Span, inner: Span) -> Bool {
   case outer, inner {
     outer, inner
       if outer.file == inner.file
-      && outer.start_line < inner.start_line ->
+      && outer.start_line <= inner.start_line
+      && outer.end_line >= inner.end_line ->
       True
     outer, inner
       if outer.file == inner.file
       && outer.start_line == inner.start_line
-      && outer.start_col <= inner.start_col ->
-      True
-    outer, inner
-      if outer.file == inner.file
-      && outer.end_line > inner.end_line ->
-      True
-    outer, inner
-      if outer.file == inner.file
+      && outer.start_col <= inner.start_col
       && outer.end_line == inner.end_line
       && outer.end_col >= inner.end_col ->
       True
