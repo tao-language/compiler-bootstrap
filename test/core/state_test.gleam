@@ -1,7 +1,7 @@
 import gleeunit
 import gleam/option.{None}
 import gleam/list
-import core/state.{initial_state, FfiEntry, with_err, def_var, lookup_var, lookup_by_level, new_hole, new_hole_value, with_ffi_entry, lookup_ffi, has_errors, errors, get_vars, error_to_string, truth_ctor, with_truth_ctor, with_max_steps, TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction, CtrUndefined, MatchMissing, MatchRedundant, StepLimitExceeded}
+import core/state.{initial_state, FfiEntry, with_err, def_var, lookup_var, lookup_by_level, new_hole, new_hole_value, with_ffi_entry, lookup_ffi, has_errors, errors, get_vars, error_to_string, truth_ctor, with_truth_ctor, with_max_steps, hole_counter, TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction, CtrUndefined, MatchMissing, MatchRedundant, StepLimitExceeded}
 import core/ast.{VNeut, HHole, VUnit}
 
 
@@ -56,6 +56,23 @@ pub fn lookup_by_level_handles_multiple_vars_test() {
   let s2 = def_var(s1, "y", VUnit, VUnit)
   assert lookup_by_level(s2, 0) == Ok(#(VUnit, VUnit))
   assert lookup_by_level(s2, 1) == Ok(#(VUnit, VUnit))
+}
+
+pub fn def_var_shadows_previous_binding_test() {
+  let state = initial_state([], "True")
+  let s1 = def_var(state, "x", VUnit, VUnit)
+  let s2 = def_var(s1, "x", VUnit, VUnit)
+  assert lookup_var(s2, "x") == Ok(#(VUnit, VUnit))
+}
+
+pub fn with_err_preserves_all_state_fields_test() {
+  let state = initial_state([], "True")
+  let s1 = def_var(state, "x", VUnit, VUnit)
+  let s2 = with_err(s1, HoleUnsolved(1))
+  assert lookup_var(s2, "x") == Ok(#(VUnit, VUnit))
+  assert errors(s2) == [HoleUnsolved(1)]
+  assert truth_ctor(s2) == "True"
+  assert hole_counter(s2) == 0
 }
 
 pub fn get_vars_returns_variable_list_test() {
