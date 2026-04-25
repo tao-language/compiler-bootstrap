@@ -180,19 +180,7 @@ pub fn delimited_creates_delimited_pattern_test() {
   let close = tok(")")
   let p: Pattern(String) = delimited(open, item, sep, close)
   assert case p {
-    Delimited(o, i, s, c) -> case o {
-      Tok(_) -> case i {
-        Tok(_) -> case s {
-          Tok(_) -> case c {
-            Tok(_) -> True
-            _ -> False
-          }
-          _ -> False
-        }
-        _ -> False
-      }
-      _ -> False
-    }
+    Delimited(Tok(_), Tok(_), Tok(_), Tok(_)) -> True
     _ -> False
   }
 }
