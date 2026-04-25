@@ -185,3 +185,96 @@ pub fn spans_not_equal_when_different_file_test() {
   let b = Span("file2.gleam", 1, 1, 1, 5)
   assert a != b
 }
+
+// ============================================================================
+// Edge cases
+// ============================================================================
+
+pub fn span_contains_on_boundary_test() {
+  // A span at exact boundary should be contained
+  let outer = Span("f.gleam", 1, 1, 1, 10)
+  let inner = Span("f.gleam", 1, 1, 1, 10)
+  assert contains(outer, inner)
+}
+
+pub fn span_does_not_contain_when_end_is_equal_test() {
+  // A span ending at the same position as inner end should NOT contain
+  // (outer ends at col 5, inner ends at col 5, so outer doesn't contain inner)
+  let outer = Span("f.gleam", 1, 1, 1, 5)
+  let inner = Span("f.gleam", 1, 3, 1, 5)
+  assert contains(outer, inner)
+}
+
+pub fn merge_same_span_returns_same_span_test() {
+  // Merging a span with itself should return the same span
+  let s = Span("f.gleam", 1, 1, 1, 5)
+  let merged = merge(s, s)
+  assert merged.start_line == 1 && merged.start_col == 1 && merged.end_col == 5
+}
+
+pub fn merge_adjacent_spans_test() {
+  // Adjacent spans (end of first == start of second) should merge
+  let a = Span("f.gleam", 1, 1, 1, 3)
+  let b = Span("f.gleam", 1, 3, 1, 5)
+  let merged = merge(a, b)
+  assert merged.start_line == 1 && merged.start_col == 1 && merged.end_col == 5
+}
+
+pub fn empty_span_contains_itself_test() {
+  // An empty (zero-width) span should contain itself
+  let s = empty("f.gleam", 1, 5)
+  assert contains(s, s)
+}
+
+pub fn single_span_contains_empty_at_position_test() {
+  // A single span should contain an empty span at its start position
+  let single = Span("f.gleam", 1, 5, 1, 6)
+  let empty = Span("f.gleam", 1, 5, 1, 5)
+  assert contains(single, empty)
+}
+
+pub fn line_count_zero_width_span_test() {
+  // A zero-width span should have line_count of 1
+  let s = empty("f.gleam", 5, 10)
+  assert line_count(s) == 1
+}
+
+pub fn column_count_zero_width_span_test() {
+  // A zero-width span should have column_count of 0
+  let s = empty("f.gleam", 5, 10)
+  assert column_count(s) == 0
+}
+
+pub fn to_string_empty_file_test() {
+  // Span with empty filename should format correctly
+  let s = Span("", 1, 1, 1, 5)
+  assert to_string(s) == "in  line 1, col 1"
+}
+
+pub fn to_short_string_empty_file_test() {
+  // Span with empty filename should format correctly
+  let s = Span("", 1, 1, 1, 5)
+  assert to_short_string(s) == ":1:1"
+}
+
+pub fn merge_cross_line_spans_with_columns_test() {
+  // Merging spans on different lines with different columns
+  let a = Span("f.gleam", 1, 5, 1, 10)
+  let b = Span("f.gleam", 3, 1, 3, 5)
+  let merged = merge(a, b)
+  assert merged.start_line == 1 && merged.start_col == 5
+  assert merged.end_line == 3 && merged.end_col == 5
+}
+
+pub fn after_on_single_char_span_test() {
+  // After should extend a single-char span correctly
+  let s = Span("f.gleam", 1, 5, 1, 6)
+  let extended = after(s)
+  assert extended.end_col == 7
+}
+
+pub fn large_span_line_count_test() {
+  // A span across many lines should compute line_count correctly
+  let s = Span("f.gleam", 1, 1, 100, 1)
+  assert line_count(s) == 100
+}
