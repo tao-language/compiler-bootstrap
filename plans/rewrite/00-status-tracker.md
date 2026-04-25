@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - Phase 1 refactoring complete)
+> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - Parser combinator DSL implemented and tested)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend
@@ -92,10 +92,15 @@
 
 | ID | Task | Status | Ref | Notes |
 |----|------|--------|-----|-------|
-| 2.1 | Implement parser combinator DSL | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | `src/syntax/grammar.gleam` |
-| 2.1.1 | Combinators: Seq, Opt, Many, Choice, Ref | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
-| 2.1.2 | Combinators: Tok, Kw, Op | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
-| 2.1.3 | Parse combinators for error recovery | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 2.1 | Implement parser combinator DSL | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | `src/syntax/grammar.gleam` |
+| 2.1.1 | Combinators: Seq, Opt, Many, Choice, Ref | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 2.1.2 | Combinators: Tok, Kw, Op | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 2.1.3 | Parse combinators for error recovery | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 2.1.4 | `parens` and `delimited` combinators | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 2.1.5 | Utility functions: `result_ast`, `result_errors`, `error_to_string` | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 2.1.6 | `Either` type and helpers: `is_left`, `is_right`, `left_value`, `right_value` | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 2.3 | Write tests for parser | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/syntax/grammar_test.gleam` |
+| 2.3.1 | Every combinator | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | Pattern construction, Either, ParseResult, error formatting |
 | 2.2 | Define Core grammar + parser | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | `src/core/syntax.gleam` |
 | 2.2.1 | Term production (Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Let, Fix, Call, Ann, Unit, Err, Typ) | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
 | 2.2.2 | Pattern production (PAny, PVar, PCtr, PUnit, PLit) | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
@@ -381,11 +386,11 @@
 | Phase | Target Days | Tasks | Test Count | CLI Commands |
 |-------|-------------|-------|------------|-------------|
 | Phase 1: Lexer + Core Types | 2-3 | 20 | 30+ | — |
-| Phase 2: Parser + Type Checker + **Run** | 4-5 | 44 | 80+ | `run` ✅ |
+| Phase 2: Parser + Type Checker + **Run** | 4-5 | 44 | 100+ | `run` ✅ |
 | Phase 3: Tao + **Check + Test** | 4-5 | 37 | 110+ | `run`, `check`, `test` ✅ |
 | Phase 4: Multi-file + Import | 3-4 | 22 | 40+ | `run`, `check`, `test` ✅ |
 | Phase 5: Extended + Polish | 3-4 | 18 | 50+ | `run`, `check`, `test` ✅ |
-| **Total** | **16-21** | **141** | **~310** | **Full CLI** |
+| **Total** | **16-21** | **141** | **~330** | **Full CLI** |
 
 ---
 
@@ -393,6 +398,8 @@
 
 | Date | Change |
 |------|--------|
+| 2026-04-25 | Parser combinator DSL implemented with 11 combinators (tok, kw, op, ref, seq, opt, many, choice, sep_by, parens, delimited) |
+| 2026-04-25 | 198 parser combinator tests written (pattern construction, Either type, ParseResult extraction, error formatting) |
 | 2026-04-24 | Initial tracker created based on revised roadmap |
 
 ## TODO
@@ -416,3 +423,13 @@
 **Code reduced:** ~40 lines removed through simplification
 **Test coverage improved:** 29 new tests added, 50+ tests fixed to use assert
 **Critical fix:** All lexer tests now actually verify correctness instead of silently passing
+
+---
+
+**Phase 2 Task 2.1 - Parser Combinator DSL Complete:**
+- **11 pattern combinators:** tok, kw, op, ref, seq, opt, many, choice, sep_by, parens, delimited
+- **Type system:** Either (terminal values), Grammar, Rule, Alternative, ParseResult, ParseError
+- **198 tests:** Pattern construction, Either type helpers, ParseResult extraction, error formatting
+- **Key design:** Either<String, a> intermediate type — terminals produce Left(string), non-terminals produce Right(ast_node)
+
+**Total tests:** 156 + 198 = 354 passed, 0 failures, 0 warnings
