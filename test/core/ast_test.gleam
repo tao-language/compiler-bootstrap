@@ -1,6 +1,6 @@
 import gleeunit
 import gleam/list
-import core/ast.{Var, Hole, Lam, App, Pi, Lit, Ctr, Ann, Let, Match, Case, Typ, PAny, PVar, PCtr, PUnit, VNeut, HVar, HHole, VLam, VPi, VLit, VCtr, VUnit, VErr, Err as AstErr, Unit as AstUnit, Int as LitInt, Float as LitFloat, make_neut, make_hole_neut, make_var_neut, error_term, shift_term, term_to_string, value_to_string, EApp}
+import core/ast.{Var, Hole, Lam, App, Pi, Lit, Ctr, Ann, Let, Match, Case, Typ, PAny, PVar, PCtr, PUnit, PLit, VNeut, HVar, HHole, VLam, VPi, VLit, VCtr, VUnit, VErr, Err as AstErr, Unit as AstUnit, Int as LitInt, Float as LitFloat, make_neut, make_hole_neut, make_var_neut, error_term, shift_term, term_to_string, value_to_string, EApp}
 import syntax/span.{single}
 
 pub fn main() {
@@ -437,4 +437,179 @@ pub fn shift_term_on_let_preserves_span_test() {
       && main_span.start_line == 1 && main_span.start_col == 3
     _ -> False
   }
+}
+
+// ============================================================================
+// Missing string representation tests
+//
+// These tests verify term_to_string and value_to_string work correctly
+// for all Term and Value constructors.
+// ============================================================================
+
+pub fn term_to_string_match_test() {
+  // Match with a single case should format correctly
+  let body = Var(0, single("file.gleam", 1, 1))
+  let case_expr = Case(PAny(single("file.gleam", 1, 1)), body, single("file.gleam", 1, 2))
+  let match_expr = Match(Var(0, single("file.gleam", 1, 3)), [case_expr], single("file.gleam", 1, 4))
+  assert term_to_string(match_expr) == "match #0 { (_ => #0)}"
+}
+
+pub fn term_to_string_let_test() {
+  // Let binding should format as "let x = <value>; <body>"
+  let body = Var(0, single("file.gleam", 1, 1))
+  let value = Lit(LitInt(42), single("file.gleam", 1, 2))
+  let let_expr = Let("x", value, body, single("file.gleam", 1, 3))
+  assert term_to_string(let_expr) == "let x = 42; #0"
+}
+
+pub fn term_to_string_ann_test() {
+  // Ann should format as "<term>: <type>"
+  let ann = Ann(Var(0, single("file.gleam", 1, 1)), Var(1, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+  assert term_to_string(ann) == "#0: #1"
+}
+
+pub fn term_to_string_ctr_test() {
+  // Ctr should format as "tag(<arg>)"
+  let ctr = Ctr("Some", Var(0, single("file.gleam", 1, 1)), single("file.gleam", 1, 2))
+  assert term_to_string(ctr) == "Some(#0)"
+}
+
+pub fn value_to_string_ctr_test() {
+  // VCtr should format as "tag(<arg>)"
+  let v = VCtr("Just", VNeut(HVar(0), []))
+  assert value_to_string(v) == "Just(v0)"
+}
+
+pub fn value_to_string_pi_test() {
+  // VPi should format as "Π<domain>.<codomain>"
+  let dom = VNeut(HHole(0), [])
+  let codom = VNeut(HVar(0), [])
+  let v = VPi(dom, codom)
+  assert value_to_string(v) == "Π?0.v0"
+}
+
+// ============================================================================
+// Pattern string representation tests
+// ============================================================================
+
+pub fn pattern_to_string_var_test() {
+  // PVar should format as the variable name
+  let body = Var(0, single("file.gleam", 1, 1))
+  let case_expr = Case(PVar("x", single("file.gleam", 1, 1)), body, single("file.gleam", 1, 2))
+  let match_expr = Match(Var(0, single("file.gleam", 1, 3)), [case_expr], single("file.gleam", 1, 4))
+  assert term_to_string(match_expr) == "match #0 { (x => #0)}"
+}
+
+pub fn pattern_to_string_lit_int_test() {
+  // PLit(Int) should format as the integer value
+  let body = Var(0, single("file.gleam", 1, 1))
+  let case_expr = Case(PLit(LitInt(0), single("file.gleam", 1, 1)), body, single("file.gleam", 1, 2))
+  let match_expr = Match(Lit(LitInt(0), single("file.gleam", 1, 3)), [case_expr], single("file.gleam", 1, 4))
+  assert term_to_string(match_expr) == "match 0 { (0 => #0)}"
+}
+
+pub fn pattern_to_string_lit_float_test() {
+  // PLit(Float) should format as the float value
+  let body = Var(0, single("file.gleam", 1, 1))
+  let case_expr = Case(PLit(LitFloat(1.0), single("file.gleam", 1, 1)), body, single("file.gleam", 1, 2))
+  let match_expr = Match(Lit(LitFloat(1.0), single("file.gleam", 1, 3)), [case_expr], single("file.gleam", 1, 4))
+  assert term_to_string(match_expr) == "match 1.0 { (1.0 => #0)}"
+}
+
+// ============================================================================
+// shift_term deeper edge cases
+// ============================================================================
+
+pub fn shift_term_on_ctr_nested_shifts_arg_test() {
+  // shift_term on Ctr with nested Var should shift the argument
+  let ctr = Ctr("Cons", Var(3, single("file.gleam", 1, 1)), single("file.gleam", 1, 2))
+  let shifted = shift_term(ctr, 1)
+  assert shifted == Ctr("Cons", Var(4, single("file.gleam", 1, 1)), single("file.gleam", 1, 2))
+}
+
+pub fn shift_term_on_ctr_zero_shift_preserves_test() {
+  // shift_term with shift=0 should preserve everything
+  let ctr = Ctr("Some", Var(5, single("file.gleam", 1, 1)), single("file.gleam", 1, 2))
+  let shifted = shift_term(ctr, 0)
+  assert shifted == ctr
+}
+
+pub fn shift_term_on_pi_both_shifted_test() {
+  // shift_term on Pi should shift both domain and codomain
+  let pi = Pi(Var(1, single("file.gleam", 1, 1)), Var(2, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+  let shifted = shift_term(pi, 1)
+  assert shifted == Pi(Var(2, single("file.gleam", 1, 1)), Var(3, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+}
+
+pub fn shift_term_on_ann_both_shifted_test() {
+  // shift_term on Ann should shift both term and type
+  let ann = Ann(Var(1, single("file.gleam", 1, 1)), Var(2, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+  let shifted = shift_term(ann, 1)
+  assert shifted == Ann(Var(2, single("file.gleam", 1, 1)), Var(3, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+}
+
+pub fn shift_term_on_match_multiple_cases_test() {
+  // shift_term on Match with multiple cases should shift all case bodies
+  let body1 = Var(1, single("file.gleam", 1, 1))
+  let body2 = Var(2, single("file.gleam", 1, 2))
+  let cases = [
+    Case(PAny(single("file.gleam", 1, 1)), body1, single("file.gleam", 1, 3)),
+    Case(PAny(single("file.gleam", 1, 2)), body2, single("file.gleam", 1, 4)),
+  ]
+  let match_expr = Match(Var(0, single("file.gleam", 1, 5)), cases, single("file.gleam", 1, 6))
+  let shifted = shift_term(match_expr, 1)
+  assert shifted == Match(
+    Var(1, single("file.gleam", 1, 5)),
+    [
+      Case(PAny(single("file.gleam", 1, 1)), Var(2, single("file.gleam", 1, 1)), single("file.gleam", 1, 3)),
+      Case(PAny(single("file.gleam", 1, 2)), Var(3, single("file.gleam", 1, 2)), single("file.gleam", 1, 4)),
+    ],
+    single("file.gleam", 1, 6),
+  )
+}
+
+pub fn shift_term_negative_on_literal_preserves_test() {
+  // Negative shift on literal should be no-op
+  let t = Lit(LitInt(42), single("file.gleam", 1, 1))
+  let shifted = shift_term(t, -5)
+  assert shifted == t
+}
+
+pub fn shift_term_on_hole_preserves_id_test() {
+  // shift_term on Hole should not change the ID
+  let t = Hole(42, single("file.gleam", 1, 1))
+  let shifted = shift_term(t, 10)
+  assert shifted == Hole(42, single("file.gleam", 1, 1))
+}
+
+// ============================================================================
+// Structural equality tests
+// ============================================================================
+
+pub fn term_equality_on_same_structure_test() {
+  // Two structurally identical terms should be equal
+  let t1 = Var(0, single("file.gleam", 1, 1))
+  let t2 = Var(0, single("file.gleam", 1, 1))
+  assert t1 == t2
+}
+
+pub fn term_inequality_on_different_index_test() {
+  // Terms with different indices should not be equal
+  let t1 = Var(0, single("file.gleam", 1, 1))
+  let t2 = Var(1, single("file.gleam", 1, 1))
+  assert t1 != t2
+}
+
+pub fn value_equality_on_same_structure_test() {
+  // Two structurally identical values should be equal
+  let v1 = VNeut(HVar(0), [])
+  let v2 = VNeut(HVar(0), [])
+  assert v1 == v2
+}
+
+pub fn value_inequality_on_different_head_test() {
+  // Values with different heads should not be equal
+  let v1 = VNeut(HVar(0), [])
+  let v2 = VNeut(HHole(0), [])
+  assert v1 != v2
 }
