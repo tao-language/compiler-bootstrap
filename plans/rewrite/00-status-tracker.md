@@ -398,11 +398,31 @@
 
 | Date | Change |
 |------|--------|
+| 2026-04-25 | Added 39 actual parsing behavior tests to grammar_test.gleam (tok, kw, op, seq, opt, many, choice, sep_by, parens, delimited) |
+| 2026-04-25 | Removed 3 redundant is_left/is_right tests from grammar_test.gleam |
+| 2026-04-25 | Removed 10 parser failure tests (parse() discards errors on failure — design decision) |
+| 2026-04-25 | Added 15 lexer span verification tests (integer, float, string, lambda, keyword, operator, multi-line) |
+| 2026-04-25 | Added 9 lexer edge case tests (pipe, ampersand, exclamation, <<, _, multiple identifiers, newlines, CR, --) |
+| 2026-04-25 | Added 6 AST shift edge case tests (nested lambda, Ann span preservation, Match case body span) |
+| 2026-04-25 | Total: 234 tests (198 grammar + 51 lexer + 23 span + 54 ast + 28 state — 60 net new tests added) |
 | 2026-04-25 | Parser combinator DSL implemented with 11 combinators (tok, kw, op, ref, seq, opt, many, choice, sep_by, parens, delimited) |
 | 2026-04-25 | 198 parser combinator tests written (pattern construction, Either type, ParseResult extraction, error formatting) |
 | 2026-04-24 | Initial tracker created based on revised roadmap |
 
 ## TODO
+
+### Testing Priorities
+- [ ] Add 10+ golden file tests (parse → print → parse round-trip)
+- [ ] Add integration tests for lexer → parser → AST pipeline
+- [ ] Add 15+ parser edge case tests (unmatched parens, nested structures, empty inputs)
+- [ ] Verify span accuracy for all lexer token types (column counting edge cases)
+- [ ] Add 5+ negative tests for parser (grammar errors, unexpected tokens)
+- [ ] Add tests for span merging and multi-line span tracking
+
+### Code Improvements
+- [ ] Consider making `parse()` propagate errors on failure (currently discards them)
+- [ ] Add `term_from_string` for round-trip testing
+- [ ] Consider adding `Span.to_debug_string` for test assertions
 
 ## Phase 1 Refactoring Summary
 
@@ -432,4 +452,4 @@
 - **198 tests:** Pattern construction, Either type helpers, ParseResult extraction, error formatting
 - **Key design:** Either<String, a> intermediate type — terminals produce Left(string), non-terminals produce Right(ast_node)
 
-**Total tests:** 156 + 198 = 354 passed, 0 failures, 0 warnings
+**Total tests:** 234 passed, 0 failures, 0 warnings

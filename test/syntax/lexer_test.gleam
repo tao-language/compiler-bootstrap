@@ -606,3 +606,251 @@ pub fn tokenize_span_has_correct_filename_when_provided_test() {
   }
   assert all_have_filename
 }
+
+// ============================================================================
+// Span verification tests
+//
+// These tests verify that spans are correctly recorded for each token type,
+// checking start_line, start_col, end_line, end_col, and file fields.
+// ============================================================================
+
+pub fn tokenize_integer_span_correct_test() {
+  // Integer token should have a valid span on line 1
+  let tokens = tokenize_with_filename("let x = 42", "test.tao")
+  assert case tokens {
+    [
+      Token(kind: "Keyword", span: s1, ..),
+      Token(kind: "Name", span: s2, ..),
+      Token(kind: "Punct", span: s3, ..),
+      Token(kind: "Integer", value: "42", span: s4),
+      Token(kind: "Eof", ..),
+    ] ->
+      s1.start_line == 1 && s1.start_col == 1
+      && s2.start_line == 1
+      && s3.start_line == 1
+      && s4.start_line == 1 && s4.end_line == 1
+    _ -> False
+  }
+}
+
+pub fn tokenize_float_span_correct_test() {
+  // Float token should have a valid span on line 1
+  let tokens = tokenize_with_filename("x = 3.14", "test.tao")
+  assert case tokens {
+    [
+      Token(kind: "Name", span: _, ..),
+      Token(kind: "Punct", span: _, ..),
+      Token(kind: "Float", value: "3.14", span: s),
+      Token(kind: "Eof", ..),
+    ] -> s.start_line == 1 && s.end_line == 1
+    _ -> False
+  }
+}
+
+pub fn tokenize_string_span_correct_test() {
+  // String token should have a valid span on line 1
+  let tokens = tokenize_with_filename("x = \"hi\"", "test.tao")
+  assert case tokens {
+    [
+      Token(kind: "Name", span: _, ..),
+      Token(kind: "Punct", span: _, ..),
+      Token(kind: "String", value: "hi", span: s),
+      Token(kind: "Eof", ..),
+    ] ->
+      s.start_line == 1 && s.end_line == 1
+    _ -> False
+  }
+}
+
+pub fn tokenize_lambda_span_correct_test() {
+  // Lambda symbol token should have a valid span
+  let tokens = tokenize_with_filename("λ", "test.tao")
+  assert case tokens {
+    [Token(kind: "Lambda", value: "λ", span: s), Token(kind: "Eof", ..)] ->
+      s.start_line == 1 && s.start_col == 1
+    _ -> False
+  }
+}
+
+pub fn tokenize_multi_line_span_tracks_lines_test() {
+  // Tokens on different lines should have correct line numbers
+  let tokens = tokenize_with_filename("let x\n= 42", "test.tao")
+  assert case tokens {
+    [
+      Token(kind: "Keyword", span: s1, ..),
+      Token(kind: "Name", span: s2, ..),
+      Token(kind: "Punct", span: s3, ..),
+      Token(kind: "Integer", span: s4, ..),
+      Token(kind: "Eof", ..),
+    ] ->
+      s1.start_line == 1  // let is on line 1
+      && s2.start_line == 1  // x is on line 1
+      && s3.start_line == 2  // = is on line 2
+      && s4.start_line == 2  // 42 is on line 2
+    _ -> False
+  }
+}
+
+pub fn tokenize_all_tokens_from_same_file_have_correct_file_test() {
+  // All tokens from tokenize_with_filename should carry the correct file
+  let tokens = tokenize_with_filename("fn foo(x) { x + 1 }", "math.tao")
+  let all_correct_file = {
+    case tokens {
+      [Token(span: s1, ..), Token(span: s2, ..), Token(span: s3, ..),
+       Token(span: s4, ..), Token(span: s5, ..), Token(span: s6, ..),
+       Token(span: s7, ..), Token(span: s8, ..), Token(span: s9, ..),
+       Token(span: s10, ..), Token(kind: "Eof", span: eof, ..)] ->
+        s1.file == "math.tao"
+        && s2.file == "math.tao"
+        && s3.file == "math.tao"
+        && s4.file == "math.tao"
+        && s5.file == "math.tao"
+        && s6.file == "math.tao"
+        && s7.file == "math.tao"
+        && s8.file == "math.tao"
+        && s9.file == "math.tao"
+        && s10.file == "math.tao"
+        && eof.file == "math.tao"
+      _ -> False
+    }
+  }
+  assert all_correct_file
+}
+
+pub fn tokenize_keyword_span_correct_test() {
+  // Keywords are stored as Name tokens with value matching keyword
+  // but kind is "Keyword" - span should be correct
+  let tokens = tokenize_with_filename("true", "test.tao")
+  assert case tokens {
+    [
+      Token(kind: "Keyword", value: "true", span: s),
+      Token(kind: "Eof", ..),
+    ] ->
+      s.start_line == 1 && s.start_col == 1
+      && s.end_line == 1 && s.end_col == 5  // "true" is 4 chars
+    _ -> False
+  }
+}
+
+pub fn tokenize_operator_span_correct_test() {
+  // Multi-character operator should have a valid span
+  let tokens = tokenize_with_filename("a -> b", "test.tao")
+  assert case tokens {
+    [
+      Token(kind: "Name", span: _, ..),
+      Token(kind: "Op", value: "->", span: s),
+      Token(kind: "Name", span: _, ..),
+      Token(kind: "Eof", ..),
+    ] ->
+      s.start_line == 1 && s.end_line == 1
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Additional edge case tests
+// ============================================================================
+
+pub fn tokenize_pipe_operator_test() {
+  // Pipe character is tokenized as Punct
+  let tokens = tokenize("|")
+  assert list.length(tokens) == 2
+  assert case tokens {
+    [Token(kind: "Punct", value: "|", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_ampersand_operator_test() {
+  // Ampersand is tokenized as Punct
+  let tokens = tokenize("&")
+  assert list.length(tokens) == 2
+  assert case tokens {
+    [Token(kind: "Punct", value: "&", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_exclamation_operator_test() {
+  // Exclamation is tokenized as Punct
+  let tokens = tokenize("!")
+  assert list.length(tokens) == 2
+  assert case tokens {
+    [Token(kind: "Punct", value: "!", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_less_greater_operator_test() {
+  // << tokenizes as two single-char operators
+  let tokens = tokenize("<<")
+  assert list.length(tokens) == 3
+  assert case tokens {
+    [Token(kind: "Op", value: "<", ..), Token(kind: "Op", value: "<", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_single_underscore_as_operator_test() {
+  // Single underscore is a single Op token
+  let tokens = tokenize("_")
+  assert list.length(tokens) == 2
+  assert case tokens {
+    [Token(kind: "Op", value: "_", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_multiple_identifiers_with_whitespace_test() {
+  // Multiple identifiers separated by whitespace tokenize correctly
+  let tokens = tokenize("foo bar baz")
+  assert list.length(tokens) == 4  // 3 Names + Eof
+  assert case tokens {
+    [
+      Token(kind: "Name", value: "foo", ..),
+      Token(kind: "Name", value: "bar", ..),
+      Token(kind: "Name", value: "baz", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_newline_at_end_test() {
+  // Input ending with newline produces tokens up to Eof
+  let tokens = tokenize("42\n")
+  assert list.length(tokens) == 2
+  assert case tokens {
+    [Token(kind: "Integer", value: "42", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_carriage_return_skipped_test() {
+  // Carriage returns are skipped like other whitespace
+  let tokens = tokenize("foo\rbar")
+  assert list.length(tokens) == 3  // 2 Names + Eof
+  assert case tokens {
+    [Token(kind: "Name", value: "foo", ..), Token(kind: "Name", value: "bar", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_double_dash_is_two_operators_test() {
+  // "--" tokenizes as two Op tokens, not a single operator
+  let tokens = tokenize("--")
+  assert list.length(tokens) == 3
+  assert case tokens {
+    [Token(kind: "Op", value: "-", ..), Token(kind: "Op", value: "-", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_plus_equals_test() {
+  // "+=" tokenizes as Op("+") then Punct("=") then Eof
+  let tokens = tokenize("+=")
+  assert case tokens {
+    [Token(kind: "Op", ..), Token(kind: "Punct", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}

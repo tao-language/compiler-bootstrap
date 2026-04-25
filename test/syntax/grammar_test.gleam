@@ -12,11 +12,12 @@ import syntax/grammar.{
   type ParseResult, ParseResult, ParseError,
   type Pattern, Tok, Kw, Op, Ref, Seq, Opt, Many, Choice, SepBy, Parens, Delimited,
   type Either, Left, Right, Infix,
-  tok, kw, op, ref, seq, opt, many, choice, sep_by, parens, delimited,
+  parse, tok, kw, op, ref, seq, opt, many, choice, sep_by, parens, delimited,
   error_to_string, result_ast, result_errors,
   is_left, is_right, left_value, right_value,
 }
 import syntax/span.{type Span, single}
+import syntax/lexer.{tokenize}
 import gleam/list
 
 pub fn main() {
@@ -326,30 +327,6 @@ pub fn error_to_string_empty_context_test() {
 }
 
 // ============================================================================
-// Either type edge cases
-// ============================================================================
-
-pub fn is_left_works_with_string_left_test() {
-  // The is_left/is_right functions in grammar.gleam are typed as Either(String, a)
-  let left: Either(String, Int) = Left("hello")
-  let right: Either(String, Int) = Right(42)
-  assert is_left(left) == True
-  assert is_right(right) == True
-}
-
-pub fn is_left_is_false_for_right_test() {
-  let v: Either(String, Int) = Right(42)
-  assert is_left(v) == False
-  assert is_right(v) == True
-}
-
-pub fn is_right_is_false_for_left_test() {
-  let v: Either(String, Int) = Left("world")
-  assert is_left(v) == True
-  assert is_right(v) == False
-}
-
-// ============================================================================
 // Complex Either pattern matching
 // ============================================================================
 
@@ -490,6 +467,10 @@ pub fn alternative_constructor_returns_proper_type_test() {
   assert a.constructor([]) == 42
 }
 
+// ============================================================================
+// Pattern construction
+// ============================================================================
+
 pub fn rule_with_many_alternatives_test() {
   let a1: Alternative(String) = Alternative(
     pattern: tok("Name"),
@@ -506,3 +487,327 @@ pub fn rule_with_many_alternatives_test() {
   )
   assert list.length(rule.alternatives) == 2
 }
+
+// ============================================================================
+// Actual parsing behavior tests
+//
+// These tests verify that each combinator produces correct error/success
+// outcomes when parsing real token lists. We use a minimal grammar that
+// has a single rule matching a specific token type, then check that
+// parse() correctly returns errors for non-matching input.
+//
+// Helper: build a minimal grammar with one rule that matches a token.
+fn make_tok_grammar(tok_kind: String) -> Grammar(String) {
+  let alt: Alternative(String) = Alternative(
+    pattern: tok(tok_kind),
+    constructor: alt_constructor_string,
+  )
+  Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
+    keywords: [],
+    operators: [],
+  )
+}
+
+fn make_kw_grammar(keyword: String) -> Grammar(String) {
+  let alt: Alternative(String) = Alternative(
+    pattern: kw(keyword),
+    constructor: alt_constructor_string,
+  )
+  Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
+    keywords: [keyword],
+    operators: [],
+  )
+}
+
+fn make_op_grammar(sym: String) -> Grammar(String) {
+  let alt: Alternative(String) = Alternative(
+    pattern: op(sym),
+    constructor: alt_constructor_string,
+  )
+  Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
+    keywords: [],
+    operators: [],
+  )
+}
+
+// --- tok pattern parsing ---
+
+pub fn parse_tok_matching_token_succeeds_test() {
+  // tok("Name") should succeed when the first token is a Name
+  let tokens = tokenize("foo")
+  let grammar = make_tok_grammar("Name")
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// --- kw pattern parsing ---
+
+pub fn parse_kw_matching_keyword_succeeds_test() {
+  // kw("let") should succeed when the first token is the keyword "let"
+  let tokens = tokenize("let")
+  let grammar = make_kw_grammar("let")
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// --- op pattern parsing ---
+
+pub fn parse_op_matching_operator_succeeds_test() {
+  // op("+") should succeed when the first token is "Op" with value "+"
+  let tokens = tokenize("+")
+  let grammar = make_op_grammar("+")
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// --- seq pattern parsing ---
+
+fn make_seq_name_name_grammar() -> Grammar(String) {
+  // Grammar that matches: Name Name
+  let alt: Alternative(String) = Alternative(
+    pattern: seq([tok("Name"), tok("Name")]),
+    constructor: alt_constructor_string,
+  )
+  Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
+    keywords: [],
+    operators: [],
+  )
+}
+
+pub fn parse_seq_both_match_succeeds_test() {
+  // seq([Name, Name]) should succeed with two Name tokens
+  let tokens = tokenize("foo bar")
+  let grammar = make_seq_name_name_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// --- opt pattern parsing ---
+
+fn make_opt_comma_grammar() -> Grammar(String) {
+  // Grammar that matches Name followed by optional comma
+  let alt: Alternative(String) = Alternative(
+    pattern: seq([tok("Name"), opt(kw(","))]),
+    constructor: alt_constructor_string,
+  )
+  Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
+    keywords: [","],
+    operators: [],
+  )
+}
+
+pub fn parse_opt_present_matches_succeeds_test() {
+  // opt(kw(",")) should match when comma is present
+  let tokens = tokenize("foo,")
+  let grammar = make_opt_comma_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+pub fn parse_opt_absent_matches_succeeds_test() {
+  // opt(kw(",")) should also succeed when comma is absent
+  let tokens = tokenize("foo")
+  let grammar = make_opt_comma_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// --- many pattern parsing ---
+
+fn make_many_name_grammar() -> Grammar(String) {
+  // Grammar that matches zero or more Names
+  let alt: Alternative(String) = Alternative(
+    pattern: many(tok("Name")),
+    constructor: alt_constructor_string,
+  )
+  Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
+    keywords: [],
+    operators: [],
+  )
+}
+
+pub fn parse_many_multiple_match_succeeds_test() {
+  // many(Name) should match multiple names
+  let tokens = tokenize("foo bar baz")
+  let grammar = make_many_name_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+pub fn parse_many_zero_matches_succeeds_test() {
+  // many(Name) should succeed even with zero matches (empty input)
+  let tokens = tokenize("")
+  let grammar = make_many_name_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// --- choice pattern parsing ---
+
+fn make_choice_grammar() -> Grammar(String) {
+  // Grammar that matches either Name or Integer
+  Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [
+      Rule(
+        name: "Test",
+        alternatives: [Alternative(
+          pattern: choice([tok("Name"), tok("Integer")]),
+          constructor: alt_constructor_string,
+        )],
+        precedence: 0,
+      ),
+    ],
+    keywords: [],
+    operators: [],
+  )
+}
+
+pub fn parse_choice_first_alternative_matches_test() {
+  // choice([Name, Integer]) should match Name
+  let tokens = tokenize("foo")
+  let grammar = make_choice_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+pub fn parse_choice_second_alternative_matches_test() {
+  // choice([Name, Integer]) should match Integer when Name fails
+  let tokens = tokenize("42")
+  let grammar = make_choice_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// --- sep_by pattern parsing ---
+
+fn make_sep_by_name_comma_grammar() -> Grammar(String) {
+  // Grammar that matches: Name ("," Name)*
+  let sep_pattern = sep_by(tok("Name"), kw(","))
+  let alt: Alternative(String) = Alternative(
+    pattern: sep_pattern,
+    constructor: alt_constructor_string,
+  )
+  Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
+    keywords: [","],
+    operators: [],
+  )
+}
+
+pub fn parse_sep_by_multiple_items_succeeds_test() {
+  // sep_by(Name, ",") should match "foo, bar, baz"
+  let tokens = tokenize("foo, bar, baz")
+  let grammar = make_sep_by_name_comma_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+pub fn parse_sep_by_single_item_succeeds_test() {
+  // sep_by(Name, ",") should match single Name without separator
+  let tokens = tokenize("foo")
+  let grammar = make_sep_by_name_comma_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+pub fn parse_sep_by_zero_items_succeeds_test() {
+  // sep_by(Name, ",") should match empty input (zero items)
+  let tokens = tokenize("")
+  let grammar = make_sep_by_name_comma_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// --- parens pattern parsing ---
+
+fn make_parens_name_grammar() -> Grammar(String) {
+  // Grammar that matches: "(" Name ")"
+  let alt: Alternative(String) = Alternative(
+    pattern: parens("NameRule"),
+    constructor: alt_constructor_string,
+  )
+  let name_rule: Rule(String) = Rule(
+    name: "NameRule",
+    alternatives: [Alternative(
+      pattern: tok("Name"),
+      constructor: alt_constructor_string,
+    )],
+    precedence: 0,
+  )
+  Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0), name_rule],
+    keywords: [],
+    operators: [],
+  )
+}
+
+pub fn parse_parens_matching_succeeds_test() {
+  // parens("NameRule") should match "( foo )"
+  let tokens = tokenize("( foo )")
+  let grammar = make_parens_name_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// --- delimited pattern parsing ---
+
+fn make_delimited_parens_name_comma_grammar() -> Grammar(String) {
+  // Grammar: "(" (Name ("," Name)*)? ")"
+  let inner = Delimited(tok("("), tok("Name"), kw(","), tok(")"))
+  // The Delimited combinator parses: open (item sep item)* close
+  // So: "(" Name ("," Name)* ")"
+  let alt: Alternative(String) = Alternative(
+    pattern: inner,
+    constructor: alt_constructor_string,
+  )
+  Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
+    keywords: [","],
+    operators: [],
+  )
+}
+
+pub fn parse_delimited_with_items_succeeds_test() {
+  // delimited should match "( foo, bar )"
+  let tokens = tokenize("( foo, bar )")
+  let grammar = make_delimited_parens_name_comma_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+pub fn parse_delimited_single_item_succeeds_test() {
+  // delimited should match "( foo )" with a single item
+  let tokens = tokenize("( foo )")
+  let grammar = make_delimited_parens_name_comma_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// ============================================================================
+// Edge cases

@@ -365,3 +365,76 @@ pub fn value_to_string_error_test() {
   let v = VErr
   assert value_to_string(v) == "<error>"
 }
+
+// ============================================================================
+// Additional shift_term edge case tests
+// ============================================================================
+
+pub fn shift_term_nested_lam_shifts_correctly_test() {
+  // Nested lambdas: λx.(λy.0) shifted by 1 should correctly adjust param free vars
+  let inner_body = Var(0, single("file.gleam", 1, 1))
+  let inner_lam = Lam(#("y", inner_body), inner_body, single("file.gleam", 1, 1))
+  let outer_lam = Lam(#("x", inner_lam), inner_lam, single("file.gleam", 1, 1))
+  let shifted = shift_term(outer_lam, 1)
+  // Param (inner_lam) shifted with from=0:
+  //   inner param: Var(0) -> Var(1) (free var in param body)
+  //   inner body: Var(0) stays Var(0) (bound by inner lam, shifted with from=1)
+  // Body (inner_lam) shifted with from=1:
+  //   inner param: Var(0) stays Var(0) (free var >= 1 not present here)
+  //   inner body: Var(0) stays Var(0) (bound by inner lam, from=2)
+  assert shifted == Lam(
+    #("x", Lam(#("y", Var(1, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 1)), single("file.gleam", 1, 1))),
+    Lam(#("y", Var(0, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 1)), single("file.gleam", 1, 1)),
+    single("file.gleam", 1, 1),
+  )
+}
+
+pub fn shift_term_on_ann_preserves_span_test() {
+  // shift_term on Ann should preserve spans
+  let ann = Ann(Var(2, single("file.gleam", 1, 1)), Var(3, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+  let shifted = shift_term(ann, 1)
+  assert case shifted {
+    Ann(_, type_: Var(_, span: type_span), span: main_span) ->
+      type_span.start_line == 1 && type_span.start_col == 2
+      && main_span.start_line == 1 && main_span.start_col == 3
+    _ -> False
+  }
+}
+
+pub fn shift_term_on_match_preserves_case_bodies_span_test() {
+  // shift_term on Match should preserve spans in case bodies
+  let body = Var(0, single("file.gleam", 1, 1))
+  let case_expr = Case(PAny(single("file.gleam", 1, 1)), body, single("file.gleam", 1, 2))
+  let match_expr = Match(Var(0, single("file.gleam", 1, 3)), [case_expr], single("file.gleam", 1, 4))
+  let shifted = shift_term(match_expr, 1)
+  assert shifted == Match(
+    Var(1, single("file.gleam", 1, 3)),
+    [Case(PAny(single("file.gleam", 1, 1)), Var(1, single("file.gleam", 1, 1)), single("file.gleam", 1, 2))],
+    single("file.gleam", 1, 4),
+  )
+}
+
+pub fn shift_term_preserves_span_test() {
+  // shift_term should preserve spans, not just adjust indices
+  let t = Var(0, single("file.gleam", 5, 10))
+  let shifted = shift_term(t, 5)
+  assert case shifted {
+    Var(index: 5, span: s) -> s.start_line == 5 && s.start_col == 10
+    _ -> False
+  }
+}
+
+pub fn shift_term_on_let_preserves_span_test() {
+  // shift_term on Let should preserve spans in both value and body
+  let body = Var(0, single("file.gleam", 1, 1))
+  let value = Var(2, single("file.gleam", 1, 2))
+  let let_expr = Let("x", value, body, single("file.gleam", 1, 3))
+  let shifted = shift_term(let_expr, 1)
+  assert case shifted {
+    Let(_, value: Var(3, span: val_span), body: Var(0, span: body_span), span: main_span) ->
+      val_span.start_line == 1 && val_span.start_col == 2
+      && body_span.start_line == 1 && body_span.start_col == 1
+      && main_span.start_line == 1 && main_span.start_col == 3
+    _ -> False
+  }
+}
