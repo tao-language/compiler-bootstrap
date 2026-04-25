@@ -409,7 +409,10 @@
 | 2026-04-25 | Commented unused State fields | lambda_depth, max_steps, step_counter, truth_ctor as Phase 5+ |
 | 2026-04-25 | Made `join_list` private | Cleaner public API |
 | 2026-04-25 | Added 3 state tests | def_var shadowing, with_err preserves state, lookup_by_level |
+| 2026-04-25 | **Rewrote all lexer tests to use assert** | Fixed 50+ tests that were silently passing without verifying anything |
+| 2026-04-25 | **Updated testing strategy documentation** | Added assert-based testing convention, replaced all example tests |
 
 **Total tests:** 156 passed, 0 failures, 0 warnings
 **Code reduced:** ~40 lines removed through simplification
-**Test coverage improved:** 29 new tests added
+**Test coverage improved:** 29 new tests added, 50+ tests fixed to use assert
+**Critical fix:** All lexer tests now actually verify correctness instead of silently passing
