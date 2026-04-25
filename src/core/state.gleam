@@ -40,10 +40,10 @@ pub type FfiEntry {
 /// * `errors` — Accumulated errors during type checking
 /// * `ffi` — FFI builtin definitions available at runtime
 /// * `hole_counter` — Next fresh hole ID
-/// * `lambda_depth` — Current depth of nested lambdas (for generalization)
-/// * `max_steps` — Maximum evaluation steps before aborting
-/// * `step_counter` — Current evaluation step count
-/// * `truth_ctor` — Name of the truth constructor (e.g., "True")
+/// * `lambda_depth` — Deferred: Current depth of nested lambdas (Phase 5+)
+/// * `max_steps` — Deferred: Maximum evaluation steps before aborting (Phase 5+)
+/// * `step_counter` — Deferred: Current evaluation step count (Phase 5+)
+/// * `truth_ctor` — Deferred: Name of the truth constructor (Phase 5+)
 pub type State {
   State(
     vars: List(#(String, #(Value, Value))),
@@ -307,7 +307,7 @@ pub fn error_to_string(error: Error) -> String {
 }
 
 /// Join a list of strings with a separator.
-pub fn join_list(items: List(String), separator: String) -> String {
+fn join_list(items: List(String), separator: String) -> String {
   case items {
     [] -> ""
     [first, ..rest] -> {
