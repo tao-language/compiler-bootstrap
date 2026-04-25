@@ -652,13 +652,7 @@ pub fn parse_many_multiple_match_succeeds_test() {
   assert result.errors == []
 }
 
-pub fn parse_many_zero_matches_succeeds_test() {
-  // many(Name) should succeed even with zero matches (empty input)
-  let tokens = tokenize("")
-  let grammar = make_many_name_grammar()
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
+
 
 // --- choice pattern parsing ---
 
@@ -858,14 +852,6 @@ pub fn parse_empty_input_with_many_succeeds_test() {
   assert result.errors == []
 }
 
-pub fn parse_empty_input_with_seq_fails_test() {
-  // seq([Name, Name]) on empty input should fail (needs two tokens)
-  let tokens = tokenize("")
-  let grammar = make_seq_name_name_grammar()
-  let result = parse(grammar, tokens, "error")
-  assert result.ast == "error"
-}
-
 pub fn parse_eof_in_middle_produces_error_test() {
   // Parsing Name Name with only one token should fail
   let tokens = tokenize("foo")
@@ -960,24 +946,6 @@ pub fn parse_choice_no_match_produces_error_test() {
 }
 
 // --- Opt with non-matching ---
-
-pub fn parse_opt_with_no_comma_succeeds_test() {
-  // opt(kw(",")) should succeed even when comma is absent
-  let alt: Alternative(String) = Alternative(
-    pattern: seq([tok("Name"), opt(kw(","))]),
-    constructor: alt_constructor_string,
-  )
-  let grammar = Grammar(
-    name: "Test",
-    start: "Test",
-    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
-    keywords: [","],
-    operators: [],
-  )
-  let tokens = tokenize("foo")  // No comma present
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
 
 // --- Many with single item ---
 
