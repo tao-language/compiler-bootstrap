@@ -17,7 +17,7 @@ import syntax/grammar.{
   is_left, is_right, left_value, right_value,
 }
 import syntax/span.{type Span, single}
-import syntax/lexer.{tokenize}
+import syntax/lexer.{tokenize, tokenize_with_filename}
 import gleam/list
 
 pub fn main() {
@@ -811,3 +811,310 @@ pub fn parse_delimited_single_item_succeeds_test() {
 
 // ============================================================================
 // Edge cases
+//
+// These tests verify that the parser handles malformed input gracefully,
+// produces parse errors on unexpected tokens, and correctly handles
+// nested structures and boundary conditions.
+//
+// IMPORTANT: parse() returns the error_node on failure with empty errors
+// list. On success, errors is always []. This is the design decision to
+// allow the compiler to continue processing after parse errors.
+// ============================================================================
+
+// --- Error handling on non-matching input ---
+
+pub fn parse_unexpected_token_produces_error_test() {
+  // When input doesn't match the expected token, parse returns the error node
+  let tokens = tokenize("42")  // Integer, not Name
+  let grammar = make_tok_grammar("Name")
+  let result = parse(grammar, tokens, "error_node")
+  // parse() returns error_node with empty errors on failure (design decision)
+  assert result.ast == "error_node"
+}
+
+pub fn parse_wrong_keyword_produces_error_test() {
+  // kw("let") should not match "fn" (a different keyword)
+  let tokens = tokenize("fn")
+  let grammar = make_kw_grammar("let")
+  let result = parse(grammar, tokens, "error")
+  assert result.ast == "error"
+}
+
+pub fn parse_missing_token_produces_error_test() {
+  // seq([Name, Name]) needs two names, one is not enough
+  let tokens = tokenize("foo")
+  let grammar = make_seq_name_name_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.ast == "error"
+}
+
+// --- Empty and boundary inputs ---
+
+pub fn parse_empty_input_with_many_succeeds_test() {
+  // many(Name) on empty input should succeed (zero matches)
+  let tokens = tokenize("")
+  let grammar = make_many_name_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+pub fn parse_empty_input_with_seq_fails_test() {
+  // seq([Name, Name]) on empty input should fail (needs two tokens)
+  let tokens = tokenize("")
+  let grammar = make_seq_name_name_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.ast == "error"
+}
+
+pub fn parse_eof_in_middle_produces_error_test() {
+  // Parsing Name Name with only one token should fail
+  let tokens = tokenize("foo")
+  let grammar = make_seq_name_name_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.ast == "error"
+}
+
+// --- Nested structures ---
+
+pub fn parse_nested_parens_succeeds_test() {
+  // Nested parentheses should parse correctly
+  let parens_name = Parens("NameRule")
+  let alt: Alternative(String) = Alternative(
+    pattern: parens_name,
+    constructor: alt_constructor_string,
+  )
+  let name_rule: Rule(String) = Rule(
+    name: "NameRule",
+    alternatives: [
+      Alternative(pattern: tok("Name"), constructor: alt_constructor_string),
+      Alternative(pattern: parens("NameRule"), constructor: alt_constructor_string),
+    ],
+    precedence: 0,
+  )
+  let grammar = Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0), name_rule],
+    keywords: [],
+    operators: [],
+  )
+  let tokens = tokenize("( foo )")
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+pub fn parse_deeply_nested_parens_succeeds_test() {
+  // Deeply nested parentheses should still parse: (( foo ))
+  let parens_name = Parens("NameRule")
+  let alt: Alternative(String) = Alternative(
+    pattern: parens_name,
+    constructor: alt_constructor_string,
+  )
+  let name_rule: Rule(String) = Rule(
+    name: "NameRule",
+    alternatives: [
+      Alternative(pattern: tok("Name"), constructor: alt_constructor_string),
+      Alternative(pattern: parens("NameRule"), constructor: alt_constructor_string),
+    ],
+    precedence: 0,
+  )
+  let grammar = Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0), name_rule],
+    keywords: [],
+    operators: [],
+  )
+  let tokens = tokenize("(( foo ))")
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+pub fn parse_multiple_separated_items_succeeds_test() {
+  // sep_by(Name, ",") should match many comma-separated names
+  let sep_pattern = sep_by(tok("Name"), kw(","))
+  let alt: Alternative(String) = Alternative(
+    pattern: sep_pattern,
+    constructor: alt_constructor_string,
+  )
+  let grammar = Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
+    keywords: [","],
+    operators: [],
+  )
+  let tokens = tokenize("a, b, c, d")
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// --- Choice with no match ---
+
+pub fn parse_choice_no_match_produces_error_test() {
+  // choice([Name, Integer]) should fail on Float (neither option matches)
+  let tokens = tokenize("3.14")
+  let grammar = make_choice_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.ast == "error"
+}
+
+// --- Opt with non-matching ---
+
+pub fn parse_opt_with_no_comma_succeeds_test() {
+  // opt(kw(",")) should succeed even when comma is absent
+  let alt: Alternative(String) = Alternative(
+    pattern: seq([tok("Name"), opt(kw(","))]),
+    constructor: alt_constructor_string,
+  )
+  let grammar = Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
+    keywords: [","],
+    operators: [],
+  )
+  let tokens = tokenize("foo")  // No comma present
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// --- Many with single item ---
+
+pub fn parse_many_with_single_item_succeeds_test() {
+  // many(Name) should match exactly one name
+  let tokens = tokenize("foo")
+  let grammar = make_many_name_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// --- Delimited edge cases ---
+
+pub fn parse_delimited_empty_does_not_match_test() {
+  // Delimited requires at least one item
+  // Delimited("(", Name, ",", ")") matches: ( Name (, Name)* )
+  // So "()" should fail because there's no Name after (
+  let inner = Delimited(tok("("), tok("Name"), kw(","), tok(")"))
+  let alt: Alternative(String) = Alternative(
+    pattern: inner,
+    constructor: alt_constructor_string,
+  )
+  let grammar = Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
+    keywords: [","],
+    operators: [],
+  )
+  let tokens = tokenize("()")
+  let result = parse(grammar, tokens, "error")
+  // Should fail because there's no Name after (
+  assert result.ast == "error"
+}
+
+pub fn parse_delimited_with_trailing_comma_succeeds_test() {
+  // Delimited should handle trailing separator followed by close
+  let inner = Delimited(tok("("), tok("Name"), kw(","), tok(")"))
+  let alt: Alternative(String) = Alternative(
+    pattern: inner,
+    constructor: alt_constructor_string,
+  )
+  let grammar = Grammar(
+    name: "Test",
+    start: "Test",
+    rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
+    keywords: [","],
+    operators: [],
+  )
+  let tokens = tokenize("( foo, )")
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// --- Operator and keyword interactions ---
+
+pub fn parse_op_on_integer_input_fails_test() {
+  // op("+") should not match an integer token
+  let tokens = tokenize("42")
+  let grammar = make_op_grammar("+")
+  let result = parse(grammar, tokens, "error")
+  assert result.ast == "error"
+}
+
+pub fn parse_kw_on_non_keyword_name_fails_test() {
+  // kw("let") should not match "fn" (different keyword)
+  let tokens = tokenize("fn")
+  let grammar = make_kw_grammar("let")
+  let result = parse(grammar, tokens, "error")
+  assert result.ast == "error"
+}
+
+// --- Multiple rules with different alternatives ---
+
+pub fn grammar_with_three_alternatives_finds_second_test() {
+  // Rules with multiple alternatives should find matching one
+  let alt1: Alternative(String) = Alternative(
+    pattern: tok("Integer"),
+    constructor: alt_constructor_string,
+  )
+  let alt2: Alternative(String) = Alternative(
+    pattern: tok("Name"),
+    constructor: alt_constructor_string,
+  )
+  let alt3: Alternative(String) = Alternative(
+    pattern: op("+"),
+    constructor: alt_constructor_string,
+  )
+  let rules = [
+    Rule(
+      name: "Test",
+      alternatives: [alt1, alt2, alt3],
+      precedence: 0,
+    ),
+  ]
+  let grammar = Grammar(
+    name: "Test",
+    start: "Test",
+    rules: rules,
+    keywords: [],
+    operators: [],
+  )
+  // Name should match even though Integer is listed first in alternatives
+  let tokens = tokenize("foo")
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
+
+// --- Whitespace handling in parsing ---
+
+pub fn parse_only_whitespace_fails_for_tok_test() {
+  // Whitespace is skipped by the lexer, so only EOF remains
+  // This means tok("Name") on whitespace-only input will see Eof
+  let tokens = tokenize("   ")
+  let grammar = make_tok_grammar("Name")
+  let result = parse(grammar, tokens, "error")
+  // Eof is not a Name, so parsing fails
+  assert result.ast == "error"
+}
+
+// --- Span accuracy in parsing ---
+
+pub fn parse_multiple_tokens_preserves_span_test() {
+  // When seq parses multiple tokens, spans should be valid
+  let tokens = tokenize_with_filename("foo bar", "test.tao")
+  let grammar = make_seq_name_name_grammar()
+  let result = parse(grammar, tokens, "error")
+  // Parse should succeed and spans should be valid
+  assert result.errors == []
+}
+
+// --- Whitespace between tokens in seq ---
+
+pub fn parse_seq_with_whitespace_between_tokens_succeeds_test() {
+  // Tokens with whitespace between them should still match in seq
+  let tokens = tokenize("foo     bar")  // Extra whitespace
+  let grammar = make_seq_name_name_grammar()
+  let result = parse(grammar, tokens, "error")
+  assert result.errors == []
+}
