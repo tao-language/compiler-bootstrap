@@ -360,11 +360,6 @@ pub fn skip_block_comment_with_code_after_test() {
 // Position tracking
 // ============================================================================
 
-pub fn tokenize_multiple_tokens_with_correct_line_test() {
-  let tokens = tokenize("let x\n= 42")
-  assert list.length(tokens) == 5
-}
-
 pub fn tokenize_with_filename_attaches_filename_test() {
   let tokens = tokenize_with_filename("let x = 42", "test.gleam")
   let file = case tokens {
@@ -565,15 +560,6 @@ pub fn tokenize_nested_block_comment_stops_at_first_close_test() {
   assert list.length(tokens) == 2
   assert case tokens {
     [Token(kind: "Name", value: "inner", ..), Token(kind: "Eof", ..)] -> True
-    _ -> False
-  }
-}
-
-pub fn tokenize_number_at_end_of_input_test() {
-  let tokens = tokenize("42")
-  assert list.length(tokens) == 2
-  assert case tokens {
-    [Token(kind: "Integer", value: "42", ..), Token(kind: "Eof", ..)] -> True
     _ -> False
   }
 }
@@ -851,6 +837,91 @@ pub fn tokenize_plus_equals_test() {
   let tokens = tokenize("+=")
   assert case tokens {
     [Token(kind: "Op", ..), Token(kind: "Punct", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_multiple_tokens_with_correct_token_kinds_test() {
+  // Verify that tokenize("let x\n= 42") produces the expected token kinds
+  let tokens = tokenize("let x\n= 42")
+  assert case tokens {
+    [
+      Token(kind: "Keyword", value: "let", ..),
+      Token(kind: "Name", value: "x", ..),
+      Token(kind: "Punct", value: "=", ..),
+      Token(kind: "Integer", value: "42", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_bare_dot_before_number_is_punct_plus_integer_test() {
+  // A dot followed by digits is Punct(".") + Integer("5") + Eof
+  // Dot is treated as punctuation (not Op), and "5" is Integer since it starts with a digit
+  let tokens = tokenize(".5")
+  assert case tokens {
+    [
+      Token(kind: "Punct", value: ".", ..),
+      Token(kind: "Integer", value: "5", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_float_zero_point_zero_test() {
+  // 0.0 is a valid float
+  let tokens = tokenize("0.0")
+  assert list.length(tokens) == 2
+  assert case tokens {
+    [Token(kind: "Float", value: "0.0", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_consecutive_multi_char_operators_test() {
+  // "-> >" should produce "->", ">", Eof
+  let tokens = tokenize("-> >")
+  assert list.length(tokens) == 3
+  assert case tokens {
+    [
+      Token(kind: "Op", value: "->", ..),
+      Token(kind: "Op", value: ">", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_underscore_and_equals_test() {
+  // "_=" is Op("_") + Punct("=") + Eof
+  let tokens = tokenize("_=")
+  assert case tokens {
+    [
+      Token(kind: "Op", value: "_", ..),
+      Token(kind: "Punct", value: "=", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_multiple_statements_test() {
+  // Multiple statements should tokenize correctly
+  let tokens = tokenize("let x = 1\nlet y = 2")
+  assert case tokens {
+    [
+      Token(kind: "Keyword", value: "let", ..),
+      Token(kind: "Name", value: "x", ..),
+      Token(kind: "Punct", value: "=", ..),
+      Token(kind: "Integer", value: "1", ..),
+      Token(kind: "Keyword", value: "let", ..),
+      Token(kind: "Name", value: "y", ..),
+      Token(kind: "Punct", value: "=", ..),
+      Token(kind: "Integer", value: "2", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
