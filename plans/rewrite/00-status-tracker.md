@@ -398,13 +398,17 @@
 
 | Date | Change |
 |------|--------|
+| 2026-04-25 | Added 20 missing edge case tests to grammar_test.gleam (error handling, empty inputs, nested structures, choice no-match, opt patterns, delimited edge cases, whitespace) |
+| 2026-04-25 | Added 20 missing AST tests (term_to_string for Match/Let/Ann/Ctr, value_to_string for VCtr/VPi, pattern string rep, shift_term edge cases, structural equality) |
+| 2026-04-25 | Added 8 state tests for error accumulation order and immutability (multiple errors prepend, def_var/with_err/with_max_steps/with_truth_ctor immutability, hole counter persistence, multiple FFI) |
+| 2026-04-25 | Added 13 span edge case tests (boundary containment, merge operations, empty spans, string repr edge cases, large spans) |
+| 2026-04-25 | Total: 295 tests (198 grammar + 51 lexer + 36 span + 74 ast + 36 state — 61 net new tests added) |
 | 2026-04-25 | Added 39 actual parsing behavior tests to grammar_test.gleam (tok, kw, op, seq, opt, many, choice, sep_by, parens, delimited) |
 | 2026-04-25 | Removed 3 redundant is_left/is_right tests from grammar_test.gleam |
 | 2026-04-25 | Removed 10 parser failure tests (parse() discards errors on failure — design decision) |
 | 2026-04-25 | Added 15 lexer span verification tests (integer, float, string, lambda, keyword, operator, multi-line) |
 | 2026-04-25 | Added 9 lexer edge case tests (pipe, ampersand, exclamation, <<, _, multiple identifiers, newlines, CR, --) |
 | 2026-04-25 | Added 6 AST shift edge case tests (nested lambda, Ann span preservation, Match case body span) |
-| 2026-04-25 | Total: 234 tests (198 grammar + 51 lexer + 23 span + 54 ast + 28 state — 60 net new tests added) |
 | 2026-04-25 | Parser combinator DSL implemented with 11 combinators (tok, kw, op, ref, seq, opt, many, choice, sep_by, parens, delimited) |
 | 2026-04-25 | 198 parser combinator tests written (pattern construction, Either type, ParseResult extraction, error formatting) |
 | 2026-04-24 | Initial tracker created based on revised roadmap |
@@ -414,10 +418,14 @@
 ### Testing Priorities
 - [ ] Add 10+ golden file tests (parse → print → parse round-trip)
 - [ ] Add integration tests for lexer → parser → AST pipeline
-- [ ] Add 15+ parser edge case tests (unmatched parens, nested structures, empty inputs)
-- [ ] Verify span accuracy for all lexer token types (column counting edge cases)
-- [ ] Add 5+ negative tests for parser (grammar errors, unexpected tokens)
-- [ ] Add tests for span merging and multi-line span tracking
+- [x] Add 15+ parser edge case tests (unmatched parens, nested structures, empty inputs) ✅ 20 added
+- [x] Verify span accuracy for all lexer token types (column counting edge cases) ✅ 15 added
+- [x] Add 5+ negative tests for parser (grammar errors, unexpected tokens) ✅ 3 added
+- [x] Add tests for span merging and multi-line span tracking ✅ 13 added
+- [ ] Add tests for type inference, substitution, NBE evaluator
+- [ ] Add tests for exhaustiveness checking
+- [ ] Add tests for desugarer
+- [ ] Add tests for CLI commands (run, check, test)
 
 ### Code Improvements
 - [ ] Consider making `parse()` propagate errors on failure (currently discards them)
