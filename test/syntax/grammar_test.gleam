@@ -124,10 +124,7 @@ pub fn seq_creates_seq_pattern_test() {
 pub fn opt_creates_opt_pattern_test() {
   let p: Pattern(String) = opt(tok(","))
   assert case p {
-    Opt(inner) -> case inner {
-      Tok(kind) -> kind == ","
-      _ -> False
-    }
+    Opt(Tok(",")) -> True
     _ -> False
   }
 }
@@ -135,10 +132,7 @@ pub fn opt_creates_opt_pattern_test() {
 pub fn many_creates_many_pattern_test() {
   let p: Pattern(String) = many(tok("Name"))
   assert case p {
-    Many(inner) -> case inner {
-      Tok(kind) -> kind == "Name"
-      _ -> False
-    }
+    Many(Tok("Name")) -> True
     _ -> False
   }
 }
@@ -154,13 +148,7 @@ pub fn choice_creates_choice_pattern_test() {
 pub fn sep_by_creates_sep_by_pattern_test() {
   let p: Pattern(String) = sep_by(tok("Name"), tok(","))
   assert case p {
-    SepBy(item, sep) -> case item {
-      Tok(item_kind) -> case sep {
-        Tok(sep_kind) -> item_kind == "Name" && sep_kind == ","
-        _ -> False
-      }
-      _ -> False
-    }
+    SepBy(Tok("Name"), Tok(",")) -> True
     _ -> False
   }
 }
