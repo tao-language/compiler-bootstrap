@@ -1,6 +1,6 @@
 import gleeunit
 import gleam/list
-import core/ast.{Var, Hole, Lam, App, Pi, Lit, Ctr, Typ, PAny, PVar, PCtr, PUnit, VNeut, HVar, HHole, VLam, VPi, VLit, VCtr, VUnit, VErr, Err as AstErr, Unit as AstUnit, Int as LitInt, Float as LitFloat, make_neut, make_hole_neut, make_var_neut, error_term, shift_term, term_to_string, value_to_string, EApp}
+import core/ast.{Var, Hole, Lam, App, Pi, Lit, Ctr, Ann, Let, Match, Case, Typ, PAny, PVar, PCtr, PUnit, VNeut, HVar, HHole, VLam, VPi, VLit, VCtr, VUnit, VErr, Err as AstErr, Unit as AstUnit, Int as LitInt, Float as LitFloat, make_neut, make_hole_neut, make_var_neut, error_term, shift_term, term_to_string, value_to_string, EApp}
 import syntax/span.{single}
 
 pub fn main() {
@@ -204,6 +204,72 @@ pub fn shift_term_on_app_shifts_both_parts_test() {
   let app = App(Var(2, single("file.gleam", 1, 1)), Var(3, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
   let shifted = shift_term(app, 1)
   assert shifted == App(Var(3, single("file.gleam", 1, 1)), Var(4, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+}
+
+pub fn shift_term_on_match_shifts_arg_and_cases_test() {
+  let body = Var(0, single("file.gleam", 1, 1))
+  let case_expr = Case(PAny(single("file.gleam", 1, 1)), body, single("file.gleam", 1, 2))
+  let match_expr = Match(Var(0, single("file.gleam", 1, 3)), [case_expr], single("file.gleam", 1, 4))
+  let shifted = shift_term(match_expr, 1)
+  assert shifted == Match(
+    Var(1, single("file.gleam", 1, 3)),
+    [Case(PAny(single("file.gleam", 1, 1)), Var(1, single("file.gleam", 1, 1)), single("file.gleam", 1, 2))],
+    single("file.gleam", 1, 4),
+  )
+}
+
+pub fn shift_term_on_let_shifts_value_and_body_test() {
+  let body = Var(0, single("file.gleam", 1, 1))
+  let value = Var(2, single("file.gleam", 1, 2))
+  let let_expr = Let("x", value, body, single("file.gleam", 1, 3))
+  let shifted = shift_term(let_expr, 1)
+  // value is shifted with from=0: Var(2) -> Var(3)
+  // body is shifted with from=1: Var(0) stays Var(0) (bound by Let)
+  assert shifted == Let("x", Var(3, single("file.gleam", 1, 2)), Var(0, single("file.gleam", 1, 1)), single("file.gleam", 1, 3))
+}
+
+pub fn shift_term_on_ann_shifts_term_and_type_test() {
+  let ann = Ann(Var(2, single("file.gleam", 1, 1)), Var(3, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+  let shifted = shift_term(ann, 1)
+  assert shifted == Ann(Var(3, single("file.gleam", 1, 1)), Var(4, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+}
+
+pub fn shift_term_on_ctr_shifts_arg_test() {
+  let ctr = Ctr("Cons", Var(2, single("file.gleam", 1, 1)), single("file.gleam", 1, 2))
+  let shifted = shift_term(ctr, 1)
+  assert shifted == Ctr("Cons", Var(3, single("file.gleam", 1, 1)), single("file.gleam", 1, 2))
+}
+
+pub fn shift_term_negative_on_all_vars_decrements_indices_test() {
+  // Shift -1 should decrease all vars by 1 (since from=0 by default)
+  let body = Var(0, single("file.gleam", 1, 1))
+  let outer = Var(1, single("file.gleam", 1, 2))
+  let lam = Lam(#("x", body), outer, single("file.gleam", 1, 3))
+  let shifted = shift_term(lam, -1)
+  // Var(1) becomes Var(0), and Var(0) becomes Var(-1)
+  assert shifted == Lam(#("x", Var(-1, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+}
+
+pub fn shift_term_on_pi_shifts_domain_and_codomain_test() {
+  let pi = Pi(Var(2, single("file.gleam", 1, 1)), Var(3, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+  let shifted = shift_term(pi, 1)
+  assert shifted == Pi(Var(3, single("file.gleam", 1, 1)), Var(4, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+}
+
+pub fn shift_term_zero_does_nothing_test() {
+  let t = Var(5, single("file.gleam", 1, 1))
+  let shifted = shift_term(t, 0)
+  assert shifted == Var(5, single("file.gleam", 1, 1))
+}
+
+pub fn shift_term_preserves_span_through_shifts_test() {
+  let span = single("file.gleam", 5, 10)
+  let t = Var(2, span)
+  let shifted = shift_term(t, 1)
+  assert case shifted {
+    Var(_, s) -> s.start_line == 5 && s.start_col == 10
+    _ -> False
+  }
 }
 
 // ============================================================================
