@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-25
+> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - Phase 1 refactoring complete)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend
@@ -397,7 +397,19 @@
 
 ## TODO
 
-- [ ] Update tracker after each phase
-- [ ] Add dependency notes between tasks (e.g., "blocked by 1.1")
-- [ ] Document blockers as they arise
-- [ ] Move completed tasks to "Done" section periodically
+## Phase 1 Refactoring Summary
+
+| Date | Improvement | Impact |
+|------|-------------|--------|
+| 2026-04-25 | Simplified `contains` helper functions | Removed 20 lines of nested case expressions, clearer intent |
+| 2026-04-25 | Removed redundant `span.file()` getter | Users access `span.file` directly |
+| 2026-04-25 | Added 15 lexer edge case tests | Floats, identifiers, strings, operators, comments |
+| 2026-04-25 | Added 9 AST shift operation tests | Match, Let, Ann, Ctr, negative shift, Pi, zero shift, spans |
+| 2026-04-25 | Added 2 span merge edge case tests | Multi-line spans |
+| 2026-04-25 | Commented unused State fields | lambda_depth, max_steps, step_counter, truth_ctor as Phase 5+ |
+| 2026-04-25 | Made `join_list` private | Cleaner public API |
+| 2026-04-25 | Added 3 state tests | def_var shadowing, with_err preserves state, lookup_by_level |
+
+**Total tests:** 156 passed, 0 failures, 0 warnings
+**Code reduced:** ~40 lines removed through simplification
+**Test coverage improved:** 29 new tests added
