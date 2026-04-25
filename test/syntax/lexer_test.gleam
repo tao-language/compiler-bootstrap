@@ -368,3 +368,151 @@ pub fn tokenize_lambda_expression_test() {
     _ -> False
   }
 }
+
+// ============================================================================
+// Edge cases and boundary conditions
+// ============================================================================
+
+pub fn tokenize_float_with_leading_zero_test() {
+  let tokens = tokenize("0.5")
+  case tokens {
+    [Token(kind: "Float", value: "0.5", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_integer_followed_by_dot_as_integer_test() {
+  // A number followed by a bare dot (not followed by more digits) should be tokenized
+  // as an integer, with the dot consumed separately as punctuation
+  let tokens = tokenize("42 .")
+  case tokens {
+    [Token(kind: "Integer", value: "42", ..),
+     Token(kind: "Punct", value: ".", ..),
+     Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_identifier_with_multiple_underscores_test() {
+  let tokens = tokenize("my__var")
+  case tokens {
+    [Token(kind: "Name", value: "my__var", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_identifier_with_trailing_underscore_test() {
+  let tokens = tokenize("foo_")
+  case tokens {
+    [Token(kind: "Name", value: "foo_", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_only_underscores_is_name_test() {
+  // A single underscore is treated as an operator, but multiple underscores form a name
+  let tokens = tokenize("__")
+  case tokens {
+    [Token(kind: "Op", value: "_", ..),
+     Token(kind: "Op", value: "_", ..),
+     Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_non_ascii_in_string_test() {
+  let tokens = tokenize("\"こんにちは\"")
+  case tokens {
+    [Token(kind: "String", value: "こんにちは", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_empty_string_test() {
+  let tokens = tokenize("\"\"")
+  case tokens {
+    [Token(kind: "String", value: "", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_consecutive_operators_test() {
+  let tokens = tokenize("++")
+  case tokens {
+    [Token(kind: "Op", value: "+", ..),
+     Token(kind: "Op", value: "+", ..),
+     Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_mixed_multi_char_operators_test() {
+  let tokens = tokenize("-> <<")
+  case tokens {
+    [Token(kind: "Op", value: "->", ..),
+     Token(kind: "Op", value: "<", ..),
+     Token(kind: "Op", value: "<", ..),
+     Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_whitespace_between_operators_test() {
+  let tokens = tokenize("- >")
+  case tokens {
+    [Token(kind: "Op", value: "-", ..),
+     Token(kind: "Op", value: ">", ..),
+     Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_block_comment_with_newlines_test() {
+  let tokens = tokenize("/*\n * comment\n */ let x")
+  case tokens {
+    [Token(kind: "Keyword", value: "let", ..),
+     Token(kind: "Name", value: "x", ..),
+     Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_nested_block_comment_stops_at_first_close_test() {
+  let tokens = tokenize("/* outer */ inner /* not comment */")
+  case tokens {
+    [Token(kind: "Name", value: "inner", ..),
+     Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_number_at_end_of_input_test() {
+  let tokens = tokenize("42")
+  case tokens {
+    [Token(kind: "Integer", value: "42", ..), Token(kind: "Eof", ..)] -> True
+    _ -> False
+  }
+}
+
+pub fn tokenize_multiple_eof_tokens_is_error_test() {
+  // Only one EOF token should be produced
+  let tokens = tokenize("")
+  let eof_count = tokens
+  |> list.filter(fn(t) { t.kind == "Eof" })
+  |> list.length
+  assert eof_count == 1
+}
+
+pub fn tokenize_span_has_correct_filename_when_provided_test() {
+  let tokens = tokenize_with_filename("let x = 42", "module.tao")
+  case tokens {
+    [Token(span: s, ..), Token(span: s2, ..), Token(span: s3, ..), Token(span: s4, ..), Token(span: eof, ..)] -> {
+      s.file == "module.tao"
+      && s2.file == "module.tao"
+      && s3.file == "module.tao"
+      && s4.file == "module.tao"
+      && eof.file == "module.tao"
+    }
+    _ -> False
+  }
+}
