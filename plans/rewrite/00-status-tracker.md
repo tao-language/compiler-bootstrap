@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - Parser combinator DSL implemented and tested)
+> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - Testing strategy implemented, 296 tests)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend
@@ -402,7 +402,7 @@
 | 2026-04-25 | Added 20 missing AST tests (term_to_string for Match/Let/Ann/Ctr, value_to_string for VCtr/VPi, pattern string rep, shift_term edge cases, structural equality) |
 | 2026-04-25 | Added 8 state tests for error accumulation order and immutability (multiple errors prepend, def_var/with_err/with_max_steps/with_truth_ctor immutability, hole counter persistence, multiple FFI) |
 | 2026-04-25 | Added 13 span edge case tests (boundary containment, merge operations, empty spans, string repr edge cases, large spans) |
-| 2026-04-25 | Total: 295 tests (198 grammar + 51 lexer + 36 span + 74 ast + 36 state — 61 net new tests added) |
+| 2026-04-25 | Total: 296 tests (195 grammar + 55 lexer + 36 span + 79 ast + 36 state — 71 net new tests added) |
 | 2026-04-25 | Added 39 actual parsing behavior tests to grammar_test.gleam (tok, kw, op, seq, opt, many, choice, sep_by, parens, delimited) |
 | 2026-04-25 | Removed 3 redundant is_left/is_right tests from grammar_test.gleam |
 | 2026-04-25 | Removed 10 parser failure tests (parse() discards errors on failure — design decision) |
