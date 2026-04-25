@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-24
+> **Last updated:** 2026-04-25
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend
@@ -36,48 +36,50 @@
 
 | ID | Task | Status | Ref | Notes |
 |----|------|--------|-----|-------|
-| 1.1 | Implement tokenizer with span tracking | 🔴 | [01-rewrite-plan.md](01-rewrite-plan.md) | `src/syntax/lexer.gleam` |
-| 1.1.1 | Token types: Integer, Float, String, Name, Op, Keyword, Comment | 🔴 | [01-rewrite-plan.md](01-rewrite-plan.md) | |
-| 1.1.2 | Escape sequences in strings | 🔴 | [01-rewrite-plan.md](01-rewrite-plan.md) | |
-| 1.1.3 | Comments (single-line and block) | 🔴 | [01-rewrite-plan.md](01-rewrite-plan.md) | |
-| 1.1.4 | Span tracking on all tokens | 🔴 | [01-rewrite-plan.md](01-rewrite-plan.md) | Source location for errors |
-| 1.2 | Define Core AST types | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/ast.gleam` |
-| 1.2.1 | Term type (Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Let, Fix, Call, Ann, Unit, Err, Typ) | 🔴 | [03-core-language.md](03-core-language.md) | Simplified Lam uses String param |
-| 1.2.2 | Value type (VNeut, VLam, VPi, VLit, VCtr, VUnit, VErr) | 🔴 | [03-core-language.md](03-core-language.md) | Simplified: Literal (not ILit/FLit) |
-| 1.2.3 | Pattern type (PAny, PVar, PCtr, PUnit, PLit) | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 1.2.4 | Literal type (Int, Float, String) | 🔴 | [14-simplified-design.md](14-simplified-design.md) | EXTEND later to ILit/FLit |
-| 1.2.5 | Env, Subst, Head, Elim, Case types | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 1.3 | Implement AST utilities | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/ast.gleam` |
-| 1.3.1 | `shift_term` | 🔴 | [03-core-language.md](03-core-language.md) | De Bruijn index shifting |
-| 1.3.2 | `error_term` | 🔴 | [03-core-language.md](03-core-language.md) | Err term for error recovery |
-| 1.3.3 | `make_neut` | 🔴 | [03-core-language.md](03-core-language.md) | Neutral term construction |
-| 1.3.4 | `make_hole_neut` | 🔴 | [03-core-language.md](03-core-language.md) | Hole-based neutral |
-| 1.3.5 | `make_var_neut` | 🔴 | [03-core-language.md](03-core-language.md) | Variable-based neutral |
-| 1.4 | Define State and Error types | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/state.gleam` |
-| 1.4.1 | State type (ctrs, errors, ffi, holes, subst) | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 1.4.2 | Error type (TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction, etc.) | 🔴 | [03-core-language.md](03-core-language.md) | 8 error variants |
-| 1.4.3 | FfiEntry type | 🔴 | [03-core-language.md](03-core-language.md) | Simplified: `fn(List(Value)) -> Value` |
-| 1.4.4 | State helpers: `initial_state`, `with_err`, `continue_with_errors` | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 1.5 | Write tests for lexer | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/syntax/lexer_test.gleam` |
-| 1.5.1 | Every token type | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 1.5.2 | Position tracking | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 1.5.3 | Escape sequences | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 1.5.4 | Comments | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 1.6 | Write tests for Core AST | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/ast_test.gleam` |
-| 1.6.1 | Every type constructor | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 1.6.2 | Shift operations | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 1.6.3 | Equality checks | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 1.7 | Write tests for State | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/state_test.gleam` |
-| 1.7.1 | State manipulation | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 1.7.2 | Error accumulation | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 1.7.3 | FFI entry creation | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 1.1 | Implement tokenizer with span tracking | ✅ | [01-rewrite-plan.md](01-rewrite-plan.md) | `src/syntax/lexer.gleam` |
+| 1.1.1 | Token types: Integer, Float, String, Name, Op, Keyword, Comment | ✅ | [01-rewrite-plan.md](01-rewrite-plan.md) | |
+| 1.1.2 | Escape sequences in strings | ✅ | [01-rewrite-plan.md](01-rewrite-plan.md) | |
+| 1.1.3 | Comments (single-line and block) | ✅ | [01-rewrite-plan.md](01-rewrite-plan.md) | |
+| 1.1.4 | Span tracking on all tokens | ✅ | [01-rewrite-plan.md](01-rewrite-plan.md) | Source location for errors |
+| 1.2 | Define Core AST types | ✅ | [03-core-language.md](03-core-language.md) | `src/core/ast.gleam` |
+| 1.2.1 | Term type (Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Let, Fix, Call, Ann, Unit, Err, Typ) | ✅ | [03-core-language.md](03-core-language.md) | Simplified Lam uses String param |
+| 1.2.2 | Value type (VNeut, VLam, VPi, VLit, VCtr, VUnit, VErr) | ✅ | [03-core-language.md](03-core-language.md) | Simplified: Literal (not ILit/FLit) |
+| 1.2.3 | Pattern type (PAny, PVar, PCtr, PUnit, PLit) | ✅ | [03-core-language.md](03-core-language.md) | |
+| 1.2.4 | Literal type (Int, Float, String) | ✅ | [14-simplified-design.md](14-simplified-design.md) | EXTEND later to ILit/FLit |
+| 1.2.5 | Env, Subst, Head, Elim, Case types | ✅ | [03-core-language.md](03-core-language.md) | |
+| 1.3 | Implement AST utilities | ✅ | [03-core-language.md](03-core-language.md) | `src/core/ast.gleam` |
+| 1.3.1 | `shift_term` | ✅ | [03-core-language.md](03-core-language.md) | De Bruijn index shifting |
+| 1.3.2 | `error_term` | ✅ | [03-core-language.md](03-core-language.md) | Err term for error recovery |
+| 1.3.3 | `make_neut` | ✅ | [03-core-language.md](03-core-language.md) | Neutral term construction |
+| 1.3.4 | `make_hole_neut` | ✅ | [03-core-language.md](03-core-language.md) | Hole-based neutral |
+| 1.3.5 | `make_var_neut` | ✅ | [03-core-language.md](03-core-language.md) | Variable-based neutral |
+| 1.4 | Define State and Error types | ✅ | [03-core-language.md](03-core-language.md) | `src/core/state.gleam` |
+| 1.4.1 | State type (ctrs, errors, ffi, holes, subst) | ✅ | [03-core-language.md](03-core-language.md) | |
+| 1.4.2 | Error type (TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction, etc.) | ✅ | [03-core-language.md](03-core-language.md) | 8 error variants |
+| 1.4.3 | FfiEntry type | ✅ | [03-core-language.md](03-core-language.md) | Simplified: `fn(List(Value)) -> Value` |
+| 1.4.4 | State helpers: `initial_state`, `with_err`, `continue_with_errors` | ✅ | [03-core-language.md](03-core-language.md) | |
+| 1.5 | Write tests for lexer | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/syntax/lexer_test.gleam` |
+| 1.5.1 | Every token type | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 1.5.2 | Position tracking | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 1.5.3 | Escape sequences | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 1.5.4 | Comments | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 1.6 | Write tests for Core AST | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/ast_test.gleam` |
+| 1.6.1 | Every type constructor | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 1.6.2 | Shift operations | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 1.6.3 | Equality checks | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 1.7 | Write tests for State | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/state_test.gleam` |
+| 1.7.1 | State manipulation | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 1.7.2 | Error accumulation | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 1.7.3 | FFI entry creation | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
 
 ### Phase 1 Gate
 
-- [ ] All 30+ Phase 1 tests pass
-- [ ] Tokenizer produces correct tokens for every syntax form
-- [ ] Core AST types are well-formed
-- [ ] State error accumulation works correctly
+- [x] All 30+ Phase 1 tests pass (129 tests total)
+- [x] Tokenizer produces correct tokens for every syntax form
+- [x] Core AST types are well-formed
+- [x] State error accumulation works correctly
+
+**Phase 1 Complete:** All lexer, AST, and state implementations are done and tested. Refactoring completed to simplify tokenization logic, remove redundant functions, and improve maintainability.
 
 ---
 
