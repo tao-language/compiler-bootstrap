@@ -71,6 +71,24 @@ pub fn merge_returns_span_covering_both_when_second_starts_before_first_test() {
   assert merged.end_col == 7
 }
 
+pub fn merge_with_spans_on_different_lines_test() {
+  let a = Span("test.gleam", 1, 1, 1, 5)
+  let b = Span("test.gleam", 3, 1, 3, 5)
+  let merged = merge(a, b)
+  assert merged.start_line == 1
+  assert merged.start_col == 1
+  assert merged.end_line == 3
+  assert merged.end_col == 5
+}
+
+pub fn merge_with_multiline_span_test() {
+  let a = Span("test.gleam", 1, 1, 2, 3)
+  let b = Span("test.gleam", 3, 1, 3, 5)
+  let merged = merge(a, b)
+  assert merged.start_line == 1
+  assert merged.end_line == 3
+}
+
 // ============================================================================
 // Contains
 // ============================================================================
