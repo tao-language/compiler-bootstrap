@@ -74,12 +74,12 @@
 
 ### Phase 1 Gate
 
-- [x] All 30+ Phase 1 tests pass (129 tests total)
+- [x] All 30+ Phase 1 tests pass (382 tests total across all phases)
 - [x] Tokenizer produces correct tokens for every syntax form
-- [x] Core AST types are well-formed
-- [x] State error accumulation works correctly
+- [x] Core AST types are well-formed (including Param record type)
+- [x] State error accumulation works correctly (all Error variants carry spans)
 
-**Phase 1 Complete:** All lexer, AST, and state implementations are done and tested. Refactoring completed to simplify tokenization logic, remove redundant functions, and improve maintainability.
+**Phase 1 Complete:** All lexer, AST, and state implementations are done and tested. AST refactored: `Param` record type extracted from opaque tuple in `Lam`/`VLam`, all `Error` variants carry `span: Span` fields for Phase 5 diagnostics. Refactoring completed to simplify tokenization logic, remove redundant functions, and improve maintainability.
 
 ---
 
@@ -398,6 +398,10 @@
 
 | Date | Change |
 |------|--------|
+| 2026-04-26 | **Grammar DSL critically fixed:** parse() now returns constructed AST (was returning error_node), Tok pattern matches punctuation tokens by value (e.g., Tok("(") matches Punct "("), apply_delimited uses correct pattern Seq([item, Many(Seq([sep, item])])) |
+| 2026-04-26 | **Param record type extracted:** Opaque #(String, Term, Term) in Lam/VLam replaced with named Param record type for type safety and readability |
+| 2026-04-26 | **Error spans added:** All 8 Error variants now carry span: Span field (TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction, CtrUndefined, MatchMissing, MatchRedundant, StepLimitExceeded) |
+| 2026-04-26 | **382 tests passing:** +14 new AST construction tests covering all combinators (tok, kw, seq, opt, many, choice, sep_by, parens, delimited, ref), all existing tests pass with new types |
 | 2026-04-25 | **MAJOR AST REFACTOR:** Core AST updated to new syntax — `Rcd` for records/Unit, `Ctr(tag, Rcd(args))` for constructors, `Typ(level)` for universes, `Case(pattern, guard, body)` with optional guards, `Let` removed in favor of `let_var` helper |
 | 2026-04-25 | **Parser rewritten:** All parsing functions updated for new syntax - `%fn`, `%let`, `%match`, `#Tag`, `fun()`, `{x: y}`, `%Type`, `%err`, `%hole` |
 | 2026-04-25 | **Tests updated:** All test files updated for new AST structure - 341 tests compile, 22 runtime failures remain (tests need assertion updates to match new output formats) |
@@ -436,6 +440,11 @@
 - [ ] Add tests for CLI commands (run, check, test)
 
 ### Code Improvements
+- [x] Fixed grammar parse() to return constructed AST instead of error_node ✅
+- [x] Fixed Tok pattern to match punctuation tokens by value ✅
+- [x] Fixed apply_delimited combinator pattern ✅
+- [x] Extracted Param record type for Lam/VLam params ✅
+- [x] Added span field to all Error variants ✅
 - [ ] Consider making `parse()` propagate errors on failure (currently discards them)
 - [ ] Add `term_from_string` for round-trip testing
 - [ ] Consider adding `Span.to_debug_string` for test assertions
