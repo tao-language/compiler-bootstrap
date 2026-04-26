@@ -385,13 +385,37 @@ pub fn delimited(open: Pattern(a), item: Pattern(a), sep: Pattern(a), close: Pat
 /// let tokens = tokenize("hello world")
 /// let result = parse(grammar, tokens, "error_node")
 /// ```
+/// Parse a grammar definition from a token list.
+///
+/// Returns a `ParseResult` containing the parsed AST node and all parse
+/// errors encountered. On success, the AST node is the result of applying
+/// the rule's constructor to the parsed values. On failure, `error_node`
+/// is returned as a fallback and all errors are accumulated.
+///
+/// The `error_node` is used when the entire parse fails to produce
+/// any AST node. The parser attempts to parse the `start` rule at
+/// position 0.
+///
+/// # Example
+///
+/// ```gleam
+/// import syntax/grammar.{parse}
+/// import syntax/lexer.{tokenize}
+///
+/// let tokens = tokenize("hello world")
+/// let result = parse(grammar, tokens, "error_node")
+/// ```
 pub fn parse(grammar: Grammar(a), tokens: List(Token), error_node: a) -> ParseResult(a) {
   let errors = []
   case try_parse_rule(grammar, grammar.start, tokens, 0, errors) {
-    Ok(#(_values, _final_pos, new_errors)) -> {
-      // The constructor already builds the AST node.
-      // Return the error_node with accumulated errors.
-      ParseResult(ast: error_node, errors: new_errors)
+    Ok(#(values, _final_pos, new_errors)) -> {
+      // Extract the constructed AST node from the first Right value.
+      // The constructor already built the AST node in try_parse_alternative.
+      let ast = case list.first(values) {
+        Ok(#(Right(node), _span)) -> node
+        _ -> error_node
+      }
+      ParseResult(ast: ast, errors: new_errors)
     }
     Error(_) -> ParseResult(ast: error_node, errors: errors)
   }
