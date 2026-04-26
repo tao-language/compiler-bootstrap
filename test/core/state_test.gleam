@@ -3,6 +3,7 @@ import gleam/option.{None}
 import gleam/list
 import core/state.{initial_state, FfiEntry, with_err, def_var, lookup_var, lookup_by_level, new_hole, new_hole_value, with_ffi_entry, lookup_ffi, has_errors, errors, get_vars, error_to_string, truth_ctor, with_truth_ctor, with_max_steps, hole_counter, TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction, CtrUndefined, MatchMissing, MatchRedundant, StepLimitExceeded}
 import core/ast.{VNeut, HHole, VRcd}
+import syntax/span.{single}
 
 
 pub fn main() {
@@ -68,9 +69,9 @@ pub fn def_var_shadows_previous_binding_test() {
 pub fn with_err_preserves_all_state_fields_test() {
   let state = initial_state([], "True")
   let s1 = def_var(state, "x", VRcd([]), VRcd([]))
-  let s2 = with_err(s1, HoleUnsolved(1))
+  let s2 = with_err(s1, HoleUnsolved(1, single("state.gleam", 1, 1)))
   assert lookup_var(s2, "x") == Ok(#(VRcd([]), VRcd([])))
-  assert errors(s2) == [HoleUnsolved(1)]
+  assert errors(s2) == [HoleUnsolved(1, single("state.gleam", 1, 1))]
   assert truth_ctor(s2) == "True"
   assert hole_counter(s2) == 0
 }
@@ -124,14 +125,14 @@ pub fn with_ffi_entry_adds_entry_test() {
 
 pub fn with_err_adds_error_to_list_test() {
   let state = initial_state([], "True")
-  let new_state = with_err(state, HoleUnsolved(1))
-  assert errors(new_state) == [HoleUnsolved(1)]
+  let new_state = with_err(state, HoleUnsolved(1, single("state.gleam", 1, 1)))
+  assert errors(new_state) == [HoleUnsolved(1, single("state.gleam", 1, 1))]
 }
 
 pub fn with_err_preserves_vars_test() {
   let state = initial_state([], "True")
   let s1 = def_var(state, "x", VRcd([]), VRcd([]))
-  let s2 = with_err(s1, HoleUnsolved(1))
+  let s2 = with_err(s1, HoleUnsolved(1, single("state.gleam", 1, 1)))
   assert lookup_var(s2, "x") == Ok(#(VRcd([]), VRcd([])))
 }
 
@@ -141,7 +142,7 @@ pub fn has_errors_returns_false_when_empty_test() {
 }
 
 pub fn has_errors_returns_true_when_has_errors_test() {
-  let state = with_err(initial_state([], "True"), HoleUnsolved(1))
+  let state = with_err(initial_state([], "True"), HoleUnsolved(1, single("state.gleam", 1, 1)))
   assert has_errors(state) == True
 }
 
@@ -175,42 +176,42 @@ pub fn with_max_steps_updates_max_steps_test() {
 // ============================================================================
 
 pub fn error_to_string_type_mismatch_test() {
-  let err = TypeMismatch(VRcd([]), VRcd([]))
+  let err = TypeMismatch(VRcd([]), VRcd([]), single("state.gleam", 1, 1))
   assert error_to_string(err) == "Type mismatch: expected (), got ()"
 }
 
 pub fn error_to_string_var_undefined_test() {
-  let err = VarUndefined("x")
+  let err = VarUndefined("x", single("state.gleam", 1, 1))
   assert error_to_string(err) == "Undefined variable: x"
 }
 
 pub fn error_to_string_hole_unsolved_test() {
-  let err = HoleUnsolved(1)
+  let err = HoleUnsolved(1, single("state.gleam", 1, 1))
   assert error_to_string(err) == "Unsolved hole: ?1"
 }
 
 pub fn error_to_string_not_a_function_test() {
-  let err = NotAFunction(VRcd([]))
+  let err = NotAFunction(VRcd([]), single("state.gleam", 1, 1))
   assert error_to_string(err) == "Not a function: ()"
 }
 
 pub fn error_to_string_ctr_undefined_test() {
-  let err = CtrUndefined("my_ffi")
+  let err = CtrUndefined("my_ffi", single("state.gleam", 1, 1))
   assert error_to_string(err) == "Undefined constructor: my_ffi"
 }
 
 pub fn error_to_string_match_missing_test() {
-  let err = MatchMissing(["x"], ["x"])
+  let err = MatchMissing(["x"], ["x"], single("state.gleam", 1, 1))
   assert error_to_string(err) == "Missing match cases. Patterns not covered: x. Covered: x"
 }
 
 pub fn error_to_string_match_redundant_test() {
-  let err = MatchRedundant
+  let err = MatchRedundant(single("state.gleam", 1, 1))
   assert error_to_string(err) == "Redundant match case"
 }
 
 pub fn error_to_string_step_limit_test() {
-  let err = StepLimitExceeded(10000)
+  let err = StepLimitExceeded(10000, single("state.gleam", 1, 1))
   assert error_to_string(err) == "Step limit exceeded (10000 steps)"
 }
 
@@ -224,14 +225,14 @@ pub fn error_to_string_step_limit_test() {
 pub fn multiple_errors_accumulate_most_recent_first_test() {
   // Errors should be prepended, so most recent is first
   let state = initial_state([], "True")
-  let s1 = with_err(state, HoleUnsolved(1))
-  let s2 = with_err(s1, VarUndefined("x"))
-  let s3 = with_err(s2, TypeMismatch(VRcd([]), VRcd([])))
+  let s1 = with_err(state, HoleUnsolved(1, single("state.gleam", 1, 1)))
+  let s2 = with_err(s1, VarUndefined("x", single("state.gleam", 1, 1)))
+  let s3 = with_err(s2, TypeMismatch(VRcd([]), VRcd([]), single("state.gleam", 1, 1)))
   let err_list = errors(s3)
   assert list.length(err_list) == 3
   // Most recent error should be first
   case err_list {
-    [TypeMismatch(..), VarUndefined("x"), HoleUnsolved(1)] -> True
+    [TypeMismatch(..), VarUndefined("x", _), HoleUnsolved(1, _)] -> True
     _ -> False
   }
 }
@@ -249,7 +250,7 @@ pub fn def_var_does_not_mutate_original_state_test() {
 pub fn with_err_does_not_mutate_original_state_test() {
   // with_err should return a new state with errors, not mutate
   let state = initial_state([], "True")
-  let new_state = with_err(state, HoleUnsolved(1))
+  let new_state = with_err(state, HoleUnsolved(1, single("state.gleam", 1, 1)))
   // Original state should have no errors
   assert has_errors(state) == False
   // New state should have the error
@@ -278,7 +279,7 @@ pub fn error_accumulation_preserves_variable_bindings_test() {
   // Adding an error should not remove existing variable bindings
   let state = initial_state([], "True")
   let s1 = def_var(state, "x", VRcd([]), VRcd([]))
-  let s2 = with_err(s1, HoleUnsolved(1))
+  let s2 = with_err(s1, HoleUnsolved(1, single("state.gleam", 1, 1)))
   // Variable should still be accessible after error is added
   assert lookup_var(s2, "x") == Ok(#(VRcd([]), VRcd([])))
 }

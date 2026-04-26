@@ -247,15 +247,18 @@ pub fn truth_ctor(state: State) -> String {
 
 /// Type checking errors.
 pub type Error {
-  TypeMismatch(expected: Value, got: Value)
-  VarUndefined(name: String)
-  HoleUnsolved(id: Int)
-  NotAFunction(fun_type: Value)
-  CtrUndefined(tag: String)
-  MatchMissing(patterns: List(String), covered: List(String))
-  MatchRedundant
-  StepLimitExceeded(steps: Int)
+  TypeMismatch(expected: Value, got: Value, span: Span)
+  VarUndefined(name: String, span: Span)
+  HoleUnsolved(id: Int, span: Span)
+  NotAFunction(fun_type: Value, span: Span)
+  CtrUndefined(tag: String, span: Span)
+  MatchMissing(patterns: List(String), covered: List(String), span: Span)
+  MatchRedundant(span: Span)
+  StepLimitExceeded(steps: Int, span: Span)
 }
+
+/// Span type for error reporting.
+import syntax/span.{type Span}
 
 // ============================================================================
 // ERROR HELPERS
@@ -263,8 +266,8 @@ pub type Error {
 
 /// Create a VarUndefined error for a variable at a given De Bruijn level.
 /// The name is synthesized as "v@{level}" for debugging.
-pub fn undef_var_error(level: Int) -> Error {
-  VarUndefined("v@" <> int.to_string(level))
+pub fn undef_var_error(level: Int, span: Span) -> Error {
+  VarUndefined("v@" <> int.to_string(level), span)
 }
 
 /// Check if the state has any errors.
@@ -285,23 +288,23 @@ pub fn get_vars(state: State) -> List(#(String, #(Value, Value))) {
 /// Format an error as a human-readable string.
 pub fn error_to_string(error: Error) -> String {
   case error {
-    TypeMismatch(expected, got) ->
+    TypeMismatch(expected, got, _) ->
       "Type mismatch: expected " <> ast.value_to_string(expected)
       <> ", got " <> ast.value_to_string(got)
-    VarUndefined(name) ->
+    VarUndefined(name, _) ->
       "Undefined variable: " <> name
-    HoleUnsolved(id) ->
+    HoleUnsolved(id, _) ->
       "Unsolved hole: ?" <> int.to_string(id)
-    NotAFunction(fun_type) ->
+    NotAFunction(fun_type, _) ->
       "Not a function: " <> ast.value_to_string(fun_type)
-    CtrUndefined(tag) ->
+    CtrUndefined(tag, _) ->
       "Undefined constructor: " <> tag
-    MatchMissing(patterns, covered) ->
+    MatchMissing(patterns, covered, _) ->
       "Missing match cases. Patterns not covered: "
       <> join_list(patterns, ", ")
       <> ". Covered: " <> join_list(covered, ", ")
-    MatchRedundant -> "Redundant match case"
-    StepLimitExceeded(steps) ->
+    MatchRedundant(_) -> "Redundant match case"
+    StepLimitExceeded(steps, _) ->
       "Step limit exceeded (" <> int.to_string(steps) <> " steps)"
   }
 }
