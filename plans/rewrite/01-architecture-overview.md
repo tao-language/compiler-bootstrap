@@ -135,7 +135,7 @@ compiler_bootstrap ──► tao ──► core ──► syntax
 pub type Term {
   Var(index: Int)
   Hole(id: Int)
-  Lam(param: Param, body: Term)
+  Lam(param: #(String, Term), body: Term)
   App(fun: Term, arg: Term)
   Pi(domain: Term, codomain: Term)
   Lit(literal: Literal)
@@ -147,7 +147,7 @@ pub type Term {
 // Values use De Bruijn LEVELS (semantics)
 pub type Value {
   VNeut(head: Head, spine: List(Elim))
-  VLam(param: Param, body: Term)       // body still uses indices
+  VLam(param: #(String, Value), body: Term)
   VPi(domain: Value, codomain: Term)
   VLit(literal: Literal)
   VCtr(tag: String, arg: Value)

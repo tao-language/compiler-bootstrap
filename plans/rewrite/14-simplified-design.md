@@ -19,8 +19,8 @@ Literal {              →    Add bit-width & signedness:   →    LitValue { IL
 No truth/false ctr    →    Add truth/false constructors  →    State with truth_ctor, false_ctor
                             (core knows which to match on)
 
-No implicit params    →    Add implicit params to Lam   →    Lam(param: #(String, Term))
-                            for overloaded functions     →    VLam(implicit: List(String), ...)
+No implicit params    →    Lam uses tuple param        →    Lam(param: #(String, Term))
+                            for overloaded functions     →    VLam(param: #(String, Value), ...)
 
 No record values      →    Add VRcd to Value            →    Full record support
 
@@ -126,15 +126,15 @@ src/
 pub type Term {
   Var(index: Int, span: Span)
   Hole(id: Int, span: Span)
-  Lam(param: String, body: Term, span: Span)          // param: name only (EXTEND: #(name, type))
+  Lam(param: #(String, Term), body: Term, span: Span)  // Tuple: #(name, param_type) — actual implementation
   App(fun: Term, arg: Term, span: Span)
   Pi(domain: Term, codomain: Term, span: Span)
   Lit(value: Literal, span: Span)                     // Generic literal (EXTEND: ILit/FLit)
   Ctr(tag: String, arg: Term, span: Span)
   Match(arg: Term, cases: List(Case), span: Span)     // motive inferred (EXTEND: add motive)
-  Let(name: String, value: Term, body: Term, span: Span)
+  // Let(name: String, value: Term, body: Term, span: Span)  // Desugared to App(Lam(...), val)
   Fix(name: String, body: Term, span: Span)
-  Call(name: String, args: List(Term), span: Span)    // simple call (EXTEND: typed args)
+  Call(name: String, args: List(Term), span: Span)    // Function call — no typed args yet
   Ann(term: Term, typ: Term, span: Span)
   Unit(span: Span)
   Err(message: String, span: Span)
@@ -144,7 +144,7 @@ pub type Term {
 /// Core values (De Bruijn levels)
 pub type Value {
   VNeut(head: Head, spine: List(Elim))
-  VLam(param: String, body: Term, env: Env)           // param: name only (EXTEND: implicit params)
+  VLam(param: #(String, Value), body: Term)           // Tuple: #(param_name, param_type_value)
   VPi(domain: Value, codomain: Term)
   VLit(value: Literal)                                // Generic literal (EXTEND: I32T etc.)
   VCtr(tag: String, arg: Value)
@@ -183,8 +183,8 @@ pub type Literal {
 ```
 
 **Extension notes:**
-- `Lam(param: String, ...)` → `Lam(param: #(String, Term), ...)` adds type to lambda
-- `VLam(param: String, ...)` → `VLam(implicit: List(String), param: String, ...)` adds implicit params
+- `Lam` now uses `#(String, Term)` tuple: `Lam(#(name, param_type), body, span)` — already implemented
+- `VLam` uses `#(String, Value)` tuple: `VLam(#(name, param_type_value), body)` — param_type is a Value, not Term
 - `Literal { Int, Float, String }` → `LitValue { ILit, FLit, StrLit }` adds bit-width
 - `VLit(Literal)` → `VLit(LitValue)` with `LitType { I32T, ..., ILitT, FLitT }` for concrete types
 
@@ -193,11 +193,10 @@ pub type Literal {
 ```gleam
 pub type State {
   State(
-    ctrs: List(#(String, #(String, Term))),  // name → (arg_name, arg_type)
+    vars: List(#(String, #(Value, Value))),  // Variable environment (name → #(value, type))
     errors: List(Error),
     ffi: List(FfiEntry),
-    holes: List(#(Int, Value)),  // hole_id → expected_type
-    subst: List(#(Int, Value)),  // level → value
+    hole_counter: Int,         // Next fresh hole ID
   )
 }
 
@@ -224,7 +223,7 @@ pub type FfiEntry {
 
 **Extension notes:**
 - `FfiEntry.impl: fn(List(Value)) -> Value` → `fn(List(#(Value, Value))) -> Option(Value)` adds (value, type) pairs
-- `State` adds `truth_ctor: String` and `step_limit: Int`
+- `State` stripped down: `truth_ctor`, `step_limit`, `subst`, `holes` fields removed — use explicit threading
 - `Error` adds error codes, notes, hints
 - `List(#(Int, Value))` subst → `Subst` type with shift operations
 
@@ -303,7 +302,7 @@ pub type TestStatement {
 ### Core Functions
 
 ```gleam
-/// Parse source into expression
+/// Parse source into expression — returns parse errors on failure (not discarded)
 pub fn parse(grammar: Grammar, source: String) -> #(Expr, List(ParseError))
 
 /// Desugar expression to core term

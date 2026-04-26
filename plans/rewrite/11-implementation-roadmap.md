@@ -284,7 +284,7 @@ Phase 5  → Extended Features + Polish → Full design
 #### 5.2 Operator Overloading (src/core/ast.gleam, src/core/infer.gleam)
 - Extend FfiEntry to take fn(List(#(Value, Value))) -> Option(Value)
 - Desugar overloaded functions to pattern match on implicit argument types
-- Update VCall to pass (value, type) pairs to FFI
+- VCall(name: String, args: List(Value), ret: Value) — simple call, typed args in Phase 5+
 
 **Tests:** overloaded add (I32 + I32 → I32, F64 + F64 → F64), single-definition pattern match, no-overload case, ambiguous overload error
 

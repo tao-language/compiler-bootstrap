@@ -1,7 +1,7 @@
 /// Debug tests to understand parser behavior
 
 import core/syntax
-import core/ast.{Var, Lit, Int as LitInt, Rcd, Lam, Pi, Param}
+import core/ast.{Var, Lit, Int as LitInt, Rcd, Lam, Pi}
 
 // ============================================================================
 // Debug: what does the parser actually produce?
@@ -14,7 +14,7 @@ pub fn debug_parse_fn_simple_test() {
   
   // Check both term type and errors - if there are errors, the test should fail
   let term_ok = case term {
-    Lam(Param("x", Rcd([], _), Var(0, _)), Var(0, _), _) -> True
+    Lam(#("x", Rcd([], _)), Var(0, _), _) -> True
     _ -> False
   }
   let errors_ok = case errors {
@@ -32,7 +32,7 @@ pub fn debug_parse_fn_literal_test() {
   let #(term, _errors) = syntax.parse("%fn(x: ()) => 42")
   
   case term {
-    Lam(Param("x", Rcd([], _), Lit(LitInt(42), _)), _, _) -> True
+    Lam(#("x", Rcd([], _)), Lit(LitInt(42), _), _) -> True
     _ -> False
   }
 }
@@ -41,8 +41,8 @@ pub fn debug_parse_fn_nested_test() {
   let #(term, _errors) = syntax.parse("%fn(x: ()) => %fn(y: ()) => x")
   
   case term {
-    Lam(Param("x", Rcd([], _), body), _, _) -> case body {
-      Lam(Param("y", Rcd([], _), Var(1, _)), Var(1, _), _) -> True
+    Lam(#("x", Rcd([], _)), body, _) -> case body {
+      Lam(#("y", Rcd([], _)), Var(1, _), _) -> True
       _ -> False
     }
     _ -> False
@@ -70,7 +70,7 @@ pub fn debug_parse_lambda_with_literal_test() {
   let #(term, _errors) = syntax.parse("%fn(x: ()) => 42")
   // Check term only
   case term {
-    Lam(Param("x", Rcd([], _), Lit(_, _)), _, _) -> True
+    Lam(#("x", Rcd([], _)), Lit(_, _), _) -> True
     _ -> False
   }
 }

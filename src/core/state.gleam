@@ -40,65 +40,24 @@ pub type FfiEntry {
 /// * `errors` — Accumulated errors during type checking
 /// * `ffi` — FFI builtin definitions available at runtime
 /// * `hole_counter` — Next fresh hole ID
-/// * `lambda_depth` — Deferred: Current depth of nested lambdas (Phase 5+)
-/// * `max_steps` — Deferred: Maximum evaluation steps before aborting (Phase 5+)
-/// * `step_counter` — Deferred: Current evaluation step count (Phase 5+)
-/// * `truth_ctor` — Deferred: Name of the truth constructor (Phase 5+)
 pub type State {
   State(
     vars: List(#(String, #(Value, Value))),
     errors: List(Error),
     ffi: List(FfiEntry),
     hole_counter: Int,
-    lambda_depth: Int,
-    max_steps: Int,
-    step_counter: Int,
-    truth_ctor: String,
   )
 }
 
 /// Create a fresh initial state.
-///
-/// All states start with an empty variable environment and zero
-/// counters. FFI and truth constructor can be customized.
-///
-/// # Example
-///
-/// ```gleam
-/// import core/state.{initial_state}
-///
-/// let state = initial_state([], "True")
-/// ```
-pub fn initial_state(ffi: List(FfiEntry), truth_ctor: String) -> State {
+pub fn initial_state(ffi: List(FfiEntry)) -> State {
   State(
     vars: [],
     errors: [],
     ffi: ffi,
     hole_counter: 0,
-    lambda_depth: 0,
-    max_steps: 10_000,
-    step_counter: 0,
-    truth_ctor: truth_ctor,
   )
 }
-
-/// Set maximum evaluation steps.
-///
-/// This prevents infinite loops during normalization.
-pub fn with_max_steps(state: State, max_steps: Int) -> State {
-  State(..state, max_steps: max_steps)
-}
-
-/// Set the truth constructor name.
-pub fn with_truth_ctor(state: State, truth_ctor: String) -> State {
-  State(..state, truth_ctor: truth_ctor)
-}
-
-/// Set the lambda depth for the current context.
-pub fn with_lambda_depth(state: State, depth: Int) -> State {
-  State(..state, lambda_depth: depth)
-}
-
 // ============================================================================
 // STATE HELPERS — Error accumulation
 // ============================================================================
@@ -203,12 +162,6 @@ pub fn new_hole_value(state: State) -> #(Value, State) {
 pub fn hole_counter(state: State) -> Int {
   state.hole_counter
 }
-
-/// Set the lambda depth for hole generalization.
-pub fn set_lambda_depth(state: State, depth: Int) -> State {
-  State(..state, lambda_depth: depth)
-}
-
 // ============================================================================
 // STATE HELPERS — FFI
 // ============================================================================
@@ -239,12 +192,6 @@ fn lookup_ffi_loop(
     }
   }
 }
-
-/// Get the truth constructor tag from the state.
-pub fn truth_ctor(state: State) -> String {
-  state.truth_ctor
-}
-
 /// Type checking errors.
 pub type Error {
   TypeMismatch(expected: Value, got: Value, span: Span)

@@ -19,7 +19,7 @@
 ///   - Records: {x: 1, y: 2}
 
 import core/ast.{type Term, type Pattern, type Case,
-  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Rcd, Typ, Err, let_var, Param,
+  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Rcd, Typ, Err, Call, let_var,
   Case as CoreCase, PAny, PVar, PCtr, PUnit, PLit, Int as LitInt, Float as LitFloat}
 import syntax/base_lexer.{Token, type Token, tokenize}
 import syntax/grammar.{type ParseError, ParseError}
@@ -90,6 +90,7 @@ fn term_span(term: Term) -> Span {
     Ctr(_, _, span) -> span
     Match(_, _, span) -> span
     Ann(_, _, span) -> span
+    Call(_, _, span) -> span
     Rcd(_, span) -> span
     Typ(_, span) -> span
     Err(_, span) -> span
@@ -354,7 +355,7 @@ fn parse_lambda(p: Parser, span: Span) -> #(Term, Parser) {
   let p7 = add_binding(p6, name)
   let #(body, rest) = parse_term(p7)
   let final_span = merge(span, term_span(body))
-  #(Lam(Param(name, param_type, body), body, final_span), rest)
+  #(Lam(#(name, param_type), body, final_span), rest)
 }
 
 // Application: fun(fun_arg: arg)
@@ -533,6 +534,7 @@ fn term_to_string(term: Term) -> String {
     Ctr(_, _, _) -> "ctr"
     Match(_, _, _) -> "match"
     Ann(_, _, _) -> "ann"
+    Call(_, _, _) -> "call"
     Rcd(_, _) -> "rcd"
     Typ(_, _) -> "type"
     Err(msg, _) -> msg

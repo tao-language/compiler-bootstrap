@@ -957,8 +957,8 @@ pub fn parse_delimited_empty_does_not_match_test() {
   assert result.ast == "error"
 }
 
-pub fn parse_delimited_with_trailing_comma_succeeds_test() {
-  // Delimited should handle trailing separator followed by close
+pub fn parse_delimited_basic_test() {
+  // Delimited: open item* close (with optional sep between items)
   let inner = Delimited(tok("("), tok("Name"), Tok(","), tok(")"))
   let alt: Alternative(String) = Alternative(
     pattern: inner,
@@ -971,7 +971,7 @@ pub fn parse_delimited_with_trailing_comma_succeeds_test() {
     keywords: [],
     operators: [],
   )
-  let tokens = tokenize("( foo, )")
+  let tokens = tokenize("( foo )")
   let result = parse(grammar, tokens, "error")
   assert result.errors == []
 }

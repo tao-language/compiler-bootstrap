@@ -76,10 +76,10 @@
 
 - [x] All 30+ Phase 1 tests pass (382 tests total across all phases)
 - [x] Tokenizer produces correct tokens for every syntax form
-- [x] Core AST types are well-formed (including Param record type)
+- [x] Core AST types are well-formed (Param extracted then removed in favor of tuples)
 - [x] State error accumulation works correctly (all Error variants carry spans)
 
-**Phase 1 Complete:** All lexer, AST, and state implementations are done and tested. AST refactored: `Param` record type extracted from opaque tuple in `Lam`/`VLam`, all `Error` variants carry `span: Span` fields for Phase 5 diagnostics. Refactoring completed to simplify tokenization logic, remove redundant functions, and improve maintainability.
+**Phase 1 Complete:** All lexer, AST, and state implementations are done and tested. AST refactored: `Param` record type removed (replaced with ` #(String, Term)` tuples for Lam, ` #(String, Value)` for VLam), `Call` constructor added to Term, unused State fields cleaned up, all `Error` variants carry `span: Span` fields. All 375 tests passing.
 
 ---
 
@@ -398,6 +398,11 @@
 
 | Date | Change |
 |------|--------|
+| 2026-04-26 | **Param removed from AST:** `Param` record type removed from `core/ast.gleam`. Lambdas now use ` #(String, Term)` tuples: `Lam(#("name", param_type), body, span)`. `VLam` uses `#(String, Value)` for parameter annotations. |
+| 2026-04-26 | **Call constructor added:** `Call(name, args, span)` added to Term type for function calls. Updated `shift_term`, `term_to_string`, `VLam` string representation. |
+| 2026-04-26 | **State cleaned up:** Removed unused fields from `State`: `lambda_depth`, `max_steps`, `step_counter`, `truth_ctor`. Removed unused helpers: `with_max_steps`, `with_truth_ctor`, `with_lambda_depth`, `set_lambda_depth`, `truth_ctor`. All 375 tests pass. |
+| 2026-04-26 | **Grammar parse() improved:** Returns descriptive error on parse failure instead of empty errors list. Grammar tests updated. |
+| 2026-04-26 | **Design docs updated:** All plan docs (03-core-language, 14-simplified-design, 11-implementation-roadmap, 01-architecture-overview) updated to reflect actual implementation: tuple params for Lam/VLam, Call constructor added, State simplified (truth_ctor/step_limit removed), parse() error handling improved. |
 | 2026-04-26 | **Grammar DSL critically fixed:** parse() now returns constructed AST (was returning error_node), Tok pattern matches punctuation tokens by value (e.g., Tok("(") matches Punct "("), apply_delimited uses correct pattern Seq([item, Many(Seq([sep, item])])) |
 | 2026-04-26 | **Param record type extracted:** Opaque #(String, Term, Term) in Lam/VLam replaced with named Param record type for type safety and readability |
 | 2026-04-26 | **Error spans added:** All 8 Error variants now carry span: Span field (TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction, CtrUndefined, MatchMissing, MatchRedundant, StepLimitExceeded) |
@@ -444,8 +449,12 @@
 - [x] Fixed Tok pattern to match punctuation tokens by value ✅
 - [x] Fixed apply_delimited combinator pattern ✅
 - [x] Extracted Param record type for Lam/VLam params ✅
+- [x] Removed Param record type — replaced with ` #(String, Term)` tuples for Lam, ` #(String, Value)` for VLam ✅
+- [x] Added `Call(name, args, span)` constructor to Term ✅
 - [x] Added span field to all Error variants ✅
-- [ ] Consider making `parse()` propagate errors on failure (currently discards them)
+- [x] Removed unused State fields and helpers (lambda_depth, max_steps, step_counter, truth_ctor) ✅
+- [x] Improved parse() error reporting on failure ✅
+- [ ] Consider making `parse()` propagate partial errors through failed alternatives
 - [ ] Add `term_from_string` for round-trip testing
 - [ ] Consider adding `Span.to_debug_string` for test assertions
 

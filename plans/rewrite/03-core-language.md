@@ -75,20 +75,20 @@ pub type Term {
   Var(index: Int, span: Span)         // De Bruijn index variable
   Hole(id: Int, span: Span)           // Metavariable for inference
   Err(message: String, span: Span)    // Error placeholder
-  Lam(param: #(String, Term), body: Term, span: Span)  // Lambda
+  Lam(param: #(String, Term), body: Term, span: Span)  // Lambda: #(name, param_type) — tuple, not Param record
   App(fun: Term, arg: Term, span: Span)                  // Application
   Pi(domain: Term, codomain: Term, span: Span)          // Pi type (dependent function)
   LitT(typ: LitType, span: Span)                        // Literal type term (I32T, ILitT, etc.)
   Ctr(tag: String, arg: Term, span: Span)               // Constructor
   Rcd(fields: List(#(String, Term)), span: Span)        // Record
-  Dot(record: Term, field: String, span: Span)          // Field access
+  // Dot(record: Term, field: String, span: Span)          // Field access (Phase 5+)
   Ann(term: Term, typ: Term, span: Span)                // Type annotation
-  Match(arg: Term, motive: Term, cases: List(Case), span: Span)  // Pattern match
-  Call(name: String, args: List(#(Term, Term)), ret: Term, span: Span)  // FFI call
-  Comptime(term: Term, span: Span)                      // Compile-time evaluation
-  Fix(name: String, body: Term, span: Span)             // Recursion fixpoint
-  Let(name: String, value: Term, body: Term, span: Span)  // Let binding
-  Unit(span: Span)                                       // Unit value ()
+  Match(arg: Term, cases: List(Case), span: Span)  // Pattern match — motive inferred, not passed
+  Call(name: String, args: List(Term), span: Span)  // Function call — simple, no typed args yet (Phase 5+)
+  // Comptime(term: Term, span: Span)                      // Compile-time evaluation (Phase 5+)
+  // Fix(name: String, body: Term, span: Span)             // Recursion fixpoint (Phase 2+)
+  // Let(name: String, value: Term, body: Term, span: Span)  // Let binding (desugared to App(Lam(...), val))
+  // Unit(span: Span)                                       // Unit value () (parsed as Rcd([], span))
 }
 
 /// Type of a Term: either a Value (evaluated) or Err
@@ -106,11 +106,11 @@ pub type Value {
   VLitT(typ: LitType)                              // Evaluated literal type (I32T, ILitT, etc.)
   VNeut(head: Head, spine: List(Elim))             // Neutral term (not a lambda)
   VRcd(fields: List(#(String, Value)))             // Evaluated record
-  VLam(implicit: List(String), name: String, env: Env, body: Term)  // Lambda
+  VLam(param: #(String, Value), body: Term)  // Lambda: #(param_name, param_type_value)
   VPi(implicit: List(String), name: String, env: Env, in_val: Value, out_term: Term)  // Pi type
   VCtrValue(tag: String, arg: Value)               // Constructor value
-  VUnit                                              // Unit value ()
-  VCall(name: String, args: List(#(Value, Value)), ret: Value)  // FFI call result
+  // VUnit                                          // Unit value () (use VRcd([]) instead)
+  VCall(name: String, args: List(Value), ret: Value)  // Function call result
   VFix(name: String, env: Env, body: Term)         // Recursion fixpoint
   VErr                                               // Error value
 }
@@ -142,9 +142,9 @@ pub type Pattern {
   PAny(span: Span)
   PAs(pattern: Pattern, name: String, span: Span)
   PTyp(universe: Int, span: Span)
-  PLit(value: Literal, span: Span)
-  PLitT(typ: LitType, span: Span)
-  PRcd(fields: List(#(String, Pattern)), span: Span)
+  PLit(value: Lit, span: Span)
+  // PLitT(typ: LitType, span: Span)  // Literal type pattern (Phase 5+)
+  // PRcd(fields: List(#(String, Pattern)), span: Span)  // Record pattern (Phase 5+)
   PCtr(tag: String, arg: Pattern, span: Span)
   PUnit(span: Span)
 }
@@ -279,25 +279,14 @@ pub fn is_redundant(case: Case, earlier_cases: List(Case)) -> Bool
 
 ```gleam
 pub type Error {
-  TypeMismatch(expected: Value, got: Value, expected_span: Span, got_span: Span)
-  VarUndefined(index: Int, span: Span)
+  TypeMismatch(expected: Value, got: Value, span: Span)       // Unified span
+  VarUndefined(name: String, span: Span)
   HoleUnsolved(id: Int, span: Span)
-  NotAFunction(fun: Term, fun_type: Value, span: Span)
-  ArityMismatch(expected: Int, actual: Int, fn_span: Span, call_span: Span)
+  NotAFunction(fun_type: Value, span: Span)
   CtrUndefined(tag: String, span: Span)
-  InfiniteType(hole_id: Int, ty: Value, self_span: Span, ctx_span: Span)
-  RcdMissingFields(fields: List(String), span: Span)
-  CtrUnsolvedParam(tag: String, id: Int, span: Span)
-  DotFieldNotFound(name: String, available: List(String), span: Span)
-  DotOnNonCtr(value: Value, name: String, span: Span)
-  SpineMismatch(expected: Value, actual: Value, fn_span: Span, call_span: Span)
-  PatternMismatch(pattern: Pattern, expected_type: Value, pattern_span: Span, value_span: Span)
-  MatchMissingCase(span: Span, missing_pattern: String)
-  MatchRedundantCase(span: Span)
-  ComptimePermissionDenied(operation: String, required: List(String), span: Span)
-  TODO(message: String)
-  NameShadow(name: String, first_span: Span, second_span: Span)
-  SyntaxError(span: Span, expected: String, got: String, context: String)
+  MatchMissing(patterns: List(String), covered: List(String), span: Span)
+  MatchRedundant(span: Span)
+  StepLimitExceeded(steps: Int, span: Span)
 }
 ```
 
@@ -306,13 +295,10 @@ pub type Error {
 ```gleam
 pub type State {
   State(
-    ctrs: CtrEnv,              // Constructor definitions
-    truth_ctor: String,        // Truth constructor name ("True" or "true"), false is != true
-    holes: List(#(Int, Value)),  // Unsolved holes: id → type
-    subst: Subst,              // Unification substitutions
+    vars: List(#(String, #(Value, Value))),  // Variable environment (name → #(value, type))
     errors: List(Error),       // Accumulated errors
     ffi: List(FfiEntry),       // FFI builtins
-    step_limit: Int,           // Evaluation step limit
+    hole_counter: Int,         // Next fresh hole ID
   )
 }
 
