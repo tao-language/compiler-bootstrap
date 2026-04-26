@@ -34,6 +34,33 @@ pub type LiteralType {
   FloatT
 }
 
+/// Lambda parameter — the full declaration of a bound variable.
+///
+/// Represents a function parameter with its name, optional type annotation,
+/// and expected type (after inference). Used in both `Lam` terms and
+/// `VLam` values.
+pub type Param {
+  Param(
+    /// Parameter name (for debugging and pretty printing).
+    name: String,
+    /// Type annotation in the body position of the lambda.
+    /// The body contains the type annotation as an `Ann(param, type)`,
+    /// and the actual body as the outer term.
+    /// In practice, param refers to the parameter's declared type.
+    param_type: Term,
+    /// Expected type of the parameter after type inference.
+    /// During type checking this becomes the inferred type.
+    /// After inference this holds the type that was inferred or
+    /// that the parameter is expected to have.
+    expected_type: Term,
+  )
+}
+
+/// Create a lambda parameter record.
+pub fn param(name: String, param_type: Term, expected_type: Term) -> Param {
+  Param(name: name, param_type: param_type, expected_type: expected_type)
+}
+
 // ============================================================================
 // TERMS (Syntax level — De Bruijn indices)
 // ============================================================================
@@ -45,7 +72,7 @@ pub type LiteralType {
 pub type Term {
   Var(index: Int, span: Span)
   Hole(id: Int, span: Span)
-  Lam(param: #(String, Term, Term), body: Term, span: Span)
+  Lam(param: Param, body: Term, span: Span)
   App(fun: Term, arg: Term, span: Span)
   Pi(domain: Term, codomain: Term, span: Span)
   Lit(value: Literal, span: Span)
@@ -92,7 +119,7 @@ pub type Elim {
 /// binding site), and De Bruijn indices for bodies.
 pub type Value {
   VNeut(head: Head, spine: List(Elim))
-  VLam(param: #(String, Term, Term), body: Term)
+  VLam(param: Param, body: Term)
   VPi(domain: Value, codomain: Value)
   VLit(value: Literal)
   VCtr(tag: String, arg: Value)
@@ -129,7 +156,7 @@ pub fn error_term(message: String, span: Span) -> Term {
 /// This is desugared to `App(Lam(name, param_type, body), value)` —
 /// a beta-reduction application. The `param_type` is typically `Type` (unit type).
 pub fn let_var(name: String, param_type: Term, value: Term, body: Term, span: Span) -> Term {
-  App(Lam(#(name, param_type, body), body, span), value, span)
+  App(Lam(param(name, param_type, param_type), body, span), value, span)
 }
 
 // ============================================================================
@@ -155,8 +182,8 @@ fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
         False -> Var(i, span)
       }
     Hole(id, span) -> Hole(id, span)
-    Lam(#(name, param, body), func_body, span) ->
-      Lam(#(name, shift_term_from(param, shift, from),
+    Lam(Param(name, param, body), func_body, span) ->
+      Lam(Param(name, shift_term_from(param, shift, from),
            shift_term_from(body, shift, from + 1)),
           shift_term_from(func_body, shift, from + 1),
           span)
@@ -206,7 +233,7 @@ pub fn term_to_string(term: Term) -> String {
   case term {
     Var(i, _) -> "#" <> int.to_string(i)
     Hole(id, _) -> "?" <> int.to_string(id)
-    Lam(#(name, param_type, _body), func_body, _) ->
+    Lam(Param(name, param_type, _expected), func_body, _) ->
       "%fn(" <> name <> ": " <> term_to_string(param_type) <> ") => " <> term_to_string(func_body)
     App(fun, arg, _) ->
       "fun(" <> term_to_string(fun) <> ": " <> term_to_string(arg) <> ")"
@@ -282,7 +309,7 @@ pub fn value_to_string(value: Value) -> String {
         [] -> neut_head_to_string(head)
         _ -> neut_to_string(head, spine)
       }
-    VLam(#(name, _param, _body), body) ->
+    VLam(Param(name, _param_type, _expected), body) ->
       "%fn(" <> name <> ") => " <> term_to_string(body)
     VPi(domain, codomain) ->
       "%fn(" <> name_from_pi_value(domain) <> ": " <> value_to_string(domain) <> ") -> " <> value_to_string(codomain)

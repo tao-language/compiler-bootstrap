@@ -19,7 +19,7 @@
 ///   - Records: {x: 1, y: 2}
 
 import core/ast.{type Term, type Pattern, type Case,
-  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Rcd, Typ, Err, let_var,
+  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Rcd, Typ, Err, let_var, Param,
   Case as CoreCase, PAny, PVar, PCtr, PUnit, PLit, Int as LitInt, Float as LitFloat}
 import syntax/base_lexer.{Token, type Token, tokenize}
 import syntax/grammar.{type ParseError, ParseError}
@@ -354,7 +354,7 @@ fn parse_lambda(p: Parser, span: Span) -> #(Term, Parser) {
   let p7 = add_binding(p6, name)
   let #(body, rest) = parse_term(p7)
   let final_span = merge(span, term_span(body))
-  #(Lam(#(name, param_type, body), body, final_span), rest)
+  #(Lam(Param(name, param_type, body), body, final_span), rest)
 }
 
 // Application: fun(fun_arg: arg)
