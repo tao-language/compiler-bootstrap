@@ -9,6 +9,7 @@
 import gleam/int
 import gleam/list
 import gleam/float
+import gleam/option.{type Option, Some, None}
 import syntax/span.{type Span}
 
 // ============================================================================
@@ -44,7 +45,7 @@ pub type LiteralType {
 pub type Term {
   Var(index: Int, span: Span)
   Hole(id: Int, span: Span)
-  Lam(param: #(String, Term), body: Term, span: Span)
+  Lam(param: #(String, Term, Term), body: Term, span: Span)
   App(fun: Term, arg: Term, span: Span)
   Pi(domain: Term, codomain: Term, span: Span)
   Lit(value: Literal, span: Span)
@@ -52,8 +53,8 @@ pub type Term {
   Match(arg: Term, cases: List(Case), span: Span)
   Let(name: String, value: Term, body: Term, span: Span)
   Ann(term: Term, type_: Term, span: Span)
-  Unit(span: Span)
-  Typ(span: Span)
+  Rcd(fields: List(#(String, Term)), span: Span)
+  Typ(level: Int, span: Span)
   Err(message: String, span: Span)
 }
 
@@ -68,7 +69,7 @@ pub type Pattern {
 
 /// A case in a match expression.
 pub type Case {
-  Case(pattern: Pattern, body: Term, span: Span)
+  Case(pattern: Pattern, guard: Option(Term), body: Term, span: Span)
 }
 
 // ============================================================================
@@ -92,11 +93,11 @@ pub type Elim {
 /// binding site), and De Bruijn indices for bodies.
 pub type Value {
   VNeut(head: Head, spine: List(Elim))
-  VLam(param: #(String, Term), body: Term)
+  VLam(param: #(String, Term, Term), body: Term)
   VPi(domain: Value, codomain: Value)
   VLit(value: Literal)
   VCtr(tag: String, arg: Value)
-  VUnit
+  VRcd(fields: List(#(String, Value)))
   VErr
 }
 
@@ -147,9 +148,10 @@ fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
         False -> Var(i, span)
       }
     Hole(id, span) -> Hole(id, span)
-    Lam(#(name, param), body, span) ->
-      Lam(#(name, shift_term_from(param, shift, from)),
-          shift_term_from(body, shift, from + 1),
+    Lam(#(name, param, body), func_body, span) ->
+      Lam(#(name, shift_term_from(param, shift, from),
+           shift_term_from(body, shift, from + 1)),
+          shift_term_from(func_body, shift, from + 1),
           span)
     App(fun, arg, span) ->
       App(shift_term_from(fun, shift, from),
@@ -163,7 +165,9 @@ fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
     Ctr(tag, arg, span) -> Ctr(tag, shift_term_from(arg, shift, from), span)
     Match(arg, cases, span) ->
       Match(shift_term_from(arg, shift, from),
-            list.map(cases, fn(c) { Case(c.pattern, shift_term_from(c.body, shift, from), c.span) }),
+            list.map(cases, fn(c) {
+              Case(c.pattern, shift_opt(c.guard, shift, from), shift_term_from(c.body, shift, from), c.span)
+            }),
             span)
     Let(name, value, body, span) ->
       Let(name,
@@ -174,13 +178,19 @@ fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
       Ann(shift_term_from(term, shift, from),
           shift_term_from(type_, shift, from),
           span)
-    Unit(span) -> Unit(span)
-    Typ(span) -> Typ(span)
+    Rcd(fields, span) ->
+      Rcd(list.map(fields, fn(f) { #(f.0, shift_term_from(f.1, shift, from)) }), span)
+    Typ(level, span) -> Typ(level, span)
     Err(msg, span) -> Err(msg, span)
   }
 }
 
-
+fn shift_opt(term: Option(Term), shift: Int, from: Int) -> Option(Term) {
+  case term {
+    Some(t) -> Some(shift_term_from(t, shift, from))
+    None -> None
+  }
+}
 
 // ============================================================================
 // STRING REPRESENTATION (Debug)
@@ -194,37 +204,64 @@ pub fn term_to_string(term: Term) -> String {
   case term {
     Var(i, _) -> "#" <> int.to_string(i)
     Hole(id, _) -> "?" <> int.to_string(id)
-    Lam(#(name, _), body, _) ->
-      "λ" <> name <> "." <> term_to_string(body)
+    Lam(#(name, param_type, _body), func_body, _) ->
+      "%fn(" <> name <> ": " <> term_to_string(param_type) <> ") => " <> term_to_string(func_body)
     App(fun, arg, _) ->
-      "(" <> term_to_string(fun) <> " " <> term_to_string(arg) <> ")"
+      "fun(" <> term_to_string(fun) <> ": " <> term_to_string(arg) <> ")"
     Pi(domain, codomain, _) ->
-      "Π" <> term_to_string(domain) <> "." <> term_to_string(codomain)
+      "%fn(" <> name_from_pi(domain) <> ": " <> term_to_string(domain) <> ") -> " <> term_to_string(codomain)
     Lit(Int(value), _) -> int.to_string(value)
     Lit(Float(value), _) -> float.to_string(value)
-    Ctr(tag, arg, _) -> tag <> "(" <> term_to_string(arg) <> ")"
+    Ctr(tag, arg, _) ->
+      case arg {
+        Ann(t, Typ(0, _), _) -> "#" <> tag <> "(" <> term_to_string(t) <> ")"
+        Ann(t, _, _) -> "#" <> tag <> "(" <> term_to_string(t) <> ": " <> term_to_string(arg) <> ")"
+        _ -> "#" <> tag
+      }
     Match(arg, cases, _) ->
-      "match " <> term_to_string(arg) <> " {"
-      <> cases_to_string(cases)
-      <> "}"
+      "%match " <> term_to_string(arg) <> " {"
+      <> list.fold(cases, "", fn(acc, c) { acc <> "\n  | " <> case_to_string(c) })
+      <> "\n}"
     Let(name, value, body, _) ->
-      "let " <> name <> " = " <> term_to_string(value) <> "; " <> term_to_string(body)
+      "%let " <> name <> " = " <> term_to_string(value)
+      <> "; " <> term_to_string(body)
     Ann(term, type_, _) ->
-      term_to_string(term) <> ": " <> term_to_string(type_)
-    Unit(_) -> "()"
-    Typ(_) -> "Type"
-    Err(msg, _) -> "<error: " <> msg <> ">"
+      term_to_string(term) <> " : " <> term_to_string(type_)
+    Rcd(fields, _) ->
+      case fields {
+        [] -> "()"
+        _ -> "{" <> list.fold(fields, "", fn(acc, f) {
+          case acc {
+            "" -> f.0 <> ": " <> term_to_string(f.1)
+            _ -> acc <> ", " <> f.0 <> ": " <> term_to_string(f.1)
+          }
+        }) <> "}"
+      }
+    Typ(level, _) -> "%Type(" <> int.to_string(level) <> ")"
+    Err(msg, _) -> "\"" <> msg <> "\""
   }
 }
 
-fn cases_to_string(cases: List(Case)) -> String {
-  list.fold(cases, "", fn(acc, c) {
-    acc <> " " <> case_to_string(c)
-  })
+fn name_from_pi(term: Term) -> String {
+  case term {
+    Ann(t, _, _) ->
+      case t {
+        Var(i, _) -> "_" <> int.to_string(i)
+        Hole(id, _) -> "_" <> int.to_string(id)
+        _ -> "_"
+      }
+    _ -> "_"
+  }
 }
 
 fn case_to_string(case_: Case) -> String {
-  "(" <> pattern_to_string(case_.pattern) <> " => " <> term_to_string(case_.body) <> ")"
+  case case_.guard {
+    Some(guard) ->
+      pattern_to_string(case_.pattern) <> " ? " <> term_to_string(guard)
+      <> " => " <> term_to_string(case_.body)
+    None ->
+      pattern_to_string(case_.pattern) <> " => " <> term_to_string(case_.body)
+  }
 }
 
 fn pattern_to_string(pat: Pattern) -> String {
@@ -246,15 +283,32 @@ pub fn value_to_string(value: Value) -> String {
         [] -> neut_head_to_string(head)
         _ -> neut_to_string(head, spine)
       }
-    VLam(#(name, _param), body) ->
-      "λ" <> name <> "." <> term_to_string(body)
+    VLam(#(name, _param, _body), body) ->
+      "%fn(" <> name <> ") => " <> term_to_string(body)
     VPi(domain, codomain) ->
-      "Π" <> value_to_string(domain) <> "." <> value_to_string(codomain)
+      "%fn(" <> name_from_pi_value(domain) <> ": " <> value_to_string(domain) <> ") -> " <> value_to_string(codomain)
     VLit(Int(value)) -> int.to_string(value)
     VLit(Float(value)) -> float.to_string(value)
-    VCtr(tag, arg) -> tag <> "(" <> value_to_string(arg) <> ")"
-    VUnit -> "()"
-    VErr -> "<error>"
+    VCtr(tag, arg) -> "#" <> tag <> "(" <> value_to_string(arg) <> ")"
+    VRcd(fields) ->
+      case fields {
+        [] -> "()"
+        _ -> "{" <> list.fold(fields, "", fn(acc, f) {
+          case acc {
+            "" -> f.0 <> ": " <> value_to_string(f.1)
+            _ -> acc <> ", " <> f.0 <> ": " <> value_to_string(f.1)
+          }
+        }) <> "}"
+      }
+    VErr -> "\"error\""
+  }
+}
+
+fn name_from_pi_value(value: Value) -> String {
+  case value {
+    VNeut(HVar(level), _) -> "_" <> int.to_string(level)
+    VNeut(HHole(id), _) -> "_" <> int.to_string(id)
+    _ -> "_"
   }
 }
 

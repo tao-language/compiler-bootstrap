@@ -2,7 +2,7 @@ import gleeunit
 import gleam/option.{None}
 import gleam/list
 import core/state.{initial_state, FfiEntry, with_err, def_var, lookup_var, lookup_by_level, new_hole, new_hole_value, with_ffi_entry, lookup_ffi, has_errors, errors, get_vars, error_to_string, truth_ctor, with_truth_ctor, with_max_steps, hole_counter, TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction, CtrUndefined, MatchMissing, MatchRedundant, StepLimitExceeded}
-import core/ast.{VNeut, HHole, VUnit}
+import core/ast.{VNeut, HHole, VRcd}
 
 
 pub fn main() {
@@ -30,8 +30,8 @@ pub fn initial_state_has_max_steps_test() {
 
 pub fn def_var_adds_variable_to_state_test() {
   let state = initial_state([], "True")
-  let new_state = def_var(state, "x", VUnit, VUnit)
-  assert lookup_var(new_state, "x") == Ok(#(VUnit, VUnit))
+  let new_state = def_var(state, "x", VRcd, VRcd)
+  assert lookup_var(new_state, "x") == Ok(#(VRcd, VRcd))
 }
 
 pub fn lookup_var_returns_error_for_missing_test() {
@@ -41,8 +41,8 @@ pub fn lookup_var_returns_error_for_missing_test() {
 
 pub fn lookup_by_level_finds_variable_test() {
   let state = initial_state([], "True")
-  let new_state = def_var(state, "x", VUnit, VUnit)
-  assert lookup_by_level(new_state, 0) == Ok(#(VUnit, VUnit))
+  let new_state = def_var(state, "x", VRcd, VRcd)
+  assert lookup_by_level(new_state, 0) == Ok(#(VRcd, VRcd))
 }
 
 pub fn lookup_by_level_returns_error_for_missing_test() {
@@ -52,24 +52,24 @@ pub fn lookup_by_level_returns_error_for_missing_test() {
 
 pub fn lookup_by_level_handles_multiple_vars_test() {
   let state = initial_state([], "True")
-  let s1 = def_var(state, "x", VUnit, VUnit)
-  let s2 = def_var(s1, "y", VUnit, VUnit)
-  assert lookup_by_level(s2, 0) == Ok(#(VUnit, VUnit))
-  assert lookup_by_level(s2, 1) == Ok(#(VUnit, VUnit))
+  let s1 = def_var(state, "x", VRcd, VRcd)
+  let s2 = def_var(s1, "y", VRcd, VRcd)
+  assert lookup_by_level(s2, 0) == Ok(#(VRcd, VRcd))
+  assert lookup_by_level(s2, 1) == Ok(#(VRcd, VRcd))
 }
 
 pub fn def_var_shadows_previous_binding_test() {
   let state = initial_state([], "True")
-  let s1 = def_var(state, "x", VUnit, VUnit)
-  let s2 = def_var(s1, "x", VUnit, VUnit)
-  assert lookup_var(s2, "x") == Ok(#(VUnit, VUnit))
+  let s1 = def_var(state, "x", VRcd, VRcd)
+  let s2 = def_var(s1, "x", VRcd, VRcd)
+  assert lookup_var(s2, "x") == Ok(#(VRcd, VRcd))
 }
 
 pub fn with_err_preserves_all_state_fields_test() {
   let state = initial_state([], "True")
-  let s1 = def_var(state, "x", VUnit, VUnit)
+  let s1 = def_var(state, "x", VRcd, VRcd)
   let s2 = with_err(s1, HoleUnsolved(1))
-  assert lookup_var(s2, "x") == Ok(#(VUnit, VUnit))
+  assert lookup_var(s2, "x") == Ok(#(VRcd, VRcd))
   assert errors(s2) == [HoleUnsolved(1)]
   assert truth_ctor(s2) == "True"
   assert hole_counter(s2) == 0
@@ -77,8 +77,8 @@ pub fn with_err_preserves_all_state_fields_test() {
 
 pub fn get_vars_returns_variable_list_test() {
   let state = initial_state([], "True")
-  let s1 = def_var(state, "x", VUnit, VUnit)
-  let s2 = def_var(s1, "y", VUnit, VUnit)
+  let s1 = def_var(state, "x", VRcd, VRcd)
+  let s2 = def_var(s1, "y", VRcd, VRcd)
   let vars = get_vars(s2)
   assert list.length(vars) == 2
 }
@@ -130,9 +130,9 @@ pub fn with_err_adds_error_to_list_test() {
 
 pub fn with_err_preserves_vars_test() {
   let state = initial_state([], "True")
-  let s1 = def_var(state, "x", VUnit, VUnit)
+  let s1 = def_var(state, "x", VRcd, VRcd)
   let s2 = with_err(s1, HoleUnsolved(1))
-  assert lookup_var(s2, "x") == Ok(#(VUnit, VUnit))
+  assert lookup_var(s2, "x") == Ok(#(VRcd, VRcd))
 }
 
 pub fn has_errors_returns_false_when_empty_test() {
@@ -175,7 +175,7 @@ pub fn with_max_steps_updates_max_steps_test() {
 // ============================================================================
 
 pub fn error_to_string_type_mismatch_test() {
-  let err = TypeMismatch(VUnit, VUnit)
+  let err = TypeMismatch(VRcd, VRcd)
   assert error_to_string(err) == "Type mismatch: expected (), got ()"
 }
 
@@ -190,7 +190,7 @@ pub fn error_to_string_hole_unsolved_test() {
 }
 
 pub fn error_to_string_not_a_function_test() {
-  let err = NotAFunction(VUnit)
+  let err = NotAFunction(VRcd)
   assert error_to_string(err) == "Not a function: ()"
 }
 
@@ -226,7 +226,7 @@ pub fn multiple_errors_accumulate_most_recent_first_test() {
   let state = initial_state([], "True")
   let s1 = with_err(state, HoleUnsolved(1))
   let s2 = with_err(s1, VarUndefined("x"))
-  let s3 = with_err(s2, TypeMismatch(VUnit, VUnit))
+  let s3 = with_err(s2, TypeMismatch(VRcd, VRcd))
   let err_list = errors(s3)
   assert list.length(err_list) == 3
   // Most recent error should be first
@@ -239,11 +239,11 @@ pub fn multiple_errors_accumulate_most_recent_first_test() {
 pub fn def_var_does_not_mutate_original_state_test() {
   // def_var should return a new state, not mutate the original
   let state = initial_state([], "True")
-  let new_state = def_var(state, "x", VUnit, VUnit)
+  let new_state = def_var(state, "x", VRcd, VRcd)
   // Original state should still have no variables
   assert lookup_var(state, "x") == Error(Nil)
   // New state should have the variable
-  assert lookup_var(new_state, "x") == Ok(#(VUnit, VUnit))
+  assert lookup_var(new_state, "x") == Ok(#(VRcd, VRcd))
 }
 
 pub fn with_err_does_not_mutate_original_state_test() {
@@ -277,10 +277,10 @@ pub fn multiple_ffi_entries_coexist_test() {
 pub fn error_accumulation_preserves_variable_bindings_test() {
   // Adding an error should not remove existing variable bindings
   let state = initial_state([], "True")
-  let s1 = def_var(state, "x", VUnit, VUnit)
+  let s1 = def_var(state, "x", VRcd, VRcd)
   let s2 = with_err(s1, HoleUnsolved(1))
   // Variable should still be accessible after error is added
-  assert lookup_var(s2, "x") == Ok(#(VUnit, VUnit))
+  assert lookup_var(s2, "x") == Ok(#(VRcd, VRcd))
 }
 
 pub fn new_hole_counter_increments_across_mutations_test() {

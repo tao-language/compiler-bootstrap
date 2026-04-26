@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - Core grammar + parser implemented, 321 tests)
+> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - AST refactored with Rcd, new core syntax, 0 tests currently passing due to AST changes)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend
@@ -398,6 +398,9 @@
 
 | Date | Change |
 |------|--------|
+| 2026-04-25 | **MAJOR AST REFACTOR:** Core AST updated to new syntax — `Rcd` for records, `Ctr(tag, Rcd(args))` for constructors, `Unit` → `Rcd([])`, `Typ` → `Typ(level)`, `Lam` → `Lam(name, param_type, body)`, `Case` → `Case(pattern, guard, body)` |
+| 2026-04-25 | **Parser rewritten** for new core syntax: `%fn`, `%let`, `%match`, `%Type`, `#Tag`, `fun()`, `{x: y}`, `%err`, `%hole` |
+| 2026-04-25 | **Tests broken by AST changes:** VUnit → VRcd, VLam arg type changed, Case arity changed, Typ arity changed — tests need updating |
 | 2026-04-25 | Added 20 missing edge case tests to grammar_test.gleam (error handling, empty inputs, nested structures, choice no-match, opt patterns, delimited edge cases, whitespace) |
 | 2026-04-25 | Added 20 missing AST tests (term_to_string for Match/Let/Ann/Ctr, value_to_string for VCtr/VPi, pattern string rep, shift_term edge cases, structural equality) |
 | 2026-04-25 | Added 8 state tests for error accumulation order and immutability (multiple errors prepend, def_var/with_err/with_max_steps/with_truth_ctor immutability, hole counter persistence, multiple FFI) |
@@ -422,6 +425,8 @@
 - [x] Verify span accuracy for all lexer token types (column counting edge cases) ✅ 15 added
 - [x] Add 5+ negative tests for parser (grammar errors, unexpected tokens) ✅ 3 added
 - [x] Add tests for span merging and multi-line span tracking ✅ 13 added
+- [ ] **Update all tests for new AST:** VUnit → VRcd, VLam, Case, Typ arity changes
+- [ ] Add tests for new core syntax: %fn, %let, %match, #Tag, fun(), {x: y}
 - [ ] Add tests for type inference, substitution, NBE evaluator
 - [ ] Add tests for exhaustiveness checking
 - [ ] Add tests for desugarer
@@ -454,12 +459,38 @@
 
 ---
 
-**Phase 2 Task 2.2 - Core Grammar + Parser Complete:**
-- **Recursive descent parser:** Parses all Core AST terms (Var, Lam, App, Pi, Lit, Ctr, Match, Let, Fix, Hole, Unit, Typ, Err)
-- **De Bruijn indices:** Variable environment threaded through parsing functions
-- **Accurate spans:** Every parsed term includes source location
-- **Error recovery:** Err terms with spans for invalid inputs
-- **All 321 tests pass:** 234 existing + 87 new (grammar, lexer, span, ast, state, parser combinator edge cases)
+**Phase 2 Task 2.2 - Core Grammar + Parser - AST REFACTORED:**
+- **AST refactored:** `Rcd` for records/Unit, `Ctr(tag, Rcd(args))` for constructors, `Typ(level)` for universes, `Case(pattern, guard, body)` with optional guards
+- **New core syntax:** `%fn(name: Type) => body`, `%let name = value; body`, `%match arg { | pattern ? guard => body }`, `#Tag`, `#Tag(arg)`, `fun(arg)`, `{x: y}`, `%Type`, `%err`, `%hole`
+- **Parser rewritten:** All parsing functions updated for new syntax
+- **Tests need updating:** 108 test errors due to AST changes (VUnit → VRcd, VLam arity, Case arity, Typ arity)
 - **Key design:** Parser state tuple threaded through all functions — returns #(Term, Parser)
 
-**Total tests:** 321 passed, 0 failures, 0 warnings
+**Total tests:** Source compiles, 108 test errors to fix
+
+### AST Changes Summary
+
+| Old | New | Notes |
+|-----|-----|-------|
+| `Unit(span)` | `Rcd([], span)` | Unit is empty record |
+| `Lam(#(name, body), ...)` | `Lam(#(name, param_type, body), ...)` | Param type required |
+| `Ctr(tag, arg, span)` | `Ctr(tag, Rcd(args), span)` | Args via Rcd |
+| `Typ(span)` | `Typ(level: Int, span)` | Universe level |
+| `Case(pattern, body, span)` | `Case(pattern, Option(Term), body, span)` | Guard added |
+| `VUnit` | `VRcd([])` | Value unit |
+| `VLam(#(name, body))` | `VLam(#(name, param_type, body))` | Param type |
+
+### Syntax Changes Summary
+
+| Old | New |
+|-----|-----|
+| `fn(x) -> body` | `%fn(x: Type) => body` |
+| `let x = val` | `%let x = val; body` |
+| `match arg { pattern => body }` | `%match arg { | pattern ? guard => body }` |
+| `42` | `42` (unchanged) |
+| `#Some(x)` | `#Some(arg: Rcd)` |
+| `fun(x)` | `fun(x: arg)` |
+| `()` | `()` (unchanged, parsed as Rcd) |
+| `type` | `%Type` or `%Type(n)` |
+| `hole` | `%hole` or `?` |
+| `_` | `_` (unchanged) |

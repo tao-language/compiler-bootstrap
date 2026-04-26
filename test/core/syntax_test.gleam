@@ -1,0 +1,469 @@
+/// Tests for the Core parser
+///
+/// Tests cover:
+/// - Literal parsing (integer, float)
+/// - Keyword parsing (hole, unit, type, true)
+/// - Variable parsing (undefined variables produce errors)
+/// - Lambda expressions (name capture, De Bruijn indices, nested lambdas)
+/// - Pi types (fun)
+/// - Let bindings
+/// - Match expressions
+/// - Fix expressions
+/// - If expressions
+/// - Parenthesized expressions
+/// - List expressions
+/// - Error recovery (strings, unsupported operators)
+/// - Edge cases (empty input, extra tokens, unicode)
+
+import gleeunit
+import core/syntax.{parse, parse_tokens}
+import core/ast.{
+  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Let, Unit, Typ, Err, Case as CoreCase,
+  PAny, PCtr, PUnit, PLit, Int as LitInt, Float as LitFloat
+}
+import syntax/grammar.{ParseError}
+import syntax/base_lexer.{tokenize}
+import gleam/list
+
+pub fn main() {
+  gleeunit.main()
+}
+
+// ============================================================================
+// Integer literal parsing
+// ============================================================================
+
+pub fn parse_simple_integer_test() {
+  let #(term, errors) = parse("42")
+  assert errors == []
+  assert case term {
+    Lit(LitInt(42), span) -> span.start_line == 1 && span.start_col == 1
+    _ -> False
+  }
+}
+
+pub fn parse_large_integer_test() {
+  let #(term, _) = parse("999999")
+  assert case term {
+    Lit(LitInt(999999), _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_zero_test() {
+  let #(term, _) = parse("0")
+  assert case term {
+    Lit(LitInt(0), _) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Float literal parsing
+// ============================================================================
+
+pub fn parse_simple_float_test() {
+  let #(term, errors) = parse("3.14")
+  assert errors == []
+  assert case term {
+    Lit(LitFloat(3.14), _) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Variable parsing
+// ============================================================================
+
+pub fn parse_undefined_variable_produces_error_test() {
+  let #(term, errors) = parse("x")
+  assert case term {
+    Err("undefined variable: x", _) -> True
+    _ -> False
+  }
+  assert list.length(errors) >= 1
+}
+
+pub fn parse_underscore_produces_undefined_error_test() {
+  let #(term, _) = parse("_")
+  assert case term {
+    Err("undefined variable: _", _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_underscore_prefixed_produces_undefined_error_test() {
+  let #(term, _) = parse("_foo")
+  assert case term {
+    Err("undefined variable: _foo", _) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Hole
+// ============================================================================
+
+pub fn parse_hole_test() {
+  let #(term, errors) = parse("hole")
+  assert errors == []
+  assert case term {
+    Hole(0, _) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Unit and Typ
+// ============================================================================
+
+pub fn parse_unit_test() {
+  let #(term, errors) = parse("unit")
+  assert errors == []
+  assert case term {
+    Unit(_) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_typ_test() {
+  let #(term, errors) = parse("type")
+  assert errors == []
+  assert case term {
+    Typ(_) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_true_maps_to_unit_test() {
+  let #(term, errors) = parse("true")
+  assert errors == []
+  assert case term {
+    Unit(_) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Lambda expressions
+// ============================================================================
+
+pub fn parse_lambda_simple_test() {
+  // fn(x) -> x captures name "x" and body uses Var(0)
+  let #(term, errors) = parse("fn(x) -> x")
+  assert errors == []
+  assert case term {
+    Lam(#("x", Var(0, _)), Var(0, _), _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_lambda_with_literal_body_test() {
+  let #(term, errors) = parse("fn(x) -> 42")
+  assert errors == []
+  assert case term {
+    Lam(#("x", Lit(LitInt(42), _)), _, _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_nested_lambda_binding_works_test() {
+  // fn(x) -> fn(y) -> x references outer x (Var(1))
+  let #(term, _) = parse("fn(x) -> fn(y) -> x")
+  assert case term {
+    Lam(#("x", body), _, _) -> case body {
+      Lam(#("y", Var(1, _)), Var(1, _), _) -> True
+      _ -> False
+    }
+    _ -> False
+  }
+}
+
+pub fn parse_inner_variable_shadows_outer_test() {
+  // fn(x) -> fn(x) -> x (inner x shadows outer x)
+  let #(term, _) = parse("fn(x) -> fn(x) -> x")
+  assert case term {
+    Lam(#("x", body), _, _) -> case body {
+      Lam(#("x", Var(0, _)), Var(0, _), _) -> True
+      _ -> False
+    }
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Pi types (fun)
+// ============================================================================
+
+pub fn parse_fun_type_with_name_test() {
+  let #(term, errors) = parse("fun(x) -> x -> x")
+  assert errors == []
+  assert case term {
+    Pi(Var(0, _), Var(0, _), _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_fun_type_two_params_test() {
+  let #(term, _) = parse("fun(x) -> x -> fun(y) -> y -> x")
+  assert case term {
+    Pi(Var(0, _), Pi(Var(0, _), Var(1, _), _), _) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Let bindings
+// ============================================================================
+
+pub fn parse_let_simple_binding_test() {
+  let #(term, errors) = parse("let x = 42")
+  assert errors == []
+  assert case term {
+    Let("x", Lit(LitInt(42), _), Unit(_), _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_let_with_lambda_test() {
+  let #(term, errors) = parse("let f = fn(x) -> x")
+  assert errors == []
+  assert case term {
+    Let("f", Lam(#("x", Var(0, _)), Var(0, _), _), Unit(_), _) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Match expressions
+// ============================================================================
+
+pub fn parse_empty_match_error_test() {
+  let #(term, errors) = parse("match { }")
+  assert errors == []
+  assert case term {
+    Match(arg, [], _) -> case arg {
+      Err("unexpected end of input", _) -> True
+      _ -> False
+    }
+    _ -> False
+  }
+}
+
+pub fn parse_match_with_cases_test() {
+  let #(term, _) = parse("match { _ => x; _ => y }")
+  assert case term {
+    Match(_, cases, _) -> list.length(cases) == 2
+    _ -> False
+  }
+}
+
+pub fn parse_match_with_unit_pattern_test() {
+  let #(term, _) = parse("match { () => x }")
+  assert case term {
+    Match(_, [CoreCase(PUnit(_), _, _)], _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_match_with_literal_pattern_test() {
+  let #(term, _) = parse("match { 42 => x }")
+  assert case term {
+    Match(_, [CoreCase(PLit(LitInt(42), _), _, _)], _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_nested_match_structure_test() {
+  let #(term, _) = parse("match { match { _ => x } => y }")
+  assert case term {
+    Match(_, [CoreCase(PAny(_), Match(_, _, _), _)], _) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Fix expressions
+// ============================================================================
+
+pub fn parse_simple_fix_test() {
+  let #(term, _) = parse("fix x")
+  // fix is transformed into Let (body parsing may vary)
+  assert case term {
+    Let("x", _, _, _) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// If expressions
+// ============================================================================
+
+pub fn parse_if_then_else_test() {
+  let #(term, _) = parse("if x then y else z")
+  assert case term {
+    Match(_, cases, _) -> list.length(cases) == 2
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Parenthesized expressions
+// ============================================================================
+
+pub fn parse_parenthesized_integer_test() {
+  let #(term, errors) = parse("(42)")
+  assert errors == []
+  assert case term {
+    Lit(LitInt(42), _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_nested_parens_test() {
+  let #(term, _) = parse("((42))")
+  assert case term {
+    Lit(LitInt(42), _) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Lists
+// ============================================================================
+
+pub fn parse_empty_list_test() {
+  let #(term, errors) = parse("[]")
+  assert errors == []
+  assert case term {
+    Ctr("#", Unit(_), _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_single_item_list_test() {
+  let #(term, errors) = parse("[1]")
+  assert errors == []
+  // Single item list produces Ctr("#", Lit(1), span)
+  assert case term {
+    Ctr("#", Lit(LitInt(1), _), _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_two_item_list_test() {
+  let #(term, errors) = parse("[1, 2]")
+  assert errors == []
+  assert case term {
+    Ctr("#", _, _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_nested_list_test() {
+  let #(term, errors) = parse("[[1, 2]]")
+  let _ = errors
+  assert case term {
+    Ctr("#", _, _) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Error cases - error recovery
+// ============================================================================
+
+pub fn parse_string_literal_returns_error_test() {
+  let #(term, _) = parse("\"hello\"")
+  assert case term {
+    Err("string literal not supported: hello", _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_unsupported_operator_returns_error_test() {
+  let #(term, _) = parse("<")
+  assert case term {
+    Err("unexpected operator: <", _) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Edge cases
+// ============================================================================
+
+pub fn parse_empty_string_returns_error_test() {
+  let #(term, _) = parse("")
+  assert case term {
+    Err("unexpected end of input", _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_whitespace_only_returns_error_test() {
+  let #(term, _) = parse("   ")
+  assert case term {
+    Err("unexpected end of input", _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_extra_tokens_returns_error_test() {
+  let #(term, errors) = parse("42 43")
+  let _ = term
+  assert list.length(errors) >= 1
+}
+
+pub fn parse_trailing_paren_recovers_test() {
+  let #(term, errors) = parse("(42")
+  let _ = term
+  let _ = errors
+  assert True
+}
+
+// ============================================================================
+// Span accuracy tests
+// ============================================================================
+
+pub fn parse_span_starts_at_beginning_test() {
+  let #(term, _) = parse("42")
+  assert case term {
+    Lit(_, span) -> span.start_line == 1 && span.start_col == 1
+    _ -> False
+  }
+}
+
+// ============================================================================
+// parse_tokens with filename
+// ============================================================================
+
+pub fn parse_tokens_with_filename_test() {
+  let tokens = tokenize("42")
+  let #(term, errors) = parse_tokens(tokens, "test.core.tao")
+  assert errors == []
+  assert case term {
+    Lit(LitInt(42), _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_tokens_empty_returns_error_test() {
+  let #(term, _errors) = parse_tokens([], "test.core.tao")
+  assert case term {
+    Err("unexpected end of input", span) -> span.file == "test.core.tao"
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Unicode and special name characters
+// ============================================================================
+
+pub fn parse_unicode_name_produces_undefined_error_test() {
+  let #(term, _) = parse("λ")
+  assert case term {
+    Err(_, _) -> True
+    _ -> False
+  }
+}

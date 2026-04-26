@@ -1,6 +1,6 @@
 import gleeunit
 import gleam/list
-import core/ast.{Var, Hole, Lam, App, Pi, Lit, Ctr, Ann, Let, Match, Case, Typ, PAny, PVar, PCtr, PUnit, PLit, VNeut, HVar, HHole, VLam, VPi, VLit, VCtr, VUnit, VErr, Err as AstErr, Unit as AstUnit, Int as LitInt, Float as LitFloat, make_neut, make_hole_neut, make_var_neut, error_term, shift_term, term_to_string, value_to_string, EApp}
+import core/ast.{Var, Hole, Lam, App, Pi, Lit, Ctr, Ann, Let, Match, Case, Typ, PAny, PVar, PCtr, PUnit, PLit, VNeut, HVar, HHole, VLam, VPi, VLit, VCtr, VRcd, VErr, Err as AstErr, Unit as AstUnit, Int as LitInt, Float as LitFloat, make_neut, make_hole_neut, make_var_neut, error_term, shift_term, term_to_string, value_to_string, EApp}
 import syntax/span.{single}
 
 pub fn main() {
@@ -115,7 +115,7 @@ pub fn neut_value_stores_head_and_spine_test() {
 }
 
 pub fn neut_value_stores_hole_head_test() {
-  let v = VNeut(HHole(5), [EApp(VUnit)])
+  let v = VNeut(HHole(5), [EApp(VRcd)])
   assert v.head == HHole(5)
   assert list.length(v.spine) == 1
 }
@@ -357,7 +357,7 @@ pub fn value_to_string_float_literal_test() {
 }
 
 pub fn value_to_string_unit_test() {
-  let v = VUnit
+  let v = VRcd
   assert value_to_string(v) == "()"
 }
 
