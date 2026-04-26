@@ -186,7 +186,7 @@ pub fn shift_term_negative_on_free_variable_decrements_index_test() {
 pub fn shift_term_on_bound_variable_increments_index_test() {
   // When shifting a lambda by 1, free vars in the param_type get shifted,
   // but bound vars in the body stay the same (from=1).
-  let body = Var(0, single("file.gleam", 1, 1))
+  let _body = Var(0, single("file.gleam", 1, 1))
   let param_type = Hole(-1, single("file.gleam", 1, 1))
   let lam = Lam(#("x", param_type), Var(0, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
   let shifted = shift_term(lam, 1)
@@ -253,7 +253,7 @@ pub fn shift_term_on_ctr_shifts_arg_test() {
 pub fn shift_term_negative_on_all_vars_decrements_indices_test() {
   // Shift -1 should decrease vars >= from (which is 0) by 1.
   // For a Lam, the param_type uses from=0, body uses from=1.
-  let body = Var(0, single("file.gleam", 1, 1))
+  let _body = Var(0, single("file.gleam", 1, 1))
   let param_type = Hole(-1, single("file.gleam", 1, 1))
   let outer = Var(1, single("file.gleam", 1, 2))
   let lam = Lam(#("x", param_type), outer, single("file.gleam", 1, 3))
