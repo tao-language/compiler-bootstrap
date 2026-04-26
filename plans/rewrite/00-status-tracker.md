@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - Let removed, replaced by let_var helper, 0 tests currently passing due to AST changes)
+> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - Let removed, replaced by let_var helper, AST refactored, 341 tests compile, 22 runtime failures to fix)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend
@@ -398,7 +398,9 @@
 
 | Date | Change |
 |------|--------|
-| 2026-04-25 | **MAJOR AST REFACTOR:** Core AST updated to new syntax — `Rcd` for records, `Ctr(tag, Rcd(args))` for constructors, `Unit` → `Rcd([])`, `Typ` → `Typ(level)`, `Lam` → `Lam(name, param_type, body)`, `Case` → `Case(pattern, guard, body)` |
+| 2026-04-25 | **MAJOR AST REFACTOR:** Core AST updated to new syntax — `Rcd` for records/Unit, `Ctr(tag, Rcd(args))` for constructors, `Typ(level)` for universes, `Case(pattern, guard, body)` with optional guards, `Let` removed in favor of `let_var` helper |
+| 2026-04-25 | **Parser rewritten:** All parsing functions updated for new syntax - `%fn`, `%let`, `%match`, `#Tag`, `fun()`, `{x: y}`, `%Type`, `%err`, `%hole` |
+| 2026-04-25 | **Tests updated:** All test files updated for new AST structure - 341 tests compile, 22 runtime failures remain (tests need assertion updates to match new output formats) |
 | 2026-04-25 | **Parser rewritten** for new core syntax: `%fn`, `%let`, `%match`, `%Type`, `#Tag`, `fun()`, `{x: y}`, `%err`, `%hole` |
 | 2026-04-25 | **Tests broken by AST changes:** VUnit → VRcd, VLam arg type changed, Case arity changed, Typ arity changed — tests need updating |
 | 2026-04-25 | Added 20 missing edge case tests to grammar_test.gleam (error handling, empty inputs, nested structures, choice no-match, opt patterns, delimited edge cases, whitespace) |
