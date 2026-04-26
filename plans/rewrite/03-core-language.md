@@ -186,16 +186,16 @@ pub type Context = List(#(String, #(Value, Type)))
 
 ```gleam
 /// Infer the type of a term (synthesis)
-/// Returns: (term with holes resolved, inferred type, updated state)
-pub fn infer(state: State, term: Term) -> #(Term, Value, State)
+/// Returns: (result with holes and comptime resolved, inferred type, updated state)
+pub fn infer(state: State, term: Term) -> #(Value, Value, State)
 
 /// Check that a term has the expected type (verification)
-/// Returns: (term with holes resolved, verified type, updated state)
-pub fn check(state: State, term: Term, expected: Value) -> #(Term, Value, State)
+/// Returns: (result with holes and comptime resolved, verified type, updated state)
+pub fn check(state: State, term: Term, expected_type: Value) -> #(Value, Value, State)
 
-/// Infer a pattern against an expected type
+/// Check a pattern against an expected type
 /// Returns updated state with pattern bindings
-pub fn infer_pattern(state: State, pattern: Pattern, expected: Value) -> State
+pub fn check_pattern(state: State, pattern: Pattern, expected_type: Value) -> State
 
 /// Check exhaustiveness of match cases
 /// Returns updated state with any missing/redundant cases
