@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - Test suite audit, AST refactored, parser fixes for %fn/%let/%match/%fix prefixed tokens, lexer/token mismatches fixed. 348 tests compile, 15 runtime failures remaining - parser not producing Lam for %fn syntax)
+> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - All 368 tests passing! Parser tests fixed: updated to new %fn/%let/%match/%fix syntax, fixed token value extraction bug, cleaned up warnings)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend
@@ -414,6 +414,7 @@
 | 2026-04-25 | Added 15 lexer span verification tests (integer, float, string, lambda, keyword, operator, multi-line) |
 | 2026-04-25 | Added 9 lexer edge case tests (pipe, ampersand, exclamation, <<, _, multiple identifiers, newlines, CR, --) |
 | 2026-04-25 | Added 6 AST shift edge case tests (nested lambda, Ann span preservation, Match case body span) |
+| 2026-04-25 | **ALL TESTS PASSING (368/368):** Fixed parser token value extraction bug, updated all syntax tests to new %fn/%let/%match/%fix syntax, cleaned up warnings |
 | 2026-04-25 | Parser combinator DSL implemented with 11 combinators (tok, kw, op, ref, seq, opt, many, choice, sep_by, parens, delimited) |
 | 2026-04-25 | 198 parser combinator tests written (pattern construction, Either type, ParseResult extraction, error formatting) |
 | 2026-04-24 | Initial tracker created based on revised roadmap |
