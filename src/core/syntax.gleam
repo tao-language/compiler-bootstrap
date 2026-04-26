@@ -107,7 +107,7 @@ fn skip(kind: String, p: Parser) -> Parser {
     }
     "=>" -> {
       case list.drop(tokens, pos) {
-        [Token("Op", "=", _), Token("Op", ">", _), .._] -> #(tokens, pos + 2, env, fn_, errors)
+        [Token("Punct", "=", _), Token("Op", ">", _), .._] -> #(tokens, pos + 2, env, fn_, errors)
         _ -> p
       }
     }
@@ -168,13 +168,18 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       #(Hole(parsed_id, new_span), #(tokens, new_pos, env, fn_, errors))
     }
     
+    // Prefixed tokens: % followed by keyword (lexer produces separate tokens)
+    [Token("Op", "%", _), Token("Name", "fn", _), ..rest] ->
+      parse_lambda(#(rest, 0, env, fn_, errors), span)
+    [Token("Op", "%", _), Token("Name", "let", _), ..rest] ->
+      parse_let(#(rest, 0, env, fn_, errors), span)
+    [Token("Op", "%", _), Token("Name", "match", _), ..rest] ->
+      parse_match(#(rest, 0, env, fn_, errors), span)
+    [Token("Op", "%", _), Token("Name", "fix", _), ..rest] ->
+      parse_fix(#(rest, 0, env, fn_, errors), span)
     // Keywords and prefixed tokens
     [Token("Name", v, _), .._] -> {
       case v {
-        "%fn" -> parse_lambda(#(tokens, pos + 1, env, fn_, errors), span)
-        "%let" -> parse_let(#(tokens, pos + 1, env, fn_, errors), span)
-        "%match" -> parse_match(#(tokens, pos + 1, env, fn_, errors), span)
-        "%fix" -> parse_fix(#(tokens, pos + 1, env, fn_, errors), span)
         "%" -> parse_hole(#(tokens, pos + 1, env, fn_, errors), span)
         "hole" -> #(Hole(0, span), #(tokens, pos + 1, env, fn_, errors))
         "unit" -> #(Rcd([], span), #(tokens, pos + 1, env, fn_, errors))
@@ -220,7 +225,7 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
     // Punctuation
     [Token("Punct", "[", _), ..rest] -> parse_list(#(rest, 0, env, fn_, errors), span)
     [Token("Punct", "{", _), ..rest] -> parse_rcd(#(rest, 0, env, fn_, errors), span)
-    [Token("Punct", "()", _), .._] -> #(Rcd([], span), #(tokens, pos + 1, env, fn_, errors))
+    [Token("Punct", "(", _), Token("Punct", ")", _), ..rest] -> #(Rcd([], span), #(rest, 2, env, fn_, errors))
     [Token("Punct", "#", _), ..rest] -> parse_ctr(#(rest, 0, env, fn_, errors), span)
     [Token("Eof", ..), ..] -> { let e = Err("unexpected end of input", span)#(e, p) }
     [Token(_, v, _), .._] -> {
@@ -481,8 +486,8 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
         _ -> #(PVar(v, span), p1)
       }
     }
-    [Token("Punct", "()", _), .._] -> {
-      let p1 = #(tokens, pos + 1, env, fn_, errors)
+    [Token("Punct", "(", _), Token("Punct", ")", _), ..rest] -> {
+      let p1 = #(tokens, pos + 2, env, fn_, errors)
       #(PUnit(span), p1)
     }
     [Token("Integer", v, _), .._] -> {

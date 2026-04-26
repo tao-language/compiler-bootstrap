@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - Let removed, replaced by let_var helper, AST refactored, 341 tests compile, 22 runtime failures to fix)
+> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - Test suite audit, AST refactored, parser fixes for %fn/%let/%match/%fix prefixed tokens, lexer/token mismatches fixed. 348 tests compile, 15 runtime failures remaining - parser not producing Lam for %fn syntax)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend

@@ -18,6 +18,7 @@
 import gleeunit
 import core/syntax.{parse, parse_tokens}
 import core/ast.{
+  term_to_string,
   Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Rcd, Typ, Err, Case as CoreCase,
   PAny, PCtr, PUnit, PLit, Int as LitInt, Float as LitFloat
 }
@@ -148,8 +149,8 @@ pub fn parse_true_maps_to_unit_test() {
 // ============================================================================
 
 pub fn parse_lambda_simple_test() {
-  // fn(x) -> x captures name "x" and body uses Var(0)
-  let #(term, errors) = parse("fn(x) -> x")
+  // %fn(x: ()) => body captures name "x", param_type, and body uses Var(0)
+  let #(term, errors) = parse("%fn(x: ()) => x")
   assert errors == []
   assert case term {
     Lam(#("x", Rcd([], _), Var(0, _)), Var(0, _), _) -> True
@@ -158,7 +159,7 @@ pub fn parse_lambda_simple_test() {
 }
 
 pub fn parse_lambda_with_literal_body_test() {
-  let #(term, errors) = parse("fn(x) -> 42")
+  let #(term, errors) = parse("%fn(x: ()) => 42")
   assert errors == []
   assert case term {
     Lam(#("x", Rcd([], _), Lit(LitInt(42), _)), _, _) -> True
@@ -167,8 +168,8 @@ pub fn parse_lambda_with_literal_body_test() {
 }
 
 pub fn parse_nested_lambda_binding_works_test() {
-  // fn(x) -> fn(y) -> x references outer x (Var(1))
-  let #(term, _) = parse("fn(x) -> fn(y) -> x")
+  // %fn(x: ()) => %fn(y: ()) => x references outer x (Var(1))
+  let #(term, _) = parse("%fn(x: ()) => %fn(y: ()) => x")
   assert case term {
     Lam(#("x", Rcd([], _), body), _, _) -> case body {
       Lam(#("y", Rcd([], _), Var(1, _)), Var(1, _), _) -> True
@@ -179,8 +180,8 @@ pub fn parse_nested_lambda_binding_works_test() {
 }
 
 pub fn parse_inner_variable_shadows_outer_test() {
-  // fn(x) -> fn(x) -> x (inner x shadows outer x)
-  let #(term, _) = parse("fn(x) -> fn(x) -> x")
+  // %fn(x: ()) => %fn(x: ()) => x (inner x shadows outer x)
+  let #(term, _) = parse("%fn(x: ()) => %fn(x: ()) => x")
   assert case term {
     Lam(#("x", Rcd([], _), body), _, _) -> case body {
       Lam(#("x", Rcd([], _), Var(0, _)), Var(0, _), _) -> True
