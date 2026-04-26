@@ -488,7 +488,10 @@ fn apply_pattern(grammar: Grammar(a), pattern: Pattern(a), tokens: List(Token), 
 fn apply_tok(kind: String, tokens: List(Token), pos: Int, errors: List(ParseError)) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case peek_token(tokens, pos) {
     Error(_) -> Error("expected token '" <> kind <> "'")
-    Ok(token) -> case token.kind == kind {
+    Ok(token) -> case token.kind == kind || {
+      // Also match punctuation tokens by value: Tok("(") matches Punct "(" 
+      token.kind == "Punct" && token.value == kind
+    } {
       True -> Ok(#([ #(Left(token.value), token.span) ], pos + 1, errors))
       False -> Error("expected token '" <> kind <> "'")
     }
@@ -591,8 +594,8 @@ fn apply_parens(grammar: Grammar(a), inner_name: String, tokens: List(Token), po
 fn apply_delimited(grammar: Grammar(a), open_p: Pattern(a), item_p: Pattern(a), sep_p: Pattern(a), close_p: Pattern(a), tokens: List(Token), pos: Int, errors: List(ParseError)) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case apply_pattern(grammar, open_p, tokens, pos, errors) {
     Ok(#(_, new_pos, new_errors)) -> {
-      // Parse: (item sep_item)* — optional repeated
-      let repeated = Seq([item_p, Opt(SepBy(sep_p, item_p))])
+      // Parse: item (sep item)* — requires at least one item, then zero or more (sep, item) pairs
+      let repeated = Seq([item_p, Many(Seq([sep_p, item_p]))])
       case apply_pattern(grammar, repeated, tokens, new_pos, new_errors) {
         Ok(#(values, close_pos, close_errors)) -> {
           case apply_pattern(grammar, close_p, tokens, close_pos, close_errors) {
