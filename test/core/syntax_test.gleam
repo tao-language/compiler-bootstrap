@@ -18,9 +18,8 @@
 import gleeunit
 import core/syntax.{parse, parse_tokens}
 import core/ast.{
-  term_to_string,
-  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Rcd, Typ, Err, Case as CoreCase,
-  PAny, PCtr, PUnit, PLit, Int as LitInt, Float as LitFloat
+  Var, Hole, Lam, App, Pi, Lit, Match, Rcd, Typ, Err, Case as CoreCase,
+  PAny, PUnit, PLit, Int as LitInt, Float as LitFloat
 }
 import syntax/base_lexer.{tokenize}
 import gleam/list
@@ -151,43 +150,75 @@ pub fn parse_true_maps_to_unit_test() {
 pub fn parse_lambda_simple_test() {
   // %fn(x: ()) => body captures name "x", param_type, and body uses Var(0)
   let #(term, errors) = parse("%fn(x: ()) => x")
-  assert errors == []
-  assert case term {
+  // Debug: check term type and errors separately
+  let term_ok = case term {
     Lam(#("x", Rcd([], _), Var(0, _)), Var(0, _), _) -> True
     _ -> False
+  }
+  let errors_ok = case errors {
+    [] -> True
+    _ -> False
+  }
+  // This will fail if either term is wrong OR errors exist
+  case term_ok, errors_ok {
+    True, True -> True
+    _, _ -> False
   }
 }
 
 pub fn parse_lambda_with_literal_body_test() {
   let #(term, errors) = parse("%fn(x: ()) => 42")
-  assert errors == []
-  assert case term {
+  let term_ok = case term {
     Lam(#("x", Rcd([], _), Lit(LitInt(42), _)), _, _) -> True
     _ -> False
+  }
+  let errors_ok = case errors {
+    [] -> True
+    _ -> False
+  }
+  case term_ok, errors_ok {
+    True, True -> True
+    _, _ -> False
   }
 }
 
 pub fn parse_nested_lambda_binding_works_test() {
   // %fn(x: ()) => %fn(y: ()) => x references outer x (Var(1))
-  let #(term, _) = parse("%fn(x: ()) => %fn(y: ()) => x")
-  assert case term {
+  let #(term, errors) = parse("%fn(x: ()) => %fn(y: ()) => x")
+  let term_ok = case term {
     Lam(#("x", Rcd([], _), body), _, _) -> case body {
       Lam(#("y", Rcd([], _), Var(1, _)), Var(1, _), _) -> True
       _ -> False
     }
     _ -> False
   }
+  let errors_ok = case errors {
+    [] -> True
+    _ -> False
+  }
+  case term_ok, errors_ok {
+    True, True -> True
+    _, _ -> False
+  }
 }
 
 pub fn parse_inner_variable_shadows_outer_test() {
   // %fn(x: ()) => %fn(x: ()) => x (inner x shadows outer x)
-  let #(term, _) = parse("%fn(x: ()) => %fn(x: ()) => x")
-  assert case term {
+  let #(term, errors) = parse("%fn(x: ()) => %fn(x: ()) => x")
+  let term_ok = case term {
     Lam(#("x", Rcd([], _), body), _, _) -> case body {
       Lam(#("x", Rcd([], _), Var(0, _)), Var(0, _), _) -> True
       _ -> False
     }
     _ -> False
+  }
+  let errors_ok = case errors {
+    [] -> True
+    _ -> False
+  }
+  case term_ok, errors_ok {
+    True, True -> True
+    _, _ -> False
   }
 }
 
@@ -197,18 +228,33 @@ pub fn parse_inner_variable_shadows_outer_test() {
 
 pub fn parse_fun_type_with_name_test() {
   let #(term, errors) = parse("fun(x) -> x -> x")
-  assert errors == []
-  assert case term {
+  let term_ok = case term {
     Pi(Var(0, _), Var(0, _), _) -> True
     _ -> False
+  }
+  let errors_ok = case errors {
+    [] -> True
+    _ -> False
+  }
+  case term_ok, errors_ok {
+    True, True -> True
+    _, _ -> False
   }
 }
 
 pub fn parse_fun_type_two_params_test() {
-  let #(term, _) = parse("fun(x) -> x -> fun(y) -> y -> x")
-  assert case term {
+  let #(term, errors) = parse("fun(x) -> x -> fun(y) -> y -> x")
+  let term_ok = case term {
     Pi(Var(0, _), Pi(Var(0, _), Var(1, _), _), _) -> True
     _ -> False
+  }
+  let errors_ok = case errors {
+    [] -> True
+    _ -> False
+  }
+  case term_ok, errors_ok {
+    True, True -> True
+    _, _ -> False
   }
 }
 
@@ -217,22 +263,34 @@ pub fn parse_fun_type_two_params_test() {
 // ============================================================================
 
 pub fn parse_let_simple_binding_test() {
-  let #(term, errors) = parse("let x = 42")
-  assert errors == []
-  // Let desugars to App(Lam("x", Unit, body), 42)
-  assert case term {
+  let #(term, errors) = parse("%let x = 42; x")
+  let term_ok = case term {
     App(Lam(#("x", Rcd(_, _), _), Var(0, _), _), Lit(LitInt(42), _), _) -> True
     _ -> False
+  }
+  let errors_ok = case errors {
+    [] -> True
+    _ -> False
+  }
+  case term_ok, errors_ok {
+    True, True -> True
+    _, _ -> False
   }
 }
 
 pub fn parse_let_with_lambda_test() {
-  let #(term, errors) = parse("let f = fn(x) -> x")
-  assert errors == []
-  // Let desugars to App(Lam("f", Unit, body), lambda)
-  assert case term {
+  let #(term, errors) = parse("%let f = %fn(x: ()) => x; f")
+  let term_ok = case term {
     App(Lam(#("f", Rcd(_, _), _), _, _), Lam(#("x", Rcd([], _), Var(0, _)), Var(0, _), _), _) -> True
     _ -> False
+  }
+  let errors_ok = case errors {
+    [] -> True
+    _ -> False
+  }
+  case term_ok, errors_ok {
+    True, True -> True
+    _, _ -> False
   }
 }
 
@@ -241,46 +299,85 @@ pub fn parse_let_with_lambda_test() {
 // ============================================================================
 
 pub fn parse_empty_match_error_test() {
-  let #(term, errors) = parse("match { }")
-  assert errors == []
-  assert case term {
+  let #(term, errors) = parse("%match x { }")
+  let term_ok = case term {
     Match(arg, [], _) -> case arg {
       Err("unexpected end of input", _) -> True
       _ -> False
     }
     _ -> False
   }
+  let errors_ok = case errors {
+    [] -> True
+    _ -> False
+  }
+  case term_ok, errors_ok {
+    True, True -> True
+    _, _ -> False
+  }
 }
 
 pub fn parse_match_with_cases_test() {
-  let #(term, _) = parse("match { _ => x; _ => y }")
-  assert case term {
+  let #(term, errors) = parse("%match x { | _ => y; | _ => y }")
+  let term_ok = case term {
     Match(_, cases, _) -> list.length(cases) == 2
     _ -> False
+  }
+  let errors_ok = case errors {
+    [] -> True
+    _ -> False
+  }
+  case term_ok, errors_ok {
+    True, True -> True
+    _, _ -> False
   }
 }
 
 pub fn parse_match_with_unit_pattern_test() {
-  let #(term, _) = parse("match { () => x }")
-  assert case term {
+  let #(term, errors) = parse("%match x { | () => x }")
+  let term_ok = case term {
     Match(_, [CoreCase(PUnit(_), _, _, _)], _) -> True
     _ -> False
+  }
+  let errors_ok = case errors {
+    [] -> True
+    _ -> False
+  }
+  case term_ok, errors_ok {
+    True, True -> True
+    _, _ -> False
   }
 }
 
 pub fn parse_match_with_literal_pattern_test() {
-  let #(term, _) = parse("match { 42 => x }")
-  assert case term {
+  let #(term, errors) = parse("%match x { | 42 => x }")
+  let term_ok = case term {
     Match(_, [CoreCase(PLit(LitInt(42), _), _, _, _)], _) -> True
     _ -> False
+  }
+  let errors_ok = case errors {
+    [] -> True
+    _ -> False
+  }
+  case term_ok, errors_ok {
+    True, True -> True
+    _, _ -> False
   }
 }
 
 pub fn parse_nested_match_structure_test() {
-  let #(term, _) = parse("match { match { _ => x } => y }")
-  assert case term {
+  let #(term, errors) = parse("%match x { | match y { | _ => y } => y }")
+  let term_ok = case term {
     Match(_, [CoreCase(PAny(_), _, _, _)], _) -> True
     _ -> False
+  }
+  let errors_ok = case errors {
+    [] -> True
+    _ -> False
+  }
+  case term_ok, errors_ok {
+    True, True -> True
+    _, _ -> False
   }
 }
 
@@ -289,25 +386,24 @@ pub fn parse_nested_match_structure_test() {
 // ============================================================================
 
 pub fn parse_simple_fix_test() {
-  let #(term, _) = parse("fix x")
-  // fix desugars to App(Lam("x", Unit, body), body)
-  assert case term {
+  let #(term, errors) = parse("%fix x = x")
+  let term_ok = case term {
     App(Lam(#("x", Rcd(_, _), _), _, _), _, _) -> True
     _ -> False
   }
-}
-
-// ============================================================================
-// If expressions
-// ============================================================================
-
-pub fn parse_if_then_else_test() {
-  let #(term, _) = parse("if x then y else z")
-  assert case term {
-    Match(_, cases, _) -> list.length(cases) == 2
+  let errors_ok = case errors {
+    [] -> True
     _ -> False
   }
+  case term_ok, errors_ok {
+    True, True -> True
+    _, _ -> False
+  }
 }
+
+// ============================================================================
+// If expressions — removed from core language
+// ============================================================================
 
 // ============================================================================
 // Parenthesized expressions

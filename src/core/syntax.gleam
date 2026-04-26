@@ -47,7 +47,7 @@ pub fn parse_tokens(tokens: List(Token), filename: String) -> #(Term, List(Parse
       case rest {
         Error(_) -> #(t, errs)
         Ok(Token(kind: "Eof", value: "", span: _)) -> #(t, errs)
-        Ok(Token(value, _, span)) -> {
+        Ok(Token(kind: _, value: value, span: span)) -> {
           let err = ParseError(span: span, expected: "end of input", got: value, context: "unexpected token")
           #(t, [err, ..errs])
         }
@@ -215,6 +215,9 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
     }
     
     // Parenthesized expressions: (expr) or (term : Type)
+    // Also handles () as unit (Rcd with empty fields)
+    [Token("Punct", "(", _), Token("Punct", ")", _), ..rest] ->
+      #(Rcd([], span), #(rest, 2, env, fn_, errors))
     [Token("Punct", "(", _), ..rest] -> {
       let p = #(rest, 0, env, fn_, errors)
       let #(inner, p2) = parse_term(p)
@@ -225,7 +228,6 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
     // Punctuation
     [Token("Punct", "[", _), ..rest] -> parse_list(#(rest, 0, env, fn_, errors), span)
     [Token("Punct", "{", _), ..rest] -> parse_rcd(#(rest, 0, env, fn_, errors), span)
-    [Token("Punct", "(", _), Token("Punct", ")", _), ..rest] -> #(Rcd([], span), #(rest, 2, env, fn_, errors))
     [Token("Punct", "#", _), ..rest] -> parse_ctr(#(rest, 0, env, fn_, errors), span)
     [Token("Eof", ..), ..] -> { let e = Err("unexpected end of input", span)#(e, p) }
     [Token(_, v, _), .._] -> {
@@ -486,7 +488,7 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
         _ -> #(PVar(v, span), p1)
       }
     }
-    [Token("Punct", "(", _), Token("Punct", ")", _), ..rest] -> {
+    [Token("Punct", "(", _), Token("Punct", ")", _), .._rest] -> {
       let p1 = #(tokens, pos + 2, env, fn_, errors)
       #(PUnit(span), p1)
     }
