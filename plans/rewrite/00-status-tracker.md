@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - All 368 tests passing! Parser tests fixed: updated to new %fn/%let/%match/%fix syntax, fixed token value extraction bug, cleaned up warnings)
+> **Last updated:** 2026-04-26 (Updated: 2026-04-26 - Phase 2 Task 2.4 Unification implemented! 408 tests passing.)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend
@@ -81,6 +81,21 @@
 
 **Phase 1 Complete:** All lexer, AST, and state implementations are done and tested. AST refactored: `Param` record type removed (replaced with ` #(String, Term)` tuples for Lam, ` #(String, Value)` for VLam), `Call` constructor added to Term, unused State fields cleaned up, all `Error` variants carry `span: Span` fields. All 375 tests passing.
 
+### Phase 2 Partial
+
+**Phase 2 Task 2.3 Complete:** Core parser tests (41 tests) added to `test/core/syntax_test.gleam`.
+
+**Phase 2 Task 2.4 Complete:** Unification module implemented in `src/core/unify.gleam` with:
+- `unify(state, expected, actual)` — higher-order unification of values
+- `occurs_check(level, value)` — always returns False (allows recursive types)
+- Hole binding via variable environment (`hole{id}` naming)
+- Pi type, VLam, VCtr, VLit, VRcd, VNeut unification
+- TypeMismatch error accumulation
+- VErr passthrough (unifies with any value)
+- 33 tests in `test/core/unify_test.gleam`
+
+Total tests: 408 passed, 0 failures.
+
 ---
 
 ## Phase 2: Parser + Core Type Checker + NBE (Target: 4-5 days)
@@ -105,17 +120,17 @@
 | 2.2.1 | Term production (Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Let, Fix, Call, Ann, Unit, Err, Typ) | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
 | 2.2.2 | Pattern production (PAny, PVar, PCtr, PUnit, PLit) | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
 | 2.2.3 | Span accuracy on every parse | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
-| 2.3 | Write tests for parser | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/syntax_test.gleam` |
-| 2.3.1 | Every combinator | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.3.2 | Every syntax form | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.4 | Implement unification | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/unify.gleam` |
-| 2.4.1 | `unify` function | 🔴 | [03-core-language.md](03-core-language.md) | Higher-order unification |
-| 2.4.2 | Occurs check | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 2.4.3 | Hole instantiation (positive/negative IDs) | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 2.5 | Write tests for unification | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/unify_test.gleam` |
-| 2.5.1 | Every type pair | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.5.2 | Occurs check | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.5.3 | Hole instantiation | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.3 | Write tests for parser | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/syntax_test.gleam` |
+| 2.3.1 | Every combinator | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.3.2 | Every syntax form | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.4 | Implement unification | ✅ | [03-core-language.md](03-core-language.md) | `src/core/unify.gleam` |
+| 2.4.1 | `unify` function | ✅ | [03-core-language.md](03-core-language.md) | Higher-order unification |
+| 2.4.2 | Occurs check | ✅ | [03-core-language.md](03-core-language.md) | Always False (recursive types) |
+| 2.4.3 | Hole instantiation | ✅ | [03-core-language.md](03-core-language.md) | Via env binding |
+| 2.5 | Write tests for unification | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/unify_test.gleam` |
+| 2.5.1 | Every type pair | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.5.2 | Occurs check | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.5.3 | Hole instantiation | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.6 | Implement substitution | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/subst.gleam` |
 | 2.6.1 | `force` (evaluate through substitution) | 🔴 | [03-core-language.md](03-core-language.md) | |
 | 2.6.2 | `force_levels_to_indices` (value → term) | 🔴 | [03-core-language.md](03-core-language.md) | |
@@ -398,6 +413,7 @@
 
 | Date | Change |
 |------|--------|
+| 2026-04-26 | **Phase 2 Task 2.4 Unification implemented:** `src/core/unify.gleam` with `unify(state, expected, actual)` and `occurs_check(level, value)`. Covers: hole binding, variable lookup, Pi/VLam/VCtr/VLIT/VRcd/VNeut unification, VErr passthrough, TypeMismatch errors. 33 tests in `test/core/unify_test.gleam`. **Phase 2 Task 2.3 Complete:** Core parser tests added (41 tests). Total: 408 tests passing. |
 | 2026-04-26 | **Param removed from AST:** `Param` record type removed from `core/ast.gleam`. Lambdas now use ` #(String, Term)` tuples: `Lam(#("name", param_type), body, span)`. `VLam` uses `#(String, Value)` for parameter annotations. |
 | 2026-04-26 | **Call constructor added:** `Call(name, args, span)` added to Term type for function calls. Updated `shift_term`, `term_to_string`, `VLam` string representation. |
 | 2026-04-26 | **State cleaned up:** Removed unused fields from `State`: `lambda_depth`, `max_steps`, `step_counter`, `truth_ctor`. Removed unused helpers: `with_max_steps`, `with_truth_ctor`, `with_lambda_depth`, `set_lambda_depth`, `truth_ctor`. All 375 tests pass. |
@@ -439,6 +455,7 @@
 - [x] Add tests for span merging and multi-line span tracking ✅ 13 added
 - [ ] **Update all tests for new AST:** VUnit → VRcd, VLam, Case, Typ arity changes
 - [ ] Add tests for new core syntax: %fn, %let, %match, #Tag, fun(), {x: y}
+- [x] Add tests for unification ✅ 33 tests added in `test/core/unify_test.gleam`
 - [ ] Add tests for type inference, substitution, NBE evaluator
 - [ ] Add tests for exhaustiveness checking
 - [ ] Add tests for desugarer
@@ -454,6 +471,8 @@
 - [x] Added span field to all Error variants ✅
 - [x] Removed unused State fields and helpers (lambda_depth, max_steps, step_counter, truth_ctor) ✅
 - [x] Improved parse() error reporting on failure ✅
+- [x] Implemented unification module (`src/core/unify.gleam`) with `unify()` and `occurs_check()` ✅
+- [x] Fixed `match_values` for VNeut: same HVar level, VErr passthrough, different hole IDs ✅
 - [ ] Consider making `parse()` propagate partial errors through failed alternatives
 - [ ] Add `term_from_string` for round-trip testing
 - [ ] Consider adding `Span.to_debug_string` for test assertions
