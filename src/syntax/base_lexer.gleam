@@ -1,17 +1,15 @@
-/// Tokenizer (Lexer)
+/// Language-agnostic Lexer (Base)
 ///
-/// Converts source code strings into a list of tokens with span tracking.
-/// This is the first phase of the compiler pipeline.
+/// Provides fundamental tokenization shared by all languages:
+/// - Whitespace and comment skipping
+/// - String literals with escape sequences
+/// - Number literals (integer and float)
+/// - Identifier tokenization (returns raw "Name" for all identifiers)
+/// - Single character handling
 ///
-/// Token kinds:
-///   - `Integer`  - integer literals (e.g. 42, 0, -1)
-///   - `Float`    - float literals (e.g. 3.14, .5)
-///   - `String`   - string literals with escape sequences
-///   - `Name`     - identifiers and keywords (e.g. let, fn, x)
-///   - `Op`       - operators (e.g. +, ==, ->, ..)
-///   - `Punct`    - punctuation (e.g. (, ), {, }, ;)
-///   - `Comment`  - ignored comments (both // and /* */)
-///   - `Eof`      - end of file marker
+/// Language-specific extensions (keywords, multi-char operators,
+/// lambda symbol, etc.) are provided by the `tao/lexer` module
+/// which composes on top of this base.
 
 import gleam/list
 import gleam/string
@@ -22,6 +20,20 @@ import syntax/span.{Span, type Span}
 ///
 /// Each token carries its kind, value, and the span (source location)
 /// where it was found.
+///
+/// Token kinds produced by this base lexer:
+///   - `Integer`  - integer literals (e.g. 42, 0)
+///   - `Float`    - float literals (e.g. 3.14, .5)
+///   - `String`   - string literals with escape sequences
+///   - `Name`     - identifiers (e.g. x, foo, my_var)
+///   - `Op`       - operators (e.g. +, -, *, /, <, >, =, etc.)
+///   - `Punct`    - punctuation (e.g. (, ), {, }, [, ], ,, ;, :, |, &, .)
+///   - `Comment`  - ignored comments (both // and /* */)
+///   - `Eof`      - end of file marker
+///
+/// Note: Keywords are returned as `Name` tokens by the base lexer.
+/// Language-specific keyword detection is performed by the grammar
+/// layer (see `grammar.kw` pattern).
 pub type Token {
   Token(
     kind: String,
@@ -30,38 +42,30 @@ pub type Token {
   )
 }
 
+/// Internal lexer state.
+///
+/// Exported for use by language-specific lexers that extend the base.
+pub type State {
+  State(
+    source: String,
+    filename: String,
+    pos: Int,
+    line: Int,
+    col: Int,
+    tokens: List(Token),
+  )
+}
+
 /// Tokenize a source string into a list of tokens.
 ///
 /// Skips whitespace and comments. Produces an `Eof` token at the end.
 /// All spans use the filename `""` — use `tokenize_with_filename`
 /// to attach a real filename.
-///
-/// # Example
-///
-/// ```gleam
-/// import syntax/lexer.{tokenize}
-/// import syntax/lexer.{Token}
-///
-/// let tokens = tokenize("let x = 42")
-/// // Produces: [Token(kind: "Keyword", value: "let", ..),
-/// //           Token(kind: "Name", value: "x", ..),
-/// //           Token(kind: "Op", value: "=", ..),
-/// //           Token(kind: "Integer", value: "42", ..),
-/// //           Token(kind: "Eof", value: "", ..)]
-/// ```
 pub fn tokenize(source: String) -> List(Token) {
   tokenize_with_filename(source, "")
 }
 
 /// Tokenize with an explicit filename for span tracking.
-///
-/// # Example
-///
-/// ```gleam
-/// import syntax/lexer.{tokenize_with_filename}
-///
-/// let tokens = tokenize_with_filename("let x = 42", "main.tao")
-/// ```
 pub fn tokenize_with_filename(source: String, filename: String) -> List(Token) {
   let state = State(
     source: source,
@@ -74,22 +78,12 @@ pub fn tokenize_with_filename(source: String, filename: String) -> List(Token) {
   tokenize_loop(state) |> fn(s) { list.reverse(s.tokens) }
 }
 
-/// Internal lexer state.
-type State {
-  State(
-    source: String,
-    filename: String,
-    pos: Int,
-    line: Int,
-    col: Int,
-    tokens: List(Token),
-  )
-}
-
-/// Character classification helpers.
+// ==========================================================================
+// Internal helper functions (exported for use by language-specific lexers)
+// ==========================================================================
 
 /// Check if a character is a digit (0-9).
-fn is_digit(char: String) -> Bool {
+pub fn is_digit(char: String) -> Bool {
   case char {
     "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" -> True
     _ -> False
@@ -97,7 +91,7 @@ fn is_digit(char: String) -> Bool {
 }
 
 /// Check if a character is valid in an identifier (a-z, A-Z, 0-9, _).
-fn is_ident_char(char: String) -> Bool {
+pub fn is_ident_char(char: String) -> Bool {
   case string.to_graphemes(char) {
     [ch] -> is_alpha(ch) || is_digit(ch) || ch == "_"
     _ -> False
@@ -105,7 +99,7 @@ fn is_ident_char(char: String) -> Bool {
 }
 
 /// Check if a character is a letter (a-z, A-Z).
-fn is_alpha(char: String) -> Bool {
+pub fn is_alpha(char: String) -> Bool {
   case char {
     "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j"
     | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t"
@@ -117,35 +111,8 @@ fn is_alpha(char: String) -> Bool {
   }
 }
 
-/// Tokenize the main loop.
-fn tokenize_loop(state: State) -> State {
-  case peek_char(state) {
-    "" -> eof(state)
-    " " | "\t" | "\r" -> skip_whitespace(state) |> tokenize_loop
-    "\n" -> handle_newline(state) |> tokenize_loop
-    "/" -> {
-      case peek_next(state) {
-        Some("/") -> skip_line_comment(state) |> tokenize_loop
-        Some("*") -> skip_block_comment(state) |> tokenize_loop
-        _ -> tokenize_op(state) |> tokenize_loop
-      }
-    }
-    "\"" -> tokenize_string(state) |> tokenize_loop
-    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ->
-      tokenize_number(state) |> tokenize_loop
-    "_" -> tokenize_op(state) |> tokenize_loop
-    "λ" -> tokenize_lambda(state) |> tokenize_loop
-    c -> case is_ident_char(c) {
-      True -> tokenize_name(state) |> tokenize_loop
-      False -> tokenize_op(state) |> tokenize_loop
-    }
-  }
-}
-
 /// Peek at the character at the current position.
-///
-/// Returns the character and the current state.
-fn peek_char(state: State) -> String {
+pub fn peek_char(state: State) -> String {
   case state.pos < string.length(state.source) {
     True -> string.slice(state.source, state.pos, 1)
     False -> ""
@@ -153,7 +120,7 @@ fn peek_char(state: State) -> String {
 }
 
 /// Peek at the next character (one position ahead).
-fn peek_next(state: State) -> Option(String) {
+pub fn peek_next(state: State) -> Option(String) {
   case state.pos + 1 < string.length(state.source) {
     True -> Some(string.slice(state.source, state.pos + 1, 1))
     False -> None
@@ -161,7 +128,7 @@ fn peek_next(state: State) -> Option(String) {
 }
 
 /// Advance the lexer by one character, updating line/column tracking.
-fn advance(state: State) -> State {
+pub fn advance(state: State) -> State {
   case peek_char(state) {
     "\n" -> State(
       ..state,
@@ -177,25 +144,29 @@ fn advance(state: State) -> State {
   }
 }
 
-fn skip_whitespace(state: State) -> State {
+/// Skip whitespace characters (space, tab, carriage return).
+pub fn skip_whitespace(state: State) -> State {
   case peek_char(state) {
     " " | "\t" | "\r" -> advance(state) |> skip_whitespace
     _ -> state
   }
 }
 
-fn handle_newline(state: State) -> State {
+/// Handle a newline character.
+pub fn handle_newline(state: State) -> State {
   advance(state)
 }
 
-fn skip_line_comment(state: State) -> State {
+/// Skip a line comment (//).
+pub fn skip_line_comment(state: State) -> State {
   case peek_char(state) {
     "\n" | "" -> state
     _ -> advance(state) |> skip_line_comment
   }
 }
 
-fn skip_block_comment(state: State) -> State {
+/// Skip a block comment (/* ... */).
+pub fn skip_block_comment(state: State) -> State {
   case peek_char(state) {
     "" -> state
     "*" -> {
@@ -213,7 +184,7 @@ fn skip_block_comment(state: State) -> State {
 }
 
 /// Tokenize a string literal with escape sequence support.
-fn tokenize_string(state: State) -> State {
+pub fn tokenize_string(state: State) -> State {
   let start_line = state.line
   let start_col = state.col
   let state = advance(state) // skip opening "
@@ -245,7 +216,10 @@ fn read_string_content(state: State, acc: String) -> #(String, State) {
 }
 
 /// Tokenize a number literal (integer or float).
-fn tokenize_number(state: State) -> State {
+///
+/// This is generic: it detects the presence of a decimal point to
+/// distinguish integers from floats.
+pub fn tokenize_number(state: State) -> State {
   let start_line = state.line
   let start_col = state.col
   let #(digits, state) = read_digits(state, "")
@@ -308,54 +282,25 @@ fn read_digits(state: State, acc: String) -> #(String, State) {
   }
 }
 
-/// Tokenize an identifier or keyword.
-fn tokenize_name(state: State) -> State {
+/// Tokenize an identifier.
+///
+/// Returns a `Name` token with the raw identifier value.
+/// Language-specific keyword detection (e.g., "let", "fn", "true")
+/// is performed by the grammar layer via the `kw` pattern.
+pub fn tokenize_identifier(state: State) -> State {
   let start_line = state.line
   let start_col = state.col
   let #(chars, state) = read_ident_chars(state, [])
   let value = string.join(chars, "")
-  let kind = get_name_kind(value)
   let token = Token(
-    kind: kind,
+    kind: "Name",
     value: value,
     span: Span(state.filename, start_line, start_col, state.line, state.col),
   )
   State(..state, tokens: [token, ..state.tokens])
 }
 
-fn get_name_kind(value: String) -> String {
-  case value {
-    "in"
-    | "fn"
-    | "rec"
-    | "with"
-    | "case"
-    | "if"
-    | "then"
-    | "else"
-    | "pub"
-    | "import"
-    | "type"
-    | "match"
-    | "let"
-    | "mut"
-    | "as"
-    | "true"
-    | "false"
-    | "for"
-    | "while"
-    | "loop"
-    | "break"
-    | "continue"
-    | "return"
-    | "and"
-    | "or"
-    | "not" -> "Keyword"
-    _ -> "Name"
-  }
-}
-
-fn read_ident_chars(state: State, acc: List(String)) -> #(List(String), State) {
+pub fn read_ident_chars(state: State, acc: List(String)) -> #(List(String), State) {
   case peek_char(state) {
     c -> case is_ident_char(c) {
       True -> read_ident_chars(advance(state), [c, ..acc])
@@ -364,24 +309,57 @@ fn read_ident_chars(state: State, acc: List(String)) -> #(List(String), State) {
   }
 }
 
-/// Tokenize the λ (lambda) symbol.
-fn tokenize_lambda(state: State) -> State {
-  let start_line = state.line
-  let start_col = state.col
-  let state = advance(state)
+/// Handle a single-character operator token.
+pub fn single_op(state: State, char: String, span: Span) -> State {
+  let token = Token(kind: "Op", value: char, span: span)
+  State(..advance(state), tokens: [token, ..state.tokens])
+}
+
+/// Handle a single-character punctuation token.
+pub fn single_punct(state: State, punct: String, span: Span) -> State {
+  let token = Token(kind: "Punct", value: punct, span: span)
+  State(..advance(state), tokens: [token, ..state.tokens])
+}
+
+/// End-of-file marker token.
+pub fn eof(state: State) -> State {
   let token = Token(
-    kind: "Lambda",
-    value: "λ",
-    span: Span(state.filename, start_line, start_col, state.line, state.col),
+    kind: "Eof",
+    value: "",
+    span: Span(state.filename, state.line, state.col, state.line, state.col),
   )
   State(..state, tokens: [token, ..state.tokens])
 }
 
-/// Tokenize operators and punctuation.
-///
-/// Handles both single-character and multi-character operators.
-/// Multi-character operators are checked first (longest match).
-fn tokenize_op(state: State) -> State {
+// ==========================================================================
+// Internal functions (NOT exported — used only by the base lexer itself)
+// ==========================================================================
+
+/// Tokenize the main loop (internal, not exported).
+fn tokenize_loop(state: State) -> State {
+  case peek_char(state) {
+    "" -> eof(state)
+    " " | "\t" | "\r" -> skip_whitespace(state) |> tokenize_loop
+    "\n" -> handle_newline(state) |> tokenize_loop
+    "/" -> {
+      case peek_next(state) {
+        Some("/") -> skip_line_comment(state) |> tokenize_loop
+        Some("*") -> skip_block_comment(state) |> tokenize_loop
+        _ -> tokenize_single_char(state) |> tokenize_loop
+      }
+    }
+    "\"" -> tokenize_string(state) |> tokenize_loop
+    "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ->
+      tokenize_number(state) |> tokenize_loop
+    c -> case is_ident_char(c) {
+      True -> tokenize_identifier(state) |> tokenize_loop
+      False -> tokenize_single_char(state) |> tokenize_loop
+    }
+  }
+}
+
+/// Tokenize a single character (operator or punctuation).
+fn tokenize_single_char(state: State) -> State {
   case peek_char(state) {
     "" -> state
     char -> {
@@ -389,86 +367,24 @@ fn tokenize_op(state: State) -> State {
       let start_col = state.col
       let span = Span(state.filename, start_line, start_col, state.line, state.col)
 
-      // Try multi-character operators first
-      case try_multi_char_op(char, state) {
-        Ok(#(value, new_state)) -> {
-          let token = Token(kind: "Op", value: value, span: span)
-          State(..new_state, tokens: [token, ..new_state.tokens])
-        }
-        Error(_) -> {
-          // Handle single-character punctuation
-          case char {
-            "(" -> single_punct(state, "(", span)
-            ")" -> single_punct(state, ")", span)
-            "{" -> single_punct(state, "{", span)
-            "}" -> single_punct(state, "}", span)
-            "[" -> single_punct(state, "[", span)
-            "]" -> single_punct(state, "]", span)
-            "," -> single_punct(state, ",", span)
-            ";" -> single_punct(state, ";", span)
-            ":" -> single_punct(state, ":", span)
-            "=" -> single_punct(state, "=", span)
-            "!" -> single_punct(state, "!", span)
-            "|" -> single_punct(state, "|", span)
-            "&" -> single_punct(state, "&", span)
-            "." -> single_punct(state, ".", span)
-            _ -> single_op(state, char, span)
-          }
-        }
+      // Punctuation — structural characters used by all languages
+      case char {
+        "(" -> single_punct(state, "(", span)
+        ")" -> single_punct(state, ")", span)
+        "{" -> single_punct(state, "{", span)
+        "}" -> single_punct(state, "}", span)
+        "[" -> single_punct(state, "[", span)
+        "]" -> single_punct(state, "]", span)
+        "," -> single_punct(state, ",", span)
+        ";" -> single_punct(state, ";", span)
+        ":" -> single_punct(state, ":", span)
+        "=" -> single_punct(state, "=", span)
+        "!" -> single_punct(state, "!", span)
+        "|" -> single_punct(state, "|", span)
+        "&" -> single_punct(state, "&", span)
+        "." -> single_punct(state, ".", span)
+        _ -> single_op(state, char, span)
       }
     }
   }
-}
-
-/// Try to match a multi-character operator.
-/// Returns Ok(#(operator_value, new_state)) if found, Error otherwise.
-fn try_multi_char_op(char: String, state: State) -> Result(#(String, State), Nil) {
-  case peek_next(state) {
-    Some("=") -> case char {
-      "=" | "!" | "<" | ">" -> Ok(#(char <> "=", advance(state) |> advance))
-      _ -> Error(Nil)
-    }
-    Some(">") -> case char {
-      "-" -> Ok(#("->", advance(state) |> advance))
-      _ -> Error(Nil)
-    }
-    Some("-") -> case char {
-      "<" -> Ok(#("<-", advance(state) |> advance))
-      _ -> Error(Nil)
-    }
-    Some("|") -> case char {
-      "|" -> Ok(#("||", advance(state) |> advance))
-      _ -> Error(Nil)
-    }
-    Some("&") -> case char {
-      "&" -> Ok(#("&&", advance(state) |> advance))
-      _ -> Error(Nil)
-    }
-    Some(".") -> case char {
-      "." -> Ok(#("..", advance(state) |> advance))
-      _ -> Error(Nil)
-    }
-    _ -> Error(Nil)
-  }
-}
-
-/// Handle a single-character operator/punctuation token.
-fn single_op(state: State, char: String, span: Span) -> State {
-  let token = Token(kind: "Op", value: char, span: span)
-  State(..advance(state), tokens: [token, ..state.tokens])
-}
-
-/// Handle a single-character punctuation token.
-fn single_punct(state: State, punct: String, span: Span) -> State {
-  let token = Token(kind: "Punct", value: punct, span: span)
-  State(..advance(state), tokens: [token, ..state.tokens])
-}
-
-fn eof(state: State) -> State {
-  let token = Token(
-    kind: "Eof",
-    value: "",
-    span: Span(state.filename, state.line, state.col, state.line, state.col),
-  )
-  State(..state, tokens: [token, ..state.tokens])
 }

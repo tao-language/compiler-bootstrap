@@ -64,7 +64,7 @@
 import gleam/list
 import gleam/int
 import syntax/span.{Span, type Span, empty}
-import syntax/lexer.{type Token}
+import syntax/base_lexer.{type Token}
 
 // ============================================================================
 // PARSE RESULT AND ERRORS

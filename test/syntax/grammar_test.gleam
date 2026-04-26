@@ -17,7 +17,7 @@ import syntax/grammar.{
   is_left, is_right, left_value, right_value,
 }
 import syntax/span.{type Span, single}
-import syntax/lexer.{tokenize, tokenize_with_filename}
+import syntax/base_lexer.{tokenize, tokenize_with_filename}
 import gleam/list
 
 pub fn main() {

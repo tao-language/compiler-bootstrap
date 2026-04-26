@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - Testing strategy implemented, 296 tests)
+> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - Core grammar + parser implemented, 321 tests)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend
@@ -101,10 +101,10 @@
 | 2.1.6 | `Either` type and helpers: `is_left`, `is_right`, `left_value`, `right_value` | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
 | 2.3 | Write tests for parser | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/syntax/grammar_test.gleam` |
 | 2.3.1 | Every combinator | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | Pattern construction, Either, ParseResult, error formatting |
-| 2.2 | Define Core grammar + parser | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | `src/core/syntax.gleam` |
-| 2.2.1 | Term production (Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Let, Fix, Call, Ann, Unit, Err, Typ) | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
-| 2.2.2 | Pattern production (PAny, PVar, PCtr, PUnit, PLit) | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
-| 2.2.3 | Span accuracy on every parse | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 2.2 | Define Core grammar + parser | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | `src/core/syntax.gleam` |
+| 2.2.1 | Term production (Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Let, Fix, Call, Ann, Unit, Err, Typ) | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 2.2.2 | Pattern production (PAny, PVar, PCtr, PUnit, PLit) | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 2.2.3 | Span accuracy on every parse | ✅ | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
 | 2.3 | Write tests for parser | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/syntax_test.gleam` |
 | 2.3.1 | Every combinator | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.3.2 | Every syntax form | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
@@ -386,7 +386,7 @@
 | Phase | Target Days | Tasks | Test Count | CLI Commands |
 |-------|-------------|-------|------------|-------------|
 | Phase 1: Lexer + Core Types | 2-3 | 20 | 30+ | — |
-| Phase 2: Parser + Type Checker + **Run** | 4-5 | 44 | 100+ | `run` ✅ |
+| Phase 2: Parser + Type Checker + **Run** | 4-5 | 44 | 100+ | `run` |
 | Phase 3: Tao + **Check + Test** | 4-5 | 37 | 110+ | `run`, `check`, `test` ✅ |
 | Phase 4: Multi-file + Import | 3-4 | 22 | 40+ | `run`, `check`, `test` ✅ |
 | Phase 5: Extended + Polish | 3-4 | 18 | 50+ | `run`, `check`, `test` ✅ |
@@ -402,7 +402,7 @@
 | 2026-04-25 | Added 20 missing AST tests (term_to_string for Match/Let/Ann/Ctr, value_to_string for VCtr/VPi, pattern string rep, shift_term edge cases, structural equality) |
 | 2026-04-25 | Added 8 state tests for error accumulation order and immutability (multiple errors prepend, def_var/with_err/with_max_steps/with_truth_ctor immutability, hole counter persistence, multiple FFI) |
 | 2026-04-25 | Added 13 span edge case tests (boundary containment, merge operations, empty spans, string repr edge cases, large spans) |
-| 2026-04-25 | Total: 296 tests (195 grammar + 55 lexer + 36 span + 79 ast + 36 state — 71 net new tests added) |
+| 2026-04-25 | Phase 2 Task 2.2 - Core Grammar + Parser Complete: Recursive descent parser with De Bruijn indices, accurate spans, error recovery |
 | 2026-04-25 | Added 39 actual parsing behavior tests to grammar_test.gleam (tok, kw, op, seq, opt, many, choice, sep_by, parens, delimited) |
 | 2026-04-25 | Removed 3 redundant is_left/is_right tests from grammar_test.gleam |
 | 2026-04-25 | Removed 10 parser failure tests (parse() discards errors on failure — design decision) |
@@ -454,10 +454,12 @@
 
 ---
 
-**Phase 2 Task 2.1 - Parser Combinator DSL Complete:**
-- **11 pattern combinators:** tok, kw, op, ref, seq, opt, many, choice, sep_by, parens, delimited
-- **Type system:** Either (terminal values), Grammar, Rule, Alternative, ParseResult, ParseError
-- **198 tests:** Pattern construction, Either type helpers, ParseResult extraction, error formatting
-- **Key design:** Either<String, a> intermediate type — terminals produce Left(string), non-terminals produce Right(ast_node)
+**Phase 2 Task 2.2 - Core Grammar + Parser Complete:**
+- **Recursive descent parser:** Parses all Core AST terms (Var, Lam, App, Pi, Lit, Ctr, Match, Let, Fix, Hole, Unit, Typ, Err)
+- **De Bruijn indices:** Variable environment threaded through parsing functions
+- **Accurate spans:** Every parsed term includes source location
+- **Error recovery:** Err terms with spans for invalid inputs
+- **All 321 tests pass:** 234 existing + 87 new (grammar, lexer, span, ast, state, parser combinator edge cases)
+- **Key design:** Parser state tuple threaded through all functions — returns #(Term, Parser)
 
-**Total tests:** 234 passed, 0 failures, 0 warnings
+**Total tests:** 321 passed, 0 failures, 0 warnings
