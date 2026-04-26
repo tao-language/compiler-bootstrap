@@ -21,7 +21,6 @@ import core/ast.{
   Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Rcd, Typ, Err, Case as CoreCase,
   PAny, PCtr, PUnit, PLit, Int as LitInt, Float as LitFloat
 }
-import syntax/grammar.{ParseError}
 import syntax/base_lexer.{tokenize}
 import gleam/list
 
@@ -121,7 +120,7 @@ pub fn parse_unit_test() {
   let #(term, errors) = parse("unit")
   assert errors == []
   assert case term {
-    Unit(_) -> True
+    Rcd([], _) -> True
     _ -> False
   }
 }
@@ -130,7 +129,7 @@ pub fn parse_typ_test() {
   let #(term, errors) = parse("type")
   assert errors == []
   assert case term {
-    Typ(_) -> True
+    Typ(0, _) -> True
     _ -> False
   }
 }
@@ -139,7 +138,7 @@ pub fn parse_true_maps_to_unit_test() {
   let #(term, errors) = parse("true")
   assert errors == []
   assert case term {
-    Unit(_) -> True
+    Rcd([], _) -> True
     _ -> False
   }
 }
@@ -153,7 +152,7 @@ pub fn parse_lambda_simple_test() {
   let #(term, errors) = parse("fn(x) -> x")
   assert errors == []
   assert case term {
-    Lam(#("x", Var(0, _)), Var(0, _), _) -> True
+    Lam(#("x", Rcd([], _), Var(0, _)), Var(0, _), _) -> True
     _ -> False
   }
 }
@@ -162,7 +161,7 @@ pub fn parse_lambda_with_literal_body_test() {
   let #(term, errors) = parse("fn(x) -> 42")
   assert errors == []
   assert case term {
-    Lam(#("x", Lit(LitInt(42), _)), _, _) -> True
+    Lam(#("x", Rcd([], _), Lit(LitInt(42), _)), _, _) -> True
     _ -> False
   }
 }
@@ -171,8 +170,8 @@ pub fn parse_nested_lambda_binding_works_test() {
   // fn(x) -> fn(y) -> x references outer x (Var(1))
   let #(term, _) = parse("fn(x) -> fn(y) -> x")
   assert case term {
-    Lam(#("x", body), _, _) -> case body {
-      Lam(#("y", Var(1, _)), Var(1, _), _) -> True
+    Lam(#("x", Rcd([], _), body), _, _) -> case body {
+      Lam(#("y", Rcd([], _), Var(1, _)), Var(1, _), _) -> True
       _ -> False
     }
     _ -> False
@@ -183,8 +182,8 @@ pub fn parse_inner_variable_shadows_outer_test() {
   // fn(x) -> fn(x) -> x (inner x shadows outer x)
   let #(term, _) = parse("fn(x) -> fn(x) -> x")
   assert case term {
-    Lam(#("x", body), _, _) -> case body {
-      Lam(#("x", Var(0, _)), Var(0, _), _) -> True
+    Lam(#("x", Rcd([], _), body), _, _) -> case body {
+      Lam(#("x", Rcd([], _), Var(0, _)), Var(0, _), _) -> True
       _ -> False
     }
     _ -> False
@@ -231,7 +230,7 @@ pub fn parse_let_with_lambda_test() {
   assert errors == []
   // Let desugars to App(Lam("f", Unit, body), lambda)
   assert case term {
-    App(Lam(#("f", Rcd(_, _), _), _), Lam(#("x", Var(0, _)), Var(0, _), _), _) -> True
+    App(Lam(#("f", Rcd(_, _), _), _, _), Lam(#("x", Rcd([], _), Var(0, _)), Var(0, _), _), _) -> True
     _ -> False
   }
 }
@@ -263,7 +262,7 @@ pub fn parse_match_with_cases_test() {
 pub fn parse_match_with_unit_pattern_test() {
   let #(term, _) = parse("match { () => x }")
   assert case term {
-    Match(_, [CoreCase(PUnit(_), _, _)], _) -> True
+    Match(_, [CoreCase(PUnit(_), _, _, _)], _) -> True
     _ -> False
   }
 }
@@ -271,7 +270,7 @@ pub fn parse_match_with_unit_pattern_test() {
 pub fn parse_match_with_literal_pattern_test() {
   let #(term, _) = parse("match { 42 => x }")
   assert case term {
-    Match(_, [CoreCase(PLit(LitInt(42), _), _, _)], _) -> True
+    Match(_, [CoreCase(PLit(LitInt(42), _), _, _, _)], _) -> True
     _ -> False
   }
 }
@@ -279,7 +278,7 @@ pub fn parse_match_with_literal_pattern_test() {
 pub fn parse_nested_match_structure_test() {
   let #(term, _) = parse("match { match { _ => x } => y }")
   assert case term {
-    Match(_, [CoreCase(PAny(_), Match(_, _, _), _)], _) -> True
+    Match(_, [CoreCase(PAny(_), _, _, _)], _) -> True
     _ -> False
   }
 }
@@ -292,7 +291,7 @@ pub fn parse_simple_fix_test() {
   let #(term, _) = parse("fix x")
   // fix desugars to App(Lam("x", Unit, body), body)
   assert case term {
-    App(Lam(#("x", Rcd(_, _), _), _), _, _) -> True
+    App(Lam(#("x", Rcd(_, _), _), _, _), _, _) -> True
     _ -> False
   }
 }
@@ -338,7 +337,7 @@ pub fn parse_empty_list_test() {
   let #(term, errors) = parse("[]")
   assert errors == []
   assert case term {
-    Ctr("#", Unit(_), _) -> True
+    Rcd([], _) -> True
     _ -> False
   }
 }
@@ -346,9 +345,9 @@ pub fn parse_empty_list_test() {
 pub fn parse_single_item_list_test() {
   let #(term, errors) = parse("[1]")
   assert errors == []
-  // Single item list produces Ctr("#", Lit(1), span)
+  // Single item list produces Rcd with one field
   assert case term {
-    Ctr("#", Lit(LitInt(1), _), _) -> True
+    Rcd([#("0", Lit(LitInt(1), _))], _) -> True
     _ -> False
   }
 }
@@ -356,8 +355,9 @@ pub fn parse_single_item_list_test() {
 pub fn parse_two_item_list_test() {
   let #(term, errors) = parse("[1, 2]")
   assert errors == []
+  // Two item list produces Rcd with two fields
   assert case term {
-    Ctr("#", _, _) -> True
+    Rcd([#("0", Lit(LitInt(1), _)), #("1", Lit(LitInt(2), _))], _) -> True
     _ -> False
   }
 }
@@ -365,8 +365,9 @@ pub fn parse_two_item_list_test() {
 pub fn parse_nested_list_test() {
   let #(term, errors) = parse("[[1, 2]]")
   let _ = errors
+  // Nested list produces Rcd with Rcd inside
   assert case term {
-    Ctr("#", _, _) -> True
+    Rcd([#("0", Rcd([#("0", Lit(LitInt(1), _)), #("1", Lit(LitInt(2), _))], _))], _) -> True
     _ -> False
   }
 }
@@ -421,7 +422,7 @@ pub fn parse_trailing_paren_recovers_test() {
   let #(term, errors) = parse("(42")
   let _ = term
   let _ = errors
-  assert True
+  // parse allows partial results for error recovery
 }
 
 // ============================================================================

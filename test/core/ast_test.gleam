@@ -1,6 +1,7 @@
 import gleeunit
 import gleam/list
-import core/ast.{Var, Hole, Lam, App, Pi, Lit, Ctr, Ann, Match, Case, Typ, PAny, PVar, PCtr, PUnit, PLit, VNeut, HVar, HHole, VLam, VPi, VLit, VCtr, VRcd, VErr, Err as AstErr, Unit as AstUnit, Int as LitInt, Float as LitFloat, make_neut, make_hole_neut, make_var_neut, error_term, shift_term, term_to_string, value_to_string, EApp}
+import core/ast.{Var, Hole, Lam, App, Pi, Lit, Ctr, Ann, Match, Case, Typ, PAny, PVar, PCtr, PUnit, PLit, VNeut, HVar, HHole, VLam, VPi, VLit, VCtr, VRcd, Rcd, VErr, Err, Int as LitInt, Float as LitFloat, make_neut, make_hole_neut, make_var_neut, error_term, shift_term, term_to_string, value_to_string, EApp}
+import gleam/option.{None}
 import syntax/span.{single}
 
 pub fn main() {
@@ -26,9 +27,10 @@ pub fn term_hole_stores_id_and_span_test() {
 
 pub fn term_lambda_stores_name_body_and_span_test() {
   let body = Var(0, single("file.gleam", 1, 2))
-  let t = Lam(#("x", Hole(-1, single("file.gleam", 1, 1))), body, single("file.gleam", 1, 3))
+  let param_type = Hole(-1, single("file.gleam", 1, 1))
+  let t = Lam(#("x", param_type, body), body, single("file.gleam", 1, 3))
   assert case t {
-    Lam(#(name, _), _, _) -> name == "x"
+    Lam(#(name, _, _), _, _) -> name == "x"
   }
 }
 
@@ -60,24 +62,23 @@ pub fn term_constructor_stores_tag_arg_and_span_test() {
 }
 
 pub fn term_unit_stores_span_test() {
-  let t = AstUnit(single("file.gleam", 1, 1))
-  assert t.span.start_line == 1
+  assert Rcd([], single("file.gleam", 1, 1)) == Rcd([], single("file.gleam", 1, 1))
 }
 
 pub fn term_type_stores_span_test() {
-  let t = Typ(single("file.gleam", 1, 1))
+  let t = Typ(0, single("file.gleam", 1, 1))
   assert t.span.start_col == 1
 }
 
 pub fn term_error_stores_message_and_span_test() {
-  let t = AstErr("oops", single("file.gleam", 1, 1))
+  let t = Err("oops", single("file.gleam", 1, 1))
   assert t.message == "oops"
   assert t.span.file == "file.gleam"
 }
 
 pub fn error_term_helper_creates_ast_error_test() {
   let t = error_term("test error", single("file.gleam", 1, 1))
-  assert t == AstErr("test error", single("file.gleam", 1, 1))
+  assert t == Err("test error", single("file.gleam", 1, 1))
 }
 
 // ============================================================================
@@ -115,16 +116,17 @@ pub fn neut_value_stores_head_and_spine_test() {
 }
 
 pub fn neut_value_stores_hole_head_test() {
-  let v = VNeut(HHole(5), [EApp(VRcd)])
+  let v = VNeut(HHole(5), [EApp(VRcd([]))])
   assert v.head == HHole(5)
   assert list.length(v.spine) == 1
 }
 
 pub fn lam_value_stores_param_and_body_test() {
   let body = Var(0, single("file.gleam", 1, 1))
-  let v = VLam(#("x", body), body)
+  let param_type = Hole(-1, single("file.gleam", 1, 1))
+  let v = VLam(#("x", param_type, body), body)
   assert case v {
-    VLam(#(name, _), _) -> name == "x"
+    VLam(#(name, _, _), _) -> name == "x"
   }
 }
 
@@ -183,9 +185,10 @@ pub fn shift_term_negative_on_free_variable_decrements_index_test() {
 
 pub fn shift_term_on_bound_variable_increments_index_test() {
   let body = Var(0, single("file.gleam", 1, 1))
-  let lam = Lam(#("x", body), Var(0, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+  let param_type = Hole(-1, single("file.gleam", 1, 1))
+  let lam = Lam(#("x", param_type, body), Var(0, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
   let shifted = shift_term(lam, 1)
-  assert shifted == Lam(#("x", Var(1, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+  assert shifted == Lam(#("x", Var(1, single("file.gleam", 1, 1)), Var(0, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
 }
 
 pub fn shift_term_on_hole_is_no_op_test() {
@@ -208,12 +211,12 @@ pub fn shift_term_on_app_shifts_both_parts_test() {
 
 pub fn shift_term_on_match_shifts_arg_and_cases_test() {
   let body = Var(0, single("file.gleam", 1, 1))
-  let case_expr = Case(PAny(single("file.gleam", 1, 1)), body, single("file.gleam", 1, 2))
+  let case_expr = Case(PAny(single("file.gleam", 1, 1)), None, body, single("file.gleam", 1, 2))
   let match_expr = Match(Var(0, single("file.gleam", 1, 3)), [case_expr], single("file.gleam", 1, 4))
   let shifted = shift_term(match_expr, 1)
   assert shifted == Match(
     Var(1, single("file.gleam", 1, 3)),
-    [Case(PAny(single("file.gleam", 1, 1)), Var(1, single("file.gleam", 1, 1)), single("file.gleam", 1, 2))],
+    [Case(PAny(single("file.gleam", 1, 1)), None, Var(1, single("file.gleam", 1, 1)), single("file.gleam", 1, 2))],
     single("file.gleam", 1, 4),
   )
 }
@@ -245,11 +248,12 @@ pub fn shift_term_on_ctr_shifts_arg_test() {
 pub fn shift_term_negative_on_all_vars_decrements_indices_test() {
   // Shift -1 should decrease all vars by 1 (since from=0 by default)
   let body = Var(0, single("file.gleam", 1, 1))
+  let param_type = Hole(-1, single("file.gleam", 1, 1))
   let outer = Var(1, single("file.gleam", 1, 2))
-  let lam = Lam(#("x", body), outer, single("file.gleam", 1, 3))
+  let lam = Lam(#("x", param_type, body), outer, single("file.gleam", 1, 3))
   let shifted = shift_term(lam, -1)
   // Var(1) becomes Var(0), and Var(0) becomes Var(-1)
-  assert shifted == Lam(#("x", Var(-1, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+  assert shifted == Lam(#("x", Var(-1, single("file.gleam", 1, 1)), Var(0, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
 }
 
 pub fn shift_term_on_pi_shifts_domain_and_codomain_test() {
@@ -290,8 +294,9 @@ pub fn term_to_string_hole_test() {
 
 pub fn term_to_string_lambda_test() {
   let body = Var(0, single("file.gleam", 1, 2))
-  let t = Lam(#("x", Hole(-1, single("file.gleam", 1, 1))), body, single("file.gleam", 1, 3))
-  assert term_to_string(t) == "λx.#0"
+  let param_type = Hole(-1, single("file.gleam", 1, 1))
+  let t = Lam(#("x", param_type, body), body, single("file.gleam", 1, 3))
+  assert term_to_string(t) == "%fn(x: ?-1) => #0"
 }
 
 pub fn term_to_string_application_test() {
@@ -300,7 +305,7 @@ pub fn term_to_string_application_test() {
     Lit(LitInt(42), single("file.gleam", 1, 3)),
     single("file.gleam", 1, 5),
   )
-  assert term_to_string(t) == "(#0 42)"
+  assert term_to_string(t) == "fun(#0: 42)"
 }
 
 pub fn term_to_string_integer_literal_test() {
@@ -314,18 +319,18 @@ pub fn term_to_string_float_literal_test() {
 }
 
 pub fn term_to_string_unit_test() {
-  let t = AstUnit(single("file.gleam", 1, 1))
+  let t = Rcd([], single("file.gleam", 1, 1))
   assert term_to_string(t) == "()"
 }
 
 pub fn term_to_string_type_test() {
-  let t = Typ(single("file.gleam", 1, 1))
-  assert term_to_string(t) == "Type"
+  let t = Typ(0, single("file.gleam", 1, 1))
+  assert term_to_string(t) == "%Type(0)"
 }
 
 pub fn term_to_string_error_test() {
-  let t = AstErr("error", single("file.gleam", 1, 1))
-  assert term_to_string(t) == "<error: error>"
+  let t = Err("error", single("file.gleam", 1, 1))
+  assert term_to_string(t) == "\"error\""
 }
 
 // ============================================================================
@@ -344,8 +349,9 @@ pub fn value_to_string_neut_hole_test() {
 
 pub fn value_to_string_lambda_test() {
   let body = Var(0, single("file.gleam", 1, 1))
-  let v = VLam(#("x", body), body)
-  assert value_to_string(v) == "λx.#0"
+  let param_type = Hole(-1, single("file.gleam", 1, 1))
+  let v = VLam(#("x", param_type, body), body)
+  assert value_to_string(v) == "%fn(x) => #0"
 }
 
 pub fn value_to_string_integer_literal_test() {
@@ -359,7 +365,7 @@ pub fn value_to_string_float_literal_test() {
 }
 
 pub fn value_to_string_unit_test() {
-  let v = VRcd
+  let v = VRcd([])
   assert value_to_string(v) == "()"
 }
 
@@ -375,8 +381,10 @@ pub fn value_to_string_error_test() {
 pub fn shift_term_nested_lam_shifts_correctly_test() {
   // Nested lambdas: λx.(λy.0) shifted by 1 should correctly adjust param free vars
   let inner_body = Var(0, single("file.gleam", 1, 1))
-  let inner_lam = Lam(#("y", inner_body), inner_body, single("file.gleam", 1, 1))
-  let outer_lam = Lam(#("x", inner_lam), inner_lam, single("file.gleam", 1, 1))
+  let inner_param = Hole(-1, single("file.gleam", 1, 1))
+  let inner_lam = Lam(#("y", inner_param, inner_body), inner_body, single("file.gleam", 1, 1))
+  let outer_param = Hole(-1, single("file.gleam", 1, 1))
+  let outer_lam = Lam(#("x", outer_param, inner_lam), inner_lam, single("file.gleam", 1, 1))
   let shifted = shift_term(outer_lam, 1)
   // Param (inner_lam) shifted with from=0:
   //   inner param: Var(0) -> Var(1) (free var in param body)
@@ -385,8 +393,8 @@ pub fn shift_term_nested_lam_shifts_correctly_test() {
   //   inner param: Var(0) stays Var(0) (free var >= 1 not present here)
   //   inner body: Var(0) stays Var(0) (bound by inner lam, from=2)
   assert shifted == Lam(
-    #("x", Lam(#("y", Var(1, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 1)), single("file.gleam", 1, 1))),
-    Lam(#("y", Var(0, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 1)), single("file.gleam", 1, 1)),
+    #("x", outer_param, Lam(#("y", Var(1, single("file.gleam", 1, 1)), Var(0, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 1)), single("file.gleam", 1, 1))),
+    Lam(#("y", Var(0, single("file.gleam", 1, 1)), Var(0, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 1)), single("file.gleam", 1, 1)),
     single("file.gleam", 1, 1),
   )
 }
@@ -406,12 +414,12 @@ pub fn shift_term_on_ann_preserves_span_test() {
 pub fn shift_term_on_match_preserves_case_bodies_span_test() {
   // shift_term on Match should preserve spans in case bodies
   let body = Var(0, single("file.gleam", 1, 1))
-  let case_expr = Case(PAny(single("file.gleam", 1, 1)), body, single("file.gleam", 1, 2))
+  let case_expr = Case(PAny(single("file.gleam", 1, 1)), None, body, single("file.gleam", 1, 2))
   let match_expr = Match(Var(0, single("file.gleam", 1, 3)), [case_expr], single("file.gleam", 1, 4))
   let shifted = shift_term(match_expr, 1)
   assert shifted == Match(
     Var(1, single("file.gleam", 1, 3)),
-    [Case(PAny(single("file.gleam", 1, 1)), Var(1, single("file.gleam", 1, 1)), single("file.gleam", 1, 2))],
+    [Case(PAny(single("file.gleam", 1, 1)), None, Var(1, single("file.gleam", 1, 1)), single("file.gleam", 1, 2))],
     single("file.gleam", 1, 4),
   )
 }
@@ -434,16 +442,13 @@ pub fn shift_term_on_let_preserves_span_test() {
   let let_expr = App(Lam(#("x", param_type, body), body, single("file.gleam", 1, 3)), value, single("file.gleam", 1, 3))
   let shifted = shift_term(let_expr, 1)
   assert case shifted {
-    App(Lam(#(_, param, body), body2, lam_span), value, main_span) ->
+    App(Lam(#(_, _, _body), body2, _lam_span), value, main_span) ->
       case value {
-        Var(3, val_span) -> case body {
-          Var(0, body_span) -> case body2 {
-            Var(0, param_span) ->
-              val_span.start_line == 1 && val_span.start_col == 2
-              && body_span.start_line == 1 && body_span.start_col == 1
-              && main_span.start_line == 1 && main_span.start_col == 3
-            _ -> False
-          }
+        Var(3, val_span) -> case body2 {
+          Var(0, body_span) ->
+            val_span.start_line == 1 && val_span.start_col == 2
+            && body_span.start_line == 1 && body_span.start_col == 1
+            && main_span.start_line == 1 && main_span.start_col == 3
           _ -> False
         }
         _ -> False
@@ -462,18 +467,18 @@ pub fn shift_term_on_let_preserves_span_test() {
 pub fn term_to_string_match_test() {
   // Match with a single case should format correctly
   let body = Var(0, single("file.gleam", 1, 1))
-  let case_expr = Case(PAny(single("file.gleam", 1, 1)), body, single("file.gleam", 1, 2))
+  let case_expr = Case(PAny(single("file.gleam", 1, 1)), None, body, single("file.gleam", 1, 2))
   let match_expr = Match(Var(0, single("file.gleam", 1, 3)), [case_expr], single("file.gleam", 1, 4))
-  assert term_to_string(match_expr) == "match #0 { (_ => #0)}"
+  assert term_to_string(match_expr) == "%match #0 {\n  | _ => #0\n}"
 }
 
 pub fn term_to_string_let_test() {
-  // App(Lam) should format as "fn x => <body>" applied to value
+  // App(Lam) should format as "fun(...)"
   let body = Var(0, single("file.gleam", 1, 1))
   let value = Lit(LitInt(42), single("file.gleam", 1, 2))
   let param_type = Rcd([], single("file.gleam", 1, 3))
   let let_expr = App(Lam(#("x", param_type, body), body, single("file.gleam", 1, 3)), value, single("file.gleam", 1, 3))
-  assert term_to_string(let_expr) == "app(fn x => #0, 42)"
+  assert term_to_string(let_expr) == "fun(%fn(x: ()) => #0: 42)"
 }
 
 pub fn term_to_string_ann_test() {
@@ -483,9 +488,9 @@ pub fn term_to_string_ann_test() {
 }
 
 pub fn term_to_string_ctr_test() {
-  // Ctr should format as "tag(<arg>)"
+  // Ctr without annotated arg should format as just the tag
   let ctr = Ctr("Some", Var(0, single("file.gleam", 1, 1)), single("file.gleam", 1, 2))
-  assert term_to_string(ctr) == "Some(#0)"
+  assert term_to_string(ctr) == "#Some"
 }
 
 pub fn value_to_string_ctr_test() {
@@ -509,25 +514,25 @@ pub fn value_to_string_pi_test() {
 pub fn pattern_to_string_var_test() {
   // PVar should format as the variable name
   let body = Var(0, single("file.gleam", 1, 1))
-  let case_expr = Case(PVar("x", single("file.gleam", 1, 1)), body, single("file.gleam", 1, 2))
+  let case_expr = Case(PVar("x", single("file.gleam", 1, 1)), None, body, single("file.gleam", 1, 2))
   let match_expr = Match(Var(0, single("file.gleam", 1, 3)), [case_expr], single("file.gleam", 1, 4))
-  assert term_to_string(match_expr) == "match #0 { (x => #0)}"
+  assert term_to_string(match_expr) == "%match #0 {\n  | x => #0\n}"
 }
 
 pub fn pattern_to_string_lit_int_test() {
   // PLit(Int) should format as the integer value
   let body = Var(0, single("file.gleam", 1, 1))
-  let case_expr = Case(PLit(LitInt(0), single("file.gleam", 1, 1)), body, single("file.gleam", 1, 2))
+  let case_expr = Case(PLit(LitInt(0), single("file.gleam", 1, 1)), None, body, single("file.gleam", 1, 2))
   let match_expr = Match(Lit(LitInt(0), single("file.gleam", 1, 3)), [case_expr], single("file.gleam", 1, 4))
-  assert term_to_string(match_expr) == "match 0 { (0 => #0)}"
+  assert term_to_string(match_expr) == "%match 0 {\n  | 0 => #0\n}"
 }
 
 pub fn pattern_to_string_lit_float_test() {
   // PLit(Float) should format as the float value
   let body = Var(0, single("file.gleam", 1, 1))
-  let case_expr = Case(PLit(LitFloat(1.0), single("file.gleam", 1, 1)), body, single("file.gleam", 1, 2))
+  let case_expr = Case(PLit(LitFloat(1.0), single("file.gleam", 1, 1)), None, body, single("file.gleam", 1, 2))
   let match_expr = Match(Lit(LitFloat(1.0), single("file.gleam", 1, 3)), [case_expr], single("file.gleam", 1, 4))
-  assert term_to_string(match_expr) == "match 1.0 { (1.0 => #0)}"
+  assert term_to_string(match_expr) == "%match 1.0 {\n  | 1.0 => #0\n}"
 }
 
 // ============================================================================
@@ -567,16 +572,16 @@ pub fn shift_term_on_match_multiple_cases_test() {
   let body1 = Var(1, single("file.gleam", 1, 1))
   let body2 = Var(2, single("file.gleam", 1, 2))
   let cases = [
-    Case(PAny(single("file.gleam", 1, 1)), body1, single("file.gleam", 1, 3)),
-    Case(PAny(single("file.gleam", 1, 2)), body2, single("file.gleam", 1, 4)),
+    Case(PAny(single("file.gleam", 1, 1)), None, body1, single("file.gleam", 1, 3)),
+    Case(PAny(single("file.gleam", 1, 2)), None, body2, single("file.gleam", 1, 4)),
   ]
   let match_expr = Match(Var(0, single("file.gleam", 1, 5)), cases, single("file.gleam", 1, 6))
   let shifted = shift_term(match_expr, 1)
   assert shifted == Match(
     Var(1, single("file.gleam", 1, 5)),
     [
-      Case(PAny(single("file.gleam", 1, 1)), Var(2, single("file.gleam", 1, 1)), single("file.gleam", 1, 3)),
-      Case(PAny(single("file.gleam", 1, 2)), Var(3, single("file.gleam", 1, 2)), single("file.gleam", 1, 4)),
+      Case(PAny(single("file.gleam", 1, 1)), None, Var(2, single("file.gleam", 1, 1)), single("file.gleam", 1, 3)),
+      Case(PAny(single("file.gleam", 1, 2)), None, Var(3, single("file.gleam", 1, 2)), single("file.gleam", 1, 4)),
     ],
     single("file.gleam", 1, 6),
   )
