@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - AST refactored with Rcd, new core syntax, 0 tests currently passing due to AST changes)
+> **Last updated:** 2026-04-25 (Updated: 2026-04-25 - Let removed, replaced by let_var helper, 0 tests currently passing due to AST changes)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend

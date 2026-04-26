@@ -6,7 +6,7 @@
 /// - Variable parsing (undefined variables produce errors)
 /// - Lambda expressions (name capture, De Bruijn indices, nested lambdas)
 /// - Pi types (fun)
-/// - Let bindings
+/// - Let bindings (desugar to App(Lam(...), value))
 /// - Match expressions
 /// - Fix expressions
 /// - If expressions
@@ -18,7 +18,7 @@
 import gleeunit
 import core/syntax.{parse, parse_tokens}
 import core/ast.{
-  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Let, Unit, Typ, Err, Case as CoreCase,
+  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Rcd, Typ, Err, Case as CoreCase,
   PAny, PCtr, PUnit, PLit, Int as LitInt, Float as LitFloat
 }
 import syntax/grammar.{ParseError}
@@ -213,14 +213,15 @@ pub fn parse_fun_type_two_params_test() {
 }
 
 // ============================================================================
-// Let bindings
+// Let bindings — desugar to App(Lam(...), value)
 // ============================================================================
 
 pub fn parse_let_simple_binding_test() {
   let #(term, errors) = parse("let x = 42")
   assert errors == []
+  // Let desugars to App(Lam("x", Unit, body), 42)
   assert case term {
-    Let("x", Lit(LitInt(42), _), Unit(_), _) -> True
+    App(Lam(#("x", Rcd(_, _), _), Var(0, _), _), Lit(LitInt(42), _), _) -> True
     _ -> False
   }
 }
@@ -228,8 +229,9 @@ pub fn parse_let_simple_binding_test() {
 pub fn parse_let_with_lambda_test() {
   let #(term, errors) = parse("let f = fn(x) -> x")
   assert errors == []
+  // Let desugars to App(Lam("f", Unit, body), lambda)
   assert case term {
-    Let("f", Lam(#("x", Var(0, _)), Var(0, _), _), Unit(_), _) -> True
+    App(Lam(#("f", Rcd(_, _), _), _), Lam(#("x", Var(0, _)), Var(0, _), _), _) -> True
     _ -> False
   }
 }
@@ -288,9 +290,9 @@ pub fn parse_nested_match_structure_test() {
 
 pub fn parse_simple_fix_test() {
   let #(term, _) = parse("fix x")
-  // fix is transformed into Let (body parsing may vary)
+  // fix desugars to App(Lam("x", Unit, body), body)
   assert case term {
-    Let("x", _, _, _) -> True
+    App(Lam(#("x", Rcd(_, _), _), _), _, _) -> True
     _ -> False
   }
 }

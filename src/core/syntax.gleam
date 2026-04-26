@@ -19,15 +19,15 @@
 ///   - Records: {x: 1, y: 2}
 
 import core/ast.{type Term, type Pattern, type Case,
-  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Let, Ann, Rcd, Typ, Err,
+  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Rcd, Typ, Err, let_var,
   Case as CoreCase, PAny, PVar, PCtr, PUnit, PLit, Int as LitInt, Float as LitFloat}
 import syntax/base_lexer.{Token, type Token, tokenize}
 import syntax/grammar.{type ParseError, ParseError}
-import syntax/span.{type Span, single, merge}
+import syntax/span.{type Span, single, merge, Span}
 import gleam/list
 import gleam/int
 import gleam/float
-import gleam/option.{Some}
+import gleam/option.{Some, None}
 
 /// Parse a Core source string into a Term.
 pub fn parse(source: String) -> #(Term, List(ParseError)) {
@@ -89,7 +89,6 @@ fn term_span(term: Term) -> Span {
     Lit(_, span) -> span
     Ctr(_, _, span) -> span
     Match(_, _, span) -> span
-    Let(_, _, _, span) -> span
     Ann(_, _, span) -> span
     Rcd(_, span) -> span
     Typ(_, span) -> span
@@ -447,7 +446,7 @@ fn parse_cases_acc(p: Parser, acc: List(Case)) -> #(List(Case), Parser) {
   }
 }
 
-// Let: %let name = value; body
+// Let: %let name = value; body — desugars to App(Lam(name, _, body), value)
 fn parse_let(p: Parser, span: Span) -> #(Term, Parser) {
   let p1 = skip("name", p)
   let #(name, p2) = expect_name_opt(p1)
@@ -457,17 +456,19 @@ fn parse_let(p: Parser, span: Span) -> #(Term, Parser) {
   let let_span = merge(span, term_span(value))
   let #(body, rest_final) = parse_term(p4)
   let body_span = merge(let_span, term_span(body))
-  #(Let(name, value, body, body_span), rest_final)
+  let param_type = Rcd([], span)
+  #(let_var(name, param_type, value, body, body_span), rest_final)
 }
 
-// Fix: %fix name = body
+// Fix: %fix name = body — desugars to App(Lam(name, _, body), value)
 fn parse_fix(p: Parser, span: Span) -> #(Term, Parser) {
   let p1 = skip("name", p)
   let #(name, p2) = expect_name_opt(p1)
   let p3 = skip("=", p2)
   let #(body, rest_errors) = parse_term(p3)
   let final_span = merge(span, term_span(body))
-  #(Let(name, body, Rcd([], final_span), final_span), rest_errors)
+  let param_type = Rcd([], span)
+  #(let_var(name, param_type, body, body, final_span), rest_errors)
 }
 
 // If: if cond then body else else_body
@@ -577,7 +578,6 @@ fn term_to_string(term: Term) -> String {
     Lit(_, _) -> "lit"
     Ctr(_, _, _) -> "ctr"
     Match(_, _, _) -> "match"
-    Let(_, _, _, _) -> "let"
     Ann(_, _, _) -> "ann"
     Rcd(_, _) -> "rcd"
     Typ(_, _) -> "type"

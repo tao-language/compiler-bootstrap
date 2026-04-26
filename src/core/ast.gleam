@@ -51,7 +51,6 @@ pub type Term {
   Lit(value: Literal, span: Span)
   Ctr(tag: String, arg: Term, span: Span)
   Match(arg: Term, cases: List(Case), span: Span)
-  Let(name: String, value: Term, body: Term, span: Span)
   Ann(term: Term, type_: Term, span: Span)
   Rcd(fields: List(#(String, Term)), span: Span)
   Typ(level: Int, span: Span)
@@ -125,6 +124,14 @@ pub fn error_term(message: String, span: Span) -> Term {
   Err(message, span)
 }
 
+/// Syntax sugar for let bindings: `let name = value; body`.
+///
+/// This is desugared to `App(Lam(name, param_type, body), value)` —
+/// a beta-reduction application. The `param_type` is typically `Type` (unit type).
+pub fn let_var(name: String, param_type: Term, value: Term, body: Term, span: Span) -> Term {
+  App(Lam(#(name, param_type, body), body, span), value, span)
+}
+
 // ============================================================================
 // TERM SHIFTING (De Bruijn index manipulation)
 // ============================================================================
@@ -169,11 +176,6 @@ fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
               Case(c.pattern, shift_opt(c.guard, shift, from), shift_term_from(c.body, shift, from), c.span)
             }),
             span)
-    Let(name, value, body, span) ->
-      Let(name,
-          shift_term_from(value, shift, from),
-          shift_term_from(body, shift, from + 1),
-          span)
     Ann(term, type_, span) ->
       Ann(shift_term_from(term, shift, from),
           shift_term_from(type_, shift, from),
@@ -222,9 +224,6 @@ pub fn term_to_string(term: Term) -> String {
       "%match " <> term_to_string(arg) <> " {"
       <> list.fold(cases, "", fn(acc, c) { acc <> "\n  | " <> case_to_string(c) })
       <> "\n}"
-    Let(name, value, body, _) ->
-      "%let " <> name <> " = " <> term_to_string(value)
-      <> "; " <> term_to_string(body)
     Ann(term, type_, _) ->
       term_to_string(term) <> " : " <> term_to_string(type_)
     Rcd(fields, _) ->

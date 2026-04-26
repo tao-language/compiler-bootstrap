@@ -1,6 +1,6 @@
 import gleeunit
 import gleam/list
-import core/ast.{Var, Hole, Lam, App, Pi, Lit, Ctr, Ann, Let, Match, Case, Typ, PAny, PVar, PCtr, PUnit, PLit, VNeut, HVar, HHole, VLam, VPi, VLit, VCtr, VRcd, VErr, Err as AstErr, Unit as AstUnit, Int as LitInt, Float as LitFloat, make_neut, make_hole_neut, make_var_neut, error_term, shift_term, term_to_string, value_to_string, EApp}
+import core/ast.{Var, Hole, Lam, App, Pi, Lit, Ctr, Ann, Match, Case, Typ, PAny, PVar, PCtr, PUnit, PLit, VNeut, HVar, HHole, VLam, VPi, VLit, VCtr, VRcd, VErr, Err as AstErr, Unit as AstUnit, Int as LitInt, Float as LitFloat, make_neut, make_hole_neut, make_var_neut, error_term, shift_term, term_to_string, value_to_string, EApp}
 import syntax/span.{single}
 
 pub fn main() {
@@ -221,11 +221,13 @@ pub fn shift_term_on_match_shifts_arg_and_cases_test() {
 pub fn shift_term_on_let_shifts_value_and_body_test() {
   let body = Var(0, single("file.gleam", 1, 1))
   let value = Var(2, single("file.gleam", 1, 2))
-  let let_expr = Let("x", value, body, single("file.gleam", 1, 3))
+  let param_type = Rcd([], single("file.gleam", 1, 3))
+  let let_expr = App(Lam(#("x", param_type, body), body, single("file.gleam", 1, 3)), value, single("file.gleam", 1, 3))
   let shifted = shift_term(let_expr, 1)
   // value is shifted with from=0: Var(2) -> Var(3)
-  // body is shifted with from=1: Var(0) stays Var(0) (bound by Let)
-  assert shifted == Let("x", Var(3, single("file.gleam", 1, 2)), Var(0, single("file.gleam", 1, 1)), single("file.gleam", 1, 3))
+  // body is shifted with from=1: Var(0) stays Var(0) (bound by Lam)
+  let expected = App(Lam(#("x", param_type, Var(0, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 1)), single("file.gleam", 1, 3)), Var(3, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
+  assert shifted == expected
 }
 
 pub fn shift_term_on_ann_shifts_term_and_type_test() {
@@ -425,16 +427,27 @@ pub fn shift_term_preserves_span_test() {
 }
 
 pub fn shift_term_on_let_preserves_span_test() {
-  // shift_term on Let should preserve spans in both value and body
+  // shift_term on App(Lam) should preserve spans
   let body = Var(0, single("file.gleam", 1, 1))
   let value = Var(2, single("file.gleam", 1, 2))
-  let let_expr = Let("x", value, body, single("file.gleam", 1, 3))
+  let param_type = Rcd([], single("file.gleam", 1, 3))
+  let let_expr = App(Lam(#("x", param_type, body), body, single("file.gleam", 1, 3)), value, single("file.gleam", 1, 3))
   let shifted = shift_term(let_expr, 1)
   assert case shifted {
-    Let(_, value: Var(3, span: val_span), body: Var(0, span: body_span), span: main_span) ->
-      val_span.start_line == 1 && val_span.start_col == 2
-      && body_span.start_line == 1 && body_span.start_col == 1
-      && main_span.start_line == 1 && main_span.start_col == 3
+    App(Lam(#(_, param, body), body2, lam_span), value, main_span) ->
+      case value {
+        Var(3, val_span) -> case body {
+          Var(0, body_span) -> case body2 {
+            Var(0, param_span) ->
+              val_span.start_line == 1 && val_span.start_col == 2
+              && body_span.start_line == 1 && body_span.start_col == 1
+              && main_span.start_line == 1 && main_span.start_col == 3
+            _ -> False
+          }
+          _ -> False
+        }
+        _ -> False
+      }
     _ -> False
   }
 }
@@ -455,11 +468,12 @@ pub fn term_to_string_match_test() {
 }
 
 pub fn term_to_string_let_test() {
-  // Let binding should format as "let x = <value>; <body>"
+  // App(Lam) should format as "fn x => <body>" applied to value
   let body = Var(0, single("file.gleam", 1, 1))
   let value = Lit(LitInt(42), single("file.gleam", 1, 2))
-  let let_expr = Let("x", value, body, single("file.gleam", 1, 3))
-  assert term_to_string(let_expr) == "let x = 42; #0"
+  let param_type = Rcd([], single("file.gleam", 1, 3))
+  let let_expr = App(Lam(#("x", param_type, body), body, single("file.gleam", 1, 3)), value, single("file.gleam", 1, 3))
+  assert term_to_string(let_expr) == "app(fn x => #0, 42)"
 }
 
 pub fn term_to_string_ann_test() {
