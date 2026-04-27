@@ -1,4 +1,0 @@
-// Syntax Recovery: Extra closing parenthesis
-// The parser should recover after the extra )
-// and potentially treat this as just (x)
-(x))
