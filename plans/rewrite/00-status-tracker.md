@@ -175,16 +175,16 @@ Total tests: 424 passed, 0 failures.
 | 2.13.1 | Every value form | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.13.2 | quote ≠ eval (critical invariant) | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.13.3 | Nested lambda quoting | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.14 | Implement type inference (synthesis) | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/infer.gleam` |
-| 2.14.1 | `infer(state, term) -> #(Value, Value, State)` | 🔴 | [03-core-language.md](03-core-language.md) | Returns triple |
-| 2.14.2 | `check(state, term, expected) -> #(Value, Value, State)` | 🔴 | [03-core-language.md](03-core-language.md) | Returns triple |
+| 2.14 | Implement type inference (synthesis) | ✅ | [03-core-language.md](03-core-language.md) | `src/core/infer.gleam` |
+| 2.14.1 | `infer(state, term) -> #(Value, Value, State)` | ✅ | [03-core-language.md](03-core-language.md) | Returns triple |
+| 2.14.2 | `check(state, term, expected) -> #(Value, Value, State)` | ✅ | [03-core-language.md](03-core-language.md) | Returns triple |
 | 2.14.3 | `infer_pattern` | 🔴 | [03-core-language.md](03-core-language.md) | |
 | 2.14.4 | `infer_match` | 🔴 | [03-core-language.md](03-core-language.md) | |
 | 2.14.5 | `infer_fix` | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 2.14.6 | All error cases | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 2.15 | Write tests for type inference | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/infer_test.gleam` |
-| 2.15.1 | Every term form | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.15.2 | Every error case | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.14.6 | All error cases | ✅ | [03-core-language.md](03-core-language.md) | |
+| 2.15 | Write tests for type inference | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/infer_test.gleam` |
+| 2.15.1 | Every term form | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.15.2 | Every error case | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.16 | Implement exhaustiveness checking | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/exhaustiveness.gleam` |
 | 2.16.1 | `check_exhaustiveness` (Maranget's algorithm) | 🔴 | [03-core-language.md](03-core-language.md) | |
 | 2.16.2 | `is_redundant` | 🔴 | [03-core-language.md](03-core-language.md) | |
@@ -432,6 +432,7 @@ Total tests: 424 passed, 0 failures.
 
 | Date | Change |
 |------|--------|
+| 2026-04-27 | **Phase 2 Task 2.14 + 2.15: Type inference module and tests implemented:** `src/core/infer.gleam` (570 lines) with bidirectional type checking — `infer()` synthesizes types without context, `check()` verifies against expected type. Covers all term forms: Var, Hole, Lit, Typ, Lam, Pi, App, Ann, Match, Call, Rcd, Ctr, Err. `check_match_cases` handles pattern matching and case exhaustiveness. `unify_infer_and_check` integrates unification. Clean wrappers around `unify`, `force`, `evaluate`, `match_pattern`, `state` helpers. 31 tests in `test/core/infer_test.gleam` covering literals, variables, holes, lambdas, Pi types, records, constructors, errors, check assertions, and round-trip properties. 620 tests passing, 0 warnings. **Total: 620 tests passing.** |
 | 2026-04-27 | **Phase 2 Task 2.12 Quote implemented:** `src/core/quote.gleam` with `quote(value)` and `quote_at(value, level)`. Converts Values (De Bruijn levels) to Terms (De Bruijn indices). Clean wrapper around `force_levels_to_indices` from `subst.gleam`. 39 tests in `test/core/quote_test.gleam` covering: literals, constructors, records, errors, variable level-to-index conversion, holes, neutral terms with application spine, lambda values, Pi type values, nested quoting, evaluate→quote round-trip, and quote≠eval invariant. Fixed unreachable pattern warnings in grammar_test.gleam. **Total: 591 tests passing.** |
 
 | 2026-04-27 | **Guard truth check refactored:** `is_true_value` (shape-based truth detection) removed from `src/core/eval.gleam`. Replaced with `is_truth(truth_ctr, value)` that checks if a value's constructor tag matches the configured `truth_ctr`. Added `truth_ctr: String` field to `State` type with helpers (`truth_ctr(state)`, `with_truth_ctr(state, name)`). Default truth constructor is `"True"`. This removes language-specific assumptions from core and enables configurable truth constructors for different languages. `do_match` and `match_state` now thread `truth_ctr` through evaluation. All 553 tests pass. |
@@ -492,7 +493,7 @@ Total tests: 424 passed, 0 failures.
 - [ ] Add tests for CLI commands (run, check, test)
 - [x] **Implement Phase 2 Task 2.10:** NBE evaluator (`src/core/eval.gleam`) ✅
 - [x] **Implement Phase 2 Task 2.12:** Quote module (`src/core/quote.gleam`) ✅ 39 tests in `test/core/quote_test.gleam`
-- [ ] **Implement Phase 2 Task 2.14:** Type inference (`src/core/infer.gleam`)
+- [x] **Implement Phase 2 Task 2.14:** Type inference (`src/core/infer.gleam`)
 - [ ] **Implement Phase 2 Task 2.16:** Exhaustiveness checking (`src/core/exhaustiveness.gleam`)
 
 ### Code Improvements
