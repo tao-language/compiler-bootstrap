@@ -414,6 +414,7 @@ Total tests: 408 passed, 0 failures.
 | Date | Change |
 |------|--------|
 | 2026-04-26 | **Phase 2 Task 2.4 Unification implemented:** `src/core/unify.gleam` with `unify(state, expected, actual)` and `occurs_check(level, value)`. Covers: hole binding, variable lookup, Pi/VLam/VCtr/VLIT/VRcd/VNeut unification, VErr passthrough, TypeMismatch errors. 33 tests in `test/core/unify_test.gleam`. **Phase 2 Task 2.3 Complete:** Core parser tests added (41 tests). Total: 408 tests passing. |
+| 2026-04-26 | **Test suite cleaned up:** Removed unused `src/tao/` and `test/tao/` (Phase 3 not yet reached). Removed 4 redundant tests (pipe_is_punct duplicate, shift_term_on_hole_preserves_id duplicate, shift_term_preserves_span_through_shifts duplicate). Fixed 2 tests that had no assertions (`parse_trailing_paren_recovers_test`, `unify_hvar_looks_up_value_test`). Removed empty placeholder comment sections from `state_test.gleam` and `syntax_test.gleam`. **Total: 363 tests passing.** |
 | 2026-04-26 | **Param removed from AST:** `Param` record type removed from `core/ast.gleam`. Lambdas now use ` #(String, Term)` tuples: `Lam(#("name", param_type), body, span)`. `VLam` uses `#(String, Value)` for parameter annotations. |
 | 2026-04-26 | **Call constructor added:** `Call(name, args, span)` added to Term type for function calls. Updated `shift_term`, `term_to_string`, `VLam` string representation. |
 | 2026-04-26 | **State cleaned up:** Removed unused fields from `State`: `lambda_depth`, `max_steps`, `step_counter`, `truth_ctor`. Removed unused helpers: `with_max_steps`, `with_truth_ctor`, `with_lambda_depth`, `set_lambda_depth`, `truth_ctor`. All 375 tests pass. |
@@ -453,6 +454,7 @@ Total tests: 408 passed, 0 failures.
 - [x] Verify span accuracy for all lexer token types (column counting edge cases) ✅ 15 added
 - [x] Add 5+ negative tests for parser (grammar errors, unexpected tokens) ✅ 3 added
 - [x] Add tests for span merging and multi-line span tracking ✅ 13 added
+- [x] **Test suite cleanup:** Removed 4 redundant tests, fixed 2 silent-pass tests, removed unused Phase 3 code ✅ 363 tests passing
 - [ ] **Update all tests for new AST:** VUnit → VRcd, VLam, Case, Typ arity changes
 - [ ] Add tests for new core syntax: %fn, %let, %match, #Tag, fun(), {x: y}
 - [x] Add tests for unification ✅ 33 tests added in `test/core/unify_test.gleam`
@@ -473,6 +475,7 @@ Total tests: 408 passed, 0 failures.
 - [x] Improved parse() error reporting on failure ✅
 - [x] Implemented unification module (`src/core/unify.gleam`) with `unify()` and `occurs_check()` ✅
 - [x] Fixed `match_values` for VNeut: same HVar level, VErr passthrough, different hole IDs ✅
+- [x] Test suite cleanup: removed redundant tests and fixed silent-pass tests ✅
 - [ ] Consider making `parse()` propagate partial errors through failed alternatives
 - [ ] Add `term_from_string` for round-trip testing
 - [ ] Consider adding `Span.to_debug_string` for test assertions
