@@ -293,7 +293,6 @@ pub fn either_value_preserves_payload_type_in_seq_test() {
   assert is_left(left_val) == True
   assert case left_val {
     Left(v) -> v == "Name"
-    _ -> False
   }
 }
 
@@ -303,7 +302,6 @@ pub fn either_value_preserves_ast_type_in_ref_test() {
   assert is_right(right_val) == True
   assert case right_val {
     Right(v) -> v == "AST_Node"
-    _ -> False
   }
 }
 

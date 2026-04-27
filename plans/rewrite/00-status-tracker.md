@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-26 (Updated: 2026-04-26 - Phase 2 Task 2.8-2.9 Generalization implemented! 545 tests passing.)
+> **Last updated:** 2026-04-27 (Updated: 2026-04-27 - Phase 2 Task 2.12 Quote implemented! 591 tests passing.)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend
@@ -169,8 +169,8 @@ Total tests: 424 passed, 0 failures.
 | 2.11.1 | Every value form | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.11.2 | FFI calls | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.11.3 | Neutral spine | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.12 | Implement quote (Value → Term) | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/quote.gleam` |
-| 2.12.1 | `quote` function | 🔴 | [03-core-language.md](03-core-language.md) | Does NOT call eval |
+| 2.12 | Implement quote (Value → Term) | ✅ | [03-core-language.md](03-core-language.md) | `src/core/quote.gleam` |
+| 2.12.1 | `quote` function | ✅ | [03-core-language.md](03-core-language.md) | Does NOT call eval |
 | 2.13 | Write tests for quote | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/quote_test.gleam` |
 | 2.13.1 | Every value form | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.13.2 | quote ≠ eval (critical invariant) | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
@@ -432,6 +432,8 @@ Total tests: 424 passed, 0 failures.
 
 | Date | Change |
 |------|--------|
+| 2026-04-27 | **Phase 2 Task 2.12 Quote implemented:** `src/core/quote.gleam` with `quote(value)` and `quote_at(value, level)`. Converts Values (De Bruijn levels) to Terms (De Bruijn indices). Clean wrapper around `force_levels_to_indices` from `subst.gleam`. 39 tests in `test/core/quote_test.gleam` covering: literals, constructors, records, errors, variable level-to-index conversion, holes, neutral terms with application spine, lambda values, Pi type values, nested quoting, evaluate→quote round-trip, and quote≠eval invariant. Fixed unreachable pattern warnings in grammar_test.gleam. **Total: 591 tests passing.** |
+
 | 2026-04-27 | **Guard truth check refactored:** `is_true_value` (shape-based truth detection) removed from `src/core/eval.gleam`. Replaced with `is_truth(truth_ctr, value)` that checks if a value's constructor tag matches the configured `truth_ctr`. Added `truth_ctr: String` field to `State` type with helpers (`truth_ctr(state)`, `with_truth_ctr(state, name)`). Default truth constructor is `"True"`. This removes language-specific assumptions from core and enables configurable truth constructors for different languages. `do_match` and `match_state` now thread `truth_ctr` through evaluation. All 553 tests pass. |
 | 2026-04-27 | **Code quality improvements:** (1) Fixed critical bug: `subst.gleam` line 226 `shift_opt(c.guard, 0, from)` → `shift_opt(c.guard, from, from)` — guards now shift correctly during substitution. (2) Eliminated ~90 lines of duplicate code: `shift_term`, `shift_term_from`, `shift_opt` moved from `subst.gleam` to `ast.gleam` (made public), `subst.gleam` imports from `ast`. (3) Removed no-op `int_to_string` wrapper in `subst.gleam`. (4) Fixed unused `_param_name` binding in `subst.gleam` try_apply. (5) Simplified `name_from_pi` in `ast.gleam` — flattened nested pattern match. (6) Removed unused `left_value`/`right_value` helpers from `grammar.gleam` — combinators never called them (they just collected `Either` values and passed them to constructors). (7) Guard truth check refactored: `is_true_value` → `is_truth(truth_ctr, value)` with configurable `truth_ctr` in State. All 551 tests pass, formatting applied. |
 | 2026-04-26 | **Phase 2 Task 2.10 NBE evaluator implemented:** `src/core/eval.gleam` with `evaluate`, `do_app`, `do_match`, `match_pattern`, `is_true_value`, `value_to_string`, `lookup_env`. Covers: all term-to-value conversions (Var, Hole, Lam, App, Pi, Lit, Ctr, Rcd, Ann, Match, Call, Typ, Err), beta reduction via substitution (`subst_term_var` with fixed index arithmetic), neutral spine construction, pattern matching, FFI calls, guard evaluation, value-to-string formatting. 73 tests in `test/core/eval_test.gleam`. Fixed `subst_term_var` De Bruijn index arithmetic (uses `idx + from` instead of `idx == from`). Fixed `value_to_neut` to use `force_levels_to_indices` for non-neutral values. **Total: 545 tests passing.** |
@@ -489,7 +491,7 @@ Total tests: 424 passed, 0 failures.
 - [ ] Add tests for desugarer
 - [ ] Add tests for CLI commands (run, check, test)
 - [x] **Implement Phase 2 Task 2.10:** NBE evaluator (`src/core/eval.gleam`) ✅
-- [ ] **Implement Phase 2 Task 2.12:** Quote module (`src/core/quote.gleam`)
+- [x] **Implement Phase 2 Task 2.12:** Quote module (`src/core/quote.gleam`) ✅ 39 tests in `test/core/quote_test.gleam`
 - [ ] **Implement Phase 2 Task 2.14:** Type inference (`src/core/infer.gleam`)
 - [ ] **Implement Phase 2 Task 2.16:** Exhaustiveness checking (`src/core/exhaustiveness.gleam`)
 
