@@ -176,8 +176,8 @@ Total tests: 424 passed, 0 failures.
 | 2.13.2 | quote ≠ eval (critical invariant) | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.13.3 | Nested lambda quoting | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.14 | Implement type inference (synthesis) | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/infer.gleam` |
-| 2.14.1 | `infer(state, term) -> #(Term, Value, State)` | 🔴 | [03-core-language.md](03-core-language.md) | Returns triple |
-| 2.14.2 | `check(state, term, expected) -> #(Term, Value, State)` | 🔴 | [03-core-language.md](03-core-language.md) | Returns triple |
+| 2.14.1 | `infer(state, term) -> #(Value, Value, State)` | 🔴 | [03-core-language.md](03-core-language.md) | Returns triple |
+| 2.14.2 | `check(state, term, expected) -> #(Value, Value, State)` | 🔴 | [03-core-language.md](03-core-language.md) | Returns triple |
 | 2.14.3 | `infer_pattern` | 🔴 | [03-core-language.md](03-core-language.md) | |
 | 2.14.4 | `infer_match` | 🔴 | [03-core-language.md](03-core-language.md) | |
 | 2.14.5 | `infer_fix` | 🔴 | [03-core-language.md](03-core-language.md) | |
