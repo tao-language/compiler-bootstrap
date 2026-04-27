@@ -18,10 +18,10 @@
 
 import gleeunit
 import core/unify.{unify, occurs_check}
-import core/state.{initial_state, def_var, State, TypeMismatch}
+import core/state.{initial_state, def_var, TypeMismatch}
 import core/ast.{
   VNeut, HHole, HVar, VLam, VPi, VCtr, VLit, VRcd, VErr, EApp,
-  Var, Lit, Int as LitInt, Float as LitFloat,
+  Var, Int as LitInt, Float as LitFloat,
 }
 import gleam/list
 import syntax/span.{single}
@@ -304,6 +304,7 @@ pub fn unify_hvar_vs_hhole_test() {
   )
   // HVar(0) fails lookup → error is added
   // HHole(0) in actual is bound to HVar(0)'s resolved type
+  assert list.length(final.errors) >= 1
 }
 
 // ============================================================================
@@ -355,7 +356,6 @@ pub fn unify_err_unifies_with_err_test() {
 pub fn occurs_check_always_false_test() {
   // Even if a value contains itself, occurs_check returns False
   // This allows recursive types
-  let state = initial_state([])
   let v = VCtr("Rec", VNeut(HHole(0), []))
   assert occurs_check(0, v) == False
 }
