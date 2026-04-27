@@ -137,12 +137,14 @@ pub fn unify_hole_reunification_test() {
 // ============================================================================
 
 pub fn unify_hvar_looks_up_value_test() {
+  // Create a binding: "x" -> (VNeut(HHole(0), []), VNeut(HHole(0), []))
+  // Then try to unify VNeut(HHole(1), []) with VNeut(HHole(0), [])
+  // Different hole IDs should produce a type mismatch
   let state = initial_state([])
   let s1 = def_var(state, "x", VNeut(HHole(0), []), VNeut(HHole(0), []))
   let s2 = unify(s1, VNeut(HHole(1), []), VNeut(HHole(0), []))
-  // Hole(1) and Hole(0) both reference "x"
-  // This should work after both holes are bound
-  let _ = s2
+  // Different holes are not equal
+  assert list.length(s2.errors) >= 1
 }
 
 // ============================================================================

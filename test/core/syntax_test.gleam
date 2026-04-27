@@ -9,7 +9,6 @@
 /// - Let bindings (desugar to App(Lam(...), value))
 /// - Match expressions
 /// - Fix expressions
-/// - If expressions
 /// - Parenthesized expressions
 /// - List expressions
 /// - Error recovery (strings, unsupported operators)
@@ -402,9 +401,6 @@ pub fn parse_simple_fix_test() {
 }
 
 // ============================================================================
-// If expressions — removed from core language
-// ============================================================================
-
 // ============================================================================
 // Parenthesized expressions
 // ============================================================================
@@ -516,10 +512,15 @@ pub fn parse_extra_tokens_returns_error_test() {
 }
 
 pub fn parse_trailing_paren_recovers_test() {
+  // Parse should recover and still extract the inner value from unmatched parens
   let #(term, errors) = parse("(42")
-  let _ = term
-  let _ = errors
-  // parse allows partial results for error recovery
+  // The parser recovers by treating the inner value as the result
+  assert case term {
+    Lit(LitInt(42), _) -> True
+    _ -> False
+  }
+  // No errors — error recovery produces a valid result
+  assert errors == []
 }
 
 // ============================================================================

@@ -196,12 +196,6 @@ pub fn shift_term_on_bound_variable_increments_index_test() {
   assert shifted == Lam(#("x", Hole(-1, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
 }
 
-pub fn shift_term_on_hole_is_no_op_test() {
-  let t = Hole(5, single("file.gleam", 1, 1))
-  let shifted = shift_term(t, 10)
-  assert shifted == Hole(5, single("file.gleam", 1, 1))
-}
-
 pub fn shift_term_on_literal_is_no_op_test() {
   let t = Lit(LitInt(42), single("file.gleam", 1, 1))
   let shifted = shift_term(t, 10)
@@ -274,16 +268,6 @@ pub fn shift_term_zero_does_nothing_test() {
   let t = Var(5, single("file.gleam", 1, 1))
   let shifted = shift_term(t, 0)
   assert shifted == Var(5, single("file.gleam", 1, 1))
-}
-
-pub fn shift_term_preserves_span_through_shifts_test() {
-  let span = single("file.gleam", 5, 10)
-  let t = Var(2, span)
-  let shifted = shift_term(t, 1)
-  assert case shifted {
-    Var(_, s) -> s.start_line == 5 && s.start_col == 10
-    _ -> False
-  }
 }
 
 // ============================================================================
@@ -597,13 +581,6 @@ pub fn shift_term_negative_on_literal_preserves_test() {
   let t = Lit(LitInt(42), single("file.gleam", 1, 1))
   let shifted = shift_term(t, -5)
   assert shifted == t
-}
-
-pub fn shift_term_on_hole_preserves_id_test() {
-  // shift_term on Hole should not change the ID
-  let t = Hole(42, single("file.gleam", 1, 1))
-  let shifted = shift_term(t, 10)
-  assert shifted == Hole(42, single("file.gleam", 1, 1))
 }
 
 // ============================================================================

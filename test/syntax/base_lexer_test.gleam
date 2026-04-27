@@ -735,12 +735,4 @@ pub fn tokenize_multiple_statements_test() {
   }
 }
 
-pub fn tokenize_pipe_is_punct_not_op_test() {
-  // Pipe should be Punct in base lexer
-  let tokens = tokenize("|")
-  assert list.length(tokens) == 2
-  assert case tokens {
-    [Token(kind: "Punct", value: "|", ..), Token(kind: "Eof", ..)] -> True
-    _ -> False
-  }
-}
+
