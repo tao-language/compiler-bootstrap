@@ -197,7 +197,11 @@ pub fn subst_term_var(idx: Int, value: Value, term: Term) -> Term {
 fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
   case term {
     Var(i, span) ->
-      case i == idx && i >= from {
+      // Substitute Var(idx + from) which corresponds to the variable at
+      // the outer scope's index `idx`. The `from` parameter tracks nesting
+      // depth — inside a lambda, Var(0) refers to the lambda's parameter,
+      // while Var(1) refers to the outer scope's Var(0), etc.
+      case i == idx + from {
         True -> value_to_neut(value)
         False -> Var(i, span)
       }
@@ -237,11 +241,15 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
   }
 }
 
-/// Convert a Value to a neutral term head with empty spine.
+/// Convert a Value to a Term.
+///
+/// For neutral values, extracts the head and returns a neutral term.
+/// For other values (literals, constructors, records), converts
+/// De Bruijn levels to De Bruijn indices.
 fn value_to_neut(value: Value) -> Term {
   case value {
     VNeut(head, []) -> neut_head_to_term(head)
-    _ -> Var(0, single("", 0, 0))
+    _ -> force_levels_to_indices(value, 0)
   }
 }
 
@@ -319,8 +327,7 @@ fn neut_head_to_term_with_spine(
       let applied = App(base, arg_term, single("", 0, 0))
       apply_remaining_spine(applied, n, rest)
     }
-    // HVar/HHole cover all Head constructors, but compiler needs explicit catch-all
-    _, _ -> Var(0, single("", 0, 0))
+
   }
 }
 
@@ -337,8 +344,6 @@ fn apply_remaining_spine(
       let applied = App(base, next_term, single("", 0, 0))
       apply_remaining_spine(applied, n, rest_rest)
     }
-    // Elim only has EApp constructor
-    _ -> base
   }
 }
 

@@ -487,7 +487,7 @@ pub fn replace_holes_term_in_vlam_test() {
   let subst = generalize.create_hole_subst([0], 0)
   let result = generalize.replace_holes_with_vars(val, subst)
   case result {
-    VLam(#("x", VNeut(HVar(0), [])), body) -> True
+    VLam(#("x", VNeut(HVar(0), [])), _body) -> True
     _ -> False
   }
   |> should.be_true

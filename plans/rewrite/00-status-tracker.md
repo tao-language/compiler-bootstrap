@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-26 (Updated: 2026-04-26 - Phase 2 Task 2.8-2.9 Generalization implemented! 470 tests passing.)
+> **Last updated:** 2026-04-26 (Updated: 2026-04-26 - Phase 2 Task 2.8-2.9 Generalization implemented! 545 tests passing.)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend
@@ -113,7 +113,7 @@ Total tests: 424 passed, 0 failures.
 - Internal term traversal for VLam.body and VPi.codomain
 - 46 tests in `test/core/generalize_test.gleam`
 
-**Total tests:** 470 passed, 0 failures.
+**Total tests:** 545 passed, 0 failures.
 
 ---
 
@@ -161,14 +161,14 @@ Total tests: 424 passed, 0 failures.
 | 2.8.1 | `generalize` (quantify holes) | ✅ | [03-core-language.md](03-core-language.md) | |
 | 2.9 | Write tests for generalization | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/generalize_test.gleam` |
 | 2.9.1 | Generalization of every type form | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.10 | Implement NBE evaluator | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/eval.gleam` |
-| 2.10.1 | `evaluate` (NBE) | 🔴 | [03-core-language.md](03-core-language.md) | Normalization by evaluation |
-| 2.10.2 | `evaluate_with_ffi` | 🔴 | [03-core-language.md](03-core-language.md) | FFI integration |
-| 2.10.3 | `do_app` (neutral spine application) | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 2.11 | Write tests for evaluator | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/eval_test.gleam` |
-| 2.11.1 | Every value form | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.11.2 | FFI calls | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.11.3 | Neutral spine | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.10 | Implement NBE evaluator | ✅ | [03-core-language.md](03-core-language.md) | `src/core/eval.gleam` |
+| 2.10.1 | `evaluate` (NBE) | ✅ | [03-core-language.md](03-core-language.md) | Normalization by evaluation |
+| 2.10.2 | `evaluate_with_ffi` | ✅ | [03-core-language.md](03-core-language.md) | FFI integration |
+| 2.10.3 | `do_app` (neutral spine application) | ✅ | [03-core-language.md](03-core-language.md) | |
+| 2.11 | Write tests for evaluator | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/eval_test.gleam` |
+| 2.11.1 | Every value form | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.11.2 | FFI calls | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.11.3 | Neutral spine | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.12 | Implement quote (Value → Term) | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/quote.gleam` |
 | 2.12.1 | `quote` function | 🔴 | [03-core-language.md](03-core-language.md) | Does NOT call eval |
 | 2.13 | Write tests for quote | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/quote_test.gleam` |
@@ -432,7 +432,8 @@ Total tests: 424 passed, 0 failures.
 
 | Date | Change |
 |------|--------|
-| 2026-04-26 | **Phase 2 Task 2.8-2.9 Generalization implemented:** `src/core/generalize.gleam` with `free_holes`, `collect_free_levels`, `create_hole_subst`, `replace_holes_with_vars`, and `holes_to_string`. Covers: free hole ID collection, De Bruijn level analysis, hole-to-variable index mapping, value/term substitution, debug string formatting. 46 tests in `test/core/generalize_test.gleam`. Total: 470 tests passing. |
+| 2026-04-26 | **Phase 2 Task 2.10 NBE evaluator implemented:** `src/core/eval.gleam` with `evaluate`, `do_app`, `do_match`, `match_pattern`, `is_true_value`, `value_to_string`, `lookup_env`. Covers: all term-to-value conversions (Var, Hole, Lam, App, Pi, Lit, Ctr, Rcd, Ann, Match, Call, Typ, Err), beta reduction via substitution (`subst_term_var` with fixed index arithmetic), neutral spine construction, pattern matching, FFI calls, guard evaluation, value-to-string formatting. 73 tests in `test/core/eval_test.gleam`. Fixed `subst_term_var` De Bruijn index arithmetic (uses `idx + from` instead of `idx == from`). Fixed `value_to_neut` to use `force_levels_to_indices` for non-neutral values. **Total: 545 tests passing.** |
+| 2026-04-26 | **Phase 2 Task 2.8-2.9 Generalization implemented:** `src/core/generalize.gleam` with `free_holes`, `collect_free_levels`, `create_hole_subst`, `replace_holes_with_vars`, and `holes_to_string`. Covers: free hole ID collection, De Bruijn level analysis, hole-to-variable index mapping, value/term substitution, debug string formatting. 46 tests in `test/core/generalize_test.gleam`. Total: 545 tests passing. |
 | 2026-04-26 | **Phase 2 Task 2.6 Substitution implemented:** `src/core/subst.gleam` with `force`, `apply_spine`, `shift_term`, `subst_term_var`, and `force_levels_to_indices`. Covers: hole resolution, neutral spine application, De Bruijn index shifting, variable substitution, level-to-index conversion. 61 tests in `test/core/subst_test.gleam`. Total: 424 tests passing. |
 | 2026-04-26 | **Phase 2 Task 2.4 Unification implemented:** `src/core/unify.gleam` with `unify(state, expected, actual)` and `occurs_check(level, value)`. Covers: hole binding, variable lookup, Pi/VLam/VCtr/VLIT/VRcd/VNeut unification, VErr passthrough, TypeMismatch errors. 33 tests in `test/core/unify_test.gleam`. **Phase 2 Task 2.3 Complete:** Core parser tests added (41 tests). Total: 408 tests passing. |
 | 2026-04-26 | **Test suite cleaned up:** Removed unused `src/tao/` and `test/tao/` (Phase 3 not yet reached). Removed 4 redundant tests (pipe_is_punct duplicate, shift_term_on_hole_preserves_id duplicate, shift_term_preserves_span_through_shifts duplicate). Fixed 2 tests that had no assertions (`parse_trailing_paren_recovers_test`, `unify_hvar_looks_up_value_test`). Removed empty placeholder comment sections from `state_test.gleam` and `syntax_test.gleam`. **Total: 363 tests passing.** |
@@ -485,7 +486,7 @@ Total tests: 424 passed, 0 failures.
 - [ ] Add tests for exhaustiveness checking
 - [ ] Add tests for desugarer
 - [ ] Add tests for CLI commands (run, check, test)
-- [ ] **Implement Phase 2 Task 2.10:** NBE evaluator (`src/core/eval.gleam`)
+- [x] **Implement Phase 2 Task 2.10:** NBE evaluator (`src/core/eval.gleam`) ✅
 - [ ] **Implement Phase 2 Task 2.12:** Quote module (`src/core/quote.gleam`)
 - [ ] **Implement Phase 2 Task 2.14:** Type inference (`src/core/infer.gleam`)
 - [ ] **Implement Phase 2 Task 2.16:** Exhaustiveness checking (`src/core/exhaustiveness.gleam`)

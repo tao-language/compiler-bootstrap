@@ -11,12 +11,11 @@ import gleeunit
 import core/subst.{force, apply_spine, shift_term, subst_term_var, force_levels_to_indices, force_to_string, levels_to_indices_to_string}
 import core/state.{initial_state, def_var}
 import core/ast.{
-  type Term, Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Call, Rcd, Typ, Err,
+  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Call, Rcd, Err,
   VNeut, HHole, HVar, VLam, VPi, VLit, VCtr, VRcd, VErr, EApp,
-  Int as LitInt, Float as LitFloat, PAny, PVar, PCtr, PUnit, PLit, Case,
+  Int as LitInt, Float as LitFloat, PAny, Case,
 }
-import gleam/list
-import gleam/option.{Some, None}
+import gleam/option.{None}
 import syntax/span.{single}
 
 pub fn main() {
@@ -97,7 +96,7 @@ pub fn force_neutral_head_preserved_test() {
 
 pub fn apply_spine_empty_test() {
   // Empty spine returns value unchanged
-  let state = def_var(initial_state([]), "test", VLit(LitInt(1)), VLit(LitInt(1)))
+  let _state = def_var(initial_state([]), "test", VLit(LitInt(1)), VLit(LitInt(1)))
   let value = VLit(LitInt(42))
   let result = apply_spine(value, [])
   assert result == VLit(LitInt(42))
@@ -132,7 +131,7 @@ pub fn apply_spine_lambda_consumes_one_test() {
 
 pub fn apply_spine_multiple_elements_test() {
   // Multiple eliminators: first lambda consumes first arg
-  let state = def_var(initial_state([]), "x", VLit(LitInt(1)), VLit(LitInt(1)))
+  let _state = def_var(initial_state([]), "x", VLit(LitInt(1)), VLit(LitInt(1)))
   let param_type = VNeut(HHole(0), [])
   let body = Var(0, single("", 0, 0))
   let value = VLam(#("x", param_type), body)
@@ -268,11 +267,12 @@ pub fn shift_term_selective_by_scope_test() {
 
 pub fn subst_term_var_self_test() {
   // Substituting Var(0) with a value in Var(0) should replace it
+  // Non-neutral values are converted via force_levels_to_indices
   let arg = VCtr("Just", VLit(LitInt(42)))
   let t = Var(0, single("test", 1, 1))
   let result = subst_term_var(0, arg, t)
   assert case result {
-    Var(0, _) -> True  // Value converted to neutral Var(0)
+    Ctr("Just", Lit(LitInt(42), _), _) -> True
     _ -> False
   }
 }
@@ -292,13 +292,12 @@ pub fn subst_term_var_skip_bound_test() {
 
 pub fn subst_term_var_free_replaced_test() {
   // Free variables (level >= from) should be substituted
-  // Substitution replaces with value_to_neut(arg), which for non-neutral values
-  // returns Var(0) as a fallback
+  // Non-neutral values are converted via force_levels_to_indices
   let arg = VLit(LitInt(99))
   let t = Var(1, single("test", 1, 1))
   let result = subst_term_var(1, arg, t)
   assert case result {
-    Var(0, _) -> True  // Non-neutral value → Var(0) fallback
+    Lit(LitInt(99), _) -> True
     _ -> False
   }
 }
@@ -320,7 +319,7 @@ pub fn subst_term_var_app_test() {
   let t = App(Var(0, single("test", 1, 1)), Var(1, single("test", 1, 2)), single("test", 1, 3))
   let result = subst_term_var(0, arg, t)
   assert case result {
-    App(Var(0, _), Var(1, _), _) -> True
+    App(Lit(LitInt(42), _), Var(1, _), _) -> True
     _ -> False
   }
 }
@@ -331,7 +330,7 @@ pub fn subst_term_var_pi_test() {
   let t = Pi(Var(0, single("test", 1, 1)), Var(1, single("test", 1, 2)), single("test", 1, 3))
   let result = subst_term_var(0, arg, t)
   assert case result {
-    Pi(Var(0, _), Var(1, _), _) -> True
+    Pi(Lit(LitInt(42), _), Var(1, _), _) -> True
     _ -> False
   }
 }
@@ -529,29 +528,6 @@ pub fn force_to_string_vlam_test() {
   assert result == "%fn(x) => #0"
 }
 
-fn term_string(term: Term) -> String {
-  case term {
-    Var(i, _) -> "#" <> int_to_string(i)
-    _ -> "term"
-  }
-}
-
-fn int_to_string(n: Int) -> String {
-  case n {
-    0 -> "0"
-    1 -> "1"
-    2 -> "2"
-    3 -> "3"
-    4 -> "4"
-    5 -> "5"
-    6 -> "6"
-    7 -> "7"
-    8 -> "8"
-    9 -> "9"
-    _ -> "<int>"
-  }
-}
-
 pub fn levels_to_indices_to_string_var_test() {
   let t = Var(3, single("test", 1, 1))
   let result = levels_to_indices_to_string(t)
@@ -596,7 +572,7 @@ pub fn force_force_levels_to_indices_deeply_nested_test() {
   // Outer: VLam("x", inner_lam) where param = HVar(1)
   let inner_param = VNeut(HHole(0), [])
   let inner_body = Var(0, single("", 0, 0))
-  let inner_lam = VLam(#("z", inner_param), inner_body)
+  let _inner_lam = VLam(#("z", inner_param), inner_body)
   // For outer: param type is HVar(1) at n=1 → abs_index(1,1) = 0
   // body is VLam (a Value) — but VLam's body field IS a Term
   // VLam(#("x", outer_param), inner_lam) — inner_lam is a Value, not a Term!
