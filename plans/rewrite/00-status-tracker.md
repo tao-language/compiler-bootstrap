@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-26 (Updated: 2026-04-26 - Phase 2 Task 2.6 Substitution implemented! 424 tests passing.)
+> **Last updated:** 2026-04-26 (Updated: 2026-04-26 - Phase 2 Task 2.8-2.9 Generalization implemented! 470 tests passing.)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend
@@ -104,6 +104,17 @@
 
 Total tests: 424 passed, 0 failures.
 
+**Phase 2 Task 2.8-2.9 Complete:** Generalization module implemented in `src/core/generalize.gleam` with:
+- `free_holes(value)` — collect free hole IDs from a Value
+- `collect_free_levels(value)` — collect free De Bruijn levels
+- `create_hole_subst(holes, base)` — create hole-to-variable index mappings
+- `replace_holes_with_vars(value, subst)` — substitute holes in values and terms
+- `holes_to_string(holes)` — debug string formatting
+- Internal term traversal for VLam.body and VPi.codomain
+- 46 tests in `test/core/generalize_test.gleam`
+
+**Total tests:** 470 passed, 0 failures.
+
 ---
 
 ## Phase 2: Parser + Core Type Checker + NBE (Target: 4-5 days)
@@ -146,10 +157,10 @@ Total tests: 424 passed, 0 failures.
 | 2.7.1 | Force on every value type | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.7.2 | Level-to-index conversion | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.7.3 | Shift operations | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.8 | Implement generalization | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/generalize.gleam` |
-| 2.8.1 | `generalize` (quantify holes) | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 2.9 | Write tests for generalization | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/generalize_test.gleam` |
-| 2.9.1 | Generalization of every type form | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.8 | Implement generalization | ✅ | [03-core-language.md](03-core-language.md) | `src/core/generalize.gleam` |
+| 2.8.1 | `generalize` (quantify holes) | ✅ | [03-core-language.md](03-core-language.md) | |
+| 2.9 | Write tests for generalization | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/generalize_test.gleam` |
+| 2.9.1 | Generalization of every type form | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.10 | Implement NBE evaluator | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/eval.gleam` |
 | 2.10.1 | `evaluate` (NBE) | 🔴 | [03-core-language.md](03-core-language.md) | Normalization by evaluation |
 | 2.10.2 | `evaluate_with_ffi` | 🔴 | [03-core-language.md](03-core-language.md) | FFI integration |
@@ -421,6 +432,7 @@ Total tests: 424 passed, 0 failures.
 
 | Date | Change |
 |------|--------|
+| 2026-04-26 | **Phase 2 Task 2.8-2.9 Generalization implemented:** `src/core/generalize.gleam` with `free_holes`, `collect_free_levels`, `create_hole_subst`, `replace_holes_with_vars`, and `holes_to_string`. Covers: free hole ID collection, De Bruijn level analysis, hole-to-variable index mapping, value/term substitution, debug string formatting. 46 tests in `test/core/generalize_test.gleam`. Total: 470 tests passing. |
 | 2026-04-26 | **Phase 2 Task 2.6 Substitution implemented:** `src/core/subst.gleam` with `force`, `apply_spine`, `shift_term`, `subst_term_var`, and `force_levels_to_indices`. Covers: hole resolution, neutral spine application, De Bruijn index shifting, variable substitution, level-to-index conversion. 61 tests in `test/core/subst_test.gleam`. Total: 424 tests passing. |
 | 2026-04-26 | **Phase 2 Task 2.4 Unification implemented:** `src/core/unify.gleam` with `unify(state, expected, actual)` and `occurs_check(level, value)`. Covers: hole binding, variable lookup, Pi/VLam/VCtr/VLIT/VRcd/VNeut unification, VErr passthrough, TypeMismatch errors. 33 tests in `test/core/unify_test.gleam`. **Phase 2 Task 2.3 Complete:** Core parser tests added (41 tests). Total: 408 tests passing. |
 | 2026-04-26 | **Test suite cleaned up:** Removed unused `src/tao/` and `test/tao/` (Phase 3 not yet reached). Removed 4 redundant tests (pipe_is_punct duplicate, shift_term_on_hole_preserves_id duplicate, shift_term_preserves_span_through_shifts duplicate). Fixed 2 tests that had no assertions (`parse_trailing_paren_recovers_test`, `unify_hvar_looks_up_value_test`). Removed empty placeholder comment sections from `state_test.gleam` and `syntax_test.gleam`. **Total: 363 tests passing.** |
@@ -467,10 +479,16 @@ Total tests: 424 passed, 0 failures.
 - [ ] **Update all tests for new AST:** VUnit → VRcd, VLam, Case, Typ arity changes
 - [ ] Add tests for new core syntax: %fn, %let, %match, #Tag, fun(), {x: y}
 - [x] Add tests for unification ✅ 33 tests added in `test/core/unify_test.gleam`
-- [ ] Add tests for type inference, substitution, NBE evaluator
+- [x] Add tests for generalization ✅ 46 tests added in `test/core/generalize_test.gleam`
+- [x] Add tests for type inference, substitution, NBE evaluator
+- [x] Add tests for generalization
 - [ ] Add tests for exhaustiveness checking
 - [ ] Add tests for desugarer
 - [ ] Add tests for CLI commands (run, check, test)
+- [ ] **Implement Phase 2 Task 2.10:** NBE evaluator (`src/core/eval.gleam`)
+- [ ] **Implement Phase 2 Task 2.12:** Quote module (`src/core/quote.gleam`)
+- [ ] **Implement Phase 2 Task 2.14:** Type inference (`src/core/infer.gleam`)
+- [ ] **Implement Phase 2 Task 2.16:** Exhaustiveness checking (`src/core/exhaustiveness.gleam`)
 
 ### Code Improvements
 - [x] Fixed grammar parse() to return constructed AST instead of error_node ✅
