@@ -432,6 +432,8 @@ Total tests: 424 passed, 0 failures.
 
 | Date | Change |
 |------|--------|
+| 2026-04-27 | **Guard truth check refactored:** `is_true_value` (shape-based truth detection) removed from `src/core/eval.gleam`. Replaced with `is_truth(truth_ctr, value)` that checks if a value's constructor tag matches the configured `truth_ctr`. Added `truth_ctr: String` field to `State` type with helpers (`truth_ctr(state)`, `with_truth_ctr(state, name)`). Default truth constructor is `"True"`. This removes language-specific assumptions from core and enables configurable truth constructors for different languages. `do_match` and `match_state` now thread `truth_ctr` through evaluation. All 553 tests pass. |
+| 2026-04-27 | **Code quality improvements:** (1) Fixed critical bug: `subst.gleam` line 226 `shift_opt(c.guard, 0, from)` → `shift_opt(c.guard, from, from)` — guards now shift correctly during substitution. (2) Eliminated ~90 lines of duplicate code: `shift_term`, `shift_term_from`, `shift_opt` moved from `subst.gleam` to `ast.gleam` (made public), `subst.gleam` imports from `ast`. (3) Removed no-op `int_to_string` wrapper in `subst.gleam`. (4) Fixed unused `_param_name` binding in `subst.gleam` try_apply. (5) Simplified `name_from_pi` in `ast.gleam` — flattened nested pattern match. (6) Removed unused `left_value`/`right_value` helpers from `grammar.gleam` — combinators never called them (they just collected `Either` values and passed them to constructors). (7) Guard truth check refactored: `is_true_value` → `is_truth(truth_ctr, value)` with configurable `truth_ctr` in State. All 551 tests pass, formatting applied. |
 | 2026-04-26 | **Phase 2 Task 2.10 NBE evaluator implemented:** `src/core/eval.gleam` with `evaluate`, `do_app`, `do_match`, `match_pattern`, `is_true_value`, `value_to_string`, `lookup_env`. Covers: all term-to-value conversions (Var, Hole, Lam, App, Pi, Lit, Ctr, Rcd, Ann, Match, Call, Typ, Err), beta reduction via substitution (`subst_term_var` with fixed index arithmetic), neutral spine construction, pattern matching, FFI calls, guard evaluation, value-to-string formatting. 73 tests in `test/core/eval_test.gleam`. Fixed `subst_term_var` De Bruijn index arithmetic (uses `idx + from` instead of `idx == from`). Fixed `value_to_neut` to use `force_levels_to_indices` for non-neutral values. **Total: 545 tests passing.** |
 | 2026-04-26 | **Phase 2 Task 2.8-2.9 Generalization implemented:** `src/core/generalize.gleam` with `free_holes`, `collect_free_levels`, `create_hole_subst`, `replace_holes_with_vars`, and `holes_to_string`. Covers: free hole ID collection, De Bruijn level analysis, hole-to-variable index mapping, value/term substitution, debug string formatting. 46 tests in `test/core/generalize_test.gleam`. Total: 545 tests passing. |
 | 2026-04-26 | **Phase 2 Task 2.6 Substitution implemented:** `src/core/subst.gleam` with `force`, `apply_spine`, `shift_term`, `subst_term_var`, and `force_levels_to_indices`. Covers: hole resolution, neutral spine application, De Bruijn index shifting, variable substitution, level-to-index conversion. 61 tests in `test/core/subst_test.gleam`. Total: 424 tests passing. |
@@ -504,6 +506,14 @@ Total tests: 424 passed, 0 failures.
 - [x] Implemented unification module (`src/core/unify.gleam`) with `unify()` and `occurs_check()` ✅
 - [x] Fixed `match_values` for VNeut: same HVar level, VErr passthrough, different hole IDs ✅
 - [x] Test suite cleanup: removed redundant tests and fixed silent-pass tests ✅
+- [x] **Critical bug fix:** `subst.gleam` line 226: `shift_opt(c.guard, 0, from)` → `shift_opt(c.guard, from, from)` — guards now shift correctly during substitution ✅
+- [x] **Eliminated ~90 lines of duplicate code:** `shift_term`, `shift_term_from`, `shift_opt` consolidated in `ast.gleam`, `subst.gleam` imports from `ast` ✅
+- [x] **Removed no-op `int_to_string` wrapper** from `subst.gleam` ✅
+- [x] **Fixed unused `_param_name` binding** in `subst.gleam` try_apply ✅
+- [x] **Simplified `name_from_pi`** in `ast.gleam` — flattened nested pattern match ✅
+- [x] **Removed unused `left_value`/`right_value`** from `grammar.gleam` — combinators never called them ✅
+- [x] **Removed `panic` from `grammar.gleam`** — replaced with direct pattern matching ✅
+- [x] **Guard truth check refactored:** `is_true_value` → `is_truth(truth_ctr, value)` with configurable `truth_ctr` in State ✅
 - [ ] Consider making `parse()` propagate partial errors through failed alternatives
 - [ ] Add `term_from_string` for round-trip testing
 - [ ] Consider adding `Span.to_debug_string` for test assertions

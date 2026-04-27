@@ -16,16 +16,13 @@
 ///
 /// The type checker calls this function at every place where two types
 /// must agree. All errors accumulate in state; no early returns.
-
 import core/ast.{
-  type Value,
-  type Head,
-  type Elim,
-  VNeut, HHole, HVar, VPi, VCtr, VLit, VRcd, VErr, VLam, EApp, Var,
+  type Elim, type Head, type Value, EApp, HHole, HVar, VCtr, VErr, VLam, VLit,
+  VNeut, VPi, VRcd, Var,
 }
-import core/state.{type State, State, with_err, TypeMismatch}
-import gleam/list
+import core/state.{type State, State, TypeMismatch, with_err}
 import gleam/int
+import gleam/list
 import gleam/string
 import syntax/span.{single}
 
@@ -88,8 +85,6 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
     VNeut(head1, spine1), VNeut(head2, spine2) ->
       match_neutral(state, head1, spine1, head2, spine2)
 
-
-
     // ── Lambda — unify param types ───────────────────────────
     VLam(#(_, ptype1), _), VLam(#(_, ptype2), _) ->
       match_values(state, ptype1, ptype2)
@@ -97,7 +92,8 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
     // ── Pi types — unify domains, then codomains ─────────────
     VPi(domain1, codomain1), VPi(domain2, codomain2) -> {
       let s1 = match_values(state, domain1, domain2)
-      let bound = State(..s1, vars: [#("pi_param", #(domain2, domain2)), ..s1.vars])
+      let bound =
+        State(..s1, vars: [#("pi_param", #(domain2, domain2)), ..s1.vars])
       match_values(bound, codomain1, shift_value(codomain2, 1))
     }
 
@@ -105,11 +101,12 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
     VCtr(tag1, arg1), VCtr(tag2, arg2) ->
       case tag1 == tag2 {
         True -> match_values(state, arg1, arg2)
-        False -> add_type_mismatch_error(
-          state,
-          VCtr(tag1, VNeut(HHole(0), [])),
-          VCtr(tag2, VNeut(HHole(0), [])),
-        )
+        False ->
+          add_type_mismatch_error(
+            state,
+            VCtr(tag1, VNeut(HHole(0), [])),
+            VCtr(tag2, VNeut(HHole(0), [])),
+          )
       }
 
     // ── Literal — value must be equal ────────────────────────
@@ -120,8 +117,7 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
       }
 
     // ── Record — unify field by field ────────────────────────
-    VRcd(fields1), VRcd(fields2) ->
-      match_records(state, fields1, fields2)
+    VRcd(fields1), VRcd(fields2) -> match_records(state, fields1, fields2)
 
     // ── VErr — unifies with any value (error recovery) ───────
     VErr, _ -> state
@@ -205,20 +201,25 @@ fn match_neutral(
     HVar(l1), HVar(l2) ->
       case l1 == l2 {
         True -> match_spines(state, spine1, spine2)
-        False -> add_type_mismatch_error(
-          state, VNeut(HVar(l1), spine1), VNeut(HVar(l2), spine2),
-        )
+        False ->
+          add_type_mismatch_error(
+            state,
+            VNeut(HVar(l1), spine1),
+            VNeut(HVar(l2), spine2),
+          )
       }
     HHole(id1), HHole(id2) ->
       case { id1 == id2 } && { list.length(spine1) == list.length(spine2) } {
         True -> match_spines(state, spine1, spine2)
-        False -> add_type_mismatch_error(
-          state, VNeut(HHole(id1), spine1), VNeut(HHole(id2), spine2),
-        )
+        False ->
+          add_type_mismatch_error(
+            state,
+            VNeut(HHole(id1), spine1),
+            VNeut(HHole(id2), spine2),
+          )
       }
-    _, _ -> add_type_mismatch_error(
-      state, VNeut(head1, spine1), VNeut(head2, spine2),
-    )
+    _, _ ->
+      add_type_mismatch_error(state, VNeut(head1, spine1), VNeut(head2, spine2))
   }
 }
 
@@ -228,11 +229,12 @@ fn match_spines(state: State, spine1: List(Elim), spine2: List(Elim)) -> State {
   case spine1, spine2 {
     [], [] -> state
     [EApp(arg1)], [EApp(arg2)] -> match_values(state, arg1, arg2)
-    _, _ -> add_type_mismatch_error(
-      state,
-      VNeut(HVar(0), spine1),
-      VNeut(HVar(0), spine2),
-    )
+    _, _ ->
+      add_type_mismatch_error(
+        state,
+        VNeut(HVar(0), spine1),
+        VNeut(HVar(0), spine2),
+      )
   }
 }
 
@@ -247,11 +249,7 @@ fn match_records(
     [], [] -> state
     [#(name1, val1), ..rest1], [#(name2, val2), ..rest2] ->
       case name1 == name2 {
-        True -> match_records(
-          match_values(state, val1, val2),
-          rest1,
-          rest2,
-        )
+        True -> match_records(match_values(state, val1, val2), rest1, rest2)
         False -> add_type_mismatch_error(state, VRcd(fields1), VRcd(fields2))
       }
     _, _ -> add_type_mismatch_error(state, VRcd(fields1), VRcd(fields2))
@@ -302,6 +300,10 @@ fn shift_elim(e: Elim, n: Int) -> Elim {
 
 // ── Error helpers ─────────────────────────────────────────────────
 
-fn add_type_mismatch_error(state: State, expected: Value, actual: Value) -> State {
+fn add_type_mismatch_error(
+  state: State,
+  expected: Value,
+  actual: Value,
+) -> State {
   with_err(state, TypeMismatch(expected, actual, single("", 0, 0)))
 }

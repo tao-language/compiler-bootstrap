@@ -17,17 +17,18 @@
 ///   - Type: %Type, %Type(1)
 ///   - Errors: %err("message")
 ///   - Records: {x: 1, y: 2}
-
-import core/ast.{type Term, type Pattern, type Case,
-  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Rcd, Typ, Err, Call, let_var,
-  Case as CoreCase, PAny, PVar, PCtr, PUnit, PLit, Int as LitInt, Float as LitFloat}
-import syntax/base_lexer.{Token, type Token, tokenize}
-import syntax/grammar.{type ParseError, ParseError}
-import syntax/span.{type Span, single, merge, Span}
-import gleam/list
-import gleam/int
+import core/ast.{
+  type Case, type Pattern, type Term, Ann, App, Call, Case as CoreCase, Ctr, Err,
+  Float as LitFloat, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr, PLit,
+  PUnit, PVar, Pi, Rcd, Typ, Var, let_var,
+}
 import gleam/float
-import gleam/option.{Some, None}
+import gleam/int
+import gleam/list
+import gleam/option.{None, Some}
+import syntax/base_lexer.{type Token, Token, tokenize}
+import syntax/grammar.{type ParseError, ParseError}
+import syntax/span.{type Span, Span, merge, single}
 
 /// Parse a Core source string into a Term.
 pub fn parse(source: String) -> #(Term, List(ParseError)) {
@@ -36,7 +37,10 @@ pub fn parse(source: String) -> #(Term, List(ParseError)) {
 }
 
 /// Parse tokens into a Core term.
-pub fn parse_tokens(tokens: List(Token), filename: String) -> #(Term, List(ParseError)) {
+pub fn parse_tokens(
+  tokens: List(Token),
+  filename: String,
+) -> #(Term, List(ParseError)) {
   let state = #(tokens, 0, [], filename, [])
   let #(term, state2) = parse_term(state)
   let #(tokens2, pos2, _, _, errs) = state2
@@ -48,7 +52,13 @@ pub fn parse_tokens(tokens: List(Token), filename: String) -> #(Term, List(Parse
         Error(_) -> #(t, errs)
         Ok(Token(kind: "Eof", value: "", span: _)) -> #(t, errs)
         Ok(Token(kind: _, value: value, span: span)) -> {
-          let err = ParseError(span: span, expected: "end of input", got: value, context: "unexpected token")
+          let err =
+            ParseError(
+              span: span,
+              expected: "end of input",
+              got: value,
+              context: "unexpected token",
+            )
           #(t, [err, ..errs])
         }
       }
@@ -56,7 +66,8 @@ pub fn parse_tokens(tokens: List(Token), filename: String) -> #(Term, List(Parse
   }
 }
 
-type Parser = #(List(Token), Int, List(#(String, Int)), String, List(ParseError))
+type Parser =
+  #(List(Token), Int, List(#(String, Int)), String, List(ParseError))
 
 fn try_peek(tokens: List(Token), pos: Int) -> Result(Token, List(ParseError)) {
   case list.drop(tokens, pos) {
@@ -68,7 +79,7 @@ fn try_peek(tokens: List(Token), pos: Int) -> Result(Token, List(ParseError)) {
 fn add_binding(p: Parser, name: String) -> Parser {
   let #(tokens, pos, env, fn_, errors) = p
   let new_depth = list.length(env) + 1
-  #(tokens, pos, [ #(name, new_depth), ..env ], fn_, errors)
+  #(tokens, pos, [#(name, new_depth), ..env], fn_, errors)
 }
 
 fn current_span(p: Parser) -> Span {
@@ -102,21 +113,51 @@ fn skip(kind: String, p: Parser) -> Parser {
   case kind {
     "->" -> {
       case list.drop(tokens, pos) {
-        [Token("Op", "-", _), Token("Op", ">", _), .._] -> #(tokens, pos + 2, env, fn_, errors)
+        [Token("Op", "-", _), Token("Op", ">", _), ..] -> #(
+          tokens,
+          pos + 2,
+          env,
+          fn_,
+          errors,
+        )
         _ -> p
       }
     }
     "=>" -> {
       case list.drop(tokens, pos) {
-        [Token("Punct", "=", _), Token("Op", ">", _), .._] -> #(tokens, pos + 2, env, fn_, errors)
+        [Token("Punct", "=", _), Token("Op", ">", _), ..] -> #(
+          tokens,
+          pos + 2,
+          env,
+          fn_,
+          errors,
+        )
         _ -> p
       }
     }
     _ -> {
       case list.drop(tokens, pos) {
-        [Token(k, _, _), ..] if k == kind -> #(tokens, pos + 1, env, fn_, errors)
-        [Token("Punct", pval, _), ..] if pval == kind -> #(tokens, pos + 1, env, fn_, errors)
-        [Token("Op", opval, _), ..] if opval == kind -> #(tokens, pos + 1, env, fn_, errors)
+        [Token(k, _, _), ..] if k == kind -> #(
+          tokens,
+          pos + 1,
+          env,
+          fn_,
+          errors,
+        )
+        [Token("Punct", pval, _), ..] if pval == kind -> #(
+          tokens,
+          pos + 1,
+          env,
+          fn_,
+          errors,
+        )
+        [Token("Op", opval, _), ..] if opval == kind -> #(
+          tokens,
+          pos + 1,
+          env,
+          fn_,
+          errors,
+        )
         _ -> p
       }
     }
@@ -126,7 +167,7 @@ fn skip(kind: String, p: Parser) -> Parser {
 fn expect_name_opt(p: Parser) -> #(String, Parser) {
   let #(tokens, pos, env, fn_, errors) = p
   case list.drop(tokens, pos) {
-    [Token("Name", v, _), .._rest] -> #(v, #(tokens, pos + 1, env, fn_, errors))
+    [Token("Name", v, _), ..] -> #(v, #(tokens, pos + 1, env, fn_, errors))
     _ -> #("", p)
   }
 }
@@ -135,40 +176,59 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
   let #(tokens, pos, env, fn_, errors) = p
   let span = current_span(p)
   case list.drop(tokens, pos) {
-    [] -> { let e = Err("unexpected end of input", span)#(e, p) }
-    
+    [] -> {
+      let e = Err("unexpected end of input", span)
+      #(e, p)
+    }
+
     // Integer and float literals
-    [Token("Integer", v, _), .._] ->
+    [Token("Integer", v, _), ..] ->
       case int.parse(v) {
-        Ok(value) -> #(Lit(LitInt(value), span), #(tokens, pos + 1, env, fn_, errors))
-        Error(_) -> { let e = Err("invalid integer: " <> v, span)#(e, #(tokens, pos + 1, env, fn_, errors)) }
+        Ok(value) -> #(
+          Lit(LitInt(value), span),
+          #(tokens, pos + 1, env, fn_, errors),
+        )
+        Error(_) -> {
+          let e = Err("invalid integer: " <> v, span)
+          #(e, #(tokens, pos + 1, env, fn_, errors))
+        }
       }
-    [Token("Float", v, _), .._] ->
+    [Token("Float", v, _), ..] ->
       case float.parse(v) {
-        Ok(value) -> #(Lit(LitFloat(value), span), #(tokens, pos + 1, env, fn_, errors))
-        Error(_) -> { let e = Err("invalid float: " <> v, span)#(e, #(tokens, pos + 1, env, fn_, errors)) }
+        Ok(value) -> #(
+          Lit(LitFloat(value), span),
+          #(tokens, pos + 1, env, fn_, errors),
+        )
+        Error(_) -> {
+          let e = Err("invalid float: " <> v, span)
+          #(e, #(tokens, pos + 1, env, fn_, errors))
+        }
       }
-    
+
     // String literals - error
-    [Token("String", v, _), .._] -> {
+    [Token("String", v, _), ..] -> {
       let e = Err("string literal not supported: " <> v, span)
       #(e, #(tokens, pos + 1, env, fn_, errors))
     }
-    
+
     // Holes: ? or ?0, ?1
     [Token("Op", "?", _), ..rest] -> {
       let #(parsed_id, new_pos, new_span) = case rest {
         [] -> #(0, pos + 1, span)
-        [Token("Integer", v, s), .._] -> {
-          let id = case int.parse(v) { Ok(n) -> n Error(_) -> 0 }
-          let loc_span = Span(s.file, s.start_line, s.start_col, s.end_line, s.end_col)
+        [Token("Integer", v, s), ..] -> {
+          let id = case int.parse(v) {
+            Ok(n) -> n
+            Error(_) -> 0
+          }
+          let loc_span =
+            Span(s.file, s.start_line, s.start_col, s.end_line, s.end_col)
           #(id, pos + 2, loc_span)
         }
         _ -> #(0, pos + 1, span)
       }
       #(Hole(parsed_id, new_span), #(tokens, new_pos, env, fn_, errors))
     }
-    
+
     // Prefixed tokens: % followed by keyword (lexer produces separate tokens)
     [Token("Op", "%", _), Token("Name", "fn", _), ..rest] ->
       parse_lambda(#(rest, 0, env, fn_, errors), span)
@@ -179,7 +239,7 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
     [Token("Op", "%", _), Token("Name", "fix", _), ..rest] ->
       parse_fix(#(rest, 0, env, fn_, errors), span)
     // Keywords and prefixed tokens
-    [Token("Name", v, _), .._] -> {
+    [Token("Name", v, _), ..] -> {
       case v {
         "%" -> parse_hole(#(tokens, pos + 1, env, fn_, errors), span)
         "hole" -> #(Hole(0, span), #(tokens, pos + 1, env, fn_, errors))
@@ -190,15 +250,16 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
         _ -> parse_var(#(tokens, pos + 1, env, fn_, errors), v, span)
       }
     }
-    
+
     // Operators
-    [Token("Op", v, _), .._] -> {
+    [Token("Op", v, _), ..] -> {
       case v {
         "-" -> {
           let p = #(tokens, pos + 1, env, fn_, errors)
           let #(body, p2) = parse_term(p)
           let app_span = merge(span, term_span(body))
-          let e = Err("negation not supported: " <> term_to_string(body), app_span)
+          let e =
+            Err("negation not supported: " <> term_to_string(body), app_span)
           #(e, p2)
         }
         "!" -> {
@@ -214,24 +275,32 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
         }
       }
     }
-    
+
     // Parenthesized expressions: (expr) or (term : Type)
     // Also handles () as unit (Rcd with empty fields)
-    [Token("Punct", "(", _), Token("Punct", ")", _), ..rest] ->
-      #(Rcd([], span), #(rest, 2, env, fn_, errors))
+    [Token("Punct", "(", _), Token("Punct", ")", _), ..rest] -> #(
+      Rcd([], span),
+      #(rest, 2, env, fn_, errors),
+    )
     [Token("Punct", "(", _), ..rest] -> {
       let p = #(rest, 0, env, fn_, errors)
       let #(inner, p2) = parse_term(p)
       let p3 = skip(")", p2)
       #(inner, p3)
     }
-    
+
     // Punctuation
-    [Token("Punct", "[", _), ..rest] -> parse_list(#(rest, 0, env, fn_, errors), span)
-    [Token("Punct", "{", _), ..rest] -> parse_rcd(#(rest, 0, env, fn_, errors), span)
-    [Token("Punct", "#", _), ..rest] -> parse_ctr(#(rest, 0, env, fn_, errors), span)
-    [Token("Eof", ..), ..] -> { let e = Err("unexpected end of input", span)#(e, p) }
-    [Token(_, v, _), .._] -> {
+    [Token("Punct", "[", _), ..rest] ->
+      parse_list(#(rest, 0, env, fn_, errors), span)
+    [Token("Punct", "{", _), ..rest] ->
+      parse_rcd(#(rest, 0, env, fn_, errors), span)
+    [Token("Punct", "#", _), ..rest] ->
+      parse_ctr(#(rest, 0, env, fn_, errors), span)
+    [Token("Eof", ..), ..] -> {
+      let e = Err("unexpected end of input", span)
+      #(e, p)
+    }
+    [Token(_, v, _), ..] -> {
       let e = Err("unexpected token: " <> v, span)
       #(e, #(tokens, pos + 1, env, fn_, errors))
     }
@@ -294,11 +363,26 @@ fn parse_rcd(p: Parser, span: Span) -> #(Term, Parser) {
   #(Rcd(fields, span), p3)
 }
 
-fn parse_rcd_fields(p: Parser, acc: List(#(String, Term))) -> #(List(#(String, Term)), Parser) {
+fn parse_rcd_fields(
+  p: Parser,
+  acc: List(#(String, Term)),
+) -> #(List(#(String, Term)), Parser) {
   let #(tokens, pos, env, fn_, errors) = p
   case list.drop(tokens, pos) {
-    [] -> { let err = ParseError(span: current_span(p), expected: "field", got: "EOF", context: "in record")#(list.reverse(acc), #(tokens, pos, env, fn_, [err, ..errors])) }
-    [Token("Punct", "}", _), ..rest] -> #(list.reverse(acc), #(rest, pos + 1, env, fn_, errors))
+    [] -> {
+      let err =
+        ParseError(
+          span: current_span(p),
+          expected: "field",
+          got: "EOF",
+          context: "in record",
+        )
+      #(list.reverse(acc), #(tokens, pos, env, fn_, [err, ..errors]))
+    }
+    [Token("Punct", "}", _), ..rest] -> #(
+      list.reverse(acc),
+      #(rest, pos + 1, env, fn_, errors),
+    )
     [Token("Eof", ..), ..] -> #(list.reverse(acc), p)
     _ -> {
       let p1 = skip("Name", p)
@@ -306,33 +390,54 @@ fn parse_rcd_fields(p: Parser, acc: List(#(String, Term))) -> #(List(#(String, T
       let p3 = skip(":", p2)
       let #(value, p4) = parse_term(p3)
       let p5 = skip(",", p4)
-      parse_rcd_fields(p5, [ #(name, value), ..acc ])
+      parse_rcd_fields(p5, [#(name, value), ..acc])
     }
   }
 }
 
 fn parse_var(p: Parser, name: String, span: Span) -> #(Term, Parser) {
   case is_keyword(name) {
-    True -> { let e = Err("unexpected keyword: " <> name, span)#(e, p) }
+    True -> {
+      let e = Err("unexpected keyword: " <> name, span)
+      #(e, p)
+    }
     False -> {
       let #(tokens, pos, env, fn_, errors) = p
       let depth = list.length(env)
       case lookup_var(env, name, depth) {
         Ok(index) -> #(Var(index, span), p)
         Error(_) -> {
-          let err = ParseError(span: span, expected: "variable '" <> name <> "'", got: "undefined", context: "variable not found")
-          #(Err("undefined variable: " <> name, span), #(tokens, pos, env, fn_, [err, ..errors]))
+          let err =
+            ParseError(
+              span: span,
+              expected: "variable '" <> name <> "'",
+              got: "undefined",
+              context: "variable not found",
+            )
+          #(
+            Err("undefined variable: " <> name, span),
+            #(tokens, pos, env, fn_, [err, ..errors]),
+          )
         }
       }
     }
   }
 }
 
-fn lookup_var(env: List(#(String, Int)), name: String, depth: Int) -> Result(Int, Nil) {
+fn lookup_var(
+  env: List(#(String, Int)),
+  name: String,
+  depth: Int,
+) -> Result(Int, Nil) {
   lookup_loop(env, name, 0, depth)
 }
 
-fn lookup_loop(env: List(#(String, Int)), name: String, idx: Int, depth: Int) -> Result(Int, Nil) {
+fn lookup_loop(
+  env: List(#(String, Int)),
+  name: String,
+  idx: Int,
+  depth: Int,
+) -> Result(Int, Nil) {
   case env {
     [] -> Error(Nil)
     [#(n, d), ..rest] -> {
@@ -393,8 +498,20 @@ fn parse_cases_acc(p: Parser, acc: List(Case)) -> #(List(Case), Parser) {
   let span = current_span(p)
   let #(tokens, pos, env, fn_, errors) = p
   case list.drop(tokens, pos) {
-    [] -> { let err = ParseError(span: current_span(p), expected: "case pattern", got: "EOF", context: "end of match")#(acc, #(tokens, pos, env, fn_, [err, ..errors])) }
-    [Token("Punct", "}", _), ..rest] -> #(acc, #(rest, pos + 1, env, fn_, errors))
+    [] -> {
+      let err =
+        ParseError(
+          span: current_span(p),
+          expected: "case pattern",
+          got: "EOF",
+          context: "end of match",
+        )
+      #(acc, #(tokens, pos, env, fn_, [err, ..errors]))
+    }
+    [Token("Punct", "}", _), ..rest] -> #(
+      acc,
+      #(rest, pos + 1, env, fn_, errors),
+    )
     [Token("Eof", ..), ..] -> #(acc, p)
     _ -> {
       let p1 = skip("|", p)
@@ -457,8 +574,20 @@ fn parse_list_items(p: Parser) -> #(List(Term), Parser) {
 fn parse_list_items_acc(p: Parser, acc: List(Term)) -> #(List(Term), Parser) {
   let #(tokens, pos, env, fn_, errors) = p
   case list.drop(tokens, pos) {
-    [] -> { let err = ParseError(span: current_span(p), expected: "list item", got: "EOF", context: "in list")#(list.reverse(acc), #(tokens, pos, env, fn_, [err, ..errors])) }
-    [Token("Punct", "]", _), ..rest] -> #(list.reverse(acc), #(rest, pos + 1, env, fn_, errors))
+    [] -> {
+      let err =
+        ParseError(
+          span: current_span(p),
+          expected: "list item",
+          got: "EOF",
+          context: "in list",
+        )
+      #(list.reverse(acc), #(tokens, pos, env, fn_, [err, ..errors]))
+    }
+    [Token("Punct", "]", _), ..rest] -> #(
+      list.reverse(acc),
+      #(rest, pos + 1, env, fn_, errors),
+    )
     [Token("Eof", ..), ..] -> #(list.reverse(acc), p)
     _ -> {
       let #(item, p1) = parse_term(p)
@@ -474,7 +603,10 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
   let #(tokens, pos, env, fn_, errors) = p
   case list.drop(tokens, pos) {
     [] -> #(PAny(span), p)
-    [Token("_", _, _), .._] -> #(PAny(span), #(tokens, pos + 1, env, fn_, errors))
+    [Token("_", _, _), ..] -> #(
+      PAny(span),
+      #(tokens, pos + 1, env, fn_, errors),
+    )
     [Token("Name", v, _), ..rest] -> {
       let p1 = #(tokens, pos + 1, env, fn_, errors)
       case rest {
@@ -489,22 +621,40 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
         _ -> #(PVar(v, span), p1)
       }
     }
-    [Token("Punct", "(", _), Token("Punct", ")", _), .._rest] -> {
+    [Token("Punct", "(", _), Token("Punct", ")", _), ..] -> {
       let p1 = #(tokens, pos + 2, env, fn_, errors)
       #(PUnit(span), p1)
     }
-    [Token("Integer", v, _), .._] -> {
+    [Token("Integer", v, _), ..] -> {
       let p1 = #(tokens, pos + 1, env, fn_, errors)
       case int.parse(v) {
         Ok(value) -> #(PLit(LitInt(value), span), p1)
-        Error(_) -> { let err = ParseError(span: span, expected: "integer", got: v, context: "invalid integer literal")#(PAny(span), #(tokens, pos + 1, env, fn_, [err, ..errors])) }
+        Error(_) -> {
+          let err =
+            ParseError(
+              span: span,
+              expected: "integer",
+              got: v,
+              context: "invalid integer literal",
+            )
+          #(PAny(span), #(tokens, pos + 1, env, fn_, [err, ..errors]))
+        }
       }
     }
-    [Token("Float", v, _), .._] -> {
+    [Token("Float", v, _), ..] -> {
       let p1 = #(tokens, pos + 1, env, fn_, errors)
       case float.parse(v) {
         Ok(value) -> #(PLit(LitFloat(value), span), p1)
-        Error(_) -> { let err = ParseError(span: span, expected: "float", got: v, context: "invalid float literal")#(PAny(span), #(tokens, pos + 1, env, fn_, [err, ..errors])) }
+        Error(_) -> {
+          let err =
+            ParseError(
+              span: span,
+              expected: "float",
+              got: v,
+              context: "invalid float literal",
+            )
+          #(PAny(span), #(tokens, pos + 1, env, fn_, [err, ..errors]))
+        }
       }
     }
     _ -> #(PAny(span), p)
@@ -543,9 +693,24 @@ fn term_to_string(term: Term) -> String {
 
 fn is_keyword(s: String) -> Bool {
   case s {
-    "fn" | "let" | "in" | "match" | "case" | "type" | "of"
-    | "fun" | "fix" | "hole" | "unit" | "true" | "false"
-    | "if" | "then" | "else" | "import" | "as" -> True
+    "fn"
+    | "let"
+    | "in"
+    | "match"
+    | "case"
+    | "type"
+    | "of"
+    | "fun"
+    | "fix"
+    | "hole"
+    | "unit"
+    | "true"
+    | "false"
+    | "if"
+    | "then"
+    | "else"
+    | "import"
+    | "as" -> True
     _ -> False
   }
 }

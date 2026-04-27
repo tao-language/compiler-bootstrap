@@ -1,5 +1,8 @@
 import gleeunit
-import syntax/span.{Span, single, empty, after, merge, contains, line_count, column_count, to_string, to_short_string}
+import syntax/span.{
+  Span, after, column_count, contains, empty, line_count, merge, single,
+  to_short_string, to_string,
+}
 
 pub fn main() {
   gleeunit.main()

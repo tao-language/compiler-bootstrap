@@ -1,20 +1,16 @@
 /// Normalization by Evaluation (NBE) — Term → Value
-
 import core/ast.{
-  type Term, type Value, type Case, type Pattern,
-  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Call, Rcd, Typ, Err,
-  VNeut, HHole, HVar, VLam, VPi, VLit, VCtr, VRcd, VErr, EApp,
-  term_to_string,
-  Case as CoreCase,
-  PAny, PVar, PCtr as Pctr, PUnit, PLit,
-  Int as LitInt, Float as LitFloat,
+  type Case, type Pattern, type Term, type Value, Ann, App, Call,
+  Case as CoreCase, Ctr, EApp, Err, Float as LitFloat, HHole, HVar, Hole,
+  Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, Pi, Rcd,
+  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, Var, term_to_string,
 }
-import core/state.{type State, State, lookup_ffi, FfiEntry}
-import core/subst.{subst_term_var, force}
-import gleam/list
+import core/state.{type State, FfiEntry, State, lookup_ffi}
+import core/subst.{force, subst_term_var}
 import gleam/float
 import gleam/int
-import gleam/option.{Some, None}
+import gleam/list
+import gleam/option.{None, Some}
 
 // ============================================================================
 // MAIN EVALUATION
@@ -77,11 +73,12 @@ pub fn evaluate(state: State, term: Term) -> Value {
     }
     Lit(value, _) -> VLit(value)
     Ctr(tag, arg, _) -> VCtr(tag, evaluate(state, arg))
-    Rcd(fields, _) -> VRcd(list.map(fields, fn(f) { #(f.0, evaluate(state, f.1)) }))
+    Rcd(fields, _) ->
+      VRcd(list.map(fields, fn(f) { #(f.0, evaluate(state, f.1)) }))
     Ann(term, _, _) -> evaluate(state, term)
     Match(arg, cases, _) -> {
       let scrutinee = evaluate(state, arg)
-      do_match(scrutinee, cases, [])
+      do_match(state.truth_ctr, scrutinee, cases, [])
     }
     Call(name, args, _) -> {
       // Evaluate all arguments
@@ -89,7 +86,9 @@ pub fn evaluate(state: State, term: Term) -> Value {
       // Look up FFI entry
       case lookup_ffi(state, name) {
         Ok(FfiEntry(fn_name: _, impl: impl_fn)) ->
-          case impl_fn(list.map(eval_args, fn(v) { #(v, VNeut(HHole(0), [])) })) {
+          case
+            impl_fn(list.map(eval_args, fn(v) { #(v, VNeut(HHole(0), [])) }))
+          {
             Some(result) -> result
             None -> VErr
           }
@@ -160,6 +159,10 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
 /// in order. The first matching case body is evaluated (in the pattern-
 /// bound environment extended with the original state's variables).
 ///
+/// The `truth_ctr` parameter specifies the constructor name that
+/// represents truth in guards (e.g., `"True"`). A guard passes if it
+/// evaluates to `#<truth_ctr>(...)` — any other value is falsy.
+///
 /// ## Example
 ///
 /// ```gleam
@@ -171,7 +174,12 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
 /// let scrutinee = Ctr("Some", Lit(LitInt(42), span), span)
 /// // evaluates to the first case body with "v" bound
 /// ```
-fn do_match(scrutinee: Value, cases: List(Case), bindings: List(#(String, Value))) -> Value {
+fn do_match(
+  truth_ctr: String,
+  scrutinee: Value,
+  cases: List(Case),
+  bindings: List(#(String, Value)),
+) -> Value {
   case cases {
     [] -> VErr
     [CoreCase(pattern, guard, body, _case_span), ..rest] -> {
@@ -180,53 +188,44 @@ fn do_match(scrutinee: Value, cases: List(Case), bindings: List(#(String, Value)
           // Evaluate optional guard
           case guard {
             Some(guard_term) -> {
-              // Guard must evaluate to unit (empty record) to pass
-              let guard_val = evaluate(match_state(env_bindings), guard_term)
-              let is_true = is_true_value(guard_val)
-              case is_true {
-                True -> evaluate(match_state(env_bindings), body)
-                False -> do_match(scrutinee, rest, bindings)
+              let guard_val =
+                evaluate(match_state(env_bindings, truth_ctr), guard_term)
+              case is_truth(truth_ctr, guard_val) {
+                True -> evaluate(match_state(env_bindings, truth_ctr), body)
+                False -> do_match(truth_ctr, scrutinee, rest, bindings)
               }
             }
-            None -> evaluate(match_state(env_bindings), body)
+            None -> evaluate(match_state(env_bindings, truth_ctr), body)
           }
         }
-        Error(Nil) -> do_match(scrutinee, rest, bindings)
+        Error(Nil) -> do_match(truth_ctr, scrutinee, rest, bindings)
       }
     }
+  }
+}
+
+/// Check if a value matches the truth constructor.
+///
+/// A guard evaluates to true if it produces a constructor whose tag
+/// matches the configured `truth_ctr` (e.g., `#True(...)`).
+pub fn is_truth(truth_ctr: String, value: Value) -> Bool {
+  case value {
+    VCtr(tag, _) -> tag == truth_ctr
+    _ -> False
   }
 }
 
 /// Create a temporary state with pattern-matched bindings for evaluation.
 /// The type field (`VNeut(HHole(0), [])`) is a placeholder — never used
 /// by the evaluator since type checking happens before evaluation.
-fn match_state(bindings: List(#(String, Value))) -> State {
-  // Use a minimal state — bindings are used via pattern env, not state lookup
+fn match_state(bindings: List(#(String, Value)), truth_ctr: String) -> State {
   State(
     vars: list.map(bindings, fn(b) { #(b.0, #(b.1, VNeut(HHole(0), []))) }),
     errors: [],
     ffi: [],
     hole_counter: 0,
+    truth_ctr: truth_ctr,
   )
-}
-
-/// Check if a value is considered "true" for guard evaluation.
-///
-/// A guard passes if it evaluates to:
-/// - A non-empty record (truthy)
-/// - A neutral term (assumed truthy)
-/// - A constructor (assumed truthy — truth constructors are VCtr)
-///
-/// A guard fails if it evaluates to:
-/// - An empty record (unit = falsity)
-/// - VErr
-pub fn is_true_value(value: Value) -> Bool {
-  case value {
-    VRcd(fields) -> fields != []  // Empty record = false, non-empty = true
-    VCtr(_, _) -> True  // Constructors (like True) are truthy
-    VNeut(_, _) -> True  // Neutral terms are assumed truthy
-    _ -> False  // Literals, VPi, VErr are falsy
-  }
 }
 
 // ============================================================================
@@ -314,35 +313,41 @@ pub fn value_to_string(value: Value) -> String {
       case spine {
         [] -> head_str
         _ -> {
-          let spine_str = list.fold(
-            spine, "", fn(acc, e) {
+          let spine_str =
+            list.fold(spine, "", fn(acc, e) {
               let s = case e {
                 EApp(arg) -> "(" <> value_to_string(arg) <> ")"
               }
               acc <> s
-            },
-          )
+            })
           head_str <> spine_str
         }
       }
     }
     VLam(#(name, _), body) -> "%fn(" <> name <> ") => " <> term_to_string(body)
     VPi(domain, codomain) ->
-      "%fn(_) : " <> value_to_string(domain) <> " -> " <> value_to_string(codomain)
-    VLit(lit) -> case lit {
-      LitInt(v) -> int.to_string(v)
-      LitFloat(v) -> float.to_string(v)
-    }
+      "%fn(_) : "
+      <> value_to_string(domain)
+      <> " -> "
+      <> value_to_string(codomain)
+    VLit(lit) ->
+      case lit {
+        LitInt(v) -> int.to_string(v)
+        LitFloat(v) -> float.to_string(v)
+      }
     VCtr(tag, arg) -> "#" <> tag <> "(" <> value_to_string(arg) <> ")"
     VRcd(fields) ->
       case fields {
         [] -> "()"
-        _ -> "{" <> list.fold(fields, "", fn(acc, f) {
-          case acc {
-            "" -> f.0 <> ": " <> value_to_string(f.1)
-            _ -> acc <> ", " <> f.0 <> ": " <> value_to_string(f.1)
-          }
-        }) <> "}"
+        _ ->
+          "{"
+          <> list.fold(fields, "", fn(acc, f) {
+            case acc {
+              "" -> f.0 <> ": " <> value_to_string(f.1)
+              _ -> acc <> ", " <> f.0 <> ": " <> value_to_string(f.1)
+            }
+          })
+          <> "}"
       }
     VErr -> "\"error\""
   }

@@ -13,15 +13,14 @@
 /// - List expressions
 /// - Error recovery (strings, unsupported operators)
 /// - Edge cases (empty input, extra tokens, unicode)
-
-import gleeunit
-import core/syntax.{parse, parse_tokens}
 import core/ast.{
-  Var, Hole, Lam, App, Pi, Lit, Match, Rcd, Typ, Err, Case as CoreCase,
-  PAny, PUnit, PLit, Int as LitInt, Float as LitFloat
+  App, Case as CoreCase, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
+  Match, PAny, PLit, PUnit, Pi, Rcd, Typ, Var,
 }
-import syntax/base_lexer.{tokenize}
+import core/syntax.{parse, parse_tokens}
 import gleam/list
+import gleeunit
+import syntax/base_lexer.{tokenize}
 
 pub fn main() {
   gleeunit.main()
@@ -43,7 +42,7 @@ pub fn parse_simple_integer_test() {
 pub fn parse_large_integer_test() {
   let #(term, _) = parse("999999")
   assert case term {
-    Lit(LitInt(999999), _) -> True
+    Lit(LitInt(999_999), _) -> True
     _ -> False
   }
 }
@@ -185,10 +184,11 @@ pub fn parse_nested_lambda_binding_works_test() {
   // %fn(x: ()) => %fn(y: ()) => x references outer x (Var(1))
   let #(term, errors) = parse("%fn(x: ()) => %fn(y: ()) => x")
   let term_ok = case term {
-    Lam(#("x", Rcd([], _)), body, _) -> case body {
-      Lam(#("y", Rcd([], _)), Var(1, _), _) -> True
-      _ -> False
-    }
+    Lam(#("x", Rcd([], _)), body, _) ->
+      case body {
+        Lam(#("y", Rcd([], _)), Var(1, _), _) -> True
+        _ -> False
+      }
     _ -> False
   }
   let errors_ok = case errors {
@@ -205,10 +205,11 @@ pub fn parse_inner_variable_shadows_outer_test() {
   // %fn(x: ()) => %fn(x: ()) => x (inner x shadows outer x)
   let #(term, errors) = parse("%fn(x: ()) => %fn(x: ()) => x")
   let term_ok = case term {
-    Lam(#("x", Rcd([], _)), body, _) -> case body {
-      Lam(#("x", Rcd([], _)), Var(0, _), _) -> True
-      _ -> False
-    }
+    Lam(#("x", Rcd([], _)), body, _) ->
+      case body {
+        Lam(#("x", Rcd([], _)), Var(0, _), _) -> True
+        _ -> False
+      }
     _ -> False
   }
   let errors_ok = case errors {
@@ -280,7 +281,8 @@ pub fn parse_let_simple_binding_test() {
 pub fn parse_let_with_lambda_test() {
   let #(term, errors) = parse("%let f = %fn(x: ()) => x; f")
   let term_ok = case term {
-    App(Lam(#("f", Rcd(_, _)), _, _), Lam(#("x", Rcd([], _)), Var(0, _), _), _) -> True
+    App(Lam(#("f", Rcd(_, _)), _, _), Lam(#("x", Rcd([], _)), Var(0, _), _), _) ->
+      True
     _ -> False
   }
   let errors_ok = case errors {
@@ -300,10 +302,11 @@ pub fn parse_let_with_lambda_test() {
 pub fn parse_empty_match_error_test() {
   let #(term, errors) = parse("%match x { }")
   let term_ok = case term {
-    Match(arg, [], _) -> case arg {
-      Err("unexpected end of input", _) -> True
-      _ -> False
-    }
+    Match(arg, [], _) ->
+      case arg {
+        Err("unexpected end of input", _) -> True
+        _ -> False
+      }
     _ -> False
   }
   let errors_ok = case errors {
@@ -460,7 +463,10 @@ pub fn parse_nested_list_test() {
   let _ = errors
   // Nested list produces Rcd with Rcd inside
   assert case term {
-    Rcd([#("0", Rcd([#("0", Lit(LitInt(1), _)), #("1", Lit(LitInt(2), _))], _))], _) -> True
+    Rcd(
+      [#("0", Rcd([#("0", Lit(LitInt(1), _)), #("1", Lit(LitInt(2), _))], _))],
+      _,
+    ) -> True
     _ -> False
   }
 }

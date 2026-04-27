@@ -22,20 +22,17 @@
 /// force(state, VNeut(HHole(id), [EApp(arg)]))
 ///   -> body with arg bound at level 0
 /// ```
-
 import core/ast.{
-  type Term, type Value, type Head, type Elim,
-  type Case, Case,
-  type Literal, type Pattern,
-  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Call, Rcd, Typ, Err,
-  VNeut, HHole, HVar, VLam, VPi, VLit, VCtr, VRcd, VErr, EApp, make_neut,
-  PAny, PVar, PCtr as Pctr, PUnit, PLit,
-  Int as LitInt, Float as LitFloat,
+  type Case, type Elim, type Head, type Literal, type Pattern, type Term,
+  type Value, Ann, App, Call, Case, Ctr, EApp, Err, Float as LitFloat, HHole,
+  HVar, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit,
+  PVar, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, Var, make_neut,
+  shift_opt, shift_term,
 }
 import core/state.{type State, lookup_var}
-import gleam/option.{type Option, Some, None}
-import gleam/list
 import gleam/int
+import gleam/list
+import gleam/option.{None, Some}
 import syntax/span.{single}
 
 /// Force a value by resolving holes and applying neutral spine elements.
@@ -67,7 +64,7 @@ pub fn force(state: State, value: Value) -> Value {
 fn resolve_head(state: State, head: Head) -> Result(Value, Nil) {
   case head {
     HHole(id) -> {
-      let binding_name = "hole" <> int_to_string(id)
+      let binding_name = "hole" <> int.to_string(id)
       case lookup_var(state, binding_name) {
         Ok(#(value, _type)) -> Ok(value)
         Error(_) -> Error(Nil)
@@ -95,8 +92,6 @@ fn lookup_level_local(
 }
 
 /// Look up a variable by De Bruijn level from the outermost binding.
-
-
 /// Apply a list of eliminators (a neutral spine) to a value.
 pub fn apply_spine(value: Value, spine: List(Elim)) -> Value {
   case spine {
@@ -123,8 +118,7 @@ fn elim_arg_value(elim: Elim) -> Value {
 fn try_apply(value: Value, arg: Value) -> Result(Value, Nil) {
   case value {
     VLam(param, body) -> {
-      let #(name, param_type) = param
-      let _param_name = name
+      let #(_, param_type) = param
       let shifted_body = shift_term(body, 1)
       let substituted = subst_term_var(0, arg, shifted_body)
       // Return the substituted term wrapped in a lambda — evaluation
@@ -132,60 +126,6 @@ fn try_apply(value: Value, arg: Value) -> Result(Value, Nil) {
       Ok(VLam(#("x", param_type), substituted))
     }
     _ -> Error(Nil)
-  }
-}
-
-/// Shift De Bruijn indices in a term by `shift` (from binder 0).
-pub fn shift_term(term: Term, shift: Int) -> Term {
-  shift_term_from(term, shift, 0)
-}
-
-fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
-  case term {
-    Var(i, span) ->
-      case i >= from {
-        True -> Var(i + shift, span)
-        False -> Var(i, span)
-      }
-    Hole(id, span) -> Hole(id, span)
-    Lam(#(name, param), body, span) ->
-      Lam(#(name, shift_term_from(param, shift, from)),
-          shift_term_from(body, shift, from + 1),
-          span)
-    App(fun, arg, span) ->
-      App(shift_term_from(fun, shift, from),
-          shift_term_from(arg, shift, from),
-          span)
-    Pi(domain, codomain, span) ->
-      Pi(shift_term_from(domain, shift, from),
-         shift_term_from(codomain, shift, from),
-         span)
-    Lit(value, span) -> Lit(value, span)
-    Ctr(tag, arg, span) -> Ctr(tag, shift_term_from(arg, shift, from), span)
-    Match(arg, cases, span) ->
-      Match(shift_term_from(arg, shift, from),
-            list.map(cases, fn(c) {
-              Case(c.pattern, shift_opt(c.guard, shift, from),
-                   shift_term_from(c.body, shift, from), c.span)
-            }),
-            span)
-    Ann(term, type_, span) ->
-      Ann(shift_term_from(term, shift, from),
-          shift_term_from(type_, shift, from),
-          span)
-    Call(name, args, span) ->
-      Call(name, list.map(args, fn(a) { shift_term_from(a, shift, from) }), span)
-    Rcd(fields, span) ->
-      Rcd(list.map(fields, fn(f) { #(f.0, shift_term_from(f.1, shift, from)) }), span)
-    Typ(level, span) -> Typ(level, span)
-    Err(msg, span) -> Err(msg, span)
-  }
-}
-
-fn shift_opt(term: Option(Term), shift: Int, from: Int) -> Option(Term) {
-  case term {
-    Some(t) -> Some(shift_term_from(t, shift, from))
-    None -> None
   }
 }
 
@@ -207,35 +147,54 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
       }
     Hole(id, span) -> Hole(id, span)
     Lam(#(name, param), body, span) ->
-      Lam(#(name, param),
-          subst_term_from(idx, value, body, from + 1),
-          span)
+      Lam(#(name, param), subst_term_from(idx, value, body, from + 1), span)
     App(fun, arg, span) ->
-      App(subst_term_from(idx, value, fun, from),
-          subst_term_from(idx, value, arg, from),
-          span)
+      App(
+        subst_term_from(idx, value, fun, from),
+        subst_term_from(idx, value, arg, from),
+        span,
+      )
     Pi(domain, codomain, span) ->
-      Pi(subst_term_from(idx, value, domain, from),
-         subst_term_from(idx, value, codomain, from),
-         span)
+      Pi(
+        subst_term_from(idx, value, domain, from),
+        subst_term_from(idx, value, codomain, from),
+        span,
+      )
     Lit(lit, span) -> Lit(lit, span)
-    Ctr(tag, arg, span) -> Ctr(tag, subst_term_from(idx, value, arg, from), span)
+    Ctr(tag, arg, span) ->
+      Ctr(tag, subst_term_from(idx, value, arg, from), span)
     Match(arg, cases, span) ->
-      Match(subst_term_from(idx, value, arg, from),
-            list.map(cases, fn(c) {
-              Case(c.pattern, shift_opt(c.guard, 0, from),
-                   subst_term_from(idx, value, c.body, from),
-                   c.span)
-            }),
-            span)
+      Match(
+        subst_term_from(idx, value, arg, from),
+        list.map(cases, fn(c) {
+          Case(
+            c.pattern,
+            shift_opt(c.guard, from, from),
+            subst_term_from(idx, value, c.body, from),
+            c.span,
+          )
+        }),
+        span,
+      )
     Ann(t, type_, span) ->
-      Ann(subst_term_from(idx, value, t, from),
-          subst_term_from(idx, value, type_, from),
-          span)
+      Ann(
+        subst_term_from(idx, value, t, from),
+        subst_term_from(idx, value, type_, from),
+        span,
+      )
     Call(name, args, span) ->
-      Call(name, list.map(args, fn(a) { subst_term_from(idx, value, a, from) }), span)
+      Call(
+        name,
+        list.map(args, fn(a) { subst_term_from(idx, value, a, from) }),
+        span,
+      )
     Rcd(fields, span) ->
-      Rcd(list.map(fields, fn(f) { #(f.0, subst_term_from(idx, value, f.1, from)) }), span)
+      Rcd(
+        list.map(fields, fn(f) {
+          #(f.0, subst_term_from(idx, value, f.1, from))
+        }),
+        span,
+      )
     Typ(level, span) -> Typ(level, span)
     Err(msg, span) -> Err(msg, span)
   }
@@ -281,8 +240,7 @@ fn neut_head_to_term(head: Head) -> Term {
 /// use `n = 0`.
 pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
   case value {
-    VNeut(head, spine) ->
-      neut_head_to_term_with_spine(head, spine, n)
+    VNeut(head, spine) -> neut_head_to_term_with_spine(head, spine, n)
     VLam(param, body) -> {
       // VLam's body is already a Term — convert param type (Value) to Term
       let new_n = n + 1
@@ -295,26 +253,22 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
       Pi(converted_domain, converted_codomain, single("", 0, 0))
     }
     VLit(lit) -> Lit(lit, single("", 0, 0))
-    VCtr(tag, arg) -> Ctr(tag, force_levels_to_indices(arg, n), single("", 0, 0))
-    VRcd(fields) -> Rcd(
-      list.map(fields, fn(f) { #(f.0, force_levels_to_indices(f.1, n)) }),
-      single("", 0, 0)
-    )
+    VCtr(tag, arg) ->
+      Ctr(tag, force_levels_to_indices(arg, n), single("", 0, 0))
+    VRcd(fields) ->
+      Rcd(
+        list.map(fields, fn(f) { #(f.0, force_levels_to_indices(f.1, n)) }),
+        single("", 0, 0),
+      )
     VErr -> Err("error", single("", 0, 0))
   }
 }
 
 /// Convert a neutral head and its spine to a term.
-fn neut_head_to_term_with_spine(
-  head: Head,
-  spine: List(Elim),
-  n: Int,
-) -> Term {
+fn neut_head_to_term_with_spine(head: Head, spine: List(Elim), n: Int) -> Term {
   case head, spine {
-    HVar(level), [] ->
-      Var(abs_index(level, n), single("", 0, 0))
-    HHole(id), [] ->
-      Hole(id, single("", 0, 0))
+    HVar(level), [] -> Var(abs_index(level, n), single("", 0, 0))
+    HHole(id), [] -> Hole(id, single("", 0, 0))
     HVar(level), [EApp(arg), ..rest] -> {
       let base = Var(abs_index(level, n), single("", 0, 0))
       let arg_term = force_levels_to_indices(arg, n)
@@ -327,16 +281,11 @@ fn neut_head_to_term_with_spine(
       let applied = App(base, arg_term, single("", 0, 0))
       apply_remaining_spine(applied, n, rest)
     }
-
   }
 }
 
 /// Continue applying remaining spine elements to a term.
-fn apply_remaining_spine(
-  base: Term,
-  n: Int,
-  rest: List(Elim),
-) -> Term {
+fn apply_remaining_spine(base: Term, n: Int, rest: List(Elim)) -> Term {
   case rest {
     [] -> base
     [EApp(next_arg), ..rest_rest] -> {
@@ -376,8 +325,7 @@ fn value_string(value: Value) -> String {
         [] -> neut_head_to_string(head)
         _ -> neut_to_string(head, spine)
       }
-    VLam(param, body) ->
-      "%fn(" <> param.0 <> ") => " <> term_string(body)
+    VLam(param, body) -> "%fn(" <> param.0 <> ") => " <> term_string(body)
     VPi(domain, codomain) ->
       "%fn(_ : " <> value_string(domain) <> ") -> " <> value_string(codomain)
     VLit(lit) -> literal_string(lit)
@@ -385,12 +333,15 @@ fn value_string(value: Value) -> String {
     VRcd(fields) ->
       case fields {
         [] -> "()"
-        _ -> "{" <> list.fold(fields, "", fn(acc, f) {
-          case acc {
-            "" -> f.0 <> ": " <> value_string(f.1)
-            _ -> acc <> ", " <> f.0 <> ": " <> value_string(f.1)
-          }
-        }) <> "}"
+        _ ->
+          "{"
+          <> list.fold(fields, "", fn(acc, f) {
+            case acc {
+              "" -> f.0 <> ": " <> value_string(f.1)
+              _ -> acc <> ", " <> f.0 <> ": " <> value_string(f.1)
+            }
+          })
+          <> "}"
       }
     VErr -> "\"error\""
   }
@@ -398,30 +349,34 @@ fn value_string(value: Value) -> String {
 
 fn neut_head_to_string(head: Head) -> String {
   case head {
-    HVar(level) -> "v" <> int_to_string(level)
-    HHole(id) -> "?" <> int_to_string(id)
+    HVar(level) -> "v" <> int.to_string(level)
+    HHole(id) -> "?" <> int.to_string(id)
   }
 }
 
 fn neut_to_string(head: Head, spine: List(Elim)) -> String {
   let head_str = neut_head_to_string(head)
-  let spine_str = list.fold(
-    spine, "", fn(acc, e) {
+  let spine_str =
+    list.fold(spine, "", fn(acc, e) {
       let s = case e {
         EApp(arg) -> "(" <> value_string(arg) <> ")"
       }
       acc <> s
-    },
-  )
+    })
   head_str <> spine_str
 }
 
 fn term_string(term: Term) -> String {
   case term {
-    Var(i, _) -> "#" <> int_to_string(i)
-    Hole(id, _) -> "?" <> int_to_string(id)
+    Var(i, _) -> "#" <> int.to_string(i)
+    Hole(id, _) -> "?" <> int.to_string(id)
     Lam(#(name, param), body, _) ->
-      "%fn(" <> name <> ": " <> term_string(param) <> ") => " <> term_string(body)
+      "%fn("
+      <> name
+      <> ": "
+      <> term_string(param)
+      <> ") => "
+      <> term_string(body)
     App(fun, arg, _) ->
       "fun(" <> term_string(fun) <> ": " <> term_string(arg) <> ")"
     Pi(domain, codomain, _) ->
@@ -433,28 +388,39 @@ fn term_string(term: Term) -> String {
         _ -> "#" <> tag
       }
     Match(arg, cases, _) ->
-      "%match " <> term_string(arg) <> " {"
+      "%match "
+      <> term_string(arg)
+      <> " {"
       <> list.fold(cases, "", fn(acc, c) {
         acc <> "\n  | " <> case_to_string(c)
       })
       <> "\n}"
-    Ann(t, type_, _) ->
-      term_string(t) <> " : " <> term_string(type_)
+    Ann(t, type_, _) -> term_string(t) <> " : " <> term_string(type_)
     Call(name, args, _) ->
-      "call(" <> name <> "[" <> list.fold(args, "", fn(acc, a) {
-        case acc { "" -> term_string(a) _ -> acc <> ", " <> term_string(a) }
-      }) <> "])"
+      "call("
+      <> name
+      <> "["
+      <> list.fold(args, "", fn(acc, a) {
+        case acc {
+          "" -> term_string(a)
+          _ -> acc <> ", " <> term_string(a)
+        }
+      })
+      <> "])"
     Rcd(fields, _) ->
       case fields {
         [] -> "()"
-        _ -> "{" <> list.fold(fields, "", fn(acc, f) {
-          case acc {
-            "" -> f.0 <> ": " <> term_string(f.1)
-            _ -> acc <> ", " <> f.0 <> ": " <> term_string(f.1)
-          }
-        }) <> "}"
+        _ ->
+          "{"
+          <> list.fold(fields, "", fn(acc, f) {
+            case acc {
+              "" -> f.0 <> ": " <> term_string(f.1)
+              _ -> acc <> ", " <> f.0 <> ": " <> term_string(f.1)
+            }
+          })
+          <> "}"
       }
-    Typ(level, _) -> "%Type(" <> int_to_string(level) <> ")"
+    Typ(level, _) -> "%Type(" <> int.to_string(level) <> ")"
     Err(msg, _) -> "\"" <> msg <> "\""
   }
 }
@@ -462,8 +428,11 @@ fn term_string(term: Term) -> String {
 fn case_to_string(case_: Case) -> String {
   case case_.guard {
     Some(guard) ->
-      pattern_to_string(case_.pattern) <> " ? " <> term_string(guard)
-      <> " => " <> term_string(case_.body)
+      pattern_to_string(case_.pattern)
+      <> " ? "
+      <> term_string(guard)
+      <> " => "
+      <> term_string(case_.body)
     None ->
       pattern_to_string(case_.pattern) <> " => " <> term_string(case_.body)
   }
@@ -475,22 +444,14 @@ fn pattern_to_string(pat: Pattern) -> String {
     PVar(name, _) -> name
     Pctr(tag, inner, _) -> tag <> "(" <> pattern_to_string(inner) <> ")"
     PUnit(_) -> "()"
-    PLit(LitInt(value), _) -> int_to_string(value)
+    PLit(LitInt(value), _) -> int.to_string(value)
     PLit(LitFloat(_), _) -> "<float>"
   }
 }
 
 fn literal_string(lit: Literal) -> String {
   case lit {
-    LitInt(value) -> int_to_string(value)
+    LitInt(value) -> int.to_string(value)
     LitFloat(_) -> "<float>"
   }
-}
-
-// ============================================================================
-// HELPERS
-// ============================================================================
-
-fn int_to_string(n: Int) -> String {
-  int.to_string(n)
 }

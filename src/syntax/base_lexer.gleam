@@ -10,11 +10,10 @@
 /// Language-specific extensions (keywords, multi-char operators,
 /// lambda symbol, etc.) are provided by the `tao/lexer` module
 /// which composes on top of this base.
-
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/string
-import gleam/option.{type Option, Some, None}
-import syntax/span.{Span, type Span}
+import syntax/span.{type Span, Span}
 
 /// Token produced by the lexer.
 ///
@@ -35,11 +34,7 @@ import syntax/span.{Span, type Span}
 /// Language-specific keyword detection is performed by the grammar
 /// layer (see `grammar.kw` pattern).
 pub type Token {
-  Token(
-    kind: String,
-    value: String,
-    span: Span,
-  )
+  Token(kind: String, value: String, span: Span)
 }
 
 /// Internal lexer state.
@@ -67,14 +62,15 @@ pub fn tokenize(source: String) -> List(Token) {
 
 /// Tokenize with an explicit filename for span tracking.
 pub fn tokenize_with_filename(source: String, filename: String) -> List(Token) {
-  let state = State(
-    source: source,
-    filename: filename,
-    pos: 0,
-    line: 1,
-    col: 1,
-    tokens: [],
-  )
+  let state =
+    State(
+      source: source,
+      filename: filename,
+      pos: 0,
+      line: 1,
+      col: 1,
+      tokens: [],
+    )
   tokenize_loop(state) |> fn(s) { list.reverse(s.tokens) }
 }
 
@@ -101,12 +97,58 @@ pub fn is_ident_char(char: String) -> Bool {
 /// Check if a character is a letter (a-z, A-Z).
 pub fn is_alpha(char: String) -> Bool {
   case char {
-    "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j"
-    | "k" | "l" | "m" | "n" | "o" | "p" | "q" | "r" | "s" | "t"
-    | "u" | "v" | "w" | "x" | "y" | "z" -> True
-    "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J"
-    | "K" | "L" | "M" | "N" | "O" | "P" | "Q" | "R" | "S" | "T"
-    | "U" | "V" | "W" | "X" | "Y" | "Z" -> True
+    "a"
+    | "b"
+    | "c"
+    | "d"
+    | "e"
+    | "f"
+    | "g"
+    | "h"
+    | "i"
+    | "j"
+    | "k"
+    | "l"
+    | "m"
+    | "n"
+    | "o"
+    | "p"
+    | "q"
+    | "r"
+    | "s"
+    | "t"
+    | "u"
+    | "v"
+    | "w"
+    | "x"
+    | "y"
+    | "z" -> True
+    "A"
+    | "B"
+    | "C"
+    | "D"
+    | "E"
+    | "F"
+    | "G"
+    | "H"
+    | "I"
+    | "J"
+    | "K"
+    | "L"
+    | "M"
+    | "N"
+    | "O"
+    | "P"
+    | "Q"
+    | "R"
+    | "S"
+    | "T"
+    | "U"
+    | "V"
+    | "W"
+    | "X"
+    | "Y"
+    | "Z" -> True
     _ -> False
   }
 }
@@ -130,17 +172,8 @@ pub fn peek_next(state: State) -> Option(String) {
 /// Advance the lexer by one character, updating line/column tracking.
 pub fn advance(state: State) -> State {
   case peek_char(state) {
-    "\n" -> State(
-      ..state,
-      pos: state.pos + 1,
-      line: state.line + 1,
-      col: 1,
-    )
-    _ -> State(
-      ..state,
-      pos: state.pos + 1,
-      col: state.col + 1,
-    )
+    "\n" -> State(..state, pos: state.pos + 1, line: state.line + 1, col: 1)
+    _ -> State(..state, pos: state.pos + 1, col: state.col + 1)
   }
 }
 
@@ -187,14 +220,17 @@ pub fn skip_block_comment(state: State) -> State {
 pub fn tokenize_string(state: State) -> State {
   let start_line = state.line
   let start_col = state.col
-  let state = advance(state) // skip opening "
+  let state = advance(state)
+  // skip opening "
   let #(content, state) = read_string_content(state, "")
-  let state = advance(state) // skip closing "
-  let token = Token(
-    kind: "String",
-    value: content,
-    span: Span(state.filename, start_line, start_col, state.line, state.col),
-  )
+  let state = advance(state)
+  // skip closing "
+  let token =
+    Token(
+      kind: "String",
+      value: content,
+      span: Span(state.filename, start_line, start_col, state.line, state.col),
+    )
   State(..state, tokens: [token, ..state.tokens])
 }
 
@@ -228,46 +264,76 @@ pub fn tokenize_number(state: State) -> State {
   case peek_char(state) {
     "." -> {
       case peek_next(state) {
-        Some(next) -> case is_digit(next) {
-          True -> {
-            // Float literal: consume the ".", then read fractional digits
-            let state = advance(state) // consume "."
-            let #(frac_digits, state) = read_digits(state, "")
-            let value = digits <> "." <> frac_digits
-            let token = Token(
-              kind: "Float",
-              value: value,
-              span: Span(state.filename, start_line, start_col, state.line, state.col),
-            )
-            State(..state, tokens: [token, ..state.tokens])
+        Some(next) ->
+          case is_digit(next) {
+            True -> {
+              // Float literal: consume the ".", then read fractional digits
+              let state = advance(state)
+              // consume "."
+              let #(frac_digits, state) = read_digits(state, "")
+              let value = digits <> "." <> frac_digits
+              let token =
+                Token(
+                  kind: "Float",
+                  value: value,
+                  span: Span(
+                    state.filename,
+                    start_line,
+                    start_col,
+                    state.line,
+                    state.col,
+                  ),
+                )
+              State(..state, tokens: [token, ..state.tokens])
+            }
+            False -> {
+              // Just a number followed by a bare dot — tokenize as integer
+              let token =
+                Token(
+                  kind: "Integer",
+                  value: digits,
+                  span: Span(
+                    state.filename,
+                    start_line,
+                    start_col,
+                    state.line,
+                    state.col,
+                  ),
+                )
+              State(..state, tokens: [token, ..state.tokens])
+            }
           }
-          False -> {
-            // Just a number followed by a bare dot — tokenize as integer
-            let token = Token(
-              kind: "Integer",
-              value: digits,
-              span: Span(state.filename, start_line, start_col, state.line, state.col),
-            )
-            State(..state, tokens: [token, ..state.tokens])
-          }
-        }
         None -> {
           // Just a number followed by a bare dot — tokenize as integer
-          let token = Token(
-            kind: "Integer",
-            value: digits,
-            span: Span(state.filename, start_line, start_col, state.line, state.col),
-          )
+          let token =
+            Token(
+              kind: "Integer",
+              value: digits,
+              span: Span(
+                state.filename,
+                start_line,
+                start_col,
+                state.line,
+                state.col,
+              ),
+            )
           State(..state, tokens: [token, ..state.tokens])
         }
       }
     }
     _ -> {
-      let token = Token(
-        kind: "Integer",
-        value: digits,
-        span: Span(state.filename, start_line, start_col, state.line, state.col),
-      )
+      let token =
+        Token(
+          kind: "Integer",
+          value: digits,
+          span: Span(
+            state.filename,
+            start_line,
+            start_col,
+            state.line,
+            state.col,
+          ),
+        )
       State(..state, tokens: [token, ..state.tokens])
     }
   }
@@ -275,10 +341,11 @@ pub fn tokenize_number(state: State) -> State {
 
 fn read_digits(state: State, acc: String) -> #(String, State) {
   case peek_char(state) {
-    c -> case is_digit(c) {
-      True -> read_digits(advance(state), acc <> c)
-      False -> #(acc, state)
-    }
+    c ->
+      case is_digit(c) {
+        True -> read_digits(advance(state), acc <> c)
+        False -> #(acc, state)
+      }
   }
 }
 
@@ -292,20 +359,25 @@ pub fn tokenize_identifier(state: State) -> State {
   let start_col = state.col
   let #(chars, state) = read_ident_chars(state, [])
   let value = string.join(chars, "")
-  let token = Token(
-    kind: "Name",
-    value: value,
-    span: Span(state.filename, start_line, start_col, state.line, state.col),
-  )
+  let token =
+    Token(
+      kind: "Name",
+      value: value,
+      span: Span(state.filename, start_line, start_col, state.line, state.col),
+    )
   State(..state, tokens: [token, ..state.tokens])
 }
 
-pub fn read_ident_chars(state: State, acc: List(String)) -> #(List(String), State) {
+pub fn read_ident_chars(
+  state: State,
+  acc: List(String),
+) -> #(List(String), State) {
   case peek_char(state) {
-    c -> case is_ident_char(c) {
-      True -> read_ident_chars(advance(state), [c, ..acc])
-      False -> #(list.reverse(acc), state)
-    }
+    c ->
+      case is_ident_char(c) {
+        True -> read_ident_chars(advance(state), [c, ..acc])
+        False -> #(list.reverse(acc), state)
+      }
   }
 }
 
@@ -323,11 +395,12 @@ pub fn single_punct(state: State, punct: String, span: Span) -> State {
 
 /// End-of-file marker token.
 pub fn eof(state: State) -> State {
-  let token = Token(
-    kind: "Eof",
-    value: "",
-    span: Span(state.filename, state.line, state.col, state.line, state.col),
-  )
+  let token =
+    Token(
+      kind: "Eof",
+      value: "",
+      span: Span(state.filename, state.line, state.col, state.line, state.col),
+    )
   State(..state, tokens: [token, ..state.tokens])
 }
 
@@ -351,10 +424,11 @@ fn tokenize_loop(state: State) -> State {
     "\"" -> tokenize_string(state) |> tokenize_loop
     "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ->
       tokenize_number(state) |> tokenize_loop
-    c -> case is_ident_char(c) {
-      True -> tokenize_identifier(state) |> tokenize_loop
-      False -> tokenize_single_char(state) |> tokenize_loop
-    }
+    c ->
+      case is_ident_char(c) {
+        True -> tokenize_identifier(state) |> tokenize_loop
+        False -> tokenize_single_char(state) |> tokenize_loop
+      }
   }
 }
 
@@ -365,7 +439,8 @@ fn tokenize_single_char(state: State) -> State {
     char -> {
       let start_line = state.line
       let start_col = state.col
-      let span = Span(state.filename, start_line, start_col, state.line, state.col)
+      let span =
+        Span(state.filename, start_line, start_col, state.line, state.col)
 
       // Punctuation — structural characters used by all languages
       case char {

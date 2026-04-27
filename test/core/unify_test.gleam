@@ -15,15 +15,14 @@
 /// - Error accumulation
 /// - VErr passthrough (err type unifies with anything)
 /// - occurs_check always allows recursive types
-
-import gleeunit
-import core/unify.{unify, occurs_check}
-import core/state.{initial_state, def_var, TypeMismatch}
 import core/ast.{
-  VNeut, HHole, HVar, VLam, VPi, VCtr, VLit, VRcd, VErr, EApp,
-  Var, Int as LitInt, Float as LitFloat,
+  EApp, Float as LitFloat, HHole, HVar, Int as LitInt, VCtr, VErr, VLam, VLit,
+  VNeut, VPi, VRcd, Var,
 }
+import core/state.{TypeMismatch, def_var, initial_state}
+import core/unify.{occurs_check, unify}
 import gleam/list
+import gleeunit
 import syntax/span.{single}
 
 pub fn main() {
@@ -36,31 +35,24 @@ pub fn main() {
 
 pub fn unify_same_lit_int_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VLit(LitInt(42)),
-    VLit(LitInt(42)),
-  )
+  let final = unify(state, VLit(LitInt(42)), VLit(LitInt(42)))
   assert final.errors == []
 }
 
 pub fn unify_same_lit_float_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VLit(LitFloat(3.14)),
-    VLit(LitFloat(3.14)),
-  )
+  let final = unify(state, VLit(LitFloat(3.14)), VLit(LitFloat(3.14)))
   assert final.errors == []
 }
 
 pub fn unify_same_vctr_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VCtr("Just", VNeut(HVar(0), [])),
-    VCtr("Just", VNeut(HVar(0), [])),
-  )
+  let final =
+    unify(
+      state,
+      VCtr("Just", VNeut(HVar(0), [])),
+      VCtr("Just", VNeut(HVar(0), [])),
+    )
   assert final.errors == []
 }
 
@@ -76,59 +68,35 @@ pub fn unify_same_vrcd_empty_test() {
 
 pub fn unify_hole_bounds_to_int_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VNeut(HHole(0), []),
-    VLit(LitInt(42)),
-  )
+  let final = unify(state, VNeut(HHole(0), []), VLit(LitInt(42)))
   // Hole is bound — no errors
   assert final.errors == []
 }
 
 pub fn unify_hole_in_actual_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VLit(LitInt(42)),
-    VNeut(HHole(0), []),
-  )
+  let final = unify(state, VLit(LitInt(42)), VNeut(HHole(0), []))
   assert final.errors == []
 }
 
 pub fn unify_same_hole_id_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VNeut(HHole(5), []),
-    VNeut(HHole(5), []),
-  )
+  let final = unify(state, VNeut(HHole(5), []), VNeut(HHole(5), []))
   assert final.errors == []
 }
 
 pub fn unify_different_hole_ids_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VNeut(HHole(1), []),
-    VNeut(HHole(2), []),
-  )
+  let final = unify(state, VNeut(HHole(1), []), VNeut(HHole(2), []))
   // Different holes are treated as different values
   assert list.length(final.errors) >= 1
 }
 
 pub fn unify_hole_reunification_test() {
   let state = initial_state([])
-  let s1 = unify(
-    state,
-    VNeut(HHole(0), []),
-    VLit(LitInt(42)),
-  )
+  let s1 = unify(state, VNeut(HHole(0), []), VLit(LitInt(42)))
   // Re-unify the same hole — should succeed (already bound to 42)
-  let s2 = unify(
-    s1,
-    VNeut(HHole(0), []),
-    VLit(LitInt(42)),
-  )
+  let s2 = unify(s1, VNeut(HHole(0), []), VLit(LitInt(42)))
   assert s2.errors == []
 }
 
@@ -155,22 +123,19 @@ pub fn unify_same_pi_type_test() {
   let dom = VNeut(HHole(0), [])
   let codom = VNeut(HHole(1), [])
   let state = initial_state([])
-  let final = unify(
-    state,
-    VPi(dom, codom),
-    VPi(dom, codom),
-  )
+  let final = unify(state, VPi(dom, codom), VPi(dom, codom))
   assert final.errors == []
 }
 
 pub fn unify_mismatched_pi_domain_test() {
   // Use concrete values that genuinely don't unify
   let state = initial_state([])
-  let final = unify(
-    state,
-    VPi(VLit(LitInt(42)), VNeut(HHole(0), [])),
-    VPi(VLit(LitInt(43)), VNeut(HHole(0), [])),
-  )
+  let final =
+    unify(
+      state,
+      VPi(VLit(LitInt(42)), VNeut(HHole(0), [])),
+      VPi(VLit(LitInt(43)), VNeut(HHole(0), [])),
+    )
   assert list.length(final.errors) >= 1
 }
 
@@ -180,21 +145,23 @@ pub fn unify_mismatched_pi_domain_test() {
 
 pub fn unify_same_lam_type_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VLam(#("x", VNeut(HHole(0), [])), Var(0, single("", 0, 0))),
-    VLam(#("y", VNeut(HHole(0), [])), Var(0, single("", 0, 0))),
-  )
+  let final =
+    unify(
+      state,
+      VLam(#("x", VNeut(HHole(0), [])), Var(0, single("", 0, 0))),
+      VLam(#("y", VNeut(HHole(0), [])), Var(0, single("", 0, 0))),
+    )
   assert final.errors == []
 }
 
 pub fn unify_mismatched_lam_type_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VLam(#("x", VLit(LitInt(42))), Var(0, single("", 0, 0))),
-    VLam(#("y", VLit(LitFloat(3.14))), Var(0, single("", 0, 0))),
-  )
+  let final =
+    unify(
+      state,
+      VLam(#("x", VLit(LitInt(42))), Var(0, single("", 0, 0))),
+      VLam(#("y", VLit(LitFloat(3.14))), Var(0, single("", 0, 0))),
+    )
   assert list.length(final.errors) >= 1
 }
 
@@ -204,11 +171,12 @@ pub fn unify_mismatched_lam_type_test() {
 
 pub fn unify_different_ctr_tags_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VCtr("Just", VNeut(HHole(0), [])),
-    VCtr("Nothing", VNeut(HHole(0), [])),
-  )
+  let final =
+    unify(
+      state,
+      VCtr("Just", VNeut(HHole(0), [])),
+      VCtr("Nothing", VNeut(HHole(0), [])),
+    )
   assert list.length(final.errors) >= 1
 }
 
@@ -218,21 +186,13 @@ pub fn unify_different_ctr_tags_test() {
 
 pub fn unify_different_lit_int_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VLit(LitInt(42)),
-    VLit(LitInt(43)),
-  )
+  let final = unify(state, VLit(LitInt(42)), VLit(LitInt(43)))
   assert list.length(final.errors) >= 1
 }
 
 pub fn unify_lit_int_vs_float_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VLit(LitInt(42)),
-    VLit(LitFloat(42.0)),
-  )
+  let final = unify(state, VLit(LitInt(42)), VLit(LitFloat(42.0)))
   assert list.length(final.errors) >= 1
 }
 
@@ -242,31 +202,29 @@ pub fn unify_lit_int_vs_float_test() {
 
 pub fn unify_same_vrcd_fields_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VRcd([#("name", VNeut(HHole(0), []))]),
-    VRcd([#("name", VNeut(HHole(0), []))]),
-  )
+  let final =
+    unify(
+      state,
+      VRcd([#("name", VNeut(HHole(0), []))]),
+      VRcd([#("name", VNeut(HHole(0), []))]),
+    )
   assert final.errors == []
 }
 
 pub fn unify_mismatched_vrcd_fields_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VRcd([#("name", VNeut(HHole(0), []))]),
-    VRcd([#("age", VNeut(HHole(0), []))]),
-  )
+  let final =
+    unify(
+      state,
+      VRcd([#("name", VNeut(HHole(0), []))]),
+      VRcd([#("age", VNeut(HHole(0), []))]),
+    )
   assert list.length(final.errors) >= 1
 }
 
 pub fn unify_mismatched_vrcd_arity_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VRcd([#("name", VNeut(HHole(0), []))]),
-    VRcd([]),
-  )
+  let final = unify(state, VRcd([#("name", VNeut(HHole(0), []))]), VRcd([]))
   assert list.length(final.errors) >= 1
 }
 
@@ -278,32 +236,25 @@ pub fn unify_same_hvar_test() {
   // HVar(0) looks up in state — need a binding for it
   let bound_val = VNeut(HHole(0), [])
   let s1 = def_var(initial_state([]), "x", bound_val, bound_val)
-  let final = unify(
-    s1,
-    VNeut(HVar(0), [EApp(VRcd([]))]),
-    VNeut(HVar(0), [EApp(VRcd([]))]),
-  )
+  let final =
+    unify(
+      s1,
+      VNeut(HVar(0), [EApp(VRcd([]))]),
+      VNeut(HVar(0), [EApp(VRcd([]))]),
+    )
   assert final.errors == []
 }
 
 pub fn unify_different_hvar_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VNeut(HVar(0), []),
-    VNeut(HVar(1), []),
-  )
+  let final = unify(state, VNeut(HVar(0), []), VNeut(HVar(1), []))
   assert list.length(final.errors) >= 1
 }
 
 pub fn unify_hvar_vs_hhole_test() {
   // HVar(0) looks up in empty state — fails, then HHole(0) gets bound
   let state = initial_state([])
-  let final = unify(
-    state,
-    VNeut(HVar(0), []),
-    VNeut(HHole(0), []),
-  )
+  let final = unify(state, VNeut(HVar(0), []), VNeut(HHole(0), []))
   // HVar(0) fails lookup → error is added
   // HHole(0) in actual is bound to HVar(0)'s resolved type
   assert list.length(final.errors) >= 1
@@ -385,12 +336,11 @@ pub fn unify_mismatched_types_error_test() {
 
 pub fn unify_nested_vctr_test() {
   let state = initial_state([])
-  let final = unify(
-    state,
-    VCtr("Outer", VCtr("Inner", VNeut(HHole(0), []))),
-    VCtr("Outer", VCtr("Inner", VNeut(HHole(0), []))),
-  )
+  let final =
+    unify(
+      state,
+      VCtr("Outer", VCtr("Inner", VNeut(HHole(0), []))),
+      VCtr("Outer", VCtr("Inner", VNeut(HHole(0), []))),
+    )
   assert final.errors == []
 }
-
-

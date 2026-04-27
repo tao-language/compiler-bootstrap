@@ -9,20 +9,15 @@
 /// - `create_hole_subst` tests: creating hole-to-index mappings
 /// - `replace_holes_with_vars` tests: substituting holes in values and terms
 /// - `holes_to_string` tests: debug string formatting
-
 import core/ast.{
-  type Value,
-  type Term,
-  type Literal,
-  VNeut, HHole, HVar, VLam, VPi, VLit, VCtr, VRcd, VErr, EApp,
-  Var, Hole,
-  Int as LitInt,
+  type Literal, type Term, type Value, EApp, HHole, HVar, Hole, Int as LitInt,
+  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, Var,
 }
 import core/generalize
-import syntax/span.{single}
+import gleam/list
 import gleeunit
 import gleeunit/should
-import gleam/list
+import syntax/span.{single}
 
 pub fn main() {
   gleeunit.main()
@@ -79,13 +74,11 @@ pub fn free_holes_single_hole_test() {
 
 /// Multiple holes are collected.
 pub fn free_holes_multiple_holes_test() {
-  let val = VNeut(
-    HVar(0),
-    [
+  let val =
+    VNeut(HVar(0), [
       EApp(vhole(5)),
       EApp(vhole(10)),
-    ],
-  )
+    ])
   let holes = generalize.free_holes(val)
   let unique = list.unique(holes)
   let has_5 = list.any(unique, fn(h) { h == 5 })
@@ -138,13 +131,11 @@ pub fn free_holes_vrcd_field_test() {
 
 /// Duplicate holes appear only once.
 pub fn free_holes_unique_test() {
-  let val = VNeut(
-    HVar(0),
-    [
+  let val =
+    VNeut(HVar(0), [
       EApp(vhole(42)),
       EApp(vhole(42)),
-    ],
-  )
+    ])
   let holes = generalize.free_holes(val)
   let count = list.filter(holes, fn(h) { h == 42 })
   assert list.length(count) == 1
@@ -196,13 +187,11 @@ pub fn free_holes_vctr_test() {
 
 /// Nested VNeut with spine holes are collected.
 pub fn free_holes_neut_spine_test() {
-  let val = VNeut(
-    HHole(1),
-    [
+  let val =
+    VNeut(HHole(1), [
       EApp(vhole(2)),
       EApp(VNeut(HHole(3), [])),
-    ],
-  )
+    ])
   let holes = generalize.free_holes(val)
   assert list.any(holes, fn(h) { h == 1 })
   assert list.any(holes, fn(h) { h == 2 })
@@ -215,7 +204,8 @@ pub fn free_holes_neut_spine_test() {
 
 /// HVar at free level is collected.
 pub fn collect_free_levels_hvar_free_test() {
-  let val = vvar(0)  // HVar(0) at binding 0 is free
+  let val = vvar(0)
+  // HVar(0) at binding 0 is free
   let levels = generalize.collect_free_levels(val)
   assert levels == [0]
 }
@@ -247,7 +237,8 @@ pub fn collect_free_levels_vpi_bound_test() {
 
 /// VLam adds a binding.
 pub fn collect_free_levels_vlam_binding_test() {
-  let body: Term = Var(0, single("", 0, 0))  // Term body
+  let body: Term = Var(0, single("", 0, 0))
+  // Term body
   let val = vlam(#("x", vhole(0)), body)
   let levels = generalize.collect_free_levels(val)
   // HVar(0) is bound by the lambda, so not free
@@ -311,14 +302,15 @@ pub fn create_hole_subst_duplicate_test() {
 pub fn create_hole_subst_three_test() {
   let subst = generalize.create_hole_subst([1, 2, 3], 0)
   assert list.length(subst) == 3
-  let sorted = list.all(subst, fn(p) {
-    case p {
-      #(3, 0) -> True
-      #(2, 1) -> True
-      #(1, 2) -> True
-      _ -> False
-    }
-  })
+  let sorted =
+    list.all(subst, fn(p) {
+      case p {
+        #(3, 0) -> True
+        #(2, 1) -> True
+        #(1, 2) -> True
+        _ -> False
+      }
+    })
   assert sorted
 }
 
@@ -408,10 +400,7 @@ pub fn replace_holes_with_vars_vrcd_test() {
 
 /// Spine holes are substituted.
 pub fn replace_holes_with_vars_spine_test() {
-  let val = VNeut(
-    HVar(0),
-    [EApp(vhole(0))],
-  )
+  let val = VNeut(HVar(0), [EApp(vhole(0))])
   let subst = generalize.create_hole_subst([0], 0)
   let result = generalize.replace_holes_with_vars(val, subst)
   case result {
@@ -423,10 +412,7 @@ pub fn replace_holes_with_vars_spine_test() {
 
 /// Unsubstituted holes in spine are preserved.
 pub fn replace_holes_with_vars_spine_preserved_test() {
-  let val = VNeut(
-    HVar(0),
-    [EApp(vhole(99))],
-  )
+  let val = VNeut(HVar(0), [EApp(vhole(99))])
   let subst = generalize.create_hole_subst([0], 0)
   let result = generalize.replace_holes_with_vars(val, subst)
   case result {
@@ -445,10 +431,7 @@ pub fn replace_holes_with_vars_nested_test() {
   // Sorted descending: [3, 2, 1] -> 3:0, 2:1, 1:2
   let result = generalize.replace_holes_with_vars(val, subst)
   case result {
-    VPi(
-      VNeut(HVar(2), []),
-      VPi(VNeut(HVar(1), []), VNeut(HVar(0), []))
-    ) -> True
+    VPi(VNeut(HVar(2), []), VPi(VNeut(HVar(1), []), VNeut(HVar(0), []))) -> True
     _ -> False
   }
   |> should.be_true

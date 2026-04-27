@@ -1,10 +1,15 @@
-import gleeunit
-import gleam/option.{None}
+import core/ast.{HHole, VNeut, VRcd}
+import core/state.{
+  CtrUndefined, FfiEntry, HoleUnsolved, MatchMissing, MatchRedundant,
+  NotAFunction, StepLimitExceeded, TypeMismatch, VarUndefined, def_var,
+  error_to_string, errors, get_vars, has_errors, hole_counter, initial_state,
+  lookup_by_level, lookup_ffi, lookup_var, new_hole, new_hole_value, with_err,
+  with_ffi_entry,
+}
 import gleam/list
-import core/state.{initial_state, FfiEntry, with_err, def_var, lookup_var, lookup_by_level, new_hole, new_hole_value, with_ffi_entry, lookup_ffi, has_errors, errors, get_vars, error_to_string, hole_counter, TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction, CtrUndefined, MatchMissing, MatchRedundant, StepLimitExceeded}
-import core/ast.{VNeut, HHole, VRcd}
+import gleam/option.{None}
+import gleeunit
 import syntax/span.{single}
-
 
 pub fn main() {
   gleeunit.main()
@@ -13,8 +18,6 @@ pub fn main() {
 // ============================================================================
 // Initial state
 // ============================================================================
-
-
 
 // ============================================================================
 // State modification: variables
@@ -132,7 +135,8 @@ pub fn has_errors_returns_false_when_empty_test() {
 }
 
 pub fn has_errors_returns_true_when_has_errors_test() {
-  let state = with_err(initial_state([]), HoleUnsolved(1, single("state.gleam", 1, 1)))
+  let state =
+    with_err(initial_state([]), HoleUnsolved(1, single("state.gleam", 1, 1)))
   assert has_errors(state) == True
 }
 
@@ -167,7 +171,8 @@ pub fn error_to_string_ctr_undefined_test() {
 
 pub fn error_to_string_match_missing_test() {
   let err = MatchMissing(["x"], ["x"], single("state.gleam", 1, 1))
-  assert error_to_string(err) == "Missing match cases. Patterns not covered: x. Covered: x"
+  assert error_to_string(err)
+    == "Missing match cases. Patterns not covered: x. Covered: x"
 }
 
 pub fn error_to_string_match_redundant_test() {
@@ -176,7 +181,7 @@ pub fn error_to_string_match_redundant_test() {
 }
 
 pub fn error_to_string_step_limit_test() {
-  let err = StepLimitExceeded(10000, single("state.gleam", 1, 1))
+  let err = StepLimitExceeded(10_000, single("state.gleam", 1, 1))
   assert error_to_string(err) == "Step limit exceeded (10000 steps)"
 }
 
@@ -192,7 +197,8 @@ pub fn multiple_errors_accumulate_most_recent_first_test() {
   let state = initial_state([])
   let s1 = with_err(state, HoleUnsolved(1, single("state.gleam", 1, 1)))
   let s2 = with_err(s1, VarUndefined("x", single("state.gleam", 1, 1)))
-  let s3 = with_err(s2, TypeMismatch(VRcd([]), VRcd([]), single("state.gleam", 1, 1)))
+  let s3 =
+    with_err(s2, TypeMismatch(VRcd([]), VRcd([]), single("state.gleam", 1, 1)))
   let err_list = errors(s3)
   assert list.length(err_list) == 3
   // Most recent error should be first
@@ -261,5 +267,3 @@ pub fn new_hole_counter_increments_across_mutations_test() {
   // Counter continues from where it left off
   assert hole_counter(s3) == 3
 }
-
-

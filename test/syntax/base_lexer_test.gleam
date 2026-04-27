@@ -179,7 +179,8 @@ pub fn tokenize_mixed_case_identifier_test() {
   let tokens = tokenize("camelCase")
   assert list.length(tokens) == 2
   assert case tokens {
-    [Token(kind: "Name", value: "camelCase", ..), Token(kind: "Eof", ..)] -> True
+    [Token(kind: "Name", value: "camelCase", ..), Token(kind: "Eof", ..)] ->
+      True
     _ -> False
   }
 }
@@ -404,11 +405,7 @@ pub fn tokenize_with_empty_filename_defaults_to_empty_string_test() {
 pub fn tokenize_span_has_correct_filename_when_provided_test() {
   let tokens = tokenize_with_filename("foo bar", "module.tao")
   let all_have_filename = case tokens {
-    [
-      Token(span: s1, ..),
-      Token(span: s2, ..),
-      Token(span: eof, ..),
-    ] ->
+    [Token(span: s1, ..), Token(span: s2, ..), Token(span: eof, ..)] ->
       s1.file == "module.tao"
       && s2.file == "module.tao"
       && eof.file == "module.tao"
@@ -425,8 +422,7 @@ pub fn tokenize_integer_span_correct_test() {
       Token(kind: "Punct", span: _, ..),
       Token(kind: "Integer", value: "42", span: s),
       Token(kind: "Eof", ..),
-    ] ->
-      s.start_line == 1 && s.end_line == 1
+    ] -> s.start_line == 1 && s.end_line == 1
     _ -> False
   }
 }
@@ -452,8 +448,7 @@ pub fn tokenize_string_span_correct_test() {
       Token(kind: "Punct", span: _, ..),
       Token(kind: "String", value: "hi", span: s),
       Token(kind: "Eof", ..),
-    ] ->
-      s.start_line == 1 && s.end_line == 1
+    ] -> s.start_line == 1 && s.end_line == 1
     _ -> False
   }
 }
@@ -466,10 +461,7 @@ pub fn tokenize_multi_line_span_tracks_lines_test() {
       Token(kind: "Punct", span: s2, ..),
       Token(kind: "Name", span: s3, ..),
       Token(kind: "Eof", ..),
-    ] ->
-      s1.start_line == 1
-      && s2.start_line == 2
-      && s3.start_line == 2
+    ] -> s1.start_line == 1 && s2.start_line == 2 && s3.start_line == 2
     _ -> False
   }
 }
@@ -477,10 +469,19 @@ pub fn tokenize_multi_line_span_tracks_lines_test() {
 pub fn tokenize_all_tokens_from_same_file_have_correct_file_test() {
   let tokens = tokenize_with_filename("fn foo(x) { x + 1 }", "math.tao")
   let all_correct_file = case tokens {
-    [Token(span: s1, ..), Token(span: s2, ..), Token(span: s3, ..),
-     Token(span: s4, ..), Token(span: s5, ..), Token(span: s6, ..),
-     Token(span: s7, ..), Token(span: s8, ..), Token(span: s9, ..),
-     Token(span: s10, ..), Token(kind: "Eof", span: eof, ..)] ->
+    [
+      Token(span: s1, ..),
+      Token(span: s2, ..),
+      Token(span: s3, ..),
+      Token(span: s4, ..),
+      Token(span: s5, ..),
+      Token(span: s6, ..),
+      Token(span: s7, ..),
+      Token(span: s8, ..),
+      Token(span: s9, ..),
+      Token(span: s10, ..),
+      Token(kind: "Eof", span: eof, ..),
+    ] ->
       s1.file == "math.tao"
       && s2.file == "math.tao"
       && s3.file == "math.tao"
@@ -593,10 +594,7 @@ pub fn tokenize_only_underscores_is_operators_test() {
   let tokens = tokenize("__")
   assert list.length(tokens) == 2
   assert case tokens {
-    [
-      Token(kind: "Name", value: "__", ..),
-      Token(kind: "Eof", ..),
-    ] -> True
+    [Token(kind: "Name", value: "__", ..), Token(kind: "Eof", ..)] -> True
     _ -> False
   }
 }
@@ -658,7 +656,11 @@ pub fn tokenize_carriage_return_skipped_test() {
   let tokens = tokenize("foo\rbar")
   assert list.length(tokens) == 3
   assert case tokens {
-    [Token(kind: "Name", value: "foo", ..), Token(kind: "Name", value: "bar", ..), Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Name", value: "foo", ..),
+      Token(kind: "Name", value: "bar", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -667,7 +669,11 @@ pub fn tokenize_double_dash_is_two_operators_test() {
   let tokens = tokenize("--")
   assert list.length(tokens) == 3
   assert case tokens {
-    [Token(kind: "Op", value: "-", ..), Token(kind: "Op", value: "-", ..), Token(kind: "Eof", ..)] -> True
+    [
+      Token(kind: "Op", value: "-", ..),
+      Token(kind: "Op", value: "-", ..),
+      Token(kind: "Eof", ..),
+    ] -> True
     _ -> False
   }
 }
@@ -675,7 +681,8 @@ pub fn tokenize_double_dash_is_two_operators_test() {
 pub fn tokenize_plus_equals_is_op_and_punct_test() {
   let tokens = tokenize("+=")
   assert case tokens {
-    [Token(kind: "Op", ..), Token(kind: "Punct", ..), Token(kind: "Eof", ..)] -> True
+    [Token(kind: "Op", ..), Token(kind: "Punct", ..), Token(kind: "Eof", ..)] ->
+      True
     _ -> False
   }
 }
@@ -734,5 +741,3 @@ pub fn tokenize_multiple_statements_test() {
     _ -> False
   }
 }
-
-

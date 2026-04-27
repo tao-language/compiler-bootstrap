@@ -6,16 +6,18 @@
 /// - `shift_term` — De Bruijn index shifting
 /// - `subst_term_var` — variable substitution in shifted terms
 /// - `force_levels_to_indices` — Value to Term conversion
-
-import gleeunit
-import core/subst.{force, apply_spine, shift_term, subst_term_var, force_levels_to_indices, force_to_string, levels_to_indices_to_string}
-import core/state.{initial_state, def_var}
 import core/ast.{
-  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Call, Rcd, Err,
-  VNeut, HHole, HVar, VLam, VPi, VLit, VCtr, VRcd, VErr, EApp,
-  Int as LitInt, Float as LitFloat, PAny, Case,
+  Ann, App, Call, Case, Ctr, EApp, Err, Float as LitFloat, HHole, HVar, Hole,
+  Int as LitInt, Lam, Lit, Match, PAny, Pi, Rcd, VCtr, VErr, VLam, VLit, VNeut,
+  VPi, VRcd, Var, shift_term,
+}
+import core/state.{def_var, initial_state}
+import core/subst.{
+  apply_spine, force, force_levels_to_indices, force_to_string,
+  levels_to_indices_to_string, subst_term_var,
 }
 import gleam/option.{None}
+import gleeunit
 import syntax/span.{single}
 
 pub fn main() {
@@ -96,7 +98,8 @@ pub fn force_neutral_head_preserved_test() {
 
 pub fn apply_spine_empty_test() {
   // Empty spine returns value unchanged
-  let _state = def_var(initial_state([]), "test", VLit(LitInt(1)), VLit(LitInt(1)))
+  let _state =
+    def_var(initial_state([]), "test", VLit(LitInt(1)), VLit(LitInt(1)))
   let value = VLit(LitInt(42))
   let result = apply_spine(value, [])
   assert result == VLit(LitInt(42))
@@ -135,7 +138,8 @@ pub fn apply_spine_multiple_elements_test() {
   let param_type = VNeut(HHole(0), [])
   let body = Var(0, single("", 0, 0))
   let value = VLam(#("x", param_type), body)
-  let result = apply_spine(value, [EApp(VLit(LitInt(1))), EApp(VLit(LitInt(2)))])
+  let result =
+    apply_spine(value, [EApp(VLit(LitInt(1))), EApp(VLit(LitInt(2)))])
   // First arg consumed, second arg can't apply to substituted result
   assert case result {
     VLam(#(_name, _param_type), _body) -> True
@@ -240,12 +244,13 @@ pub fn shift_term_nested_lambda_test() {
   //   - inner param Var(0) at from=1 → Var(0) (0 < 1, bound by "y")
   //   - inner body Var(0) at from=2 → Var(0) (0 < 2, still bound)
   let body = Var(0, single("test", 1, 1))
-  let inner = Lam(#("y", Var(0, single("test", 1, 2))), body, single("test", 1, 3))
-  let outer = Lam(#("x", Var(1, single("test", 1, 4))), inner, single("test", 1, 5))
+  let inner =
+    Lam(#("y", Var(0, single("test", 1, 2))), body, single("test", 1, 3))
+  let outer =
+    Lam(#("x", Var(1, single("test", 1, 4))), inner, single("test", 1, 5))
   let shifted = shift_term(outer, 1)
   assert case shifted {
-    Lam(#("x", Var(2, _)),
-        Lam(#("y", Var(0, _)), Var(0, _), _), _) -> True
+    Lam(#("x", Var(2, _)), Lam(#("y", Var(0, _)), Var(0, _), _), _) -> True
     _ -> False
   }
 }
@@ -253,7 +258,12 @@ pub fn shift_term_nested_lambda_test() {
 pub fn shift_term_selective_by_scope_test() {
   // shift_term shifts ALL indices by default
   // param Var(0) at from=0 → Var(1), body Var(1) at from=1 → Var(2)
-  let t = Lam(#("x", Var(0, single("test", 1, 1))), Var(1, single("test", 1, 2)), single("test", 1, 3))
+  let t =
+    Lam(
+      #("x", Var(0, single("test", 1, 1))),
+      Var(1, single("test", 1, 2)),
+      single("test", 1, 3),
+    )
   let shifted = shift_term(t, 1)
   assert case shifted {
     Lam(#("x", Var(1, _)), Var(2, _), _) -> True
@@ -316,7 +326,12 @@ pub fn subst_term_var_hole_preserved_test() {
 pub fn subst_term_var_app_test() {
   // Both fun and arg of App should be substituted
   let arg = VLit(LitInt(42))
-  let t = App(Var(0, single("test", 1, 1)), Var(1, single("test", 1, 2)), single("test", 1, 3))
+  let t =
+    App(
+      Var(0, single("test", 1, 1)),
+      Var(1, single("test", 1, 2)),
+      single("test", 1, 3),
+    )
   let result = subst_term_var(0, arg, t)
   assert case result {
     App(Lit(LitInt(42), _), Var(1, _), _) -> True
@@ -327,7 +342,12 @@ pub fn subst_term_var_app_test() {
 pub fn subst_term_var_pi_test() {
   // Pi domain and codomain should be substituted
   let arg = VLit(LitInt(42))
-  let t = Pi(Var(0, single("test", 1, 1)), Var(1, single("test", 1, 2)), single("test", 1, 3))
+  let t =
+    Pi(
+      Var(0, single("test", 1, 1)),
+      Var(1, single("test", 1, 2)),
+      single("test", 1, 3),
+    )
   let result = subst_term_var(0, arg, t)
   assert case result {
     Pi(Lit(LitInt(42), _), Var(1, _), _) -> True
@@ -342,7 +362,8 @@ pub fn subst_term_var_nested_lambda_preserves_binder_test() {
   // Body of inner Lam is Var(0) — not substituted (idx=0 != i=0 at from=2)
   let arg = VCtr("Just", VLit(LitInt(0)))
   let body = Var(0, single("test", 1, 1))
-  let inner = Lam(#("y", Var(0, single("test", 1, 2))), body, single("test", 1, 3))
+  let inner =
+    Lam(#("y", Var(0, single("test", 1, 2))), body, single("test", 1, 3))
   let t = Lam(#("x", Var(1, single("test", 1, 4))), inner, single("test", 1, 5))
   let result = subst_term_var(0, arg, t)
   assert case result {
@@ -625,7 +646,10 @@ pub fn force_force_levels_to_indices_pi_under_lam_test() {
 
 pub fn force_shift_term_record_test() {
   // Record fields should be shifted
-  let fields = [#("x", Var(0, single("t", 1, 1))), #("y", Var(1, single("t", 1, 2)))]
+  let fields = [
+    #("x", Var(0, single("t", 1, 1))),
+    #("y", Var(1, single("t", 1, 2))),
+  ]
   let t = Rcd(fields, single("t", 1, 3))
   let shifted = shift_term(t, 1)
   assert case shifted {
@@ -636,7 +660,12 @@ pub fn force_shift_term_record_test() {
 
 pub fn force_shift_term_call_test() {
   // Call args should be shifted
-  let t = Call("f", [Var(0, single("t", 1, 1)), Var(1, single("t", 1, 2))], single("t", 1, 3))
+  let t =
+    Call(
+      "f",
+      [Var(0, single("t", 1, 1)), Var(1, single("t", 1, 2))],
+      single("t", 1, 3),
+    )
   let shifted = shift_term(t, 1)
   assert case shifted {
     Call("f", [Var(1, _), Var(2, _)], _) -> True
@@ -646,7 +675,8 @@ pub fn force_shift_term_call_test() {
 
 pub fn force_shift_term_ann_test() {
   // Ann term and type should be shifted
-  let t = Ann(Var(0, single("t", 1, 1)), Var(1, single("t", 1, 2)), single("t", 1, 3))
+  let t =
+    Ann(Var(0, single("t", 1, 1)), Var(1, single("t", 1, 2)), single("t", 1, 3))
   let shifted = shift_term(t, 1)
   assert case shifted {
     Ann(Var(1, _), Var(2, _), _) -> True
@@ -667,7 +697,12 @@ pub fn force_shift_term_ctr_preserved_test() {
 pub fn force_shift_term_pi_bound_test() {
   // Pi type: codomain Var(0) is bound in domain scope
   // Var(0) in domain, Var(0) in codomain (referring to domain's param)
-  let domain = Lam(#("x", Var(0, single("t", 1, 1))), Var(1, single("t", 1, 2)), single("t", 1, 3))
+  let domain =
+    Lam(
+      #("x", Var(0, single("t", 1, 1))),
+      Var(1, single("t", 1, 2)),
+      single("t", 1, 3),
+    )
   let codomain = Var(0, single("t", 1, 4))
   let t = Pi(domain, codomain, single("t", 1, 5))
   let shifted = shift_term(t, 1)
@@ -680,7 +715,12 @@ pub fn force_shift_term_pi_bound_test() {
 pub fn force_shift_term_match_test() {
   // Match arg and case bodies should be shifted
   let cases = [
-    Case(PAny(single("t", 1, 1)), None, Var(0, single("t", 1, 2)), single("t", 1, 3)),
+    Case(
+      PAny(single("t", 1, 1)),
+      None,
+      Var(0, single("t", 1, 2)),
+      single("t", 1, 3),
+    ),
   ]
   let t = Match(Var(0, single("t", 1, 4)), cases, single("t", 1, 5))
   let shifted = shift_term(t, 1)

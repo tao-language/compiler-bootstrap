@@ -60,11 +60,10 @@
 ///   operators: [],
 /// )
 /// ```
-
-import gleam/list
 import gleam/int
-import syntax/span.{Span, type Span, empty}
+import gleam/list
 import syntax/base_lexer.{type Token}
+import syntax/span.{type Span, Span, empty}
 
 // ============================================================================
 // PARSE RESULT AND ERRORS
@@ -80,12 +79,7 @@ pub type ParseResult(a) {
 
 /// A parse error with source location and context.
 pub type ParseError {
-  ParseError(
-    span: Span,
-    expected: String,
-    got: String,
-    context: String,
-  )
+  ParseError(span: Span, expected: String, got: String, context: String)
 }
 
 // ============================================================================
@@ -113,11 +107,7 @@ pub type Grammar(a) {
 /// A rule defines alternatives for parsing. Rules with `precedence > 0`
 /// are operator rules and get special handling for precedence/associativity.
 pub type Rule(a) {
-  Rule(
-    name: String,
-    alternatives: List(Alternative(a)),
-    precedence: Int,
-  )
+  Rule(name: String, alternatives: List(Alternative(a)), precedence: Int)
 }
 
 /// An alternative in a rule.
@@ -158,26 +148,41 @@ pub type Either(left, right) {
 /// - Ref produces `Right(ast_node)` values (the parsed rule's result)
 /// - Combinators (Seq, Opt, Many, Choice) compose these uniformly
 pub type Pattern(a) {
-  Tok(String)                                         // Match a specific token kind
-  Kw(String)                                          // Match a keyword by name
-  Op(String)                                          // Match an operator symbol
-  Ref(String)                                         // Reference another rule by name
-  Seq(List(Pattern(a)))                               // Sequence of patterns
-  Opt(Pattern(a))                                     // Optional pattern
-  Many(Pattern(a))                                    // Zero or more of a pattern
-  Choice(List(Pattern(a)))                            // Try alternatives in order
-  SepBy(Pattern(a), Pattern(a))                       // Items separated by separator
-  Parens(String)                                      // Parse: Lparens Rule Rparens
-  Delimited(Pattern(a), Pattern(a), Pattern(a), Pattern(a)) // open items(sep item)* close
+  Tok(String)
+  // Match a specific token kind
+  Kw(String)
+  // Match a keyword by name
+  Op(String)
+  // Match an operator symbol
+  Ref(String)
+  // Reference another rule by name
+  Seq(List(Pattern(a)))
+  // Sequence of patterns
+  Opt(Pattern(a))
+  // Optional pattern
+  Many(Pattern(a))
+  // Zero or more of a pattern
+  Choice(List(Pattern(a)))
+  // Try alternatives in order
+  SepBy(Pattern(a), Pattern(a))
+  // Items separated by separator
+  Parens(String)
+  // Parse: Lparens Rule Rparens
+  Delimited(Pattern(a), Pattern(a), Pattern(a), Pattern(a))
+  // open items(sep item)* close
 }
 
 /// Operator definition for precedence handling.
 pub type Operator(a) {
   Infix(
-    Int,                         // Precedence (higher = binds tighter)
-    Bool,                        // True = right-associative, False = left-associative
-    String,                      // Operator symbol
-    fn(a, a) -> a,               // Constructor combining left and right
+    Int,
+    // Precedence (higher = binds tighter)
+    Bool,
+    // True = right-associative, False = left-associative
+    String,
+    // Operator symbol
+    fn(a, a) -> a,
+    // Constructor combining left and right
   )
 }
 
@@ -359,7 +364,12 @@ pub fn parens(rule_name: String) -> Pattern(a) {
 ///   tok(")"),
 /// )
 /// ```
-pub fn delimited(open: Pattern(a), item: Pattern(a), sep: Pattern(a), close: Pattern(a)) -> Pattern(a) {
+pub fn delimited(
+  open: Pattern(a),
+  item: Pattern(a),
+  sep: Pattern(a),
+  close: Pattern(a),
+) -> Pattern(a) {
   Delimited(open, item, sep, close)
 }
 
@@ -375,7 +385,11 @@ pub fn delimited(open: Pattern(a), item: Pattern(a), sep: Pattern(a), close: Pat
 /// The `error_node` is used when the entire parse fails to produce
 /// any AST node. The parser attempts to parse the `start` rule at
 /// position 0 and consumes tokens until EOF.
-pub fn parse(grammar: Grammar(a), tokens: List(Token), error_node: a) -> ParseResult(a) {
+pub fn parse(
+  grammar: Grammar(a),
+  tokens: List(Token),
+  error_node: a,
+) -> ParseResult(a) {
   let errors = []
   case try_parse_rule(grammar, grammar.start, tokens, 0, errors) {
     Ok(#(values, _final_pos, new_errors)) -> {
@@ -388,12 +402,13 @@ pub fn parse(grammar: Grammar(a), tokens: List(Token), error_node: a) -> ParseRe
     }
     Error(msg) -> {
       // On failure, return the error_node with a descriptive error
-      let parse_err = ParseError(
-        span: empty("", 1, 1),
-        expected: grammar.start <> " rule",
-        got: msg,
-        context: "parse failure",
-      )
+      let parse_err =
+        ParseError(
+          span: empty("", 1, 1),
+          expected: grammar.start <> " rule",
+          got: msg,
+          context: "parse failure",
+        )
       ParseResult(ast: error_node, errors: [parse_err])
     }
   }
@@ -406,15 +421,28 @@ pub fn parse(grammar: Grammar(a), tokens: List(Token), error_node: a) -> ParseRe
 /// Parse a named rule from the grammar.
 ///
 /// Returns `(either, span)` tuples on success, or an error string.
-fn try_parse_rule(grammar: Grammar(a), rule_name: String, tokens: List(Token), pos: Int, errors: List(ParseError)) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn try_parse_rule(
+  grammar: Grammar(a),
+  rule_name: String,
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case find_rule(grammar, rule_name) {
     Error(msg) -> Error(msg)
-    Ok(rule) -> try_parse_alternatives(grammar, rule.alternatives, tokens, pos, errors)
+    Ok(rule) ->
+      try_parse_alternatives(grammar, rule.alternatives, tokens, pos, errors)
   }
 }
 
 /// Try all alternatives for a rule, returning the first success.
-fn try_parse_alternatives(grammar: Grammar(a), alternatives: List(Alternative(a)), tokens: List(Token), pos: Int, errors: List(ParseError)) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn try_parse_alternatives(
+  grammar: Grammar(a),
+  alternatives: List(Alternative(a)),
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case alternatives {
     [] -> Error("rule has no alternatives")
     [alt, ..rest] -> {
@@ -427,7 +455,13 @@ fn try_parse_alternatives(grammar: Grammar(a), alternatives: List(Alternative(a)
 }
 
 /// Try parsing a single alternative.
-fn try_parse_alternative(grammar: Grammar(a), alternative: Alternative(a), tokens: List(Token), pos: Int, errors: List(ParseError)) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn try_parse_alternative(
+  grammar: Grammar(a),
+  alternative: Alternative(a),
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case apply_pattern(grammar, alternative.pattern, tokens, pos, errors) {
     Ok(#(values, new_pos, new_errors)) -> {
       // The constructor builds the AST node from the values
@@ -435,7 +469,7 @@ fn try_parse_alternative(grammar: Grammar(a), alternative: Alternative(a), token
       // Return the constructed node as Right in the result list
       // along with a span covering the parsed range
       let span = span_cover(values)
-      Ok(#([ #(Right(constructed), span) ], new_pos, new_errors))
+      Ok(#([#(Right(constructed), span)], new_pos, new_errors))
     }
     Error(msg) -> Error(msg)
   }
@@ -445,7 +479,13 @@ fn try_parse_alternative(grammar: Grammar(a), alternative: Alternative(a), token
 ///
 /// Returns `(either, span)` tuples on success, or an error string.
 /// Terminals produce `Left(string)` values, refs produce `Right(ast_node)` values.
-fn apply_pattern(grammar: Grammar(a), pattern: Pattern(a), tokens: List(Token), pos: Int, errors: List(ParseError)) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn apply_pattern(
+  grammar: Grammar(a),
+  pattern: Pattern(a),
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case pattern {
     Tok(kind) -> apply_tok(kind, tokens, pos, errors)
     Kw(keyword) -> apply_kw(keyword, tokens, pos, errors)
@@ -455,56 +495,102 @@ fn apply_pattern(grammar: Grammar(a), pattern: Pattern(a), tokens: List(Token), 
     Opt(pat) -> apply_opt(grammar, pat, tokens, pos, errors)
     Many(pat) -> apply_many(grammar, pat, tokens, pos, errors, [])
     Choice(alts) -> apply_choice(grammar, alts, tokens, pos, errors)
-    SepBy(item, sep) -> apply_sep_by(grammar, item, sep, tokens, pos, errors, [])
+    SepBy(item, sep) ->
+      apply_sep_by(grammar, item, sep, tokens, pos, errors, [])
     Parens(inner) -> apply_parens(grammar, inner, tokens, pos, errors)
-    Delimited(open_p, item_p, sep_p, close_p) -> apply_delimited(grammar, open_p, item_p, sep_p, close_p, tokens, pos, errors)
+    Delimited(open_p, item_p, sep_p, close_p) ->
+      apply_delimited(
+        grammar,
+        open_p,
+        item_p,
+        sep_p,
+        close_p,
+        tokens,
+        pos,
+        errors,
+      )
   }
 }
 
 // --- Terminal Parsers ---
 
-fn apply_tok(kind: String, tokens: List(Token), pos: Int, errors: List(ParseError)) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn apply_tok(
+  kind: String,
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case peek_token(tokens, pos) {
     Error(_) -> Error("expected token '" <> kind <> "'")
-    Ok(token) -> case token.kind == kind || {
-      // Also match punctuation tokens by value: Tok("(") matches Punct "(" 
-      token.kind == "Punct" && token.value == kind
-    } {
-      True -> Ok(#([ #(Left(token.value), token.span) ], pos + 1, errors))
-      False -> Error("expected token '" <> kind <> "'")
-    }
+    Ok(token) ->
+      case
+        token.kind == kind
+        || {
+          // Also match punctuation tokens by value: Tok("(") matches Punct "(" 
+          token.kind == "Punct" && token.value == kind
+        }
+      {
+        True -> Ok(#([#(Left(token.value), token.span)], pos + 1, errors))
+        False -> Error("expected token '" <> kind <> "'")
+      }
   }
 }
 
-fn apply_kw(keyword: String, tokens: List(Token), pos: Int, errors: List(ParseError)) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn apply_kw(
+  keyword: String,
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case peek_token(tokens, pos) {
     Error(_) -> Error("expected keyword '" <> keyword <> "'")
-    Ok(token) -> case token.kind == "Name" && token.value == keyword {
-      True -> Ok(#([ #(Left(token.value), token.span) ], pos + 1, errors))
-      False -> Error("expected keyword '" <> keyword <> "'")
-    }
+    Ok(token) ->
+      case token.kind == "Name" && token.value == keyword {
+        True -> Ok(#([#(Left(token.value), token.span)], pos + 1, errors))
+        False -> Error("expected keyword '" <> keyword <> "'")
+      }
   }
 }
 
-fn apply_op(symbol: String, tokens: List(Token), pos: Int, errors: List(ParseError)) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn apply_op(
+  symbol: String,
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case peek_token(tokens, pos) {
     Error(_) -> Error("expected operator '" <> symbol <> "'")
-    Ok(token) -> case token.kind == "Op" && token.value == symbol {
-      True -> Ok(#([ #(Left(token.value), token.span) ], pos + 1, errors))
-      False -> Error("expected operator '" <> symbol <> "'")
-    }
+    Ok(token) ->
+      case token.kind == "Op" && token.value == symbol {
+        True -> Ok(#([#(Left(token.value), token.span)], pos + 1, errors))
+        False -> Error("expected operator '" <> symbol <> "'")
+      }
   }
 }
 
 // --- Combinator Parsers ---
 
-fn apply_seq(grammar: Grammar(a), patterns: List(Pattern(a)), tokens: List(Token), pos: Int, errors: List(ParseError), acc: List(#(Either(String, a), Span))) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn apply_seq(
+  grammar: Grammar(a),
+  patterns: List(Pattern(a)),
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+  acc: List(#(Either(String, a), Span)),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case patterns {
     [] -> Ok(#(list.reverse(acc), pos, errors))
     [pat, ..rest] -> {
       case apply_pattern(grammar, pat, tokens, pos, errors) {
         Ok(#(values, new_pos, new_errors)) -> {
-          apply_seq(grammar, rest, tokens, new_pos, new_errors, list.append(values, acc))
+          apply_seq(
+            grammar,
+            rest,
+            tokens,
+            new_pos,
+            new_errors,
+            list.append(values, acc),
+          )
         }
         Error(msg) -> Error(msg)
       }
@@ -512,23 +598,49 @@ fn apply_seq(grammar: Grammar(a), patterns: List(Pattern(a)), tokens: List(Token
   }
 }
 
-fn apply_opt(grammar: Grammar(a), pattern: Pattern(a), tokens: List(Token), pos: Int, errors: List(ParseError)) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn apply_opt(
+  grammar: Grammar(a),
+  pattern: Pattern(a),
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case apply_pattern(grammar, pattern, tokens, pos, errors) {
     Ok(result) -> Ok(result)
     Error(_) -> Ok(#([], pos, errors))
   }
 }
 
-fn apply_many(grammar: Grammar(a), pattern: Pattern(a), tokens: List(Token), pos: Int, errors: List(ParseError), acc: List(#(Either(String, a), Span))) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn apply_many(
+  grammar: Grammar(a),
+  pattern: Pattern(a),
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+  acc: List(#(Either(String, a), Span)),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case apply_pattern(grammar, pattern, tokens, pos, errors) {
     Ok(#(values, new_pos, new_errors)) -> {
-      apply_many(grammar, pattern, tokens, new_pos, new_errors, list.append(values, acc))
+      apply_many(
+        grammar,
+        pattern,
+        tokens,
+        new_pos,
+        new_errors,
+        list.append(values, acc),
+      )
     }
     Error(_) -> Ok(#(list.reverse(acc), pos, errors))
   }
 }
 
-fn apply_choice(grammar: Grammar(a), patterns: List(Pattern(a)), tokens: List(Token), pos: Int, errors: List(ParseError)) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn apply_choice(
+  grammar: Grammar(a),
+  patterns: List(Pattern(a)),
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case patterns {
     [] -> Error("choice: no alternatives")
     [pat, ..rest] -> {
@@ -540,7 +652,15 @@ fn apply_choice(grammar: Grammar(a), patterns: List(Pattern(a)), tokens: List(To
   }
 }
 
-fn apply_sep_by(grammar: Grammar(a), item: Pattern(a), sep: Pattern(a), tokens: List(Token), pos: Int, errors: List(ParseError), acc: List(#(Either(String, a), Span))) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn apply_sep_by(
+  grammar: Grammar(a),
+  item: Pattern(a),
+  sep: Pattern(a),
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+  acc: List(#(Either(String, a), Span)),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case apply_pattern(grammar, item, tokens, pos, errors) {
     Ok(#(first, new_pos, new_errors)) -> {
       apply_sep_by_rest(grammar, item, sep, tokens, new_pos, new_errors, first)
@@ -549,12 +669,28 @@ fn apply_sep_by(grammar: Grammar(a), item: Pattern(a), sep: Pattern(a), tokens: 
   }
 }
 
-fn apply_sep_by_rest(grammar: Grammar(a), item: Pattern(a), sep: Pattern(a), tokens: List(Token), pos: Int, errors: List(ParseError), acc: List(#(Either(String, a), Span))) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn apply_sep_by_rest(
+  grammar: Grammar(a),
+  item: Pattern(a),
+  sep: Pattern(a),
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+  acc: List(#(Either(String, a), Span)),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case apply_pattern(grammar, sep, tokens, pos, errors) {
     Ok(#(_, sep_pos, new_errors)) -> {
       case apply_pattern(grammar, item, tokens, sep_pos, new_errors) {
         Ok(#(val, next_pos, next_errors)) -> {
-          apply_sep_by_rest(grammar, item, sep, tokens, next_pos, next_errors, list.append(val, acc))
+          apply_sep_by_rest(
+            grammar,
+            item,
+            sep,
+            tokens,
+            next_pos,
+            next_errors,
+            list.append(val, acc),
+          )
         }
         Error(_) -> Ok(#(list.reverse(acc), pos, errors))
       }
@@ -563,21 +699,39 @@ fn apply_sep_by_rest(grammar: Grammar(a), item: Pattern(a), sep: Pattern(a), tok
   }
 }
 
-fn apply_parens(grammar: Grammar(a), inner_name: String, tokens: List(Token), pos: Int, errors: List(ParseError)) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn apply_parens(
+  grammar: Grammar(a),
+  inner_name: String,
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   // ( Rule_name )
   let parens_pattern = Seq([Tok("("), Ref(inner_name), Tok(")")])
   apply_pattern(grammar, parens_pattern, tokens, pos, errors)
 }
 
-fn apply_delimited(grammar: Grammar(a), open_p: Pattern(a), item_p: Pattern(a), sep_p: Pattern(a), close_p: Pattern(a), tokens: List(Token), pos: Int, errors: List(ParseError)) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
+fn apply_delimited(
+  grammar: Grammar(a),
+  open_p: Pattern(a),
+  item_p: Pattern(a),
+  sep_p: Pattern(a),
+  close_p: Pattern(a),
+  tokens: List(Token),
+  pos: Int,
+  errors: List(ParseError),
+) -> Result(#(List(#(Either(String, a), Span)), Int, List(ParseError)), String) {
   case apply_pattern(grammar, open_p, tokens, pos, errors) {
     Ok(#(_, new_pos, new_errors)) -> {
       // Parse: item (sep item)* — requires at least one item, then zero or more (sep, item) pairs
       let repeated = Seq([item_p, Many(Seq([sep_p, item_p]))])
       case apply_pattern(grammar, repeated, tokens, new_pos, new_errors) {
         Ok(#(values, close_pos, close_errors)) -> {
-          case apply_pattern(grammar, close_p, tokens, close_pos, close_errors) {
-            Ok(#(_, final_pos, final_errors)) -> Ok(#(values, final_pos, final_errors))
+          case
+            apply_pattern(grammar, close_p, tokens, close_pos, close_errors)
+          {
+            Ok(#(_, final_pos, final_errors)) ->
+              Ok(#(values, final_pos, final_errors))
             Error(msg) -> Error(msg)
           }
         }
@@ -597,13 +751,17 @@ fn find_rule(grammar: Grammar(a), name: String) -> Result(Rule(a), String) {
   find_rule_loop(grammar.rules, name)
 }
 
-fn find_rule_loop(rules: List(Rule(a)), name: String) -> Result(Rule(a), String) {
+fn find_rule_loop(
+  rules: List(Rule(a)),
+  name: String,
+) -> Result(Rule(a), String) {
   case rules {
     [] -> Error("unknown rule '" <> name <> "'")
-    [rule, ..rest] -> case rule.name == name {
-      True -> Ok(rule)
-      False -> find_rule_loop(rest, name)
-    }
+    [rule, ..rest] ->
+      case rule.name == name {
+        True -> Ok(rule)
+        False -> find_rule_loop(rest, name)
+      }
   }
 }
 
@@ -611,7 +769,7 @@ fn find_rule_loop(rules: List(Rule(a)), name: String) -> Result(Rule(a), String)
 fn peek_token(tokens: List(Token), pos: Int) -> Result(Token, String) {
   case list.drop(tokens, pos) {
     [] -> Error("EOF")
-    [token, .._] -> {
+    [token, ..] -> {
       case token.kind == "Eof" || token.kind == "Comment" {
         True -> Error("EOF")
         False -> Ok(token)
@@ -634,9 +792,10 @@ fn span_cover(values: List(#(Either(String, a), Span))) -> Span {
 }
 
 fn span_merge(a: Span, b: Span) -> Span {
-  case a.start_line < b.start_line || {
-    a.start_line == b.start_line && a.start_col <= b.start_col
-  } {
+  case
+    a.start_line < b.start_line
+    || { a.start_line == b.start_line && a.start_col <= b.start_col }
+  {
     True -> Span(a.file, a.start_line, a.start_col, b.end_line, b.end_col)
     False -> Span(b.file, b.start_line, b.start_col, a.end_line, a.end_col)
   }
@@ -661,8 +820,22 @@ pub fn error_to_string(error: ParseError) -> String {
   case error.span {
     Span(file, start_line, start_col, end_line, _) -> {
       case start_line == end_line {
-        True -> "in " <> file <> " line " <> int.to_string(start_line) <> ", col " <> int.to_string(start_col)
-        False -> "in " <> file <> " lines " <> int.to_string(start_line) <> "-" <> int.to_string(end_line) <> ", col " <> int.to_string(start_col)
+        True ->
+          "in "
+          <> file
+          <> " line "
+          <> int.to_string(start_line)
+          <> ", col "
+          <> int.to_string(start_col)
+        False ->
+          "in "
+          <> file
+          <> " lines "
+          <> int.to_string(start_line)
+          <> "-"
+          <> int.to_string(end_line)
+          <> ", col "
+          <> int.to_string(start_col)
       }
     }
   }
@@ -686,21 +859,5 @@ pub fn is_right(a: Either(String, a)) -> Bool {
   case a {
     Left(_) -> False
     Right(_) -> True
-  }
-}
-
-/// Extract Left value from an Either (panic if Right).
-pub fn left_value(a: Either(String, a)) -> String {
-  case a {
-    Left(v) -> v
-    Right(_) -> panic
-  }
-}
-
-/// Extract Right value from an Either (panic if Left).
-pub fn right_value(a: Either(String, a)) -> a {
-  case a {
-    Left(_) -> panic
-    Right(v) -> v
   }
 }

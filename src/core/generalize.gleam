@@ -23,14 +23,13 @@
 ///
 /// Results are unique and sorted by descending ID (highest hole gets
 /// De Bruijn index 0).
-
 import core/ast.{
-  type Term, type Value, type Head,
-  Var, Hole, Lam, App, Pi, Lit, Ctr, Match, Ann, Call, Rcd, Typ, Err, Case,
-  VNeut, HHole, HVar, VLam, VPi, VLit, VCtr, VRcd, VErr, EApp,
+  type Head, type Term, type Value, Ann, App, Call, Case, Ctr, EApp, Err, HHole,
+  HVar, Hole, Lam, Lit, Match, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi,
+  VRcd, Var,
 }
-import gleam/list
 import gleam/int
+import gleam/list
 
 // ============================================================================
 // HOLE COLLECTION (Value)
@@ -51,21 +50,19 @@ import gleam/int
 /// ```
 pub fn free_holes(value: Value) -> List(Int) {
   let holes = free_holes_from(value, 0)
-  list.sort(
-    list.unique(holes),
-    fn(a, b) { int.compare(b, a) },
-  )
+  list.sort(list.unique(holes), fn(a, b) { int.compare(b, a) })
 }
 
 fn free_holes_from(value: Value, binding: Int) -> List(Int) {
   case value {
     VNeut(head, spine) -> {
       let holes = head_holes(head)
-      let spine_holes = list.fold(spine, [], fn(acc, elim) {
-        case elim {
-          EApp(arg) -> list.append(acc, free_holes_from(arg, binding))
-        }
-      })
+      let spine_holes =
+        list.fold(spine, [], fn(acc, elim) {
+          case elim {
+            EApp(arg) -> list.append(acc, free_holes_from(arg, binding))
+          }
+        })
       list.append(holes, spine_holes)
     }
     VLam(#(_name, param), body) -> {
@@ -123,9 +120,10 @@ fn free_holes_term(term: Term, binding: Int) -> List(Int) {
     Ctr(_, arg, _) -> free_holes_term(arg, binding)
     Match(arg, cases, _) -> {
       let arg_holes = free_holes_term(arg, binding)
-      let case_holes = list.fold(cases, [], fn(acc, c) {
-        list.append(acc, free_holes_term(c.body, binding))
-      })
+      let case_holes =
+        list.fold(cases, [], fn(acc, c) {
+          list.append(acc, free_holes_term(c.body, binding))
+        })
       list.append(arg_holes, case_holes)
     }
     Ann(term, type_, _) -> {
@@ -160,21 +158,19 @@ fn free_holes_term(term: Term, binding: Int) -> List(Int) {
 /// Returns levels in ascending order, unique.
 pub fn collect_free_levels(value: Value) -> List(Int) {
   let levels = free_levels_from(value, 0)
-  list.sort(
-    list.unique(levels),
-    int.compare,
-  )
+  list.sort(list.unique(levels), int.compare)
 }
 
 fn free_levels_from(value: Value, binding: Int) -> List(Int) {
   case value {
     VNeut(head, spine) -> {
       let levels = head_level(head, binding)
-      let spine_levels = list.fold(spine, [], fn(acc, elim) {
-        case elim {
-          EApp(arg) -> list.append(acc, free_levels_from(arg, binding))
-        }
-      })
+      let spine_levels =
+        list.fold(spine, [], fn(acc, elim) {
+          case elim {
+            EApp(arg) -> list.append(acc, free_levels_from(arg, binding))
+          }
+        })
       list.append(levels, spine_levels)
     }
     VLam(#(_name, param), body) -> {
@@ -200,20 +196,22 @@ fn free_levels_from(value: Value, binding: Int) -> List(Int) {
 
 fn head_level(head: Head, binding: Int) -> List(Int) {
   case head {
-    HVar(level) -> case level >= binding {
-      True -> [level]
-      False -> []
-    }
+    HVar(level) ->
+      case level >= binding {
+        True -> [level]
+        False -> []
+      }
     HHole(_) -> []
   }
 }
 
 fn free_levels_term(term: Term, binding: Int) -> List(Int) {
   case term {
-    Var(i, _) -> case i >= binding {
-      True -> [i]
-      False -> []
-    }
+    Var(i, _) ->
+      case i >= binding {
+        True -> [i]
+        False -> []
+      }
     Hole(_, _) -> []
     Lam(#(_name, param), body, _) -> {
       let param_levels = free_levels_term(param, binding + 1)
@@ -234,9 +232,10 @@ fn free_levels_term(term: Term, binding: Int) -> List(Int) {
     Ctr(_, arg, _) -> free_levels_term(arg, binding)
     Match(arg, cases, _) -> {
       let arg_levels = free_levels_term(arg, binding)
-      let case_levels = list.fold(cases, [], fn(acc, c) {
-        list.append(acc, free_levels_term(c.body, binding))
-      })
+      let case_levels =
+        list.fold(cases, [], fn(acc, c) {
+          list.append(acc, free_levels_term(c.body, binding))
+        })
       list.append(arg_levels, case_levels)
     }
     Ann(term, type_, _) -> {
@@ -279,13 +278,11 @@ pub fn create_hole_subst(holes: List(Int), base: Int) -> List(#(Int, Int)) {
   // Deduplicate, sort ascending, reverse so highest hole gets lowest index
   let unique = list.unique(holes)
   let sorted = list.sort(unique, int.compare)
-  let rev = fn(acc: List(Int), id: Int) -> List(Int) {
-    [id, ..acc]
-  }
+  let rev = fn(acc: List(Int), id: Int) -> List(Int) { [id, ..acc] }
   let rev_sorted = list.fold(sorted, [], rev)
   let assign = fn(acc: List(#(Int, Int)), id: Int) -> List(#(Int, Int)) {
     let n = list.length(acc)
-    [ #(id, base + n), ..acc ]
+    [#(id, base + n), ..acc]
   }
   list.fold(rev_sorted, [], assign)
 }
@@ -303,7 +300,10 @@ pub fn create_hole_subst(holes: List(Int), base: Int) -> List(#(Int, Int)) {
 /// replace_holes_with_vars(val, subst)
 /// // -> VNeut(HVar(0), [])
 /// ```
-pub fn replace_holes_with_vars(value: Value, subst: List(#(Int, Int))) -> Value {
+pub fn replace_holes_with_vars(
+  value: Value,
+  subst: List(#(Int, Int)),
+) -> Value {
   subst_holes(value, subst)
 }
 
@@ -311,15 +311,19 @@ fn subst_holes(value: Value, subst: List(#(Int, Int))) -> Value {
   case value {
     VNeut(head, spine) -> {
       let new_head = subst_head(head, subst)
-      let new_spine = list.map(spine, fn(elim) {
-        case elim {
-          EApp(arg) -> EApp(subst_values(arg, subst))
-        }
-      })
+      let new_spine =
+        list.map(spine, fn(elim) {
+          case elim {
+            EApp(arg) -> EApp(subst_values(arg, subst))
+          }
+        })
       VNeut(new_head, new_spine)
     }
     VLam(#(name, param_type), body) ->
-      VLam(#(name, subst_holes(param_type, subst)), subst_holes_term(body, subst))
+      VLam(
+        #(name, subst_holes(param_type, subst)),
+        subst_holes_term(body, subst),
+      )
     VPi(domain, codomain) ->
       VPi(subst_holes(domain, subst), subst_holes(codomain, subst))
     VLit(lit) -> VLit(lit)
@@ -340,23 +344,38 @@ fn subst_holes_term(term: Term, subst: List(#(Int, Int))) -> Term {
       }
     }
     Lam(#(name, param), body, span) ->
-      Lam(#(name, subst_holes_term(param, subst)), subst_holes_term(body, subst), span)
+      Lam(
+        #(name, subst_holes_term(param, subst)),
+        subst_holes_term(body, subst),
+        span,
+      )
     App(fun, arg, span) ->
       App(subst_holes_term(fun, subst), subst_holes_term(arg, subst), span)
     Pi(domain, codomain, span) ->
-      Pi(subst_holes_term(domain, subst), subst_holes_term(codomain, subst), span)
+      Pi(
+        subst_holes_term(domain, subst),
+        subst_holes_term(codomain, subst),
+        span,
+      )
     Lit(value, span) -> Lit(value, span)
     Ctr(tag, arg, span) -> Ctr(tag, subst_holes_term(arg, subst), span)
     Match(arg, cases, span) ->
-      Match(subst_holes_term(arg, subst), list.map(cases, fn(c) {
-        Case(c.pattern, c.guard, subst_holes_term(c.body, subst), c.span)
-      }), span)
+      Match(
+        subst_holes_term(arg, subst),
+        list.map(cases, fn(c) {
+          Case(c.pattern, c.guard, subst_holes_term(c.body, subst), c.span)
+        }),
+        span,
+      )
     Ann(term, type_, span) ->
       Ann(subst_holes_term(term, subst), subst_holes_term(type_, subst), span)
     Call(name, args, span) ->
       Call(name, list.map(args, fn(a) { subst_holes_term(a, subst) }), span)
     Rcd(fields, span) ->
-      Rcd(list.map(fields, fn(f) { #(f.0, subst_holes_term(f.1, subst)) }), span)
+      Rcd(
+        list.map(fields, fn(f) { #(f.0, subst_holes_term(f.1, subst)) }),
+        span,
+      )
     Typ(level, span) -> Typ(level, span)
     Err(msg, span) -> Err(msg, span)
   }
@@ -386,11 +405,14 @@ fn subst_values(value: Value, subst: List(#(Int, Int))) -> Value {
 pub fn holes_to_string(holes: List(Int)) -> String {
   case holes {
     [] -> "<no holes>"
-    _ -> "[" <> list.fold(holes, "", fn(acc, id) {
-      case acc {
-        "" -> "hole(" <> int.to_string(id) <> ")"
-        _ -> acc <> ", hole(" <> int.to_string(id) <> ")"
-      }
-    }) <> "]"
+    _ ->
+      "["
+      <> list.fold(holes, "", fn(acc, id) {
+        case acc {
+          "" -> "hole(" <> int.to_string(id) <> ")"
+          _ -> acc <> ", hole(" <> int.to_string(id) <> ")"
+        }
+      })
+      <> "]"
   }
 }

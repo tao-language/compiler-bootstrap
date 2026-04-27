@@ -5,7 +5,6 @@
 ///
 /// `start` and `end` together define a half-open interval:
 /// `[start_line, start_col)` to `(end_line, end_col]`.
-
 import gleam/int
 
 /// A source location within a file, defined by line and column (1-indexed).
@@ -78,9 +77,10 @@ pub fn after(span: Span) -> Span {
 /// let merged = merge(a, b)  // Covers columns 1-6
 /// ```
 pub fn merge(a: Span, b: Span) -> Span {
-  case a.start_line < b.start_line || {
-    a.start_line == b.start_line && a.start_col <= b.start_col
-  } {
+  case
+    a.start_line < b.start_line
+    || { a.start_line == b.start_line && a.start_col <= b.start_col }
+  {
     True -> Span(a.file, a.start_line, a.start_col, b.end_line, b.end_col)
     False -> Span(b.file, b.start_line, b.start_col, a.end_line, a.end_col)
   }
@@ -106,7 +106,9 @@ pub fn contains(outer: Span, inner: Span) -> Bool {
 /// Check if outer starts at or before inner.
 fn starts_at_or_before(outer: Span, inner: Span) -> Bool {
   outer.start_line < inner.start_line
-  || { outer.start_line == inner.start_line && outer.start_col <= inner.start_col }
+  || {
+    outer.start_line == inner.start_line && outer.start_col <= inner.start_col
+  }
 }
 
 /// Check if outer ends at or after inner.

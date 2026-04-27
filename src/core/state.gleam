@@ -6,7 +6,6 @@
 ///
 /// Errors accumulate as the type checker progresses, allowing
 /// recovery after type errors.
-
 import core/ast.{type Value}
 import gleam/int
 import gleam/list
@@ -22,10 +21,7 @@ import gleam/option.{type Option}
 /// is the result of type-checking the argument. This enables operator
 /// overloading in Phase 5.
 pub type FfiEntry {
-  FfiEntry(
-    fn_name: String,
-    impl: fn(List(#(Value, Value))) -> Option(Value),
-  )
+  FfiEntry(fn_name: String, impl: fn(List(#(Value, Value))) -> Option(Value))
 }
 
 // ============================================================================
@@ -40,24 +36,36 @@ pub type FfiEntry {
 /// * `errors` — Accumulated errors during type checking
 /// * `ffi` — FFI builtin definitions available at runtime
 /// * `hole_counter` — Next fresh hole ID
+/// * `truth_ctr` — Name of the truth constructor (e.g., "True") for guard evaluation
 pub type State {
   State(
     vars: List(#(String, #(Value, Value))),
     errors: List(Error),
     ffi: List(FfiEntry),
     hole_counter: Int,
+    truth_ctr: String,
   )
 }
 
 /// Create a fresh initial state.
+///
+/// The truth constructor defaults to `"True"` — any `#True(...)` value
+/// evaluates to truthy in guards. Set a different constructor via
+/// `with_truth_ctr` to configure the language semantics.
 pub fn initial_state(ffi: List(FfiEntry)) -> State {
-  State(
-    vars: [],
-    errors: [],
-    ffi: ffi,
-    hole_counter: 0,
-  )
+  State(vars: [], errors: [], ffi: ffi, hole_counter: 0, truth_ctr: "True")
 }
+
+/// Return the truth constructor name from the state.
+pub fn truth_ctr(state: State) -> String {
+  state.truth_ctr
+}
+
+/// Update the state with a different truth constructor name.
+pub fn with_truth_ctr(state: State, name: String) -> State {
+  State(..state, truth_ctr: name)
+}
+
 // ============================================================================
 // STATE HELPERS — Error accumulation
 // ============================================================================
@@ -88,11 +96,13 @@ pub fn continue_with_errors(state: State, errors: List(Error)) -> State {
 /// most recently bound variable is found first.
 ///
 /// Returns the updated state.
-pub fn def_var(state: State, name: String, value: Value, type_: Value) -> State {
-  State(
-    ..state,
-    vars: [#(name, #(value, type_)), ..state.vars],
-  )
+pub fn def_var(
+  state: State,
+  name: String,
+  value: Value,
+  type_: Value,
+) -> State {
+  State(..state, vars: [#(name, #(value, type_)), ..state.vars])
 }
 
 /// Look up a variable in the state.
@@ -108,10 +118,11 @@ fn lookup_loop(
 ) -> Result(#(Value, Value), Nil) {
   case vars {
     [] -> Error(Nil)
-    [#(n, v), ..rest] -> case n == name {
-      True -> Ok(v)
-      False -> lookup_loop(rest, name)
-    }
+    [#(n, v), ..rest] ->
+      case n == name {
+        True -> Ok(v)
+        False -> lookup_loop(rest, name)
+      }
   }
 }
 
@@ -119,7 +130,10 @@ fn lookup_loop(
 ///
 /// `level` is the number of binders to skip from the outermost.
 /// Level 0 refers to the most recently bound variable.
-pub fn lookup_by_level(state: State, level: Int) -> Result(#(Value, Value), Nil) {
+pub fn lookup_by_level(
+  state: State,
+  level: Int,
+) -> Result(#(Value, Value), Nil) {
   lookup_by_level_loop(state.vars, level)
 }
 
@@ -129,10 +143,11 @@ fn lookup_by_level_loop(
 ) -> Result(#(Value, Value), Nil) {
   case vars {
     [] -> Error(Nil)
-    [#(_, v), ..rest] -> case level {
-      0 -> Ok(v)
-      _ -> lookup_by_level_loop(rest, level - 1)
-    }
+    [#(_, v), ..rest] ->
+      case level {
+        0 -> Ok(v)
+        _ -> lookup_by_level_loop(rest, level - 1)
+      }
   }
 }
 
@@ -162,6 +177,7 @@ pub fn new_hole_value(state: State) -> #(Value, State) {
 pub fn hole_counter(state: State) -> Int {
   state.hole_counter
 }
+
 // ============================================================================
 // STATE HELPERS — FFI
 // ============================================================================
@@ -180,18 +196,17 @@ pub fn lookup_ffi(state: State, name: String) -> Result(FfiEntry, Nil) {
   lookup_ffi_loop(state.ffi, name)
 }
 
-fn lookup_ffi_loop(
-  ffi: List(FfiEntry),
-  name: String,
-) -> Result(FfiEntry, Nil) {
+fn lookup_ffi_loop(ffi: List(FfiEntry), name: String) -> Result(FfiEntry, Nil) {
   case ffi {
     [] -> Error(Nil)
-    [entry, ..rest] -> case entry.fn_name == name {
-      True -> Ok(entry)
-      False -> lookup_ffi_loop(rest, name)
-    }
+    [entry, ..rest] ->
+      case entry.fn_name == name {
+        True -> Ok(entry)
+        False -> lookup_ffi_loop(rest, name)
+      }
   }
 }
+
 /// Type checking errors.
 pub type Error {
   TypeMismatch(expected: Value, got: Value, span: Span)
@@ -236,20 +251,20 @@ pub fn get_vars(state: State) -> List(#(String, #(Value, Value))) {
 pub fn error_to_string(error: Error) -> String {
   case error {
     TypeMismatch(expected, got, _) ->
-      "Type mismatch: expected " <> ast.value_to_string(expected)
-      <> ", got " <> ast.value_to_string(got)
-    VarUndefined(name, _) ->
-      "Undefined variable: " <> name
-    HoleUnsolved(id, _) ->
-      "Unsolved hole: ?" <> int.to_string(id)
+      "Type mismatch: expected "
+      <> ast.value_to_string(expected)
+      <> ", got "
+      <> ast.value_to_string(got)
+    VarUndefined(name, _) -> "Undefined variable: " <> name
+    HoleUnsolved(id, _) -> "Unsolved hole: ?" <> int.to_string(id)
     NotAFunction(fun_type, _) ->
       "Not a function: " <> ast.value_to_string(fun_type)
-    CtrUndefined(tag, _) ->
-      "Undefined constructor: " <> tag
+    CtrUndefined(tag, _) -> "Undefined constructor: " <> tag
     MatchMissing(patterns, covered, _) ->
       "Missing match cases. Patterns not covered: "
       <> join_list(patterns, ", ")
-      <> ". Covered: " <> join_list(covered, ", ")
+      <> ". Covered: "
+      <> join_list(covered, ", ")
     MatchRedundant(_) -> "Redundant match case"
     StepLimitExceeded(steps, _) ->
       "Step limit exceeded (" <> int.to_string(steps) <> " steps)"
