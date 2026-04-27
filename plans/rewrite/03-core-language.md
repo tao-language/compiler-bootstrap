@@ -75,20 +75,19 @@ pub type Term {
   Var(index: Int, span: Span)         // De Bruijn index variable
   Hole(id: Int, span: Span)           // Metavariable for inference
   Err(message: String, span: Span)    // Error placeholder
-  Lam(param: #(String, Term), body: Term, span: Span)  // Lambda: #(name, param_type) — tuple, not Param record
+  Lam(implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span)  // Lambda: #(name, param_type) — tuple, not Param record
   App(fun: Term, arg: Term, span: Span)                  // Application
-  Pi(domain: Term, codomain: Term, span: Span)          // Pi type (dependent function)
+  Pi(implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span)          // Pi type (dependent function)
   LitT(typ: LitType, span: Span)                        // Literal type term (I32T, ILitT, etc.)
   Ctr(tag: String, arg: Term, span: Span)               // Constructor
   Rcd(fields: List(#(String, Term)), span: Span)        // Record
-  // Dot(record: Term, field: String, span: Span)          // Field access (Phase 5+)
+  Dot(record: Term, field: String, span: Span)          // Field access (Phase 5+)
   Ann(term: Term, typ: Term, span: Span)                // Type annotation
   Match(arg: Term, cases: List(Case), span: Span)  // Pattern match — motive inferred, not passed
   Call(name: String, args: List(Term), span: Span)  // Function call — simple, no typed args yet (Phase 5+)
-  // Comptime(term: Term, span: Span)                      // Compile-time evaluation (Phase 5+)
-  // Fix(name: String, body: Term, span: Span)             // Recursion fixpoint (Phase 2+)
-  // Let(name: String, value: Term, body: Term, span: Span)  // Let binding (desugared to App(Lam(...), val))
-  // Unit(span: Span)                                       // Unit value () (parsed as Rcd([], span))
+  Comptime(term: Term, span: Span)                      // Compile-time evaluation (Phase 5+)
+  Fix(name: String, body: Term, span: Span)             // Recursion fixpoint (Phase 2+)
+  Unit(span: Span)                                       // Unit value () (parsed as Rcd([], span))
 }
 
 /// Type of a Term: either a Value (evaluated) or Err
@@ -106,13 +105,12 @@ pub type Value {
   VLitT(typ: LitType)                              // Evaluated literal type (I32T, ILitT, etc.)
   VNeut(head: Head, spine: List(Elim))             // Neutral term (not a lambda)
   VRcd(fields: List(#(String, Value)))             // Evaluated record
-  VLam(param: #(String, Value), body: Term)  // Lambda: #(param_name, param_type_value)
-  VPi(implicit: List(String), name: String, env: Env, in_val: Value, out_term: Term)  // Pi type
+  VLam(env: Env, implicits: List(#(String, Value)), param: #(String, Value), body: Term)      // Lambda
+  VPi(env: Env, implicits: List(#(String, Value)), domain: #(String, Value), codomain: Term)  // Pi type
   VCtrValue(tag: String, arg: Value)               // Constructor value
-  // VUnit                                          // Unit value () (use VRcd([]) instead)
   VCall(name: String, args: List(Value), ret: Value)  // Function call result
   VFix(name: String, env: Env, body: Term)         // Recursion fixpoint
-  VErr                                               // Error value
+  VErr                                             // Error value
 }
 
 /// Neutral term head: variable, hole, or step limit
@@ -126,7 +124,6 @@ pub type Head {
 pub type Elim {
   EDot(name: String)
   EApp(arg: Value)
-  EAppImplicit(value: Value)
   EMatch(env: Env, motive: Value, cases: List(Case))
 }
 
