@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-26 (Updated: 2026-04-26 - Phase 2 Task 2.4 Unification implemented! 408 tests passing.)
+> **Last updated:** 2026-04-26 (Updated: 2026-04-26 - Phase 2 Task 2.6 Substitution implemented! 424 tests passing.)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
 
 ## Legend
@@ -94,7 +94,15 @@
 - VErr passthrough (unifies with any value)
 - 33 tests in `test/core/unify_test.gleam`
 
-Total tests: 408 passed, 0 failures.
+**Phase 2 Task 2.6 Complete:** Substitution module implemented in `src/core/subst.gleam` with:
+- `force(state, value)` — resolves holes by looking them up in state, then applies neutral spine (beta reduction)
+- `apply_spine(value, spine)` — applies eliminator list via beta reduction when head is VLam
+- `shift_term(term, shift)` — De Bruijn index shifting with selective from parameter
+- `subst_term_var(idx, value, term)` — substitute variable with value in term
+- `force_levels_to_indices(value, n)` — converts Value (De Bruijn levels) to Term (De Bruijn indices)
+- 61 tests in `test/core/subst_test.gleam`
+
+Total tests: 424 passed, 0 failures.
 
 ---
 
@@ -131,13 +139,13 @@ Total tests: 408 passed, 0 failures.
 | 2.5.1 | Every type pair | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.5.2 | Occurs check | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.5.3 | Hole instantiation | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.6 | Implement substitution | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/subst.gleam` |
-| 2.6.1 | `force` (evaluate through substitution) | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 2.6.2 | `force_levels_to_indices` (value → term) | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 2.7 | Write tests for substitution | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/subst_test.gleam` |
-| 2.7.1 | Force on every value type | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.7.2 | Level-to-index conversion | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.7.3 | Shift operations | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.6 | Implement substitution | ✅ | [03-core-language.md](03-core-language.md) | `src/core/subst.gleam` |
+| 2.6.1 | `force` (evaluate through substitution) | ✅ | [03-core-language.md](03-core-language.md) | Hole resolution + spine application |
+| 2.6.2 | `force_levels_to_indices` (value → term) | ✅ | [03-core-language.md](03-core-language.md) | De Bruijn level → index |
+| 2.7 | Write tests for substitution | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/subst_test.gleam` |
+| 2.7.1 | Force on every value type | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.7.2 | Level-to-index conversion | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.7.3 | Shift operations | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.8 | Implement generalization | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/generalize.gleam` |
 | 2.8.1 | `generalize` (quantify holes) | 🔴 | [03-core-language.md](03-core-language.md) | |
 | 2.9 | Write tests for generalization | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/generalize_test.gleam` |
@@ -413,6 +421,7 @@ Total tests: 408 passed, 0 failures.
 
 | Date | Change |
 |------|--------|
+| 2026-04-26 | **Phase 2 Task 2.6 Substitution implemented:** `src/core/subst.gleam` with `force`, `apply_spine`, `shift_term`, `subst_term_var`, and `force_levels_to_indices`. Covers: hole resolution, neutral spine application, De Bruijn index shifting, variable substitution, level-to-index conversion. 61 tests in `test/core/subst_test.gleam`. Total: 424 tests passing. |
 | 2026-04-26 | **Phase 2 Task 2.4 Unification implemented:** `src/core/unify.gleam` with `unify(state, expected, actual)` and `occurs_check(level, value)`. Covers: hole binding, variable lookup, Pi/VLam/VCtr/VLIT/VRcd/VNeut unification, VErr passthrough, TypeMismatch errors. 33 tests in `test/core/unify_test.gleam`. **Phase 2 Task 2.3 Complete:** Core parser tests added (41 tests). Total: 408 tests passing. |
 | 2026-04-26 | **Test suite cleaned up:** Removed unused `src/tao/` and `test/tao/` (Phase 3 not yet reached). Removed 4 redundant tests (pipe_is_punct duplicate, shift_term_on_hole_preserves_id duplicate, shift_term_preserves_span_through_shifts duplicate). Fixed 2 tests that had no assertions (`parse_trailing_paren_recovers_test`, `unify_hvar_looks_up_value_test`). Removed empty placeholder comment sections from `state_test.gleam` and `syntax_test.gleam`. **Total: 363 tests passing.** |
 | 2026-04-26 | **Param removed from AST:** `Param` record type removed from `core/ast.gleam`. Lambdas now use ` #(String, Term)` tuples: `Lam(#("name", param_type), body, span)`. `VLam` uses `#(String, Value)` for parameter annotations. |
