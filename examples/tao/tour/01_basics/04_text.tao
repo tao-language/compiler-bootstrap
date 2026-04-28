@@ -1,0 +1,25 @@
+// Text literals are enclosed by double quotes (").
+let name = "World"
+
+// You can interpolate expressions with "${expression}".
+> "Hello ${name}!"
+"Hello World!"
+
+// Use the (+) operator to concatenate text together.
+// Note: Text interpolation with ${} is generally easier to read.
+let greeting: Text = "Hello "
+> greeting + name + "!"
+"Hello World!"
+
+// Escape sequences start with \ and are interpreted in special ways.
+
+// Use triple (""") for a multi-line string.
+// The opening and closing (""") must be on a line on its own.
+// The text within can be indented, which helps with readability.
+// The indentation from the first line is trimmed from the rest of the lines.
+let multiline = """
+  Hello
+   World!
+"""
+> multiline
+"Hello\n World!"
