@@ -2,7 +2,7 @@
 import core/ast.{
   type Case, type Pattern, type Term, type Value, Ann, App, Call,
   Case as CoreCase, Ctr, EApp, Err, Float as LitFloat, HHole, HVar, Hole,
-  Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, Pi, Rcd,
+  Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, PAlias, PType, PRcd, PError, Pi, Rcd,
   Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VTypeDef, TypeDef, Var, term_to_string,
 }
 import core/state.{type State, FfiEntry, State, lookup_ffi}
@@ -284,6 +284,12 @@ pub fn match_pattern(
   case pattern {
     PAny(_) -> Ok(bindings)
     PVar(name, _) -> Ok([#(name, value), ..bindings])
+    PAlias(alias_name, inner, _) -> {
+      case match_pattern(inner, value, bindings) {
+        Ok(new_bindings) -> Ok([#(alias_name, value), ..new_bindings])
+        Error(_) -> Error(Nil)
+      }
+    }
     Pctr(tag, inner, _) -> {
       case value {
         VCtr(tag2, arg_val) ->
@@ -304,6 +310,56 @@ pub fn match_pattern(
       case value {
         VLit(lit2) if lit == lit2 -> Ok(bindings)
         _ -> Error(Nil)
+      }
+    }
+    PType(_type_name, _) -> {
+      // Type patterns match on the type universe
+      case value {
+        VNeut(HHole(_), _) -> Ok(bindings)
+        VNeut(HVar(_), _) -> Ok(bindings)
+        VPi(_, _, _, _) -> Ok(bindings)
+        VTypeDef(_, _) -> Ok(bindings)
+        _ -> Error(Nil)
+      }
+    }
+    PRcd(fields, _) -> {
+      case value {
+        VRcd(record_fields) -> {
+          // Check that all pattern fields exist in the record
+          case do_match_rcd(fields, record_fields, bindings) {
+            Ok(result) -> Ok(result)
+            Error(_) -> Error(Nil)
+          }
+        }
+        _ -> Error(Nil)
+      }
+    }
+    PError(_) -> {
+      // Error patterns match on error terms
+      case value {
+        VErr -> Ok(bindings)
+        _ -> Error(Nil)
+      }
+    }
+  }
+}
+
+/// Helper: recursively match record fields against record values
+fn do_match_rcd(
+  fields: List(#(String, Pattern)),
+  record_fields: List(#(String, Value)),
+  bindings: List(#(String, Value)),
+) -> Result(List(#(String, Value)), Nil) {
+  case fields {
+    [] -> Ok(bindings)
+    [first, ..rest] -> {
+      case list.find(record_fields, fn(r) { r.0 == first.0 }) {
+        Ok(#(_, val)) ->
+          case match_pattern(first.1, val, bindings) {
+            Ok(new_bindings) -> do_match_rcd(rest, record_fields, new_bindings)
+            Error(_) -> Error(Nil)
+          }
+        Error(_) -> Error(Nil)
       }
     }
   }

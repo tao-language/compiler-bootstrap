@@ -26,7 +26,7 @@ import core/ast.{
   type Case, type Elim, type Head, type Literal, type Pattern, type Term,
   type Value, Ann, App, Call, Case, Ctr, EApp, Err, Float as LitFloat, HHole,
   HVar, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit,
-  PVar, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VTypeDef, TypeDef, Var,
+  PVar, PAlias, PType, PRcd, PError, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VTypeDef, TypeDef, Var,
   make_neut, shift_opt, shift_term,
 }
 import core/state.{type State, lookup_var}
@@ -535,6 +535,16 @@ fn pattern_to_string(pat: Pattern) -> String {
     PUnit(_) -> "()"
     PLit(LitInt(value), _) -> int.to_string(value)
     PLit(LitFloat(_), _) -> "<float>"
+    PAlias(name, inner, _) -> name <> "@" <> pattern_to_string(inner)
+    PType(type_name, _) -> "$" <> type_name
+    PRcd(fields, _) ->
+      "{" <> list.fold(fields, "", fn(acc, f) {
+        case acc {
+          "" -> f.0 <> ": " <> pattern_to_string(f.1)
+          _ -> acc <> ", " <> f.0 <> ": " <> pattern_to_string(f.1)
+        }
+      }) <> "}"
+    PError(_) -> "$error"
   }
 }
 

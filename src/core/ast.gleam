@@ -69,6 +69,10 @@ pub type Pattern {
   PCtr(tag: String, pattern: Pattern, span: Span)
   PUnit(span: Span)
   PLit(value: Literal, span: Span)
+  PAlias(name: String, pattern: Pattern, span: Span)
+  PType(type_name: String, span: Span)
+  PRcd(fields: List(#(String, Pattern)), span: Span)
+  PError(span: Span)
 }
 
 /// A case in a match expression.
@@ -474,6 +478,20 @@ fn pattern_to_string(pat: Pattern) -> String {
     PUnit(_) -> "()"
     PLit(Int(value), _) -> int.to_string(value)
     PLit(Float(value), _) -> float.to_string(value)
+    PAlias(name, inner, _) -> name <> "@" <> pattern_to_string(inner)
+    PType(type_name, _) -> "$" <> type_name
+    PRcd(fields, _) -> {
+      case fields {
+        [] -> "{}"
+        _ -> "{" <> list.fold(fields, "", fn(acc, f) {
+          case acc {
+            "" -> f.0 <> ": " <> pattern_to_string(f.1)
+            _ -> acc <> ", " <> f.0 <> ": " <> pattern_to_string(f.1)
+          }
+        }) <> "}"
+      }
+    }
+    PError(_) -> "$error"
   }
 }
 
