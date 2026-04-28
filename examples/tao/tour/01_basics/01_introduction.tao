@@ -1,8 +1,15 @@
 // Single line comments are C-style, starting with double slash.
+
 /*
-  Multi line comments are C-style too,
-  enclosed in slash-star.
+Multi line comments are C-style too,
+enclosed in slash-star.
+Comments are completely ignored.
 */
+
+/**
+ * Module documentation is written as a multi-line comment starting with /**
+ * Documentation is saved along with the source code.
+ */
 
 // Use a REPL-like syntax to add testable examples.
 > 1 + 1
@@ -18,3 +25,15 @@ let x = 42
 // Definitions can optionally have type annotations.
 let pi: F64 = 3.14  // F64 stands for a 64 bit floating point number.
 > pi ~> 3.14
+
+// You can compare values too, these return a Bool (True or False).
+> 1 == 1 ~> True
+> 1 != 1 ~> False
+> 1 < 2  ~> True
+
+// When writing examples as tests, you can use /// to set the test name.
+// For example:
+
+/// Integer addition
+> 2 + 2
+4
