@@ -1,4 +1,5 @@
 // IMPORTANT: This example is under planning, it does not work yet!
+// This is not how things work now, this is a brainstorming file to plan how we want this to work.
 
 // Tao
 type Bool {
