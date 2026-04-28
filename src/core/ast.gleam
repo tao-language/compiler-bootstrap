@@ -9,7 +9,7 @@ import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import syntax/span.{type Span}
+import syntax/span.{type Span, single}
 
 // ============================================================================
 // LITERALS
@@ -54,6 +54,12 @@ pub type Term {
   Call(name: String, args: List(Term), typed_args: List(#(Term, Term)), return_type: Option(Term), span: Span)
   Rcd(fields: List(#(String, Term)), span: Span)
   Typ(level: Int, span: Span)
+  TypeDef(
+    name: String,
+    params: List(#(String, Term)),
+    constructors: List(#(String, Term, Term, Span)),
+    span: Span,
+  )
   Err(message: String, span: Span)
 }
 
@@ -101,55 +107,40 @@ pub type Value {
   VLit(value: Literal)
   VCtr(tag: String, arg: Value)
   VRcd(fields: List(#(String, Value)))
-  VType(TypeDef)
+  VTypeDef(
+    name: String,
+    params: List(#(String, Value)),
+    constructors: List(#(String, Value, Value, Span)),
+  )
   VErr
 }
 
-// ============================================================================
-// TYPE DEFINITIONS (First-class values in the environment)
-// ============================================================================
-
-/// A type definition stored as a first-class value in the environment.
-///
-/// Type definitions live in the same env as regular values:
-///
-///   "Option" → #(VType(td), Type)
-///   "Bool"   → #(VType(td), Type)
-///
-/// This eliminates the need for a separate constructor registry.
-pub type TypeDef {
-  TypeDef(
-    name: String,
-    param_count: Int,
-    constructors: List(ConstructorDef),
-  )
-}
-
-pub type ConstructorDef {
-  ConstructorDef(
-    tag: String,
-    result_template: Value,  /// Type with HVar(level) references for type params
-  )
-}
-
-/// Look up a constructor definition by tag.
-pub fn find_constructor(td: TypeDef, tag: String) -> Option(ConstructorDef) {
-  case list.find(td.constructors, fn(c) { c.tag == tag }) {
+/// Look up a constructor by tag in a TypeDef.
+pub fn find_constructor(
+  constructors: List(#(String, Value, Value, Span)),
+  tag: String,
+) -> Option(#(String, Value, Value, Span)) {
+  let match_tag = fn(c: #(String, Value, Value, Span)) {
+    case c {
+      #(t, _, _, _) -> t == tag
+      _ -> False
+    }
+  }
+  case list.find(constructors, match_tag) {
     Ok(ctor) -> Some(ctor)
     Error(_) -> None
   }
 }
 
-/// Compute the type of a constructor from a TypeDef, substituting
-/// type params (HVar(level) references) with actual type arguments.
+/// Compute the type of a constructor from a TypeDef.
 pub fn compute_constructor_type(
-  td: TypeDef,
+  constructors: List(#(String, Value, Value, Span)),
   type_args: List(Value),
   tag: String,
 ) -> Option(Value) {
-  case find_constructor(td, tag) {
+  case find_constructor(constructors, tag) {
     None -> None
-    Some(ctor) -> Some(subst(type_args, ctor.result_template))
+    Some(#(_, _, result, _)) -> Some(subst(type_args, result))
   }
 }
 
@@ -172,15 +163,44 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
     VLit(_value) -> v
     VCtr(tag, arg) -> VCtr(tag, subst(type_args, arg))
     VRcd(fields) -> VRcd(list.map(fields, fn(f) { #(f.0, subst(type_args, f.1)) }))
-    VType(td) -> VType(td)
+    VTypeDef(name: n, params: p, constructors: c) -> VTypeDef(
+      name: n,
+      params: p,
+      constructors: c,
+    )
     VErr -> VErr
   }
 }
 
 /// Extract the type of a TypeDef (always `*` — universe 0).
-pub fn type_of_type_def(td: TypeDef) -> Value {
-  // A TypeDef has type * (universe 0), represented as Pi(_, _, _, Pi(_, _, _, VType(td)))
-  VPi([], [], #("_", VLit(Int(0))), VPi([], [], #("_", VLit(Int(1))), VType(td)))
+pub fn type_of_type_def(constructors: List(#(String, Value, Value, Span))) -> Value {
+  // A TypeDef has type * (universe 0), represented as Pi(_, _, _, Pi(_, _, _, VTypeDef))
+  // Note: This function only needs the constructors list, not the full TypeDef
+  let _ = constructors
+  VPi([], [], #("_", VLit(Int(0))), VPi([], [], #("_", VLit(Int(1))), VTypeDef(
+    name: "",
+    params: [],
+    constructors: constructors,
+  )))
+}
+
+/// Create a TypeDef from simple constructor tags (no result types).
+/// Uses HVar(0) placeholders for all result types.
+pub fn make_type_def(
+  name: String,
+  param_names: List(String),
+  constructor_tags: List(String),
+) -> Term {
+  let self_type = Var(0, single("", 0, 0))
+  let result_type = Var(0, single("", 0, 0))
+  TypeDef(
+    name: name,
+    params: list.map(param_names, fn(n) { #(n, Var(0, single("", 0, 0))) }),
+    constructors: list.map(constructor_tags, fn(tag) {
+      #(tag, self_type, result_type, single("", 0, 0))
+    }),
+    span: single("", 0, 0),
+  )
 }
 
 // ============================================================================
@@ -293,7 +313,9 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
       Call(
         name,
         list.map(args, fn(a) { shift_term_from(a, shift, from) }),
-        list.map(typed_args, fn(ta) { #(shift_term_from(ta.0, shift, from), shift_term_from(ta.1, shift, from)) }),
+        list.map(typed_args, fn(ta) {
+          #(shift_term_from(ta.0, shift, from), shift_term_from(ta.1, shift, from))
+        }),
         case return_type {
           Some(t) -> Some(shift_term_from(t, shift, from))
           None -> None
@@ -306,6 +328,25 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
         span,
       )
     Typ(level, span) -> Typ(level, span)
+    TypeDef(name: n, params: p, constructors: cons, span: s) -> {
+      let shift_cons = fn(c) {
+        case c {
+          #(tag, self_ty, result, s) ->
+            #(tag, shift_term_from(self_ty, shift, from), shift_term_from(result, shift, from), s)
+        }
+      }
+      let shift_param = fn(param) {
+        case param {
+          #(nm, ty) -> #(nm, shift_term_from(ty, shift, from))
+        }
+      }
+      TypeDef(
+        name: n,
+        params: list.map(p, shift_param),
+        constructors: list.map(cons, shift_cons),
+        span: s,
+      )
+    }
     Err(msg, span) -> Err(msg, span)
   }
 }
@@ -412,6 +453,21 @@ pub fn term_to_string(term: Term) -> String {
           <> "}"
       }
     Typ(level, _) -> "%Type(" <> int.to_string(level) <> ")"
+    TypeDef(name: name, params: params, constructors: constructors, span: span) -> {
+      let params_str = list.fold(params, "", fn(acc, p) {
+        case acc {
+          "" -> p.0
+          _ -> acc <> ", " <> p.0
+        }
+      })
+      "type " <> name <> "[" <> params_str <> "] { "
+      <> list.fold(constructors, "", fn(acc, c) {
+        case acc {
+          "" -> "#" <> c.0 <> "(" <> term_to_string(c.1) <> " -> " <> term_to_string(c.2) <> ")"
+          _ -> acc <> ", #" <> c.0 <> "(" <> term_to_string(c.1) <> " -> " <> term_to_string(c.2) <> ")"
+        }
+      }) <> " }"
+    }
     Err(msg, _) -> "\"" <> msg <> "\""
   }
 }
@@ -489,7 +545,15 @@ pub fn value_to_string(value: Value) -> String {
           })
           <> "}"
       }
-    VType(td) -> "<type " <> td.name <> ">"
+    VTypeDef(name: n, params: p, constructors: c) -> {
+      let params_str = list.fold(p, "", fn(acc, param) {
+        case acc {
+          "" -> param.0
+          _ -> acc <> ", " <> param.0
+        }
+      })
+      "<VTypeDef " <> n <> "[" <> params_str <> "]>"
+    }
     VErr -> "\"error\""
   }
 }

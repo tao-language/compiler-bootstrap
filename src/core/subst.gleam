@@ -26,14 +26,14 @@ import core/ast.{
   type Case, type Elim, type Head, type Literal, type Pattern, type Term,
   type Value, Ann, App, Call, Case, Ctr, EApp, Err, Float as LitFloat, HHole,
   HVar, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit,
-  PVar, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VType, Var,
+  PVar, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VTypeDef, TypeDef, Var,
   make_neut, shift_opt, shift_term,
 }
 import core/state.{type State, lookup_var}
+import syntax/span.{type Span, single}
 import gleam/int
 import gleam/list
 import gleam/option.{None, Some}
-import syntax/span.{single}
 
 /// Force a value by resolving holes and applying neutral spine elements.
 ///
@@ -207,6 +207,31 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
         span,
       )
     Typ(level, span) -> Typ(level, span)
+    TypeDef(name: name, params: p, constructors: cons, span: span) -> {
+      let shift_param = fn(param) {
+        case param {
+          #(nm, ty) ->
+            case subst_term_from(idx, value, ty, from) {
+              new_ty -> #(nm, new_ty)
+            }
+        }
+      }
+      let shift_cons = fn(ctor) {
+        case ctor {
+          #(tag, self_ty, result, c_span) -> {
+            let new_self = subst_term_from(idx, value, self_ty, from)
+            let new_result = subst_term_from(idx, value, result, from)
+            #(tag, new_self, new_result, c_span)
+          }
+        }
+      }
+      TypeDef(
+        name: name,
+        params: list.map(p, shift_param),
+        constructors: list.map(cons, shift_cons),
+        span: span,
+      )
+    }
     Err(msg, span) -> Err(msg, span)
   }
 }
@@ -274,7 +299,31 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
         list.map(fields, fn(f) { #(f.0, force_levels_to_indices(f.1, n)) }),
         single("", 0, 0),
       )
-    VType(_) -> Err("<type _>", single("", 0, 0))
+    VTypeDef(name: vname, params: p, constructors: c) -> {
+      let shift_param = fn(param) {
+        case param {
+          #(nm, v) -> #(nm, force_levels_to_indices(v, n))
+        }
+      }
+      let shift_cons = fn(ctor: #(String, Value, Value, Span)) -> #(String, Term, Term, Span) {
+        let a = case ctor { #(x, _, _, _) -> x }
+        let b = case ctor { #(_, x, _, _) -> x }
+        let c = case ctor { #(_, _, x, _) -> x }
+        let d = case ctor { #(_, _, _, x) -> x }
+        let r1: Term = force_levels_to_indices(b, n)
+        let r2: Term = force_levels_to_indices(c, n)
+        let r3: #(String, Term, Term, Span) = #(a, r1, r2, d)
+        r3
+      }
+      let typed_params: List(#(String, Term)) = list.map(p, shift_param)
+      let typed_constructors: List(#(String, Term, Term, Span)) = list.map(c, shift_cons)
+      TypeDef(
+        name: vname,
+        params: typed_params,
+        constructors: typed_constructors,
+        span: single("", 0, 0),
+      )
+    }
     VErr -> Err("error", single("", 0, 0))
   }
 }
@@ -370,7 +419,14 @@ fn value_string(value: Value) -> String {
           })
           <> "}"
       }
-    VType(td) -> "<type " <> td.name <> ">"
+    VTypeDef(name: n, params: p, constructors: c) -> {
+      "<type " <> n <> "[" <> list.fold(p, "", fn(acc, param) {
+        case acc {
+          "" -> param.0
+          _ -> acc <> ", " <> param.0
+        }
+      }) <> "]>"
+    }
     VErr -> "\"error\""
   }
 }
@@ -458,6 +514,37 @@ fn term_string(term: Term) -> String {
           <> "}"
       }
     Typ(level, _) -> "%Type(" <> int.to_string(level) <> ")"
+    TypeDef(name, params, constructors, _) -> {
+      let params_str = list.fold(params, "", fn(acc, p) {
+        case acc {
+          "" -> {
+            case p {
+              #(nm, _) -> nm
+            }
+          }
+          _ -> {
+            case p {
+              #(nm, _) -> acc <> ", " <> nm
+            }
+          }
+        }
+      })
+      "type " <> name <> "[" <> params_str <> "] { "
+      <> list.fold(constructors, "", fn(acc, c) {
+        case acc {
+          "" -> {
+            case c {
+              #(tag, self_ty, result, _) -> "#" <> tag <> "(" <> term_string(self_ty) <> " -> " <> term_string(result) <> ")"
+            }
+          }
+          _ -> {
+            case c {
+              #(tag, self_ty, result, _) -> acc <> ", #" <> tag <> "(" <> term_string(self_ty) <> " -> " <> term_string(result) <> ")"
+            }
+          }
+        }
+      }) <> " }"
+    }
     Err(msg, _) -> "\"" <> msg <> "\""
   }
 }

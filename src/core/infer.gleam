@@ -34,6 +34,7 @@ pub fn infer(state: state.State, term: ast.Term) -> #(ast.Value, ast.Value, stat
     ast.Call(name, args, typed_args, return_type, span) -> infer_call(state, name, args, typed_args, return_type, span)
     ast.Rcd(fields, span) -> infer_rcd(state, fields, span)
     ast.Ctr(tag, arg, span) -> infer_ctr(state, tag, arg, span)
+    ast.TypeDef(name, params, constructors, span) -> infer_type_def(state, name, params, constructors, span)
     ast.Err(message, span) -> infer_err(state, message, span)
   }
 }
@@ -320,6 +321,41 @@ fn infer_ctr(
   let arg_val = evaluate(state, arg)
   let ctr_val = ast.VCtr(tag, arg_val)
   #(ctr_val, ast.VNeut(ast.HVar(0), []), state)
+}
+
+fn infer_type_def(
+  state: state.State,
+  name: String,
+  params: List(#(String, ast.Term)),
+  constructors: List(#(String, ast.Term, ast.Term, Span)),
+  _span: Span,
+) -> #(ast.Value, ast.Value, state.State) {
+  // Convert Term-level TypeDef to VTypeDef value
+  // For now, we just wrap params and constructors in neutral values
+  let value_params = list.map(params, fn(p) { #(p.0, ast.VNeut(ast.HHole(0), [])) })
+  let value_constructors = list.map(constructors, fn(c) {
+    let tag = c.0
+    let ctor_span = c.3
+    #(tag, ast.VNeut(ast.HHole(0), []), ast.VNeut(ast.HHole(0), []), ctor_span)
+  })
+  let type_def_val = ast.VTypeDef(
+    name: name,
+    params: value_params,
+    constructors: value_constructors,
+  )
+  // The type of a TypeDef is *
+  let type_def_type = ast.VPi(
+    [],
+    [],
+    #("_", ast.VLit(ast.Int(0))),
+    ast.VPi(
+      [],
+      [],
+      #("_", ast.VLit(ast.Int(1))),
+      type_def_val,
+    ),
+  )
+  #(type_def_val, type_def_type, state)
 }
 
 fn infer_err(

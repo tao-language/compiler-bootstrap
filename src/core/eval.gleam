@@ -3,9 +3,10 @@ import core/ast.{
   type Case, type Pattern, type Term, type Value, Ann, App, Call,
   Case as CoreCase, Ctr, EApp, Err, Float as LitFloat, HHole, HVar, Hole,
   Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, Pi, Rcd,
-  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VType, Var, term_to_string,
+  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VTypeDef, TypeDef, Var, term_to_string,
 }
 import core/state.{type State, FfiEntry, State, lookup_ffi}
+import syntax/span.{type Span}
 import core/subst.{force, subst_term_var}
 import gleam/float
 import gleam/int
@@ -15,6 +16,20 @@ import gleam/option.{None, Some}
 // ============================================================================
 // MAIN EVALUATION
 // ============================================================================
+
+/// Convert a Term-level TypeDef param to a Value-level param.
+/// Just wraps the term in a neutral value for now.
+fn term_param_to_value(state: State, param: #(String, Term)) -> #(String, Value) {
+  let #(name, _) = param
+  #(name, VNeut(HHole(0), []))
+}
+
+/// Convert a Term-level TypeDef constructor to a Value-level constructor.
+/// Just wraps the terms in neutral values for now.
+fn term_ctor_to_value(state: State, ctor: #(String, Term, Term, Span)) -> #(String, Value, Value, Span) {
+  let #(tag, _, _, span) = ctor
+  #(tag, VNeut(HHole(0), []), VNeut(HHole(0), []), span)
+}
 
 /// Evaluate a `Term` to a `Value` using Normalization by Evaluation (NBE).
 ///
@@ -106,6 +121,11 @@ pub fn evaluate(state: State, term: Term) -> Value {
       }
     }
     Typ(level, _) -> VNeut(HVar(level), [])
+    TypeDef(name: n, params: p, constructors: c, span: _) -> {
+      let value_params = list.map(p, fn(param) { term_param_to_value(state, param) })
+      let value_constructors = list.map(c, fn(ctor) { term_ctor_to_value(state, ctor) })
+      VTypeDef(name: n, params: value_params, constructors: value_constructors)
+    }
     Err(msg, _) -> {
       let _ = msg
       VErr
@@ -155,7 +175,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     // Error propagates
     VErr -> VErr
     // Cannot apply a type/value that isn't a function — return error
-    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) | VType(_) -> VErr
+    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) | VTypeDef(name: _, params: _, constructors: _) -> VErr
   }
 }
 
@@ -361,6 +381,6 @@ pub fn value_to_string(value: Value) -> String {
           <> "}"
       }
     VErr -> "\"error\""
-    VType(_) -> "<type _>"
+    VTypeDef(name: _, params: _, constructors: _) -> "<type _>"
   }
 }

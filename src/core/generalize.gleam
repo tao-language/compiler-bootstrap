@@ -26,7 +26,7 @@
 import core/ast.{
   type Head, type Term, type Value, Ann, App, Call, Case, Ctr, EApp, Err, HHole,
   HVar, Hole, Lam, Lit, Match, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi,
-  VRcd, VType, Var,
+  VRcd, VTypeDef, TypeDef, Var,
 }
 import gleam/option.{None, Some}
 import gleam/int
@@ -89,7 +89,7 @@ fn free_holes_from(value: Value, binding: Int) -> List(Int) {
         list.append(acc, free_holes_from(f.1, binding))
       })
     }
-    VType(_) -> []
+    VTypeDef(name: _, params: _, constructors: _) -> []
     VErr -> []
   }
 }
@@ -166,6 +166,16 @@ fn free_holes_term(term: Term, binding: Int) -> List(Int) {
       })
     }
     Typ(_, _) -> []
+    TypeDef(_, params, constructors, _) -> {
+      let param_holes = list.fold(params, [], fn(acc, p) {
+        list.append(acc, free_holes_term(p.1, binding))
+      })
+      let ctor_holes = list.fold(constructors, [], fn(acc, c) {
+        list.append(acc, free_holes_term(c.1, binding))
+        list.append(acc, free_holes_term(c.2, binding))
+      })
+      list.append(param_holes, ctor_holes)
+    }
     Err(_, _) -> []
   }
 }
@@ -220,7 +230,7 @@ fn free_levels_from(value: Value, binding: Int) -> List(Int) {
         list.append(acc, free_levels_from(f.1, binding))
       })
     }
-    VType(_) -> []
+    VTypeDef(name: _, params: _, constructors: _) -> []
     VErr -> []
   }
 }
@@ -301,6 +311,16 @@ fn free_levels_term(term: Term, binding: Int) -> List(Int) {
       })
     }
     Typ(_, _) -> []
+    TypeDef(_, params, constructors, _) -> {
+      let param_levels = list.fold(params, [], fn(acc, p) {
+        list.append(acc, free_levels_term(p.1, binding))
+      })
+      let ctor_levels = list.fold(constructors, [], fn(acc, c) {
+        list.append(acc, free_levels_term(c.1, binding))
+        list.append(acc, free_levels_term(c.2, binding))
+      })
+      list.append(param_levels, ctor_levels)
+    }
     Err(_, _) -> []
   }
 }
@@ -374,7 +394,11 @@ fn subst_holes(value: Value, subst: List(#(Int, Int))) -> Value {
     VCtr(tag, arg) -> VCtr(tag, subst_holes(arg, subst))
     VRcd(fields) ->
       VRcd(list.map(fields, fn(f) { #(f.0, subst_holes(f.1, subst)) }))
-    VType(td) -> VType(td)
+    VTypeDef(name: n, params: p, constructors: c) -> VTypeDef(
+      name: n,
+      params: p,
+      constructors: c,
+    )
     VErr -> VErr
   }
 }
@@ -433,6 +457,31 @@ fn subst_holes_term(term: Term, subst: List(#(Int, Int))) -> Term {
         span,
       )
     Typ(level, span) -> Typ(level, span)
+    TypeDef(name: name, params: params, constructors: constructors, span: span) -> {
+      let shift_param = fn(param) {
+        case param {
+          #(nm, ty) ->
+            case subst_holes_term(ty, subst) {
+              new_ty -> #(nm, new_ty)
+            }
+        }
+      }
+      let shift_cons = fn(ctor) {
+        case ctor {
+          #(tag, self_ty, result, c_span) -> {
+            let new_self = subst_holes_term(self_ty, subst)
+            let new_result = subst_holes_term(result, subst)
+            #(tag, new_self, new_result, c_span)
+          }
+        }
+      }
+      TypeDef(
+        name: name,
+        params: list.map(params, shift_param),
+        constructors: list.map(constructors, shift_cons),
+        span: span,
+      )
+    }
     Err(msg, span) -> Err(msg, span)
   }
 }

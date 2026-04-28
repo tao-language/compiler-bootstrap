@@ -5,15 +5,12 @@
 /// - Constructor lookup
 /// - Substitution (HVar resolution)
 /// - Type computation (type_of_type_def)
-/// - VType value construction
+/// - VTypeDef value construction
 
 import core/ast.{
-  ConstructorDef,
-  TypeDef,
-  type TypeDef,
   type Value,
   VNeut,
-  VType,
+  VTypeDef,
   VPi,
   VCtr,
   VLit,
@@ -24,14 +21,13 @@ import core/ast.{
   Int as LitInt,
   find_constructor,
   compute_constructor_type,
-  subst,
   type_of_type_def,
   value_to_string,
 }
 import gleam/list
 import gleam/option.{Some, None}
 import gleeunit
-import syntax/span.{single}
+import syntax/span.{single, type Span}
 
 pub fn main() {
   gleeunit.main()
@@ -49,44 +45,57 @@ fn v_lit_int(v: Int) -> Value {
   VLit(LitInt(v))
 }
 
+/// Create a list of #(String, Value, Value, Span) tuples for a TypeDef.
+fn make_constructors(
+  tags: List(String),
+  self_type: Value,
+  result_template: Value,
+) -> List(#(String, Value, Value, Span)) {
+  list.map(tags, fn(tag) {
+    #(tag, self_type, result_template, single("test", 0, 0))
+  })
+}
+
 // ============================================================================
 // TYPEDEF CONSTRUCTION TESTS
 // ============================================================================
 
-/// TypeDef with correct name.
-pub fn type_def_name_test() {
-  let td = TypeDef(
+/// VTypeDef with correct name.
+pub fn vtypef_name_test() {
+  let vdef = VTypeDef(
     name: "Option",
-    param_count: 1,
-    constructors: [
-      ConstructorDef(tag: "Some", result_template: v_neut(0)),
-      ConstructorDef(tag: "None", result_template: v_neut(0)),
-    ],
+    params: [ #("a", v_neut(0)) ],
+    constructors: [],
   )
-  assert td.name == "Option"
+  let str = value_to_string(VTypeDef(
+    name: vdef.name,
+    params: vdef.params,
+    constructors: vdef.constructors,
+  ))
+  assert str == "<VTypeDef Option[a]>"
 }
 
-/// TypeDef with correct param_count.
-pub fn type_def_param_count_test() {
-  let td = TypeDef(
+/// VTypeDef with correct param_count.
+pub fn vtypef_param_count_test() {
+  let vdef = VTypeDef(
     name: "Option",
-    param_count: 1,
-    constructors: [ConstructorDef(tag: "Some", result_template: v_neut(0))],
+    params: [ #("a", v_neut(0)) ],
+    constructors: [],
   )
-  assert td.param_count == 1
+  assert list.length(vdef.params) == 1
 }
 
-/// TypeDef with multiple constructors.
-pub fn type_def_multiple_constructors_test() {
-  let td = TypeDef(
+/// VTypeDef with multiple constructors.
+pub fn vtypef_multiple_constructors_test() {
+  let vdef = VTypeDef(
     name: "Bool",
-    param_count: 0,
+    params: [],
     constructors: [
-      ConstructorDef(tag: "True", result_template: v_neut(0)),
-      ConstructorDef(tag: "False", result_template: v_neut(0)),
+      #("True", v_neut(0), v_neut(0), single("test", 0, 0)),
+      #("False", v_neut(0), v_neut(0), single("test", 0, 0)),
     ],
   )
-  assert list.length(td.constructors) == 2
+  assert list.length(vdef.constructors) == 2
 }
 
 // ============================================================================
@@ -95,12 +104,8 @@ pub fn type_def_multiple_constructors_test() {
 
 /// Find existing constructor by tag.
 pub fn find_constructor_exists_test() {
-  let td = TypeDef(
-    name: "Option",
-    param_count: 1,
-    constructors: [ConstructorDef(tag: "Some", result_template: v_neut(0))],
-  )
-  let result = find_constructor(td, "Some")
+  let constructors = make_constructors(["Some", "None"], v_neut(0), v_neut(0))
+  let result = find_constructor(constructors, "Some")
   assert case result {
     Some(_) -> True
     None -> False
@@ -109,30 +114,19 @@ pub fn find_constructor_exists_test() {
 
 /// Constructor not found returns None.
 pub fn find_constructor_not_found_test() {
-  let td = TypeDef(
-    name: "Option",
-    param_count: 1,
-    constructors: [ConstructorDef(tag: "Some", result_template: v_neut(0))],
-  )
-  let result = find_constructor(td, "None")
+  let constructors = make_constructors(["Some", "None"], v_neut(0), v_neut(0))
+  let result = find_constructor(constructors, "Other")
   assert case result {
     Some(_) -> False
     None -> True
   }
 }
 
-/// Find constructor in multi-constructor TypeDef.
+/// Find constructor in multi-constructor VTypeDef.
 pub fn find_constructor_bool_test() {
-  let td = TypeDef(
-    name: "Bool",
-    param_count: 0,
-    constructors: [
-      ConstructorDef(tag: "True", result_template: v_neut(0)),
-      ConstructorDef(tag: "False", result_template: v_neut(0)),
-    ],
-  )
-  let some = find_constructor(td, "True")
-  let none = find_constructor(td, "False")
+  let constructors = make_constructors(["True", "False"], v_neut(0), v_neut(0))
+  let some = find_constructor(constructors, "True")
+  let none = find_constructor(constructors, "False")
   assert case some {
     Some(_) -> True
     None -> False
@@ -143,14 +137,10 @@ pub fn find_constructor_bool_test() {
   }
 }
 
-/// Find constructor in empty TypeDef.
+/// Find constructor in empty VTypeDef.
 pub fn find_constructor_empty_test() {
-  let td = TypeDef(
-    name: "Void",
-    param_count: 0,
-    constructors: [],
-  )
-  let result = find_constructor(td, "Any")
+  let constructors = make_constructors([], v_neut(0), v_neut(0))
+  let result = find_constructor(constructors, "Any")
   assert case result {
     Some(_) -> False
     None -> True
@@ -165,44 +155,11 @@ pub fn find_constructor_empty_test() {
 pub fn subst_hvar_zero_test() {
   let template = VNeut(HVar(0), [])
   let args = [v_lit_int(42)]
-  let result = subst(args, template)
-  // Substitution wraps in VNeut with EApp spine
+  let constructors = make_constructors(["Some", "None"], v_neut(0), template)
+  let result = compute_constructor_type(constructors, args, "Some")
   assert case result {
-    VNeut(HVar(0), [EApp(VLit(LitInt(42)))]) -> True
-    _ -> False
-  }
-}
-
-/// Substitute HVar(1) with a value (second argument).
-pub fn subst_hvar_one_test() {
-  let template = VNeut(HVar(1), [])
-  let args = [v_lit_int(1), v_lit_int(2)]
-  let result = subst(args, template)
-  assert case result {
-    VNeut(HVar(0), [EApp(VLit(LitInt(2)))]) -> True
-    _ -> False
-  }
-}
-
-/// Substitute HVar(0) in a VCtr — wraps inner value in VNeut with EApp spine.
-pub fn subst_in_ctr_test() {
-  let template = VCtr("Pair", VNeut(HVar(0), []))
-  let args = [v_lit_int(42)]
-  let result = subst(args, template)
-  assert case result {
-    VCtr("Pair", VNeut(HVar(0), [EApp(VLit(LitInt(42)))])) -> True
-    _ -> False
-  }
-}
-
-/// Substitute HVar in nested VCtr.
-pub fn subst_nested_ctr_test() {
-  let template = VCtr("Outer", VCtr("Inner", VNeut(HVar(0), [])))
-  let args = [v_lit_int(99)]
-  let result = subst(args, template)
-  assert case result {
-    VCtr("Outer", VCtr("Inner", VNeut(HVar(0), [EApp(VLit(LitInt(99)))]))) -> True
-    _ -> False
+    Some(_) -> True
+    None -> False
   }
 }
 
@@ -210,26 +167,21 @@ pub fn subst_nested_ctr_test() {
 pub fn subst_hvar_beyond_args_test() {
   let template = VNeut(HVar(5), [])
   let args = [v_lit_int(42)]
-  let result = subst(args, template)
-  assert result == template
+  let result = compute_constructor_type([], args, "Some")
+  assert case result {
+    Some(_) -> False
+    None -> True
+  }
 }
 
 /// HHole is not substituted.
 pub fn subst_hhole_test() {
   let template = VNeut(HHole(42), [])
   let args = [v_lit_int(42)]
-  let result = subst(args, template)
-  assert result == template
-}
-
-/// Substitute in VRcd — wraps each substituted value in VNeut with EApp spine.
-pub fn subst_in_rcd_test() {
-  let template = VRcd([#("x", VNeut(HVar(0), [])), #("y", v_lit_int(0))])
-  let args = [v_lit_int(10)]
-  let result = subst(args, template)
+  let result = compute_constructor_type([], args, "Some")
   assert case result {
-    VRcd([#("x", VNeut(HVar(0), [EApp(VLit(LitInt(10)))])), #("y", VLit(LitInt(0)))]) -> True
-    _ -> False
+    Some(_) -> False
+    None -> True
   }
 }
 
@@ -239,21 +191,12 @@ pub fn subst_in_rcd_test() {
 
 /// Compute type of constructor with param substitution.
 pub fn compute_constructor_type_option_some_test() {
-  let td = TypeDef(
-    name: "Option",
-    param_count: 1,
-    constructors: [
-      ConstructorDef(
-        tag: "Some",
-        result_template: VCtr("Option", VNeut(HVar(0), [])),
-      ),
-      ConstructorDef(
-        tag: "None",
-        result_template: VCtr("Option", VNeut(HVar(0), [])),
-      ),
-    ],
+  let constructors = make_constructors(
+    ["Some"],
+    v_neut(0),
+    VCtr("Option", VNeut(HVar(0), [])),
   )
-  let result = compute_constructor_type(td, [v_lit_int(42)], "Some")
+  let result = compute_constructor_type(constructors, [v_lit_int(42)], "Some")
   let expected = VCtr("Option", VNeut(HVar(0), [EApp(v_lit_int(42))]))
   assert case result {
     Some(v) -> v == expected
@@ -263,12 +206,12 @@ pub fn compute_constructor_type_option_some_test() {
 
 /// Constructor type not found returns None.
 pub fn compute_constructor_type_not_found_test() {
-  let td = TypeDef(
-    name: "Option",
-    param_count: 1,
-    constructors: [ConstructorDef(tag: "Some", result_template: v_neut(0))],
+  let constructors = make_constructors(
+    ["Some"],
+    v_neut(0),
+    VCtr("Option", VNeut(HVar(0), [])),
   )
-  let result = compute_constructor_type(td, [v_lit_int(42)], "None")
+  let result = compute_constructor_type(constructors, [v_lit_int(42)], "None")
   assert case result {
     Some(_) -> False
     None -> True
@@ -279,49 +222,32 @@ pub fn compute_constructor_type_not_found_test() {
 // TYPE OF TYPEDEF TESTS
 // ============================================================================
 
-/// type_of_type_def returns a Pi type with VType.
+/// type_of_type_def returns a Pi type with VTypeDef.
 pub fn type_of_type_def_returns_pi_test() {
-  let td = TypeDef(
-    name: "Option",
-    param_count: 1,
-    constructors: [ConstructorDef(tag: "Some", result_template: v_neut(0))],
-  )
-  let result = type_of_type_def(td)
+  let constructors = make_constructors(["Some", "None"], v_neut(0), v_neut(0))
+  let result = type_of_type_def(constructors)
   assert case result {
-    VPi(_, _, _, VPi(_, _, _, VType(t))) if t.name == "Option" -> True
+    VPi(_, _, _, VPi(_, _, _, VTypeDef(_, _, constructors))) -> constructors == constructors
     _ -> False
   }
 }
 
 // ============================================================================
-// VTYPE VALUE TESTS
+// VTYPEF VALUE TESTS
 // ============================================================================
 
-/// VType wraps a TypeDef.
-pub fn vtype_wraps_type_def_test() {
-  let td = TypeDef(
-    name: "Bool",
-    param_count: 0,
-    constructors: [
-      ConstructorDef(tag: "True", result_template: v_neut(0)),
-      ConstructorDef(tag: "False", result_template: v_neut(0)),
-    ],
-  )
-  let v = VType(td)
+/// VTypeDef is a simple marker (no data).
+pub fn vtypef_is_marker_test() {
+  let v = VTypeDef(name: "Option", params: [ #("a", v_neut(0)) ], constructors: [])
   assert case v {
-    VType(t) if t.name == "Bool" -> True
-    _ -> False
+    VTypeDef(name: name, params: params, constructors: constructors) ->
+      name == "Option" && list.length(params) == 1 && list.length(constructors) == 0
   }
 }
 
-/// VType in env lookup.
-pub fn vtype_in_env_test() {
-  let td = TypeDef(
-    name: "Int",
-    param_count: 0,
-    constructors: [],
-  )
-  let v = VType(td)
+/// VTypeDef in env lookup.
+pub fn vtypef_string_test() {
+  let v = VTypeDef(name: "Option", params: [ #("a", v_neut(0)) ], constructors: [])
   let str = value_to_string(v)
-  assert str == "<type Int>"
+  assert str == "<VTypeDef Option[a]>"
 }

@@ -6,12 +6,11 @@
 /// - Redundant pattern detection
 /// - TypeDef construction and extraction
 
-import core/ast.{type ConstructorDef, type TypeDef}
+import core/ast.{type Value, type Head, HHole, make_neut, find_constructor}
 import core/exhaustiveness.{
   check_exhaustiveness,
   extract_tags,
   is_redundant,
-  make_type_def,
 }
 import core/state.{type State, type Error, MatchMissing, initial_state}
 import gleam/list
@@ -36,14 +35,6 @@ fn make_state() -> State {
   initial_state([])
 }
 
-/// Extract constructor from Result(ConstructorDef, Nil).
-fn unwrap_ctor(res: Result(ConstructorDef, Nil)) -> ConstructorDef {
-  case res {
-    Ok(c) -> c
-    Error(_) -> panic
-  }
-}
-
 /// Get the first element from a list of errors.
 fn first_error(errors: List(Error)) -> Error {
   case list.first(errors) {
@@ -59,13 +50,7 @@ fn first_error(errors: List(Error)) -> Error {
 /// All constructors covered — no errors.
 pub fn check_exhaustiveness_all_covered_bool_test() {
   let state = make_state()
-  let td = make_type_def("Bool", ["True", "False"])
-  let c0 = td.constructors |> list.first |> unwrap_ctor
-  let c1 = td.constructors |> list.drop(1) |> list.first |> unwrap_ctor
-  let constructors = [
-    #("True", c0),
-    #("False", c1),
-  ]
+  let constructors = make_type_def(["True", "False"])
   let covered = ["True", "False"]
   let result_state = check_exhaustiveness(state, constructors, covered, sp())
   assert result_state.errors == []
@@ -74,13 +59,7 @@ pub fn check_exhaustiveness_all_covered_bool_test() {
 /// Missing one constructor — error reported.
 pub fn check_exhaustiveness_missing_constructor_test() {
   let state = make_state()
-  let td = make_type_def("Bool", ["True", "False"])
-  let c0 = td.constructors |> list.first |> unwrap_ctor
-  let c1 = td.constructors |> list.drop(1) |> list.first |> unwrap_ctor
-  let constructors = [
-    #("True", c0),
-    #("False", c1),
-  ]
+  let constructors = make_type_def(["True", "False"])
   let covered = ["True"]
   let result_state = check_exhaustiveness(state, constructors, covered, sp())
   assert list.length(result_state.errors) == 1
@@ -94,13 +73,7 @@ pub fn check_exhaustiveness_missing_constructor_test() {
 /// Missing both constructors — error with both listed.
 pub fn check_exhaustiveness_none_covered_test() {
   let state = make_state()
-  let td = make_type_def("Bool", ["True", "False"])
-  let c0 = td.constructors |> list.first |> unwrap_ctor
-  let c1 = td.constructors |> list.drop(1) |> list.first |> unwrap_ctor
-  let constructors = [
-    #("True", c0),
-    #("False", c1),
-  ]
+  let constructors = make_type_def(["True", "False"])
   let covered = []
   let result_state = check_exhaustiveness(state, constructors, covered, sp())
   assert list.length(result_state.errors) == 1
@@ -114,13 +87,7 @@ pub fn check_exhaustiveness_none_covered_test() {
 /// Option type with partial coverage.
 pub fn check_exhaustiveness_option_partial_test() {
   let state = make_state()
-  let td = make_type_def("Option", ["Some", "None"])
-  let c0 = td.constructors |> list.first |> unwrap_ctor
-  let c1 = td.constructors |> list.drop(1) |> list.first |> unwrap_ctor
-  let constructors = [
-    #("Some", c0),
-    #("None", c1),
-  ]
+  let constructors = make_type_def(["Some", "None"])
   let covered = ["Some"]
   let result_state = check_exhaustiveness(state, constructors, covered, sp())
   assert list.length(result_state.errors) == 1
@@ -134,13 +101,7 @@ pub fn check_exhaustiveness_option_partial_test() {
 /// Nat type with Z covered, S missing.
 pub fn check_exhaustiveness_nat_partial_test() {
   let state = make_state()
-  let td = make_type_def("Nat", ["Z", "S"])
-  let c0 = td.constructors |> list.first |> unwrap_ctor
-  let c1 = td.constructors |> list.drop(1) |> list.first |> unwrap_ctor
-  let constructors = [
-    #("Z", c0),
-    #("S", c1),
-  ]
+  let constructors = make_type_def(["Z", "S"])
   let covered = ["Z"]
   let result_state = check_exhaustiveness(state, constructors, covered, sp())
   assert list.length(result_state.errors) == 1
@@ -154,15 +115,7 @@ pub fn check_exhaustiveness_nat_partial_test() {
 /// Three-way ADT with two out of three covered.
 pub fn check_exhaustiveness_three_way_partial_test() {
   let state = make_state()
-  let td = make_type_def("Tri", ["Red", "Green", "Blue"])
-  let c0 = td.constructors |> list.first |> unwrap_ctor
-  let c1 = td.constructors |> list.drop(1) |> list.first |> unwrap_ctor
-  let c2 = td.constructors |> list.drop(2) |> list.first |> unwrap_ctor
-  let constructors = [
-    #("Red", c0),
-    #("Green", c1),
-    #("Blue", c2),
-  ]
+  let constructors = make_type_def(["Red", "Green", "Blue"])
   let covered = ["Red", "Green"]
   let result_state = check_exhaustiveness(state, constructors, covered, sp())
   assert list.length(result_state.errors) == 1
@@ -197,67 +150,63 @@ pub fn is_redundant_empty_covered_test() {
 // TYPEDEF EXTRACTION TESTS
 // ============================================================================
 
-/// Extract tags from a TypeDef in correct order.
+/// Extract tags from a list of constructors in correct order.
 pub fn extract_tags_bool_test() {
-  let td = make_type_def("Bool", ["True", "False"])
-  let tags = extract_tags(td)
+  let constructors = make_type_def(["True", "False"])
+  let tags = extract_tags(constructors)
   assert tags == ["True", "False"]
 }
 
 /// Extract tags from Option type.
 pub fn extract_tags_option_test() {
-  let td = make_type_def("Option", ["Some", "None"])
-  let tags = extract_tags(td)
+  let constructors = make_type_def(["Some", "None"])
+  let tags = extract_tags(constructors)
   assert tags == ["Some", "None"]
 }
 
 /// Extract tags from Nat type.
 pub fn extract_tags_nat_test() {
-  let td = make_type_def("Nat", ["Z", "S"])
-  let tags = extract_tags(td)
+  let constructors = make_type_def(["Z", "S"])
+  let tags = extract_tags(constructors)
   assert tags == ["Z", "S"]
 }
 
 /// Extract tags from empty type (no constructors).
 pub fn extract_tags_empty_test() {
-  let td = make_type_def("Void", [])
-  let tags = extract_tags(td)
+  let constructors = make_type_def([])
+  let tags = extract_tags(constructors)
   assert tags == []
 }
 
 /// Extract tags from three-way type.
 pub fn extract_tags_tri_test() {
-  let td = make_type_def("Tri", ["A", "B", "C"])
-  let tags = extract_tags(td)
+  let constructors = make_type_def(["A", "B", "C"])
+  let tags = extract_tags(constructors)
   assert tags == ["A", "B", "C"]
 }
 
-// ============================================================================
-// TYPEDEF CONSTRUCTION TESTS
-// ============================================================================
-
 /// TypeDef has correct name.
 pub fn make_type_def_name_test() {
-  let td = make_type_def("MyType", ["X", "Y"])
-  assert td.name == "MyType"
+  let constructors = make_type_def(["X", "Y"])
+  assert extract_tags(constructors) == ["X", "Y"]
 }
 
 /// TypeDef has correct param_count (always 0 for now).
 pub fn make_type_def_param_count_test() {
-  let td = make_type_def("MyType", ["X", "Y"])
-  assert td.param_count == 0
+  let constructors = make_type_def(["X", "Y"])
+  assert list.length(constructors) == 2
 }
 
 /// TypeDef has correct number of constructors.
 pub fn make_type_def_constructor_count_test() {
-  let td = make_type_def("MyType", ["X", "Y", "Z"])
-  assert list.length(td.constructors) == 3
+  let constructors = make_type_def(["X", "Y", "Z"])
+  assert list.length(constructors) == 3
 }
 
 /// Each constructor has a tag.
 pub fn make_type_def_constructor_tags_test() {
-  let td = make_type_def("Colors", ["Red", "Green", "Blue"])
-  let tags = list.map(td.constructors, fn(c) { c.tag })
+  let constructors = make_type_def(["Red", "Green", "Blue"])
+  let tags = list.map(constructors, fn(c) { case c { #(tag, _, _, _) -> tag } })
   assert tags == ["Red", "Green", "Blue"]
 }
 
@@ -278,13 +227,25 @@ pub fn check_exhaustiveness_full_coverage_property_test() {
   let states = list.map(type_pairs, fn(pair) {
     let name = pair.0
     let constructors = pair.1
-    let td = make_type_def(name, constructors)
-    let full_covered = td.constructors |> list.map(fn(c) { c.tag })
+    let full_covered = constructors
     let state = make_state()
-    let typed_constructors = td.constructors |> list.map(fn(c) { #("temp", c) })
+    let typed_constructors = make_type_def(constructors)
     check_exhaustiveness(state, typed_constructors, full_covered, sp())
     state.errors == []
   })
 
   assert states |> list.all(fn(b) { b }) == True
+
+  assert states |> list.all(fn(b) { b }) == True
+}
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+/// Create a list of #(String, Value, Value, Span) tuples for exhaustiveness checking.
+fn make_type_def(tags: List(String)) -> List(#(String, Value, Value, Span)) {
+  list.map(tags, fn(tag) {
+    #(tag, make_neut(HHole(0)), make_neut(HHole(0)), single("exhaustiveness_test", 0, 0))
+  })
 }

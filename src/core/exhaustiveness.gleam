@@ -9,19 +9,10 @@
 /// - Missing patterns are reported with their tags
 /// - Redundant patterns are detected
 
-import core/ast.{
-  TypeDef,
-  ConstructorDef,
-  type TypeDef,
-  type Value,
-  type ConstructorDef,
-  type Head,
-  HHole,
-  make_neut,
-}
+import core/ast.{type Value, type Head, HHole, make_neut, find_constructor}
 import core/state.{type State, MatchMissing}
 import gleam/list
-import syntax/span.{type Span}
+import syntax/span.{single, type Span}
 
 // ============================================================================
 // PUBLIC API
@@ -30,16 +21,23 @@ import syntax/span.{type Span}
 /// Check if match cases are exhaustive for a given list of constructors.
 ///
 /// Returns the updated state with any errors accumulated.
+///
+/// `constructors` is a list of #(tag, ConstructorDef) tuples representing
+/// the constructor definitions to check against.
 pub fn check_exhaustiveness(
   state: State,
-  constructors: List(#(String, ConstructorDef)),
+  constructors: List(#(String, Value, Value, Span)),
   covered: List(String),
   span: Span,
 ) -> State {
-  let all_tags = list.map(constructors, fn(c) { c.1.tag })
+  let all_tags = list.map(constructors, fn(c) {
+    case c {
+      #(tag, _, _, _) -> tag
+    }
+  })
   let missing =
     list.fold(all_tags, [], fn(acc, tag) {
-      case covered |> list.contains(tag) {
+      case list.contains(covered, tag) {
         False -> [tag, ..acc]
         True -> acc
       }
@@ -66,11 +64,13 @@ pub fn is_redundant(
 // TYPEDEF HELPERS
 // ============================================================================
 
-/// Extract constructor tags from a TypeDef.
+/// Extract constructor tags from a list of #(String, Value, Value, Span) tuples.
 ///
 /// Used by the TypeDef-aware exhaustiveness checker.
-pub fn extract_tags(td: TypeDef) -> List(String) {
-  td.constructors |> list.map(fn(c) { c.tag })
+pub fn extract_tags(
+  constructors: List(#(String, Value, Value, Span)),
+) -> List(String) {
+  list.map(constructors, fn(c) { c.0 })
 }
 
 /// Create a TypeDef for testing exhaustiveness.
@@ -79,15 +79,8 @@ pub fn extract_tags(td: TypeDef) -> List(String) {
 pub fn make_type_def(
   name: String,
   constructor_tags: List(String),
-) -> TypeDef {
-  TypeDef(
-    name: name,
-    param_count: 0,
-    constructors: list.map(constructor_tags, fn(tag) {
-      ConstructorDef(
-        tag: tag,
-        result_template: make_neut(HHole(0)),
-      )
-    }),
-  )
+) -> List(#(String, Value, Value, Span)) {
+  list.map(constructor_tags, fn(tag) {
+    #(tag, make_neut(HHole(0)), make_neut(HHole(0)), single("", 0, 0))
+  })
 }

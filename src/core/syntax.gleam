@@ -18,7 +18,7 @@
 ///   - Errors: %err("message")
 ///   - Records: {x: 1, y: 2}
 import core/ast.{
-  type Case, type Pattern, type Term, Ann, App, Call, Case as CoreCase, Ctr, Err,
+  type Case, type Pattern, type Term, Ann, App, Call, Case as CoreCase, Ctr, Err, TypeDef,
   Float as LitFloat, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr, PLit,
   PUnit, PVar, Pi, Rcd, Typ, Var, let_var,
 }
@@ -104,6 +104,7 @@ fn term_span(term: Term) -> Span {
     Call(_, _, _, _, span) -> span
     Rcd(_, span) -> span
     Typ(_, span) -> span
+    TypeDef(_, _, _, span) -> span
     Err(_, span) -> span
   }
 }
@@ -687,6 +688,7 @@ fn term_to_string(term: Term) -> String {
     Call(_, _, _, _, _) -> "call"
     Rcd(_, _) -> "rcd"
     Typ(_, _) -> "type"
+    TypeDef(_, _, _, _) -> "type def"
     Err(msg, _) -> msg
   }
 }
