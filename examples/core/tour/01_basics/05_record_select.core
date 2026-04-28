@@ -1,0 +1,2 @@
+// You can select from records and record types with `.`
+{x: 10, y: 20}.x  // evaluates to 10
