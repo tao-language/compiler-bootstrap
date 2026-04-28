@@ -1,0 +1,17 @@
+// Tuples are ordered collections of items.
+// They can have zero or more items.
+> () ~> ()
+
+// A one-item tuple requires a trailing comma.
+> (10,) ~> (10,)
+
+> (10, 20, 30) ~> (10, 20, 30)
+
+// Access an item with the dot operator (.)
+// Items are "named" by position, starting at 1.
+let point = (10, 20)
+> point.1 ~> 10
+> point.2 ~> 20
+
+// Use the spread operator (..) to "flatten" tuples.
+> (0, ..point, 30) ~> (0, 10, 20, 30)
