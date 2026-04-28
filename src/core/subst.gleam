@@ -378,7 +378,7 @@ fn value_string(value: Value) -> String {
         [] -> ""
         _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
       }
-      "%fn(" <> implicit_str <> param.0 <> ") => " <> term_string(body)
+      "$fn(" <> implicit_str <> param.0 <> ") => " <> term_string(body)
     }
     VPi(_, implicits, domain, codomain) -> {
       let implicit_str = case implicits {
@@ -386,7 +386,7 @@ fn value_string(value: Value) -> String {
         _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
       }
       // domain is #(String, Value), codomain is Value
-      "%fn(" <> implicit_str <> " _ : " <> value_string(domain.1) <> ") -> " <> value_string(codomain)
+      "$fn(" <> implicit_str <> " _ : " <> value_string(domain.1) <> ") -> " <> value_string(codomain)
     }
     VLit(lit) -> literal_string(lit)
     VCtr(tag, arg) -> "#" <> tag <> "(" <> value_string(arg) <> ")"
@@ -438,7 +438,7 @@ fn term_string(term: Term) -> String {
         [] -> ""
         _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 <> ": " <> term_string(i.1) }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
       }
-      "%fn(" <> implicit_str <> name <> ": " <> term_string(param) <> ") => " <> term_string(body)
+      "$fn(" <> implicit_str <> name <> ": " <> term_string(param) <> ") => " <> term_string(body)
     }
     App(fun, arg, _) ->
       "fun(" <> term_string(fun) <> ": " <> term_string(arg) <> ")"
@@ -447,7 +447,7 @@ fn term_string(term: Term) -> String {
         [] -> ""
         _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 <> ": " <> term_string(i.1) }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
       }
-      "%fn(" <> implicit_str <> name <> ": " <> term_string(domain) <> ") -> " <> term_string(codomain)
+      "$fn(" <> implicit_str <> name <> ": " <> term_string(domain) <> ") -> " <> term_string(codomain)
     }
     Lit(lit, _) -> literal_string(lit)
     Ctr(tag, arg, _) ->
@@ -456,7 +456,7 @@ fn term_string(term: Term) -> String {
         _ -> "#" <> tag
       }
     Match(arg, cases, _) ->
-      "%match "
+      "$match "
       <> term_string(arg)
       <> " {"
       <> list.fold(cases, "", fn(acc, c) {

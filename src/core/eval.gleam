@@ -346,7 +346,7 @@ pub fn value_to_string(value: Value) -> String {
         }
       }
     }
-    VLam(_env, _implicits, #(name, _param), body) -> "%fn(" <> name <> ") => " <> term_to_string(body)
+    VLam(_env, _implicits, #(name, _param), body) -> "$fn(" <> name <> ") => " <> term_to_string(body)
     VPi(_env, _implicits, domain, codomain) ->
       "<>"
       <> "#(_) : "

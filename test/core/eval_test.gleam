@@ -697,7 +697,7 @@ pub fn value_to_string_vevr_test() {
 pub fn value_to_string_vlam_test() {
   let body = Var(0, single("", 1, 1))
   let s = value_to_string(VLam([], [], #("x", VRcd([])), body))
-  assert s == "%fn(x) => #0"
+  assert s == "$fn(x) => #0"
 }
 
 pub fn value_to_string_vpi_test() {

@@ -363,7 +363,7 @@ pub fn term_to_string(term: Term) -> String {
         [] -> ""
         _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 <> ": " <> term_to_string(i.1) }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
       }
-      "%fn("
+      "$fn("
       <> implicit_str
       <> name
       <> ": "
@@ -378,7 +378,7 @@ pub fn term_to_string(term: Term) -> String {
         [] -> ""
         _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 <> ": " <> term_to_string(i.1) }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
       }
-      "%fn("
+      "$fn("
       <> implicit_str
       <> name
       <> ": "
@@ -402,7 +402,7 @@ pub fn term_to_string(term: Term) -> String {
         _ -> "#" <> tag
       }
     Match(arg, cases, _) ->
-      "%match "
+      "$match "
       <> term_to_string(arg)
       <> " {"
       <> list.fold(cases, "", fn(acc, c) {
@@ -490,14 +490,14 @@ pub fn value_to_string(value: Value) -> String {
         [] -> ""
         _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
       }
-      "%fn(" <> implicit_str <> name <> ") => " <> term_to_string(body)
+      "$fn(" <> implicit_str <> name <> ") => " <> term_to_string(body)
     }
     VPi(_, implicits, #(name, domain), codomain) -> {
       let implicit_str = case implicits {
         [] -> ""
         _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
       }
-      "%fn(" <> implicit_str <> name <> ": "
+      "$fn(" <> implicit_str <> name <> ": "
       <> value_to_string(domain)
       <> ") -> "
       <> value_to_string(codomain)

@@ -146,8 +146,8 @@ pub fn parse_true_maps_to_unit_test() {
 // ============================================================================
 
 pub fn parse_lambda_simple_test() {
-  // %fn(x: ()) => body captures name "x", param_type, and body uses Var(0)
-  let #(term, errors) = parse("%fn(x: ()) => x")
+  // $fn(x: ()) => body captures name "x", param_type, and body uses Var(0)
+  let #(term, errors) = parse("$fn(x: ()) => x")
   // Debug: check term type and errors separately
   let term_ok = case term {
     Lam([], #("x", Rcd([], _)), Var(0, _), _) -> True
@@ -165,7 +165,7 @@ pub fn parse_lambda_simple_test() {
 }
 
 pub fn parse_lambda_with_literal_body_test() {
-  let #(term, errors) = parse("%fn(x: ()) => 42")
+  let #(term, errors) = parse("$fn(x: ()) => 42")
   let term_ok = case term {
     Lam([], #("x", Rcd([], _)), Lit(LitInt(42), _), _) -> True
     _ -> False
@@ -181,8 +181,8 @@ pub fn parse_lambda_with_literal_body_test() {
 }
 
 pub fn parse_nested_lambda_binding_works_test() {
-  // %fn(x: ()) => %fn(y: ()) => x references outer x (Var(1))
-  let #(term, errors) = parse("%fn(x: ()) => %fn(y: ()) => x")
+  // $fn(x: ()) => $fn(y: ()) => x references outer x (Var(1))
+  let #(term, errors) = parse("$fn(x: ()) => $fn(y: ()) => x")
   let term_ok = case term {
     Lam([], #("x", Rcd([], _)), body, _) ->
       case body {
@@ -202,8 +202,8 @@ pub fn parse_nested_lambda_binding_works_test() {
 }
 
 pub fn parse_inner_variable_shadows_outer_test() {
-  // %fn(x: ()) => %fn(x: ()) => x (inner x shadows outer x)
-  let #(term, errors) = parse("%fn(x: ()) => %fn(x: ()) => x")
+  // $fn(x: ()) => $fn(x: ()) => x (inner x shadows outer x)
+  let #(term, errors) = parse("$fn(x: ()) => $fn(x: ()) => x")
   let term_ok = case term {
     Lam([], #("x", Rcd([], _)), body, _) ->
       case body {
@@ -263,7 +263,7 @@ pub fn parse_fun_type_two_params_test() {
 // ============================================================================
 
 pub fn parse_let_simple_binding_test() {
-  let #(term, errors) = parse("%let x = 42; x")
+  let #(term, errors) = parse("$let x = 42; x")
   let term_ok = case term {
     App(Lam([], #("x", Rcd(_, _)), Var(0, _), _), Lit(LitInt(42), _), _) -> True
     _ -> False
@@ -279,7 +279,7 @@ pub fn parse_let_simple_binding_test() {
 }
 
 pub fn parse_let_with_lambda_test() {
-  let #(term, errors) = parse("%let f = %fn(x: ()) => x; f")
+  let #(term, errors) = parse("$let f = $fn(x: ()) => x; f")
   let term_ok = case term {
     App(Lam([], #("f", Rcd(_, _)), _, _), Lam([], #("x", Rcd([], _)), Var(0, _), _), _) ->
       True
@@ -300,7 +300,7 @@ pub fn parse_let_with_lambda_test() {
 // ============================================================================
 
 pub fn parse_empty_match_error_test() {
-  let #(term, errors) = parse("%match x { }")
+  let #(term, errors) = parse("$match x { }")
   let term_ok = case term {
     Match(arg, [], _) ->
       case arg {
@@ -320,7 +320,7 @@ pub fn parse_empty_match_error_test() {
 }
 
 pub fn parse_match_with_cases_test() {
-  let #(term, errors) = parse("%match x { | _ => y; | _ => y }")
+  let #(term, errors) = parse("$match x { | _ => y; | _ => y }")
   let term_ok = case term {
     Match(_, cases, _) -> list.length(cases) == 2
     _ -> False
@@ -336,7 +336,7 @@ pub fn parse_match_with_cases_test() {
 }
 
 pub fn parse_match_with_unit_pattern_test() {
-  let #(term, errors) = parse("%match x { | () => x }")
+  let #(term, errors) = parse("$match x { | () => x }")
   let term_ok = case term {
     Match(_, [CoreCase(PUnit(_), _, _, _)], _) -> True
     _ -> False
@@ -352,7 +352,7 @@ pub fn parse_match_with_unit_pattern_test() {
 }
 
 pub fn parse_match_with_literal_pattern_test() {
-  let #(term, errors) = parse("%match x { | 42 => x }")
+  let #(term, errors) = parse("$match x { | 42 => x }")
   let term_ok = case term {
     Match(_, [CoreCase(PLit(LitInt(42), _), _, _, _)], _) -> True
     _ -> False
@@ -368,7 +368,7 @@ pub fn parse_match_with_literal_pattern_test() {
 }
 
 pub fn parse_nested_match_structure_test() {
-  let #(term, errors) = parse("%match x { | match y { | _ => y } => y }")
+  let #(term, errors) = parse("$match x { | match y { | _ => y } => y }")
   let term_ok = case term {
     Match(_, [CoreCase(PAny(_), _, _, _)], _) -> True
     _ -> False
@@ -388,7 +388,7 @@ pub fn parse_nested_match_structure_test() {
 // ============================================================================
 
 pub fn parse_simple_fix_test() {
-  let #(term, errors) = parse("%fix x = x")
+  let #(term, errors) = parse("$fix x = x")
   let term_ok = case term {
     App(Lam([], #("x", Rcd(_, _)), _, _), _, _) -> True
     _ -> False

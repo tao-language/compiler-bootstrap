@@ -539,7 +539,7 @@ pub fn force_to_string_vlam_test() {
   let body = Var(0, single("", 0, 0))
   let value = VLam([], [], #("x", param_type), body)
   let result = force_to_string(value)
-  assert result == "%fn(x) => #0"
+  assert result == "$fn(x) => #0"
 }
 
 pub fn levels_to_indices_to_string_var_test() {

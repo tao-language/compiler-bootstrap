@@ -5,18 +5,26 @@
 /// Syntax:
 ///   - Variables: x, y, z
 ///   - Holes: ? or ?0, ?1
-///   - Lambda: %fn(name: Type) => body
+///   - Lambda: $fn(name: Type) => body
+///   - Lambda (untyped): $fn(name) => body
+///   - Lambda (implicit): $fn<a: Type>(x: Type) => body
 ///   - Application: fun(fun_arg: arg)
-///   - Pi type: %fn(name: Domain) -> Codomain
+///   - Pi type: $pi(name: Domain) -> Codomain
+///   - Pi type (implicit): $pi<a: Type>(a) -> a
+///   - Pi type (untyped): $pi(name) -> type
 ///   - Literals: 42, 3.14
 ///   - Constructors: #Tag, #Tag(arg)
-///   - Match: %match arg { | pattern ? guard => body }
-///   - Let: %let name = value; body
+///   - Match: $match arg { | pattern => body }
+///   - Match (guard): $match arg { | pattern ? guard ~ pass => body }
+///   - Let: $let name = value; body
+///   - Let (untyped): $let name = value; body
 ///   - Annotation: (term : Type)
-///   - Unit: ()
-///   - Type: %Type, %Type(1)
-///   - Errors: %err("message")
+///   - Unit: () or {}
+///   - Type: $Type, $Type(1), $Type<x>
+///   - Errors: $error "message"
 ///   - Records: {x: 1, y: 2}
+///   - FFI calls: $fn(arg: Type, arg: Type) -> ReturnType
+///   - Type definitions: $type { | #C(arg) -> ResultType }
 import core/ast.{
   type Case, type Pattern, type Term, Ann, App, Call, Case as CoreCase, Ctr, Err, TypeDef,
   Float as LitFloat, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr, PLit,
@@ -230,19 +238,21 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       #(Hole(parsed_id, new_span), #(tokens, new_pos, env, fn_, errors))
     }
 
-    // Prefixed tokens: % followed by keyword (lexer produces separate tokens)
-    [Token("Op", "%", _), Token("Name", "fn", _), ..rest] ->
+    // Prefixed tokens: $ followed by keyword
+    [Token("Op", "$", _), Token("Name", "fn", _), ..rest] ->
       parse_lambda(#(rest, 0, env, fn_, errors), span)
-    [Token("Op", "%", _), Token("Name", "let", _), ..rest] ->
+    [Token("Op", "$", _), Token("Name", "let", _), ..rest] ->
       parse_let(#(rest, 0, env, fn_, errors), span)
-    [Token("Op", "%", _), Token("Name", "match", _), ..rest] ->
+    [Token("Op", "$", _), Token("Name", "match", _), ..rest] ->
       parse_match(#(rest, 0, env, fn_, errors), span)
-    [Token("Op", "%", _), Token("Name", "fix", _), ..rest] ->
+    [Token("Op", "$", _), Token("Name", "fix", _), ..rest] ->
       parse_fix(#(rest, 0, env, fn_, errors), span)
+    // FFI builtin calls: % followed by function name
+    [Token("Op", "%", _), Token("Name", v, _), ..rest] ->
+      parse_ffi_call(#(rest, 0, env, fn_, errors), v, span)
     // Keywords and prefixed tokens
     [Token("Name", v, _), ..] -> {
       case v {
-        "%" -> parse_hole(#(tokens, pos + 1, env, fn_, errors), span)
         "hole" -> #(Hole(0, span), #(tokens, pos + 1, env, fn_, errors))
         "unit" -> #(Rcd([], span), #(tokens, pos + 1, env, fn_, errors))
         "type" -> #(Typ(0, span), #(tokens, pos + 1, env, fn_, errors))
@@ -308,25 +318,35 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
   }
 }
 
-// Hole: %name
-fn parse_hole(p: Parser, span: Span) -> #(Term, Parser) {
-  let #(tokens, pos, env, fn_, errors) = p
+// FFI call: %name(args...) or %name(arg: Type, arg: Type) -> ReturnType
+// Placeholder - full implementation in Phase 2b.5
+fn parse_ffi_call(p: Parser, name: String, _span: Span) -> #(Term, Parser) {
+  let p1 = skip("(", p)
+  let #(args, p2) = parse_term_list(p1)
+  let p3 = skip(")", p2)
+  // For now, just return args without typed_args or return_type
+  let final_span = current_span(p3)
+  #(Call(name, args, [], None, final_span), p3)
+}
+
+// Parse a comma-separated list of terms (for FFI call args)
+fn parse_term_list(p: Parser) -> #(List(Term), Parser) {
+  parse_term_list_acc(p, [])
+}
+
+fn parse_term_list_acc(p: Parser, acc: List(Term)) -> #(List(Term), Parser) {
+  let p1 = skip(",", p)
+  let #(tokens, pos, _, _, _) = p1
   case list.drop(tokens, pos) {
-    [Token("Name", name, _), ..] -> {
-      let parsed = case int.parse(name) {
-        Ok(n) -> n
-        Error(_) -> 0
-      }
-      #(Hole(parsed, span), #(tokens, pos + 1, env, fn_, errors))
-    }
+    [Token("Punct", ")", _), ..] -> #(list.reverse(acc), p1)
     _ -> {
-      let e = Err("expected hole name after %", span)
-      #(e, p)
+      let #(arg, p2) = parse_term(p1)
+      parse_term_list_acc(p2, [arg, ..acc])
     }
   }
 }
 
-// Type: %Type or %Type(n)
+// Type: $Type or $Type(n)
 // Constructor: #Tag or #Tag(arg)
 fn parse_ctr(p: Parser, span: Span) -> #(Term, Parser) {
   let p1 = skip("#", p)
@@ -450,7 +470,7 @@ fn lookup_loop(
   }
 }
 
-// Lambda: %fn(name: Type) => body
+// Lambda: $fn(name: Type) => body
 fn parse_lambda(p: Parser, span: Span) -> #(Term, Parser) {
   let p1 = skip("(", p)
   let #(name, p2) = expect_name_opt(p1)
@@ -476,7 +496,7 @@ fn parse_app(p: Parser, span: Span) -> #(Term, Parser) {
   #(App(fun_arg, arg, final_span), rest_errors)
 }
 
-// Match: %match arg { | pattern ? guard => body }
+// Match: $match arg { | pattern ? guard => body }
 fn parse_match(p: Parser, span: Span) -> #(Term, Parser) {
   let p1 = skip("%", p)
   let p2 = skip("match", p1)
@@ -533,7 +553,7 @@ fn parse_cases_acc(p: Parser, acc: List(Case)) -> #(List(Case), Parser) {
   }
 }
 
-// Let: %let name = value; body — desugars to App(Lam(name, _, body), value)
+// Let: $let name = value; body — desugars to App(Lam(name, _, body), value)
 fn parse_let(p: Parser, span: Span) -> #(Term, Parser) {
   let p1 = skip("let", p)
   let #(name, p2) = expect_name_opt(p1)
@@ -547,7 +567,7 @@ fn parse_let(p: Parser, span: Span) -> #(Term, Parser) {
   #(let_var(name, param_type, value, body, body_span), rest_final)
 }
 
-// Fix: %fix name = body — desugars to App(Lam(name, _, body), value)
+// Fix: $fix name = body — desugars to App(Lam(name, _, body), value)
 fn parse_fix(p: Parser, span: Span) -> #(Term, Parser) {
   let p1 = skip("fix", p)
   let #(name, p2) = expect_name_opt(p1)
