@@ -1,107 +1,24 @@
-// Type definitions in Core: explicit construction of TypeDef values.
-//
-// The Term AST represents type definitions as:
-//   TypeDef(name: String, params: List(#(String, Term)), constructors: List(#(String, Term, Term, Span)))
-//
-// Each constructor is a tuple: #(tag, self_type, result_type)
-// - tag: The constructor name (e.g., "True", "Some")
-// - self_type: The recursive type reference (e.g., Option(a), Vec(n, a))
-// - result_type: The full result type produced by this constructor
-//
-// All type definitions use explicit `$type` syntax.
+// Types are defined as Generalized Algebraic Data Types (GADT).
+// See 04_type_definitions/ for more in-depth information.
 
-// ============================================================================
-// MONOMORPHIC TYPE: Bool
-// ============================================================================
-// Bool has no type parameters. Each constructor has:
-//   - self_type: Bool (recursive reference)
-//   - result_type: Bool (same as self_type for simple constructors)
+// Type definitions have the following syntax:
+// $type<param1: Type1, param2: Type2, ..., paramN: TypeN> {
+// | #Constructor1(argument) -> ReturnType
+// | #Constructor2(argument) -> ReturnType
+// ...
+// | #ConstructorN(argument) -> ReturnType
+// }
 
-$let Bool = $type {
-  #True(Bool, Bool)
-  #False(Bool, Bool)
+// The type parameters are optional.
+// If it doesn't have parameters, it's a monomorphic (concrete) type.
+// If it has parameters, it's a polymorphic (generic) type.
+
+// Constructors consist of a tag starting with #.
+// They always take exactly one argument.
+// You can use records to pass zero or multiple arguments.
+
+// Here's how a Bool type could be defined (monomorphic).
+$type {
+| #True({}) -> #Bool({})
+| #False({}) -> #Bool({})
 }
-
-// Using Bool constructors
-$let b1 = #True
-$let b2 = #False
-
-// ============================================================================
-// POLYMORPHIC TYPE: Option
-// ============================================================================
-// Option has one type parameter `a`. The params field is `[#("a", a)]`.
-// Each constructor references Option(a) as both self_type and result_type.
-
-$let Option = $type $fn(a) {
-  #None(Option(a), Option(a))
-  #Some(Option(a), Option(a))
-}
-
-// Using Option constructor
-$let opt = #Some(42)
-
-// ============================================================================
-// THREE-VARIANT TYPE: Tri
-// ============================================================================
-// Another monomorphic type with three constructors.
-
-$let Tri = $type {
-  #Red(Tri, Tri)
-  #Green(Tri, Tri)
-  #Blue(Tri, Tri)
-}
-
-// Using Tri constructors
-$let t1 = #Red
-$let t2 = #Green
-$let t3 = #Blue
-
-// ============================================================================
-// POLYMORPHIC TYPE: Pair
-// ============================================================================
-// Pair has two type parameters `a` and `b`.
-// The params field is `[#("a", a), #("b", b)]`.
-
-$let Pair = $type $fn(a, b) {
-  #MakePair(Pair(a, b), Pair(a, b))
-}
-
-// Using Pair constructor
-$let p = #MakePair(x: 1, y: "hello")
-
-// ============================================================================
-// GADT-STYLE TYPE: Vec
-// ============================================================================
-// Vec has two parameters: `n` (natural number index) and `a` (element type).
-// The index `n` in the result type is computed at runtime by inspecting
-// the type of the `xs` argument (looked up in the environment).
-//
-// Constructors:
-//   #Nil: result type is Vec(0, a) — zero elements
-//   #Cons: result type is Vec(n+1, a) — one more element than the tail
-
-$let Vec = $type $fn(n, a) {
-  #Nil(Vec(0, a), Vec(0, a))
-  #Cons(Vec(n, a), Vec(n, a))
-}
-
-// Using Vec constructors
-// The index is inferred from the structure: #Cons with #Nil tail = Vec(1, a)
-$let v = #Cons(x: 1, xs: #Cons(x: 2, xs: #Nil()))
-
-// ============================================================================
-// KEY POINTS
-// ============================================================================
-//
-// 1. All type definitions are constructed via `$type` keyword.
-// 2. Each constructor is explicit: #(tag, self_type, result_type).
-// 3. For monomorphic types (Bool, Tri), self_type and result_type are identical.
-// 4. For polymorphic types (Option, Pair, Vec), type parameters are bound
-//    by $fn and referenced in self_type/result_type.
-// 5. For GADTs (Vec), the index is computed at runtime by inspecting
-//    constructor argument types.
-// 6. The params field of TypeDef is List(#(String, Term)):
-//    - Bool: []
-//    - Option: [#("a", a)]
-//    - Pair: [#("a", a), #("b", b)]
-//    - Vec: [#("n", n), #("a", a)]

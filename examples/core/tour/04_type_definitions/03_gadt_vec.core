@@ -1,0 +1,8 @@
+// In Generalized Algebraic Data Types (GADT) each constructor can have
+// a different return type.
+
+$let Vec = $fn(args) => $match args {
+| {n, a} =>
+}
+
+#Cons({x: 42, xs: #Nil({})}) : #Vec({n: 1, a: $Int})

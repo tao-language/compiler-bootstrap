@@ -5,7 +5,7 @@
 // This is semantically equivalent to `$pi(a: $Type) -> $pi(_: a) -> a`
 $let identity: $pi<a: $Type>(a) -> a =
   // This is semantically equivalent to `$fn(a: $Type) => $fn(x: a) => x`
-  $fn<a: $Type>(x: a) => x;
+  $fn<a: $Type>(x: a) => x
 
 // This is equivalent to identity(?, 42) due to the implicit parameter.
 // Then type inference fills it to identity($Int, 42).
