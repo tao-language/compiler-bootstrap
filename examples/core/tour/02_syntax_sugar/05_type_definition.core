@@ -1,33 +1,44 @@
+// IMPORTANT: This example is under planning, it does not work yet!
+
+// Tao
 type Bool {
 | True
 | False
 }
 
+// Core
 $let Bool = $fn(ctr) => $match ctr {
 | #True(_) => #Bool({})
 | #False(_) => #Bool({})
 }
 
+// Tao
 type Option(a) {
-| Some(x: a)
 | None
+| Some(a)
 }
 
-// typeof(Some(42)) ~> Some(Int)
-// typeof(None)     ~> None
+// Core
+$let Option = $fn(a) => $fn(ctr) => $match ctr {
+| #None(_) => #Option(a)
+// BUG: it doesn't work well here, `a` gets shadowed
+| #Some(a) => #Option(a)
+}
 
-let Option = fn(a) => fn(ctr: typeof(ctr)) =>
-
+// Tao
 type Vec(n, a) {
 | Nil : Vec(0, a)
 | Cons(x: a, xs: Vec(m, a)) : Vec(m + 1, a)
 }
 
-let Vec = fn(n, a) => fn(ctr: ) =>
-
+// Core
 $let Vec = $fn(args) => $match args {
 | {n, a} => $fn(ctr) => $match ctr {
   | #Nil(_) => #Vec(0, a)
-  | #Cons({x: a, xs: #Vec(m, a)})
+  // BUG: it doesn't work well here, `a` gets shadowed and is repeated.
+  // Looks like this should be unification rather than pattern matching.
+  // But there's no way to directly invoke unification.
+  // We can use `check` which does (infer + unify), `infer Ann` is how to call `check`.
+  | #Cons({x: a, xs: #Vec(m, a)}) => #Vec(m + 1, a)
   }
 }

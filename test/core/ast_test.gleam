@@ -635,7 +635,7 @@ pub fn value_to_string_pi_test() {
   let dom = VNeut(HHole(0), [])
   let codom = VNeut(HVar(0), [])
   let v = VPi([], [], #("pi_param", dom), codom)
-  assert value_to_string(v) == "%fn(_0: ?0) -> v0"
+  assert value_to_string(v) == "%fn(pi_param: ?0) -> v0"
 }
 
 // ============================================================================

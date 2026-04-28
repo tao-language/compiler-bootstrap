@@ -367,7 +367,7 @@ fn subst_holes(value: Value, subst: List(#(Int, Int))) -> Value {
     VLam(env, implicits, #(name, param_type), body) ->
       VLam(env, implicits, #(name, subst_holes(param_type, subst)), subst_holes_term(body, subst))
     VPi(env, implicits, domain, codomain) ->
-      VPi(env, implicits, domain, subst_holes(codomain, subst))
+      VPi(env, implicits, #(domain.0, subst_holes(domain.1, subst)), subst_holes(codomain, subst))
     VLit(lit) -> VLit(lit)
     VCtr(tag, arg) -> VCtr(tag, subst_holes(arg, subst))
     VRcd(fields) ->

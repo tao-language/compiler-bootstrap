@@ -702,7 +702,7 @@ pub fn value_to_string_vlam_test() {
 
 pub fn value_to_string_vpi_test() {
   let s = value_to_string(VPi([], [], #("pi_param", VLit(LitInt(0))), VNeut(HVar(0), [])))
-  assert s == "%fn(_) : 0 -> v0"
+  assert s == "<>#(_) : 0 -> v0"
 }
 
 // ============================================================================
