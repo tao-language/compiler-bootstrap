@@ -25,12 +25,20 @@ pub type Literal {
 }
 
 /// Literal type annotations for type checking.
-///
-/// Simplified: single I32T and FLitT. Extended in Phase 5 to support
-/// the full set of integer and float literal types.
 pub type LiteralType {
   IntT
   FloatT
+  I8T
+  I16T
+  I32T
+  I64T
+  U8T
+  U16T
+  U32T
+  U64T
+  F16T
+  F32T
+  F64T
 }
 
 // ============================================================================
