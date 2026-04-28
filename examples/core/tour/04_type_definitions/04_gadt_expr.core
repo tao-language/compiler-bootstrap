@@ -1,17 +1,17 @@
-// Type definitions are Generalized Algebraic Data Types (GADT)
-// This means a type consists of constructors, and each constructor can have
-// a different return type.
+// Here's an example of a type-safe expression using GADTs.
+$let Expr = $fn(a: $Type) => $type {
+| #LitInt($Int) -> #Expr($Int)
+| #LitBool(#Bool({})) -> #Expr(#Bool({}))
+| #Add({x: #Expr($Int), y: #Expr($Int)}) -> #Expr($Int)
+| #IsZero(#Expr($Int)) -> #Expr(#Bool({}))
+}
 
--- Expr 'a' is a GADT where 'a' is the result type
-data Expr a where
-    LitInt  :: Int -> Expr Int         -- Returns Expr Int
-    LitBool :: Bool -> Expr Bool       -- Returns Expr Bool
-    Add     :: Expr Int -> Expr Int -> Expr Int
-    IsZero  :: Expr Int -> Expr Bool
+// Type-safe evaluator
+$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr {
+| #LitInt(n) => n
+| #LitBool(b) => b
+| #Add({x, y}) => %int_add(eval(x), eval(y)) -> $Int
+| #IsZero(e) => %int_eq(eval(x), 0)
+}
 
--- Type-safe evaluator
-eval :: Expr a -> a
-eval (LitInt n)  = n
-eval (LitBool b) = b
-eval (Add e1 e2) = eval e1 + eval e2
-eval (IsZero e)  = eval e == 0
+eval(#Add({x: #LitInt(1), y: #LitInt(2)})) : #Expr($Int)

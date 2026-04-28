@@ -1,8 +1,10 @@
 // In Generalized Algebraic Data Types (GADT) each constructor can have
 // a different return type.
-
-$let Vec = $fn(args) => $match args {
-| {n, a} =>
+$let Vec = $fn(args: ${n: $U32, a: $Type}) => $match args {
+| {n, a} => $type {
+  | #Nil({}) -> #Vec({n: 0, a: a})
+  | #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %u32_add(m, 1) -> $U32, a: a})
+  }
 }
 
 #Cons({x: 42, xs: #Nil({})}) : #Vec({n: 1, a: $Int})
