@@ -248,6 +248,33 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       parse_match(#(rest, 0, env, fn_, errors), span)
     [Token("Op", "$", _), Token("Name", "fix", _), ..rest] ->
       parse_fix(#(rest, 0, env, fn_, errors), span)
+    // Numeric type keywords: $Int, $Float, $I8-$I64, $U8-$U64, $F16-$F64
+    [Token("Op", "$", _), Token("Name", "Int", _), ..rest] ->
+      #(TypRef("Int", span), #(rest, pos + 1, env, fn_, errors))
+    [Token("Op", "$", _), Token("Name", "Float", _), ..rest] ->
+      #(TypRef("Float", span), #(rest, pos + 1, env, fn_, errors))
+    [Token("Op", "$", _), Token("Name", "I8", _), ..rest] ->
+      #(TypRef("I8", span), #(rest, pos + 1, env, fn_, errors))
+    [Token("Op", "$", _), Token("Name", "I16", _), ..rest] ->
+      #(TypRef("I16", span), #(rest, pos + 1, env, fn_, errors))
+    [Token("Op", "$", _), Token("Name", "I32", _), ..rest] ->
+      #(TypRef("I32", span), #(rest, pos + 1, env, fn_, errors))
+    [Token("Op", "$", _), Token("Name", "I64", _), ..rest] ->
+      #(TypRef("I64", span), #(rest, pos + 1, env, fn_, errors))
+    [Token("Op", "$", _), Token("Name", "U8", _), ..rest] ->
+      #(TypRef("U8", span), #(rest, pos + 1, env, fn_, errors))
+    [Token("Op", "$", _), Token("Name", "U16", _), ..rest] ->
+      #(TypRef("U16", span), #(rest, pos + 1, env, fn_, errors))
+    [Token("Op", "$", _), Token("Name", "U32", _), ..rest] ->
+      #(TypRef("U32", span), #(rest, pos + 1, env, fn_, errors))
+    [Token("Op", "$", _), Token("Name", "U64", _), ..rest] ->
+      #(TypRef("U64", span), #(rest, pos + 1, env, fn_, errors))
+    [Token("Op", "$", _), Token("Name", "F16", _), ..rest] ->
+      #(TypRef("F16", span), #(rest, pos + 1, env, fn_, errors))
+    [Token("Op", "$", _), Token("Name", "F32", _), ..rest] ->
+      #(TypRef("F32", span), #(rest, pos + 1, env, fn_, errors))
+    [Token("Op", "$", _), Token("Name", "F64", _), ..rest] ->
+      #(TypRef("F64", span), #(rest, pos + 1, env, fn_, errors))
     // FFI builtin calls: % followed by function name
     [Token("Op", "%", _), Token("Name", v, _), ..rest] ->
       parse_ffi_call(#(rest, 0, env, fn_, errors), v, span)
