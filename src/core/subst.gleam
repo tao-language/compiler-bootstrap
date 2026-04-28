@@ -26,7 +26,7 @@ import core/ast.{
   type Case, type Elim, type Head, type Literal, type Pattern, type Term,
   type Value, Ann, App, Call, Case, Ctr, EApp, Err, Float as LitFloat, HHole,
   HVar, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit,
-  PVar, PAlias, PType, PRcd, PError, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VTypeDef, TypeDef, Var,
+  PVar, PAlias, PType, PRcd, PError, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VTypeDef, TypeDef, TypRef, Var,
   make_neut, shift_opt, shift_term,
 }
 import core/state.{type State, lookup_var}
@@ -223,6 +223,7 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
         span: span,
       )
     }
+    TypRef(name, span) -> TypRef(name, span)
     Err(msg, span) -> Err(msg, span)
   }
 }
@@ -510,6 +511,7 @@ fn term_string(term: Term) -> String {
         }
       }) <> " }"
     }
+    TypRef(name, _) -> "$" <> name
     Err(msg, _) -> "\"" <> msg <> "\""
   }
 }

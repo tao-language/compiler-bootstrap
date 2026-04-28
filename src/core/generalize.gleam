@@ -26,7 +26,7 @@
 import core/ast.{
   type Head, type Term, type Value, Ann, App, Call, Case, Ctr, EApp, Err, HHole,
   HVar, Hole, Lam, Lit, Match, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi,
-  VRcd, VTypeDef, TypeDef, Var,
+  VRcd, VTypeDef, TypeDef, TypRef, Var,
 }
 import gleam/option.{None, Some}
 import gleam/int
@@ -173,6 +173,7 @@ fn free_holes_term(term: Term, binding: Int) -> List(Int) {
       })
     }
     Err(_, _) -> []
+    TypRef(_, _) -> []
   }
 }
 
@@ -314,6 +315,7 @@ fn free_levels_term(term: Term, binding: Int) -> List(Int) {
       })
     }
     Err(_, _) -> []
+    TypRef(_, _) -> []
   }
 }
 
@@ -464,6 +466,7 @@ fn subst_holes_term(term: Term, subst: List(#(Int, Int))) -> Term {
         span: span,
       )
     }
+    TypRef(name, span) -> TypRef(name, span)
     Err(msg, span) -> Err(msg, span)
   }
 }

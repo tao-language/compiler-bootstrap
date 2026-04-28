@@ -28,7 +28,7 @@
 import core/ast.{
   type Case, type Pattern, type Term, Ann, App, Call, Case as CoreCase, Ctr, Err, TypeDef,
   Float as LitFloat, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr, PLit,
-  PUnit, PVar, Pi, Rcd, Typ, Var, let_var,
+  PUnit, PVar, Pi, Rcd, Typ, TypRef, Var, let_var,
 }
 import gleam/float
 import gleam/int
@@ -113,6 +113,7 @@ fn term_span(term: Term) -> Span {
     Rcd(_, span) -> span
     Typ(_, span) -> span
     TypeDef(_, _, span) -> span
+    TypRef(_, span) -> span
     Err(_, span) -> span
   }
 }
@@ -709,6 +710,7 @@ fn term_to_string(term: Term) -> String {
     Rcd(_, _) -> "rcd"
     Typ(_, _) -> "type"
     TypeDef(_, _, _) -> "type def"
+    TypRef(name, _) -> "$" <> name
     Err(msg, _) -> msg
   }
 }
