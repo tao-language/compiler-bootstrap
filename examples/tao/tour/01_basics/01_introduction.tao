@@ -30,6 +30,9 @@ let pi: F64 = 3.14  // F64 stands for a 64 bit floating point number.
 > 1 == 1 ~> True
 > 1 != 1 ~> False
 > 1 < 2  ~> True
+> 1 < 2 and 3 == 3 ~> True
+> 1 > 2 or 3 == 3 ~> True
+> not (1 != 1) ~> True
 
 // When writing examples as tests, you can use /// to set the test name.
 // For example:
