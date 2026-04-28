@@ -151,21 +151,42 @@ pub type Case {
 }
 ```
 
-### Constructor Definitions (for Type Checking)
+### Type Definitions (First-Class Environment Values)
+
+Type definitions are stored as first-class values in the main environment via `VType(TypeDef)`, eliminating the need for a separate `ctrs` registry.
 
 ```gleam
-/// Constructor definition from type declarations
-pub type CtrDef {
-  CtrDef(
-    params: List(String),  // Type parameters
-    arg_ty: Term,          // Argument type
-    ret_ty: Term,          // Return type
+/// Field definition in a constructor
+pub type FieldDef {
+  FieldDef(name: String, field_type: Type)
+}
+
+/// Constructor definition within a type
+pub type ConstructorDef {
+  ConstructorDef(
+    tag: String,           // Constructor tag name (e.g., "Some", "Z")
+    result_template: Type, // Type template with HVar placeholders
   )
 }
 
-/// Constructor environment: maps constructor names to their definitions
-pub type CtrEnv = List(#(String, CtrDef))
+/// Type definition (ADT) stored as a first-class value
+pub type TypeDef {
+  TypeDef(
+    name: String,          // Type name (e.g., "Option", "Bool")
+    param_count: Int,      // Number of type parameters (0 for monomorphic types)
+    constructors: List(ConstructorDef),
+  )
+}
+
+/// Wrapper for TypeDef in the value environment
+pub type VType(TypeDef)
 ```
+
+**Key design decisions:**
+- Type definitions are stored in the environment list as `VType(TypeDef)` values
+- Constructor tags are resolved via env lookup, not a separate registry
+- The `result_template` uses HVar placeholders that are substituted with actual type args during checking
+- For GADTs, the subtype constraint is extracted from the constructor's runtime argument types via env lookup
 
 ### Environment Types
 

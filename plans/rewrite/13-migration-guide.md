@@ -80,7 +80,7 @@ This document maps old components to new components and explains the rationale f
 
 **Problem:** Old `core/ast.gleam` had Tao-specific FFI entries and configuration.
 
-**Solution:** Core is truly language-agnostic. No Tao-specific types, no Tao-specific FFI. Tao passes resolved `CtrEnv` and `List(FfiEntry)` to Core.
+**Solution:** Core is truly language-agnostic. No Tao-specific types, no Tao-specific FFI. Tao passes resolved type definitions (stored as `VType(TypeDef)` values in the environment) and `List(FfiEntry)` to Core.
 
 ## Type System Improvements
 
@@ -106,17 +106,15 @@ This document maps old components to new components and explains the rationale f
 ```gleam
 pub type State {
   State(
-    ctrs: CtrEnv,
-    truth_ctor: String,
-    false_ctor: String,
-    holes: List(#(Int, Value)),
-    subst: Subst,
+    vars: List(#(String, #(Value, Value))),  // Var env: name → #(value, type) — TypeDefs stored as VType
     errors: List(Error),
     ffi: List(FfiEntry),
-    step_limit: Int,
+    hole_counter: Int,
   )
 }
 ```
+
+Type definitions (ADTs) are stored as first-class values in the `vars` environment via `VType(TypeDef)`. This eliminates the separate `ctrs` registry entirely.
 
 ## Desugaring Improvements
 

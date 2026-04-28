@@ -222,15 +222,15 @@ pub fn desugar_stmt(stmt: TaoStmt, ctx: GlobalContext) -> CoreTerm {
 ```gleam
 /// Type check a Core term
 pub fn check_term(term: CoreTerm, ctx: GlobalContext) -> CheckResult {
-  // Build constructor environment from type declarations
-  let ctr_env = build_ctr_env(ctx.types)
+  // Build type definitions as first-class environment values (TypeDefinitions-as-Env-Values)
+  let type_env = build_type_env(ctx.types)
   
   // Build FFI environment
   let ffi_env = tao_ffis(ctx.config)
   
-  // Initialize state
+  // Initialize state — type defs stored in vars as VType(TypeDef), not in separate ctrs
   let initial_state = core_state.initial_state(
-    ctrs: ctr_env,
+    vars: type_env,
     ffi: ffi_env,
     truth_ctor: ctx.config.truth_constructor,
     false_ctor: ctx.config.false_constructor,
@@ -279,7 +279,7 @@ pub fn infer(state: State, term: CoreTerm) -> #(CoreTerm, Value, State) {
 /// Evaluate a Core term to a value
 pub fn evaluate(term: CoreTerm) -> EvalResult {
   let initial_state = core_state.initial_state(
-    ctrs: [],  // Constructor resolution already done during type checking
+    vars: [],  // Type defs already resolved during type checking
     ffi: tao_ffis(config),
     truth_ctor: "True",
     false_ctor: "False",

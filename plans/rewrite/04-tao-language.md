@@ -359,7 +359,7 @@ pub type LanguageConfig {
 }
 ```
 
-**Design rationale:** Tao's configuration is separate from Core. Core receives the resolved constructor environment (`CtrEnv`) and FFI entries (`List(FfiEntry)`) from Tao's desugarer. Core knows nothing about which language is using it.
+**Design rationale:** Tao's configuration is separate from Core. Core receives the resolved type environment (TypeDefinitions stored as `VType(TypeDef)` values in the env) and FFI entries (`List(FfiEntry)`) from Tao's desugarer. Core knows nothing about which language is using it.
 
 ## Example: Tao Programs
 

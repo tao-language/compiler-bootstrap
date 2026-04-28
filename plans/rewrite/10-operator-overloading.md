@@ -214,7 +214,7 @@ let x = App("+", [Lit(ILit(1)), Lit(ILit(2))])
 
 ## Note: No Methods
 
-There are no methods in this language — only functions and operators. Binary functions use `infix` notation and there's `|>` pipe. Constructors are handled by the type checker looking them up in the constructor environment (CtrEnv), not as methods. See 03-core-language.md for constructor resolution details.
+There are no methods in this language — only functions and operators. Binary functions use `infix` notation and there's `|>` pipe. Constructors are handled by the type checker looking them up in the type definition (TypeDef) stored in the environment, not as methods. See 03-core-language.md for constructor resolution details.
 
 ## Test Cases
 
@@ -225,7 +225,7 @@ should("resolve integer literal to I32") {
   let state = initial_state([])
   let result = check(state, Lit(ILit(42)), I32T)
   case result {
-    #(term, I32T, State(errors: [], ctrs: _)) -> True  // Unification succeeds
+    #(term, I32T, State(errors: [])) -> True  // Unification succeeds
     _ -> False
   }
 }
@@ -234,7 +234,7 @@ should("resolve integer literal to U64") {
   let state = initial_state([])
   let result = check(state, Lit(ILit(42)), U64T)
   case result {
-    #(term, U64T, State(errors: [], ctrs: _)) -> True  // ILitT unifies with U64T
+    #(term, U64T, State(errors: [])) -> True  // ILitT unifies with U64T
     _ -> False
   }
 }
@@ -254,7 +254,7 @@ should("resolve 1 + 2 to I32 when both args are integer literals") {
   let term = App(plus, [Lit(ILit(1)), Lit(ILit(2))])
   let result = infer(state, term)
   case result {
-    #(term, I32T, State(errors: [], ctrs: _)) -> True  // NbE resolves to I32 + I32 → I32
+    #(term, I32T, State(errors: [])) -> True  // NbE resolves to I32 + I32 → I32
     _ -> False
   }
 }
@@ -264,7 +264,7 @@ should("resolve 1.0 + 2.0 to F64 when both args are float literals") {
   // Similar test for float
   let result = infer(state, App(plus, [Lit(FLit(1.0)), Lit(FLit(2.0))]))
   case result {
-    #(term, F64T, State(errors: [], ctrs: _)) -> True  // NbE resolves to F64 + F64 → F64
+    #(term, F64T, State(errors: [])) -> True  // NbE resolves to F64 + F64 → F64
     _ -> False
   }
 }
@@ -281,7 +281,7 @@ should("resolve add via pattern match when both args are I32") {
   ]), span))
   let result = infer(state, App(plus, [Lit(ILit(1)), Lit(ILit(2))]))
   case result {
-    #(term, I32T, State(errors: [], ctrs: _)) -> True  // Pattern match resolves to %i32_add
+    #(term, I32T, State(errors: [])) -> True  // Pattern match resolves to %i32_add
     _ -> False
   }
 }
@@ -291,7 +291,7 @@ should("resolve add via pattern match when both args are F64") {
   // Similar for F64
   let result = infer(state, App(plus, [Lit(FLit(1.0)), Lit(FLit(2.0))]))
   case result {
-    #(term, F64T, State(errors: [], ctrs: _)) -> True  // Pattern match resolves to %f64_add
+    #(term, F64T, State(errors: [])) -> True  // Pattern match resolves to %f64_add
     _ -> False
   }
 }
@@ -310,10 +310,13 @@ should("fail add(Int, Float) — no matching pattern") {
 
 ```gleam
 should("resolve Some(42) to Option(I32)") {
-  let state = initial_state([("Some", CtrDef([], Hole(-1), Ctr("Option", Hole(-1), Span)))])
-  let result = infer(state, Ctr("Some", Lit(ILit(42))))
+  let td = TypeDef(name: "Option", param_count: 1, constructors: [
+    ConstructorDef(tag: "Some", result_template: VCtr("Option", HVar(-1))),
+  ])
+  let state = initial_state([("Option", #(VType(td), VCtr("Option", HVar(-1)))])
+  let result = infer(state, VCtr("Some", Lit(ILit(42))))
   case result {
-    #(term, CtrValue("Option", ...), State(errors: [], ctrs: _)) -> True
+    #(term, VCtr("Option", ...), State(errors: [])) -> True
     _ -> False
   }
 }

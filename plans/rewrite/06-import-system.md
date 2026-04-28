@@ -173,7 +173,7 @@ let Some = @data_maybe.Some            // Constructor
 let None = @data_maybe.None            // Constructor
 ```
 
-The constructor `Some` and `None` are resolved through the `CtrEnv` during type checking. The type checker looks up `Some` and `None` in the constructor environment, which was built from the imported module's type declarations.
+The type definition `Option` is stored as a first-class value (`VType(TypeDef)`) in the environment. The constructor tags `Some` and `None` are resolved via the `TypeDef`'s internal constructor list during type checking — no separate `ctrs` registry is needed.
 
 ## Module Loading Pipeline
 
