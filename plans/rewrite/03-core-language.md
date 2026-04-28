@@ -6,6 +6,17 @@ Core is the **language-agnostic** dependent type theory implementation. It knows
 - **De Bruijn indices** for syntax (`Term`)
 - **De Bruijn levels** for semantics (`Value`)
 
+### Naming Convention
+
+All Core-level keywords, built-in types, and special constructs use the `$` prefix. FFI builtin functions use the `%` prefix:
+
+| Category | Prefix | Examples |
+|----------|--------|----------|
+| Keywords | `$` | `$fn`, `$let`, `$match`, `$pi`, `$type`, `$error` |
+| Built-in types | `$` | `$Int`, `$Float`, `$Type`, `$I32`, `$U64`, `$F64` |
+| FFI functions | `%` | `%i32_add`, `%i32_to_f32`, `%u32_mul` |
+| Constructors | `#` | `#Some`, `#True`, `#Nil`, `#Cons` |
+
 ## Directory Structure
 
 ```
@@ -26,167 +37,269 @@ src/core/
 └── color.gleam            # ANSI color codes
 ```
 
+### Example Tour Files (Source of Truth)
+
+The tour directory is the source of truth for Core syntax:
+
+```
+examples/core/tour/
+├── 01_basics/           # Basics: literals, records, type defs, constructors, lambdas, pi types, annotations, matches, builtin calls, holes, errors
+├── 02_syntax_sugar/     # Sugar: let bindings, untyped lambda, untyped let, non-dependent pi
+├── 03_literals/         # Numeric types: all integer sizes, float sizes, records
+├── 04_type_definitions/ # Type defs: monomorphic, polymorphic, GADT vec, GADT expr
+├── 05_pattern_matching/ # Patterns: wildcard, alias, type, int, record, record-type, ctr, error, guards, exhaustiveness
+├── 06_builtins/         # FFI: i32, u32, i64, u64, f32, f64, conversions
+└── 07_advanced/         # Advanced: default values, implicit params
+```
+
 ## Type Definitions
 
-### Literals
+### Numeric Types
 
-Literals are handled gracefully to support both explicit type annotations and inference:
-- `(1 : I32)` is valid — integer literal with explicit I32 type
-- `(1 : U64)` is valid — integer literal with explicit U64 type (integer literals are polymorphic over integer types)
-- `(3.14 : I32)` is **an error** — float literal cannot coerce to integer type
-- `(1 + 2)` with no annotation resolves to a concrete type based on context
+Core supports a full hierarchy of numeric types. Type inference produces specific types, while patterns can match general wildcards.
+
+```
+$Int       — wildcard matching ANY integer type ($I8, $I16, $I32, $I64, $U8, $U16, $U32, $U64)
+$Float     — wildcard matching ANY float type ($F16, $F32, $F64)
+$I8, $I16, $I32, $I64   — signed integers (source: $I8 for 8-bit, etc.)
+$U8, $U16, $U32, $U64   — unsigned integers (source: $U8 for 8-bit, etc.)
+$F16, $F32, $F64       — floating point (source: $F16 for 16-bit, etc.)
+```
+
+**Examples from tour:**
+
+```gleam
+// Inference: 1 has no annotation, but type-checks against $I32
+$let int: $I32 = 1;  // concrete type
+
+// $Int matches any integer type in patterns
+$match $Type { ... | $Int => 0 }  // $Int matches $I32, $U64, etc.
+
+// Float literal accepts integer literals
+$let float_int_lit: $Float = 42;
+```
+
+**Design rationale:** Integer literals are polymorphic over integer types. A literal `42` can have type `$I32`, `$U64`, or any integer type. Float literals can be `$Float` or any `$F*` type. The `$Int` and `$Float` wildcards match any member of their family in pattern matching.
+
+### Literal Values
 
 ```gleam
 /// Core literal value — the numeric value itself
-pub type LitValue {
-  ILit(value: Int)     // Integer literal value (source: 42, -1, 0, etc.)
-  FLit(value: Float)   // Float literal value (source: 3.14, -0.5, etc.)
-  StrLit(value: String) // String literal value
-}
-
-/// Literal type — either concrete or generic during inference
-pub type LitType {
-  // Concrete types — specific bit-width and signedness
-  I32T   // 32-bit signed integer
-  I64T   // 64-bit signed integer
-  U32T   // 32-bit unsigned integer
-  U64T   // 64-bit unsigned integer
-  F32T   // 32-bit float
-  F64T   // 64-bit float
-  
-  // Generic types — used during inference when type is not yet resolved
-  ILitT  // Generic integer literal type (unifies with I32T, I64T, U32T, U64T)
-  FLitT  // Generic float literal type (unifies with F32T, F64T)
+pub type Literal {
+  Int(value: Int)     // Generic integer value (source: 42, -1, 0, etc.)
+  Float(value: Float) // Generic float value (source: 3.14, -0.5, etc.)
 }
 ```
 
-**Design rationale:** There is a single `ILit` literal value and a single `FLit` literal value (not per-type variants). The type system distinguishes between concrete types (`I32T`, `U64T`, etc.) and generic literal types (`ILitT`, `FLitT`). 
+**Note:** During type checking, `Int` and `Float` values are unified against specific types (`$I32`, `$F64`, etc.). The `Literal` type remains simple; type specificity is handled by the type system, not the value type.
 
-Checking a literal against a specific type validates compatibility: integer literals can unify with any integer type (`ILitT` ↔ `I32T`, `ILitT` ↔ `U64T`), but float literals cannot unify with integer types. When inferring on a generic numeric literal without context, the result is a generic literal type (`ILitT` or `FLitT`) which can later be unified with a more specific type from context. A float literal like `3.14` explicitly annotated as `: I32` is an error because `FLitT` does not unify with integer types.
+### Records
+
+Core uses records for multiple purposes:
+
+```
+{x: 1, y: 2}        — record value
+{field1: val1}      — single-field record
+{}                  — empty record (Unit)
+```
+
+### Record Types with Defaults
+
+Record types can specify default values for optional fields:
+
+```
+${x: $Int, y: $Int = 0}  — type with optional field y defaulting to 0
+```
+
+When a record value is checked against this type, missing fields are filled with defaults:
+
+```
+{x: 1}  :  ${x: $Int, y: $Int = 0}  — y is filled with 0
+```
+
+### Type Definitions (ADTs)
+
+Type definitions use the `$type` keyword with constructor arrows:
+
+```
+$type {                                       // monomorphic type
+| #True({}) -> #Bool({})
+| #False({}) -> #Bool({})
+}
+```
+
+```gleam
+// Polymorphic type definition
+$let Option = $fn(a: $Type) => $type {
+| #Some(a) -> #Option(a)
+| #None({}) -> #Option(a)
+}
+
+// GADT-style type definition (tour: 04_type_definitions/03_gadt_vec.core)
+$let Vec = $fn(args: ${n: $U32, a: $Type}) => $match args {
+| {n, a} => $type {
+  | #Nil({}) -> #Vec({n: 0, a: a})
+  | #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %u32_add(m, 1) -> $U32, a: a})
+  }
+}
+```
+
+Key features:
+- **Monomorphic types**: No type parameters, defined directly
+- **Polymorphic types**: Wrap in `$fn(a: $Type) => $type { ... }`
+- **GADT constraints**: Constructor arguments can be type patterns (`#Expr($Int)`)
+- **Computed results**: Constructor result types can include FFI calls (`%u32_add(m, 1)`)
 
 ### Term (Syntax — De Bruijn Indices)
+
+All Core terms use `$`-prefixed keywords in source. Keywords use De Bruijn indices for variables.
 
 ```gleam
 /// Raw AST. Variables use De Bruijn indices (0 = closest binder above).
 /// All terms carry source spans for error reporting.
 pub type Term {
-  Typ(universe: Int, span: Span)      // Type universe (Type, Type@1, etc.)
-  Lit(value: LitValue, span: Span)    // Literal value (ILit, FLit, StrLit)
   Var(index: Int, span: Span)         // De Bruijn index variable
   Hole(id: Int, span: Span)           // Metavariable for inference
-  Err(message: String, span: Span)    // Error placeholder
-  Lam(implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span)  // Lambda: #(name, param_type) — tuple, not Param record
-  App(fun: Term, arg: Term, span: Span)                  // Application
-  Pi(implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span)          // Pi type (dependent function)
-  LitT(typ: LitType, span: Span)                        // Literal type term (I32T, ILitT, etc.)
-  Ctr(tag: String, arg: Term, span: Span)               // Constructor
-  Rcd(fields: List(#(String, Term)), span: Span)        // Record
-  Dot(record: Term, field: String, span: Span)          // Field access (Phase 5+)
-  Ann(term: Term, typ: Term, span: Span)                // Type annotation
-  Match(arg: Term, cases: List(Case), span: Span)  // Pattern match — motive inferred, not passed
-  Call(name: String, args: List(Term), span: Span)  // Function call — simple, no typed args yet (Phase 5+)
-  Comptime(term: Term, span: Span)                      // Compile-time evaluation (Phase 5+)
-  Fix(name: String, body: Term, span: Span)             // Recursion fixpoint (Phase 2+)
-  Unit(span: Span)                                       // Unit value () (parsed as Rcd([], span))
+  Lam(implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span)
+  // Source: $fn<a: $Type>(x: a) => x  — implicits, param, body
+  App(fun: Term, arg: Term, span: Span)
+  // Source: ($fn(x: $Int) => x)(42)
+  Pi(implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span)
+  // Source: $pi(x: $Type) -> x  or  $pi<a: $Type>(a) -> a
+  Lit(value: Literal, span: Span)     // Literal value (Int or Float)
+  // Source: 42, 3.14
+  Ctr(tag: String, arg: Term, span: Span)
+  // Source: #Some(42), #True({}), #Cons({x: 42, xs: #Nil({})})
+  Match(arg: Term, cases: List(Case), span: Span)
+  // Source: $match arg { | pattern ? guard => body }
+  Ann(term: Term, type_: Term, span: Span)
+  // Source: 42 : $I32
+  Call(name: String, args: List(Term), typed_args: List(#(Term, Term)), return_type: Option(Term), span: Span)
+  // Source: %i32_add(1: $I32, 2: $I32) -> $I32
+  Rcd(fields: List(#(String, Term)), span: Span)
+  // Source: {x: 1, y: 2}, {} (unit)
+  Typ(level: Int, span: Span)         // Type universe $Type<n>
+  // Source: $Type, $Type<0>, $Type<1>, $Type<x>
+  TypeDef(name: String, constructors: List(#(String, Term, Term, Span)), span: Span)
+  // Source: $type { | #C(a) -> R }
+  Err(message: String, span: Span)
+  // Source: $error "my runtime error message"
 }
 
 /// Type of a Term: either a Value (evaluated) or Err
 pub type Type = Value
 ```
 
+### Source-to-Term Mapping
+
+| Source Syntax | Term Constructor | Notes |
+|--------------|-----------------|-------|
+| `$fn(x: $Int) => body` | `Lam([], #(x, Int), body)` | No implicits |
+| `$fn<a: $Type>(x: a) => body` | `Lam([(a, Type)], #(x, Var(0)), body)` | With implicits |
+| `$let x: $Int = val` | `App(Lam([], #(x, Int), body), val)` | Body is implicit |
+| `$match arg { | p => body }` | `Match(arg, [Case(p, None, body)])` |
+| `arg : Type` | `Ann(arg, Type)` |
+| `#Tag(arg)` | `Ctr("Tag", Rcd([("arg", arg)]))` | Args as record |
+| `$error "msg"` | `Err("msg", span)` |
+| `{x: 1, y: 2}` | `Rcd([("x", Lit(Int(1))), ("y", Lit(Int(2)))])` |
+| `()` or `{}` | `Rcd([])` | Unit |
+| `$Type<n>` | `Typ(n, span)` |
+| `$type { | #C -> R }` | `TypeDef("name", [("C", self, result)])` |
+
 ### Value (Semantics — De Bruijn Levels)
+
+Fully evaluated results use De Bruijn levels (0 = innermost binder).
 
 ```gleam
 /// Fully evaluated result. Variables use De Bruijn levels (0 = innermost binder).
-/// Uses neutral spine representation for efficient application.
 pub type Value {
-  VTyp(universe: Int)                              // Universe Type(n)
-  VLit(value: LitValue)                            // Evaluated literal (ILit, FLit, StrLit)
-  VLitT(typ: LitType)                              // Evaluated literal type (I32T, ILitT, etc.)
   VNeut(head: Head, spine: List(Elim))             // Neutral term (not a lambda)
+  VLam(env: Env, implicits: List(#(String, Value)), param: #(String, Value), body: Term)      // Lambda value
+  VPi(env: Env, implicits: List(#(String, Value)), domain: #(String, Value), codomain: Value)  // Pi type value
+  VLit(value: Literal)                             // Evaluated literal
+  VCtr(tag: String, arg: Value)                    // Constructor value
   VRcd(fields: List(#(String, Value)))             // Evaluated record
-  VLam(env: Env, implicits: List(#(String, Value)), param: #(String, Value), body: Term)      // Lambda
-  VPi(env: Env, implicits: List(#(String, Value)), domain: #(String, Value), codomain: Term)  // Pi type
-  VCtrValue(tag: String, arg: Value)               // Constructor value
-  VCall(name: String, args: List(Value), ret: Value)  // Function call result
-  VFix(name: String, env: Env, body: Term)         // Recursion fixpoint
+  VTypeDef(name: String, constructors: List(#(String, Value, Value, Span)))  // Type definition value
   VErr                                             // Error value
 }
 
-/// Neutral term head: variable, hole, or step limit
+/// Neutral term head: variable or hole
 pub type Head {
-  HVar(level: Int)
-  HHole(id: Int)
-  HStepLimit
+  HVar(level: Int)     // Variable at De Bruijn level
+  HHole(id: Int)       // Unresolved hole
 }
 
-/// Neutral term spine: field access, application, match
+/// Neutral term spine: application, field access, match
 pub type Elim {
-  EDot(name: String)
-  EApp(arg: Value)
-  EMatch(env: Env, motive: Value, cases: List(Case))
+  EApp(arg: Value)     // Apply to argument
+  EDot(name: String)   // Field access (Phase 5+)
+  EMatch(env: Env, motive: Value, cases: List(Case))  // Match elimination
 }
 
 /// A type alias for clarity
 pub type Type = Value
 ```
 
-### Pattern and Case
+### Value Examples
+
+| Term | Value |
+|------|-------|
+| `42` | `VLit(Int(42))` |
+| `$fn(x: $Int) => x` | `VLam([], #(x, VLit(Int(0))), body)` |
+| `#Some(42)` | `VCtr("Some", VLit(Int(42)))` |
+| `{x: 1, y: 2}` | `VRcd([("x", VLit(Int(1))), ("y", VLit(Int(2)))])` |
+| `()` or `{}` | `VRcd([])` |
+| `$error "msg"` | `VErr` |
+
+### Patterns
+
+Core supports 10+ pattern types:
 
 ```gleam
 /// Patterns for pattern matching
 pub type Pattern {
-  PAny(span: Span)
-  PAs(pattern: Pattern, name: String, span: Span)
-  PTyp(universe: Int, span: Span)
-  PLit(value: Lit, span: Span)
-  // PLitT(typ: LitType, span: Span)  // Literal type pattern (Phase 5+)
-  // PRcd(fields: List(#(String, Pattern)), span: Span)  // Record pattern (Phase 5+)
-  PCtr(tag: String, arg: Pattern, span: Span)
-  PUnit(span: Span)
+  PAny(span: Span)                  // Wildcard: _ (matches anything, no binding)
+  PVar(name: String, span: Span)    // Variable: x (matches anything, binds name)
+  PCtr(tag: String, arg: Pattern, span: Span)  // Constructor: #Some(x)
+  PUnit(span: Span)                 // Unit: ()
+  PLit(value: Literal, span: Span)  // Literal: 42
+  PAs(pattern: Pattern, name: String, span: Span)  // Alias: x@pattern
+  PType(universe: Option(Int), name: Option(String), span: Span)  // Type: $Type, $Type<1>, $Type<x>
+  PRcd(fields: List(#(String, Pattern)), span: Span)  // Record: {x: 1, y: _}
+  PRcdType(fields: List(#(String, Term, Option(Term))), span: Span)  // Record type: ${x: $Int}
+  PErr(span: Span)                  // Error: $error
 }
 
 pub type Case {
-  Case(pattern: Pattern, body: Term, guard: Option(Term), span: Span)
+  Case(pattern: Pattern, guard: Option(Term), body: Term, span: Span)
 }
 ```
 
-### Type Definitions (First-Class Environment Values)
+### Two-Stage Guards
 
-Type definitions are stored as first-class values in the main environment via `VType(TypeDef)`, eliminating the need for a separate `ctrs` registry.
+Guards use a two-stage format that doesn't depend on boolean types:
+
+```
+| pattern ? expression ~ pass_pattern => body
+```
+
+1. Evaluate `expression` in scope of pattern bindings
+2. Try to match result against `pass_pattern`
+3. If match succeeds, execute body
 
 ```gleam
-/// Field definition in a constructor
-pub type FieldDef {
-  FieldDef(name: String, field_type: Type)
+// Example from tour: 05_pattern_matching/09_guards.core
+$match 42 {
+| x ? x ~ 42 => 0   // succeeds: 42 matches 42
+| _ => 1
 }
 
-/// Constructor definition within a type
-pub type ConstructorDef {
-  ConstructorDef(
-    tag: String,           // Constructor tag name (e.g., "Some", "Z")
-    result_template: Type, // Type template with HVar placeholders
-  )
-}
-
-/// Type definition (ADT) stored as a first-class value
-pub type TypeDef {
-  TypeDef(
-    name: String,          // Type name (e.g., "Option", "Bool")
-    param_count: Int,      // Number of type parameters (0 for monomorphic types)
-    constructors: List(ConstructorDef),
-  )
-}
-
-/// Wrapper for TypeDef in the value environment
-pub type VType(TypeDef)
+// In a language with Bool:
+// $match term {
+// | x ? equals(x, 42) ~ #True(_) => 0
+// | _ => 1
+// }
 ```
-
-**Key design decisions:**
-- Type definitions are stored in the environment list as `VType(TypeDef)` values
-- Constructor tags are resolved via env lookup, not a separate registry
-- The `result_template` uses HVar placeholders that are substituted with actual type args during checking
-- For GADTs, the subtype constraint is extracted from the constructor's runtime argument types via env lookup
 
 ### Environment Types
 
@@ -317,20 +430,20 @@ pub type State {
     errors: List(Error),       // Accumulated errors
     ffi: List(FfiEntry),       // FFI builtins
     hole_counter: Int,         // Next fresh hole ID
+    truth_ctr: String,         // Name of truth constructor (e.g., "True") for guards
   )
 }
 
-/// FFI builtin definition — each FFI entry is a single concrete target, no overloads
+/// FFI builtin definition — receives (value, type) pairs for overload resolution
 pub type FfiEntry {
   FfiEntry(
     name: String,
     impl: fn(List(#(Value, Value))) -> Option(Value),  // (value, type) pairs for arguments
-    ret_type: Value,          // Return type
   )
 }
 ```
 
-**Key change from current code:** `State` is now a single, comprehensive state record that contains everything. No scattered globals. FFI entries are passed through the state explicitly.
+**Key design:** `State` is a single, comprehensive record. Truth constructor defaults to `"True"` — configurable via `with_truth_ctr`. FFI entries receive `(value, type)` pairs for Phase 5+ operator overloading.
 
 ## Key Design Decisions
 
@@ -342,7 +455,7 @@ Core knows NOTHING about:
 - Tao language configuration
 - Tao's module system
 
-All Tao-specific behavior is in `tao/` and desugars to Core before type checking.
+All Tao-specific behavior is in `tao/` and desugars to Core with `$`-prefixed syntax.
 
 ### 2. Explicit Error Accumulation
 
@@ -361,16 +474,13 @@ This avoids repeatedly allocating new `Value` records for each application.
 
 Quote transforms a `Value` back to `Term` by re-wrapping evaluated lambdas. It never calls `eval`. This is a critical invariant — if `quote` calls `eval`, you get exponential blowup (as discovered in the current codebase).
 
-### 5. Holes Use Negative IDs for Synthesis
+### 5. Holes Are Positive IDs Monotonically Increasing
 
 ```
-Hole(-1) → synthesized during infer (positive ID assigned during infer)
-Hole(1)  → verified against during check (positive ID given by caller)
+Hole(0), Hole(1), Hole(2), ...
 ```
 
-This allows the type checker to distinguish between:
-- **Synthesis holes** (infer): "I don't know the type, figure it out"
-- **Verification holes** (check): "I know the type is this, verify"
+Hole IDs are monotonically increasing, managed by `hole_counter` in State.
 
 ### 6. Test-Driven Development
 
@@ -383,32 +493,35 @@ Every function in Core has tests that demonstrate:
 ## Example: Core Terms
 
 ```gleam
-// Identity function: fn(x: a) -> a
-/// Term.Pi(#("", Term.Var(0, ...), Term.Var(0, ...)))
-Pi(
-  domain: Var(0, span),    // param type: a (bound by pi)
-  codomain: Var(0, span),  // return type: a (same binder)
-)
-```
-
-```gleam
-// Church numeral 2: λf.λx.f (f x)
-/// Term.Lam(("f", Term.Lam(("x", Term.App(Var(1, span), Var(0, span))))))
+// Identity function: $fn<a: $Type>(x: a) => x
 Lam(
-  param: ("f", Lam(("x", App(Var(1, span), Var(0, span))))),
-  body: App(Var(1, span), Var(0, span)),
+  implicits: [(a, Typ(0, span))],
+  param: #(a, Var(0, span)),
+  body: Var(0, span),
+  span: span,
 )
 ```
 
 ```gleam
-// Pattern match on Maybe(a)
-/// Term.Match(arg, motive, [Case(PCtr("Some", PAny()), body), Case(PCtr("None", Unit()), body)])
+// GADT-style type definition
+TypeDef(
+  name: "Expr",
+  constructors: [
+    #("LitInt", LitT(I32T), Var(0, span), span),
+    #("LitBool", Ctr("Bool", Rcd([], span), span), Ctr("Bool", Rcd([], span), span), span),
+  ],
+  span: span,
+)
+```
+
+```gleam
+// Pattern match with type patterns and guards
 Match(
   arg: Var(0, span),
-  motive: Ctr("Maybe", Hole(-1, span), span),
   cases: [
-    Case(PCtr("Some", PAny(span)), body_some, None, span),
-    Case(PCtr("None", Unit(span)), body_none, None, span),
+    Case(PType(Some(1), None, span), None, Lit(Int(0), span), span),
+    Case(PErr(span), None, Lit(Int(2), span), span),
   ],
+  span: span,
 )
 ```

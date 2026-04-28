@@ -1,7 +1,7 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-28 (Updated: 2026-04-28 - TypeDef/Value refactoring complete! 654 tests passing.)
-> **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md)
+> **Last updated:** 2026-04-28 (Updated: 2026-04-28 - Tour syntax analysis complete. Docs updated to match tour. 654 tests passing.)
+> **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md), [examples/core/tour/](../../examples/core/tour/)
 
 ## Legend
 
@@ -202,6 +202,76 @@ Total tests: 424 passed, 0 failures.
 | 2.19.2 | Run with errors | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.19.3 | Run with type errors | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
 
+### Phase 2b: Tour Syntax Parser Rewrite (NEW - replaces all % prefix)
+
+> **Goal:** Parser handles all tour syntax with `$` prefix for Core keywords, `%` prefix for FFI builtins.
+> **Source of truth:** `examples/core/tour/`
+
+| ID | Task | Status | Ref | Notes |
+|----|------|--------|-----|-------|
+| 2.1 | Rewrite parser keyword prefix: `%fn` → `$fn` | 🔴 | tour/01_basics/07_lambda_functions.core | All Core keywords use `$` |
+| 2.1.1 | Parse `$fn` instead of `%fn` | 🔴 | | |
+| 2.1.2 | Parse `$let` instead of `%let` | 🔴 | | |
+| 2.1.3 | Parse `$match` instead of `%match` | 🔴 | | |
+| 2.1.4 | Parse `$type` keyword | 🔴 | tour/01_basics/05_type_defs.core | |
+| 2.1.5 | Parse `$error "message"` | 🔴 | tour/01_basics/14_errors.core | Term.Err |
+| 2.1.6 | Parse `$pi` keyword | 🔴 | tour/01_basics/08_pi_types.core | |
+| 2.1.7 | Parse `type` → `$Type` (universe 0) | 🔴 | | |
+| 2.1.8 | Parse `$Type<n>` (explicit universe) | 🔴 | tour/03_literals/01_types.core | |
+| 2.1.9 | Parse `$Type<x>` (bound variable) | 🔴 | tour/05_pattern_matching/03_type_pattern.core | |
+| 2.1.10 | Parse `$Int` and `$Float` as type terms | 🔴 | tour/05_pattern_matching/03_type_pattern.core | |
+| 2.1.11 | Parse `$I8`–`$I64`, `$U8`–`$U64`, `$F16`–`$F64` | 🔴 | tour/03_literals/01_types.core | |
+| 2.1.12 | Parse `#` for constructor prefix | ✅ | tour/01_basics/06_constructors.core | Already implemented |
+| 2.1.13 | Parse `%` for FFI builtin prefix | 🔴 | tour/06_builtins/01_i32.core | Different from Core `$` |
+| 2.1.14 | Parse `$fn<a: T>(x: a)` (implicit params) | 🔴 | tour/07_advanced/02_implicit_params.core | |
+| 2.1.15 | Parse `$pi<a: T>(a) -> a` (implicit params) | 🔴 | tour/02_syntax_sugar/04_pi_arrow.core | |
+| 2.1.16 | Parse `$pi(a) -> a` (non-dependent, no colon) | 🔴 | tour/02_syntax_sugar/04_pi_arrow.core | |
+| 2.1.17 | Parse `$fn(x)` (untyped lambda, hole type) | 🔴 | tour/02_syntax_sugar/03_lam_untyped.core | |
+| 2.1.18 | Parse `$let x` (untyped let, hole type) | 🔴 | tour/02_syntax_sugar/02_let_untyped.core | |
+| 2.1.19 | Parse FFI calls with typed args: `f(a: T, b: T) -> R` | 🔴 | tour/06_builtins/01_i32.core | |
+| 2.1.20 | Parse `$type { | #C(a) -> R }` (TypeDef) | 🔴 | tour/04_type_definitions/01_monomorphic.core | |
+
+### Phase 2c: Extended Pattern Matching (NEW)
+
+> **Goal:** Parser handles all 10+ pattern types from tour.
+
+| ID | Task | Status | Ref | Notes |
+|----|------|--------|-----|-------|
+| 2.2 | Add alias patterns: `name@pattern` | 🔴 | tour/05_pattern_matching/02_alias_pattern.core | |
+| 2.3 | Add type patterns: `$Type`, `$Type<n>`, `$Type<x>` | 🔴 | tour/05_pattern_matching/03_type_pattern.core | |
+| 2.4 | Add record patterns: `{x: pattern}`, `{x}` | 🔴 | tour/05_pattern_matching/05_rcd_pattern.core | |
+| 2.5 | Add record type patterns: `${x: Type}`, `${x}` | 🔴 | tour/05_pattern_matching/06_rcdt_pattern.core | |
+| 2.6 | Add error patterns: `$error` | 🔴 | tour/05_pattern_matching/08_error_pattern.core | |
+| 2.7 | Add guard with pass pattern: `? expr ~ pass => body` | 🔴 | tour/05_pattern_matching/09_guards.core | Two-stage guard |
+| 2.8 | Update exhaustiveness for new patterns | 🔴 | tour/05_pattern_matching/10_exhaustiveness.core | |
+
+### Phase 2d: Numeric Types & Advanced Inference (NEW)
+
+> **Goal:** Full numeric type hierarchy and type-level inference.
+
+| ID | Task | Status | Ref | Notes |
+|----|------|--------|-----|-------|
+| 2.10 | Extend LiteralType: `$I8`–`$I64`, `$U8`–`$U64`, `$F16`–`$F64` | 🔴 | tour/03_literals/01_types.core | |
+| 2.10.1 | Add `$Int` wildcard type (matches any integer) | 🔴 | tour/05_pattern_matching/03_type_pattern.core | |
+| 2.10.2 | Add `$Float` wildcard type (matches any float) | 🔴 | tour/05_pattern_matching/03_type_pattern.core | |
+| 2.10.3 | Update infer_lit: infer specific type from context | 🔴 | |
+| 2.10.4 | Update unify: `$Int` ↔ any integer type | 🔴 | |
+| 2.10.5 | Update unify: `$Float` ↔ any float type | 🔴 | |
+| 2.11 | Implement record type defaults: `${x: T, y: T = val}` | 🔴 | tour/01_basics/03_records.core | |
+| 2.11.1 | Parse record type with defaults | 🔴 | |
+| 2.11.2 | Infer missing fields from type defaults | 🔴 | |
+| 2.12 | Implement implicit parameter auto-expansion | 🔴 | tour/07_advanced/02_implicit_params.core | |
+| 2.12.1 | Synthesize implicit args during inference | 🔴 | |
+| 2.12.2 | Retry application with synthesized args | 🔴 | |
+| 2.13 | Implement GADT-style constructor checking | 🔴 | tour/04_type_definitions/03_gadt_vec.core | |
+| 2.13.1 | Infer constructor result types | 🔴 | |
+| 2.13.2 | Handle computed result types (%u32_add) | 🔴 | |
+| 2.14 | Update exhaustiveness for `$Int` wildcard | 🔴 | tour/05_pattern_matching/10_exhaustiveness.core | Integer types are "infinite" |
+| 2.15 | Write tests for extended patterns | 🔴 | |
+| 2.16 | Write tests for numeric types | 🔴 | |
+| 2.17 | Write tests for implicit params | 🔴 | |
+| 2.18 | Write tests for GADT patterns | 🔴 | |
+
 ### Phase 2 Gate
 
 - [x] All 80+ Phase 2 tests pass (658 tests passing, 0 failures)
@@ -210,6 +280,10 @@ Total tests: 424 passed, 0 failures.
 - [x] Exhaustiveness checking catches missing/redundant cases
 - [x] Quote round-trip works (term → eval → quote → term)
 - [x] Type definitions as env values — TypeDef stored as VType in env, no separate CtrEnv registry
+- [ ] **Phase 2b:** Parser handles all tour syntax with `$` prefix
+- [ ] **Phase 2c:** Parser handles all 10+ pattern types
+- [ ] **Phase 2d:** Numeric type inference, implicit params, GADT checking
+- [ ] **Phase 2 full:** All tour examples parse, type-check, and evaluate
 
 ---
 
@@ -299,6 +373,8 @@ Total tests: 424 passed, 0 failures.
 - [ ] Test framework extracts and runs REPL-style tests
 - [ ] Fibonacci, map/filter compile and run correctly
 - [ ] Error accumulation works across all phases
+- [ ] All Phase 2b/c/d tasks complete and passing
+- [ ] Tour examples: `tao run examples/core/tour/` works end-to-end
 
 ---
 
@@ -422,10 +498,13 @@ Total tests: 424 passed, 0 failures.
 |-------|-------------|-------|------------|-------------|
 | Phase 1: Lexer + Core Types | 2-3 | 20 | 30+ | — |
 | Phase 2: Parser + Type Checker + **Run** | 4-5 | 44 | 100+ | `run` |
+| Phase 2b: Tour Syntax Parser (NEW) | 3-4 | 20+ | 30+ | `run` |
+| Phase 2c: Extended Patterns (NEW) | 2-3 | 8 | 20+ | `run` |
+| Phase 2d: Numeric Types & Advanced (NEW) | 3-4 | 18 | 30+ | `run` |
 | Phase 3: Tao + **Check + Test** | 4-5 | 37 | 110+ | `run`, `check`, `test` ✅ |
 | Phase 4: Multi-file + Import | 3-4 | 22 | 40+ | `run`, `check`, `test` ✅ |
 | Phase 5: Extended + Polish | 3-4 | 18 | 50+ | `run`, `check`, `test` ✅ |
-| **Total** | **16-21** | **141** | **~330** | **Full CLI** |
+| **Total** | **26-32** | **188+** | **~500+** | **Full CLI** |
 
 ---
 
@@ -433,6 +512,7 @@ Total tests: 424 passed, 0 failures.
 
 | Date | Change |
 |------|--------|
+| 2026-04-28 | **Tour syntax analysis complete:** All plan docs (01-architecture-overview, 00-status-tracker) updated to match `examples/core/tour/` syntax. Core uses `$` prefix for keywords (`$fn`, `$let`, `$match`, `$pi`, `$type`, `$error`) and `%` prefix for FFI builtins (`%i32_add`, etc.). Added Phase 2b (tour syntax parser), 2c (extended patterns), 2d (numeric types & advanced inference) task sections. Numeric types: `$I8`–`$I64`, `$U8`–`$U64`, `$F16`–`$F64`, `$Int`, `$Float`. Extended patterns: alias, type, record, record-type, error. Two-stage guards: `? expr ~ pass => body`. Implicit params: `$fn<a: T>(x: a) => x`. Record type defaults: `${x: T, y: T = val}`. GADT-style type definitions. Total plan tasks now 188+ across 8 phases (was 141 across 5 phases). |
 | 2026-04-27 | **Phase 2 Task 2.14 + 2.15: Type inference module and tests implemented:** `src/core/infer.gleam` (570 lines) with bidirectional type checking — `infer()` synthesizes types without context, `check()` verifies against expected type. Covers all term forms: Var, Hole, Lit, Typ, Lam, Pi, App, Ann, Match, Call, Rcd, Ctr, Err. `check_match_cases` handles pattern matching and case exhaustiveness. `unify_infer_and_check` integrates unification. Clean wrappers around `unify`, `force`, `evaluate`, `match_pattern`, `state` helpers. 31 tests in `test/core/infer_test.gleam` covering literals, variables, holes, lambdas, Pi types, records, constructors, errors, check assertions, and round-trip properties. 620 tests passing, 0 warnings. **Total: 620 tests passing.** |
 | 2026-04-27 | **Phase 2 Task 2.12 Quote implemented:** `src/core/quote.gleam` with `quote(value)` and `quote_at(value, level)`. Converts Values (De Bruijn levels) to Terms (De Bruijn indices). Clean wrapper around `force_levels_to_indices` from `subst.gleam`. 39 tests in `test/core/quote_test.gleam` covering: literals, constructors, records, errors, variable level-to-index conversion, holes, neutral terms with application spine, lambda values, Pi type values, nested quoting, evaluate→quote round-trip, and quote≠eval invariant. Fixed unreachable pattern warnings in grammar_test.gleam. **Total: 591 tests passing.** |
 | 2026-04-27 | **Phase 2 Task 2.16 + Type Definitions as Env Values:** Implemented TypeDef/ConstructorDef/VType in `core/ast.gleam`. Type definitions are stored as first-class environment values (`VType(TypeDef)`) instead of a separate `ctrs` registry. Updated exhaustive case expressions across `generalize.gleam`, `subst.gleam`, `unify.gleam`, `eval.gleam`. Created `core/exhaustiveness.gleam` with `check_exhaustiveness`, `extract_tags`, `is_redundant`, `make_type_def`, and `find_constructor`. Updated `core/infer.gleam` to use env lookup for TypeDef resolution. Created test files `test/core/type_defs_test.gleam` (28 tests) and `test/core/exhaustiveness_test.gleam` (22 tests). 658 tests passing, 0 failures. |
@@ -486,6 +566,10 @@ Total tests: 424 passed, 0 failures.
 - [x] Add tests for span merging and multi-line span tracking ✅ 13 added
 - [x] **Test suite cleanup:** Removed 4 redundant tests, fixed 2 silent-pass tests, removed unused Phase 3 code ✅ 363 tests passing
 - [ ] **Update all tests for new AST:** VUnit → VRcd, VLam, Case, Typ arity changes
+- [ ] **Phase 2b tests:** Parse all tour syntax with `$` prefix (40+ tests)
+- [ ] **Phase 2c tests:** Alias, type, record, record-type, error patterns (40+ tests)
+- [ ] **Phase 2d tests:** Numeric types, implicit params, GADT patterns (50+ tests)
+- [ ] **Tour e2e tests:** All `examples/core/tour/` files parse, type-check, and evaluate
 - [ ] Add tests for new core syntax: %fn, %let, %match, #Tag, fun(), {x: y}
 - [x] Add tests for unification ✅ 33 tests added in `test/core/unify_test.gleam`
 - [x] Add tests for generalization ✅ 46 tests added in `test/core/generalize_test.gleam`

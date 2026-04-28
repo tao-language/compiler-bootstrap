@@ -6,44 +6,55 @@
 
 This is the **starting point**. Every simplified type/feature has a documented extension path to the full design. We begin here and add features incrementally.
 
-## Extension Roadmap: Simplified → Full
+## Core Design (Tour Syntax — Source of Truth)
+
+The tour (`examples/core/tour/`) defines what Core actually is. These features are **core** (not extensions):
+
+| Feature | Tour Files | Implementation Phase |
+|---------|-----------|---------------------|
+| `$`-prefixed keywords (`$fn`, `$let`, `$match`, `$pi`, `$type`, `$error`) | 01_basics/* | Phase 2b |
+| Extended numeric types (`$I8`–`$I64`, `$U8`–`$U64`, `$F16`–`$F64`) | 03_literals/01_types.core | Phase 2d |
+| `$Int`/`$Float` wildcard types | 05_pattern_matching/03_type_pattern.core | Phase 2d |
+| Record type defaults (`${x: T, y: T = val}`) | 01_basics/03_records.core | Phase 2d |
+| GADT-style type definitions | 04_type_definitions/03_gadt_vec.core | Phase 2d |
+| Extended patterns (alias, type, record, record-type, error) | 05_pattern_matching/* | Phase 2c |
+| Two-stage guards (`? expr ~ pass => body`) | 05_pattern_matching/09_guards.core | Phase 2c |
+| Implicit params (`$fn<a: T>(x: a)`) | 07_advanced/02_implicit_params.core | Phase 2d |
+| `$Type<n>` and `$Type<x>` universes | 03_literals/01_types.core | Phase 2b |
+| FFI calls with typed args (`%fn(a: T, b: T) -> R`) | 06_builtins/* | Phase 2b |
+
+## Remaining Extensions (Phase 5+)
 
 ```
-START (Simplified)    →    EXTENSIONS (Incremental)    →    FINAL (Full Design)
-────────────────────────     ─────────────────────────     ─────────────────────
+CURRENT (Tour)    →    FUTURE EXTENSIONS          →    FINAL
+────────────────────     ──────────────────────────     ─────────────────
 
-Literal {              →    Add bit-width & signedness:   →    LitValue { ILit, FLit, StrLit }
-  Int, Float,         }                               }    LitType { I32T, I64T, U32T, U64T, F32T, F64T, ILitT, FLitT }
-  String             }                               }
+Lit { Int, Float }  →    Comptime to Term         →    Compile-time evaluation
+                         + Permission tracking
 
-No truth/false ctr    →    Add truth/false constructors  →    State with truth_ctor, false_ctor
-                            (core knows which to match on)
+No streams/yield    →    Add yield to Expr         →    Generator/Stream system
+                         + Stream type in stdlib
 
-No implicit params    →    Lam uses tuple param        →    Lam(param: #(String, Term))
-                            for overloaded functions     →    VLam(param: #(String, Value), ...)
+No error codes      →    Add E-prefix codes        →    E0001, E0101, etc.
+                         + Notes and hints
 
-No record values      →    Add VRcd to Value            →    Full record support
+No pretty formatting →    Add source context        →    Fancy diagnostics
+                         + ANSI color codes
 
-No FFI overloads      →    Add pattern matching         →    FfiEntry with (value, type) pairs
-                            on implicit args             →    Operator overloading
+No visitor pattern  →    Add visitor               →    Visitor module (if needed)
 
-No comptime           →    Add Comptime to Term         →    Compile-time evaluation
-                                                    →    Permission tracking
+No multi-file       →    Add import system         →    Full module system
+                         + Circular import detection
 
-No streams/yield      →    Add yield to Expr            →    Generator/Stream system
+No record update    →    Add record update desugar →    {r {x: 1}} syntax
 
-No error codes        →    Add E-prefix codes           →    E0001, E0101, etc.
+No truth/false ctr  →    Add truth/false cto config →    Match on True/False in FFI
 
-No pretty formatting  →    Add source context           →    Fancy diagnostics
-
-No visitor pattern    →    Add visitor                  →    Visitor module (if needed)
-
-No multi-file         →    Add import system            →    Full module system
-                                                    →    Circular import detection
-
+No overloads        →    Pattern match on implicit  →    Operator overloading
+                         args (value, type) pairs
 ```
 
-**Rule:** Each extension is a separate feature that can be built and tested independently. The simplified design works fully on its own.
+**Rule:** Features already in tour are core. Only features listed above are deferred.
 
 ## What's Cut (and Why)
 
@@ -51,10 +62,10 @@ No multi-file         →    Add import system            →    Full module sys
 
 | Feature | Why Cut Initially | How to Extend Later |
 |---------|-------------------|-------------------|
-| No bit-width types | One generic `Int/Float` is enough | Add I32/I64/U32/U64/F32/F64 as `LitType` variants |
-| No truth/false ctr | Match on `True`/`False` in FFI | Add `truth_ctor: String` to State |
-| No implicit params | Not needed for non-overloaded funcs | Add implicit params to Lam for overloading |
-| No records in Value | Desugar to Ctr/fields | Add VRcd to Value |
+| **Now core (tour):** Bit-width types | Already in tour | N/A |
+| **Now core (tour):** Truth/false ctr | Already in tour | N/A |
+| **Now core (tour):** Implicit params | Already in tour | N/A |
+| **Now core (tour):** Records in Value | Already in tour | N/A |
 | No comptime | Adds permission tracking | Add Comptime to Term, evaluate at compile time |
 | No streams | Can be a library | Add yield + Stream type |
 | No error codes | Not useful for debugging MVP | Add E-prefix codes later |
@@ -62,6 +73,7 @@ No multi-file         →    Add import system            →    Full module sys
 | No visitor | Boilerplate for 20+ constructors | Add visitor when duplication hurts |
 | No multi-file | Start single-file | Add import system later |
 | No `mut` keyword | All variables immutable | Not needed (desugar to new bindings) |
+| No record update | Low-impact feature | Add record update desugar |
 
 ### Tao Simplifications
 
@@ -421,22 +433,23 @@ pub fn test(source: String, ctx: Context) -> TestResult {
 
 ### Phase 5: Polish + Extended Features (3-4 days)
 
-**Goal:** Full design features added incrementally.
+**Goal:** Remaining deferred features.
 
 **Deliverables:**
-- Literal type extensions (ILit/FLit, I32T/I64T/etc.)
-- Operator overloading (pattern matching on implicit args)
-- Truth/false constructor matching
-- Better error messages
-- Error codes (E0001, E0101, etc.)
-- Pretty error formatting with source context
-- Optional: Comptime, Streams, Record update
+- Comptime: Compile-time evaluation + permission tracking
+- Streams: yield + Stream type
+- Record update: `{r {x: 1}}` syntax
+- Truth/false constructor config
+- Operator overloading: `(value, type)` pairs
+- Error codes (E0001, E0101, etc.) + source context
+- Pretty error formatting
 
 **Tests:**
-- Literal type unification
+- Comptime evaluation
+- Stream operations
+- Record update desugaring
 - Operator overloading resolution
 - Error code system
-- Source context formatting
 
 ## Summary
 
@@ -444,29 +457,38 @@ pub fn test(source: String, ctx: Context) -> TestResult {
 |-------|------|-------------|-------------|
 | 1: Lexer + Core Types | 2-3 | Tokenizer, Core AST, State, Error | — |
 | 2: Parser + Type Checker + **Run** | 4-5 | Core parser, type checker, NBE, Quote | `run` ✅ |
+| 2b: Tour Syntax Parser | 3-4 | All $-prefixed keywords, % FFI syntax, $Type<n> | `run` |
+| 2c: Extended Patterns | 2-3 | Alias, type, record, record-type, error patterns, guards | `run` |
+| 2d: Numeric Types & Advanced | 3-4 | $I8-$F64, $Int/$Float, implicit params, GADT | `run` |
 | 3: Tao + Desugar + **Check + Test** | 4-5 | Tao parser, desugarer, test framework | `run` ✅, `check` ✅, `test` ✅ |
 | 4: Multi-file + Import | 3-4 | Module loading, import resolver | `run` ✅, `check` ✅, `test` ✅ |
-| 5: Polish + Extended Features | 3-4 | Literal types, overloading, error codes, formatting | `run` ✅, `check` ✅, `test` ✅ |
+| 5: Polish + Extended Features | 3-4 | Comptime, streams, error codes, formatting, overloads | `run` ✅, `check` ✅, `test` ✅ |
 
 **First working CLI by end of Phase 2.** Full CLI (run/check/test) by end of Phase 3.
 
 ## Expected Test Count
 
-| Category | Simplified | Full Design |
-|----------|-----------|-------------|
-| Lexer | 15 | 15 |
-| Parser (Core) | 20 | 30 |
-| Parser (Tao) | 20 | 30 |
-| Core type checker | 30 | 50 |
-| Core evaluator | 20 | 25 |
-| Quote | 10 | 15 |
-| Unification | 15 | 20 |
-| Exhaustiveness | 15 | 20 |
-| Desugarer | 25 | 40 |
-| Import system | 20 | 40 |
-| CLI tests | 10 | 20 |
-| Error handling | 10 | 30 |
-| **Total** | **~175** | **~340** |
+Tour-based Core adds significant test volume for extended patterns, numeric types, and advanced inference:
+
+| Category | Tour (Core) | Tao | Total |
+|----------|-------------|-----|-------|
+| Lexer | 15 | 15 | 30 |
+| Parser (Core tour) | 50+ | — | 50+ |
+| Parser (Tao) | — | 30 | 30 |
+| Extended patterns (Phase 2c) | 40+ | — | 40+ |
+| Numeric types (Phase 2d) | 30+ | — | 30+ |
+| Implicit params + GADT | 20+ | — | 20+ |
+| Core type checker | 50 | — | 50 |
+| Core evaluator | 25 | — | 25 |
+| Quote | 15 | — | 15 |
+| Unification | 20 | — | 20 |
+| Exhaustiveness | 20 | — | 20 |
+| Desugarer | — | 40 | 40 |
+| Import system | — | 40 | 40 |
+| CLI tests | — | 20 | 20 |
+| Tour e2e examples | — | — | 40+ |
+| Error handling | — | 30 | 30 |
+| **Total** | **~220+** | **~225** | **~445+** |
 
 ## What This Approach Gains
 
