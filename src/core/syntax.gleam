@@ -94,14 +94,14 @@ fn term_span(term: Term) -> Span {
   case term {
     Var(_, span) -> span
     Hole(_, span) -> span
-    Lam(_, _, span) -> span
+    Lam(_, _, _, span) -> span
     App(_, _, span) -> span
-    Pi(_, _, span) -> span
+    Pi(_, _, _, span) -> span
     Lit(_, span) -> span
     Ctr(_, _, span) -> span
     Match(_, _, span) -> span
     Ann(_, _, span) -> span
-    Call(_, _, span) -> span
+    Call(_, _, _, _, span) -> span
     Rcd(_, span) -> span
     Typ(_, span) -> span
     Err(_, span) -> span
@@ -460,7 +460,7 @@ fn parse_lambda(p: Parser, span: Span) -> #(Term, Parser) {
   let p7 = add_binding(p6, name)
   let #(body, rest) = parse_term(p7)
   let final_span = merge(span, term_span(body))
-  #(Lam(#(name, param_type), body, final_span), rest)
+  #(Lam([], #(name, param_type), body, final_span), rest)
 }
 
 // Application: fun(fun_arg: arg)
@@ -677,14 +677,14 @@ fn term_to_string(term: Term) -> String {
   case term {
     Var(_, _) -> "var"
     Hole(_, _) -> "hole"
-    Lam(_, _, _) -> "fn"
+    Lam(_, _, _, _) -> "fn"
     App(_, _, _) -> "app"
-    Pi(_, _, _) -> "Pi"
+    Pi(_, _, _, _) -> "Pi"
     Lit(_, _) -> "lit"
     Ctr(_, _, _) -> "ctr"
     Match(_, _, _) -> "match"
     Ann(_, _, _) -> "ann"
-    Call(_, _, _) -> "call"
+    Call(_, _, _, _, _) -> "call"
     Rcd(_, _) -> "rcd"
     Typ(_, _) -> "type"
     Err(msg, _) -> msg

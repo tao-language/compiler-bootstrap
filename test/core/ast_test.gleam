@@ -33,9 +33,9 @@ pub fn term_hole_stores_id_and_span_test() {
 pub fn term_lambda_stores_name_body_and_span_test() {
   let body = Var(0, single("file.gleam", 1, 2))
   let param_type = Hole(-1, single("file.gleam", 1, 1))
-  let t = Lam(#("x", param_type), body, single("file.gleam", 1, 3))
+  let t = Lam([], #("x", param_type), body, single("file.gleam", 1, 3))
   assert case t {
-    Lam(#(name, _), _, _) -> name == "x"
+    Lam(_, #(name, _), _, _) -> name == "x"
   }
 }
 
@@ -55,13 +55,9 @@ pub fn term_application_stores_fun_arg_and_span_test() {
 
 pub fn term_pi_stores_domain_codomain_and_span_test() {
   let t =
-    Pi(
-      Var(0, single("file.gleam", 1, 1)),
-      Var(1, single("file.gleam", 1, 3)),
-      single("file.gleam", 1, 5),
-    )
+    Pi([], #("pi_param", Var(0, single("file.gleam", 1, 1))), Var(1, single("file.gleam", 1, 3)), single("file.gleam", 1, 5))
   assert case t {
-    Pi(Var(domain_index, _), Var(codomain_index, _), _) ->
+    Pi([], #("pi_param", Var(domain_index, _)), Var(codomain_index, _), _) ->
       domain_index == 0 && codomain_index == 1
     _ -> False
   }
@@ -148,17 +144,17 @@ pub fn neut_value_stores_hole_head_test() {
 pub fn lam_value_stores_param_and_body_test() {
   let body = Var(0, single("file.gleam", 1, 1))
   let param_type = VNeut(HHole(0), [])
-  let v = VLam(#("x", param_type), body)
+  let v = VLam([], [], #("x", param_type), body)
   assert case v {
-    VLam(#(name, _), _) -> name == "x"
+    VLam(_, _, #(name, _), _) -> name == "x"
   }
 }
 
 pub fn pi_value_stores_domain_and_codomain_test() {
   let dom = VNeut(HVar(0), [])
   let codom = VNeut(HVar(1), [])
-  let v = VPi(dom, codom)
-  assert v.domain == dom
+  let v = VPi([], [], #("pi_param", dom), codom)
+  assert v.domain.1 == dom
   assert v.codomain == codom
 }
 
@@ -213,21 +209,13 @@ pub fn shift_term_on_bound_variable_increments_index_test() {
   let _body = Var(0, single("file.gleam", 1, 1))
   let param_type = Hole(-1, single("file.gleam", 1, 1))
   let lam =
-    Lam(
-      #("x", param_type),
-      Var(0, single("file.gleam", 1, 2)),
-      single("file.gleam", 1, 3),
-    )
+    Lam([], #("x", param_type), Var(0, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
   let shifted = shift_term(lam, 1)
   // Hole(-1) stays Hole(-1) (holes don't shift)
   // body Var(0) stays Var(0) (bound by lam, from=1)
   // func_body Var(0) stays Var(0) (bound by lam, from=1)
   assert shifted
-    == Lam(
-      #("x", Hole(-1, single("file.gleam", 1, 1))),
-      Var(0, single("file.gleam", 1, 2)),
-      single("file.gleam", 1, 3),
-    )
+    == Lam([], #("x", Hole(-1, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
 }
 
 pub fn shift_term_on_literal_is_no_op_test() {
@@ -289,7 +277,7 @@ pub fn shift_term_on_let_shifts_value_and_body_test() {
   let param_type = Rcd([], single("file.gleam", 1, 3))
   let let_expr =
     App(
-      Lam(#("x", param_type), body, single("file.gleam", 1, 3)),
+      Lam([], #("x", param_type), body, single("file.gleam", 1, 3)),
       value,
       single("file.gleam", 1, 3),
     )
@@ -298,11 +286,7 @@ pub fn shift_term_on_let_shifts_value_and_body_test() {
   // body is shifted with from=1: Var(0) stays Var(0) (bound by Lam)
   let expected =
     App(
-      Lam(
-        #("x", param_type),
-        Var(0, single("file.gleam", 1, 1)),
-        single("file.gleam", 1, 3),
-      ),
+      Lam([], #("x", param_type), Var(0, single("file.gleam", 1, 1)), single("file.gleam", 1, 3)),
       Var(3, single("file.gleam", 1, 2)),
       single("file.gleam", 1, 3),
     )
@@ -343,33 +327,21 @@ pub fn shift_term_negative_on_all_vars_decrements_indices_test() {
   let _body = Var(0, single("file.gleam", 1, 1))
   let param_type = Hole(-1, single("file.gleam", 1, 1))
   let outer = Var(1, single("file.gleam", 1, 2))
-  let lam = Lam(#("x", param_type), outer, single("file.gleam", 1, 3))
+  let lam = Lam([], #("x", param_type), outer, single("file.gleam", 1, 3))
   let shifted = shift_term(lam, -1)
   // Hole(-1) stays Hole(-1) (holes don't shift)
   // body Var(0) stays Var(0) (bound by lam, from=1, 0 < 1)
   // func_body Var(1) becomes Var(0) (from=1, 1 >= 1, so 1-1=0)
   assert shifted
-    == Lam(
-      #("x", Hole(-1, single("file.gleam", 1, 1))),
-      Var(0, single("file.gleam", 1, 2)),
-      single("file.gleam", 1, 3),
-    )
+    == Lam([], #("x", Hole(-1, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
 }
 
 pub fn shift_term_on_pi_shifts_domain_and_codomain_test() {
   let pi =
-    Pi(
-      Var(2, single("file.gleam", 1, 1)),
-      Var(3, single("file.gleam", 1, 2)),
-      single("file.gleam", 1, 3),
-    )
+    Pi([], #("pi_param", Var(2, single("file.gleam", 1, 1))), Var(3, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
   let shifted = shift_term(pi, 1)
   assert shifted
-    == Pi(
-      Var(3, single("file.gleam", 1, 1)),
-      Var(4, single("file.gleam", 1, 2)),
-      single("file.gleam", 1, 3),
-    )
+    == Pi([], #("pi_param", Var(3, single("file.gleam", 1, 1))), Var(4, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
 }
 
 pub fn shift_term_zero_does_nothing_test() {
@@ -395,7 +367,7 @@ pub fn term_to_string_hole_test() {
 pub fn term_to_string_lambda_test() {
   let body = Var(0, single("file.gleam", 1, 2))
   let param_type = Hole(-1, single("file.gleam", 1, 1))
-  let t = Lam(#("x", param_type), body, single("file.gleam", 1, 3))
+  let t = Lam([], #("x", param_type), body, single("file.gleam", 1, 3))
   assert term_to_string(t) == "%fn(x: ?-1) => #0"
 }
 
@@ -451,7 +423,7 @@ pub fn value_to_string_neut_hole_test() {
 pub fn value_to_string_lambda_test() {
   let body = Var(0, single("file.gleam", 1, 1))
   let param_type = VNeut(HHole(0), [])
-  let v = VLam(#("x", param_type), body)
+  let v = VLam([], [], #("x", param_type), body)
   assert value_to_string(v) == "%fn(x) => #0"
 }
 
@@ -485,10 +457,10 @@ pub fn shift_term_nested_lam_shifts_correctly_test() {
   let inner_body = Var(0, single("file.gleam", 1, 1))
   let inner_param = Hole(-1, single("file.gleam", 1, 1))
   let inner_lam =
-    Lam(#("y", inner_param), inner_body, single("file.gleam", 1, 1))
+    Lam([], #("y", inner_param), inner_body, single("file.gleam", 1, 1))
   let outer_param = Hole(-1, single("file.gleam", 1, 1))
   let outer_lam =
-    Lam(#("x", outer_param), inner_lam, single("file.gleam", 1, 1))
+    Lam([], #("x", outer_param), inner_lam, single("file.gleam", 1, 1))
   let shifted = shift_term(outer_lam, 1)
   // outer_param (Hole) stays Hole (holes don't shift)
   // Body (inner_lam) shifted with from=1:
@@ -496,17 +468,9 @@ pub fn shift_term_nested_lam_shifts_correctly_test() {
   //   inner body/func_body Var(0) stays Var(0) (bound by inner lam, from=2)
   // So inner_lam is unchanged.
   let expected_inner =
-    Lam(
-      #("y", Hole(-1, single("file.gleam", 1, 1))),
-      Var(0, single("file.gleam", 1, 1)),
-      single("file.gleam", 1, 1),
-    )
+    Lam([], #("y", Hole(-1, single("file.gleam", 1, 1))), Var(0, single("file.gleam", 1, 1)), single("file.gleam", 1, 1))
   assert shifted
-    == Lam(
-      #("x", Hole(-1, single("file.gleam", 1, 1))),
-      expected_inner,
-      single("file.gleam", 1, 1),
-    )
+    == Lam([], #("x", Hole(-1, single("file.gleam", 1, 1))), expected_inner, single("file.gleam", 1, 1))
 }
 
 pub fn shift_term_on_ann_preserves_span_test() {
@@ -577,13 +541,13 @@ pub fn shift_term_on_let_preserves_span_test() {
   let param_type = Rcd([], single("file.gleam", 1, 3))
   let let_expr =
     App(
-      Lam(#("x", param_type), body, single("file.gleam", 1, 3)),
+      Lam([], #("x", param_type), body, single("file.gleam", 1, 3)),
       value,
       single("file.gleam", 1, 3),
     )
   let shifted = shift_term(let_expr, 1)
   assert case shifted {
-    App(Lam(#(_, _body), body2, _lam_span), value, main_span) ->
+    App(Lam(_, #(_, _body), body2, _lam_span), value, main_span) ->
       case value {
         Var(3, val_span) ->
           case body2 {
@@ -635,7 +599,7 @@ pub fn term_to_string_let_test() {
   let param_type = Rcd([], single("file.gleam", 1, 3))
   let let_expr =
     App(
-      Lam(#("x", param_type), body, single("file.gleam", 1, 3)),
+      Lam([], #("x", param_type), body, single("file.gleam", 1, 3)),
       value,
       single("file.gleam", 1, 3),
     )
@@ -670,7 +634,7 @@ pub fn value_to_string_pi_test() {
   // VPi should format as "%fn(name: domain) -> codomain"
   let dom = VNeut(HHole(0), [])
   let codom = VNeut(HVar(0), [])
-  let v = VPi(dom, codom)
+  let v = VPi([], [], #("pi_param", dom), codom)
   assert value_to_string(v) == "%fn(_0: ?0) -> v0"
 }
 
@@ -763,18 +727,10 @@ pub fn shift_term_on_ctr_zero_shift_preserves_test() {
 pub fn shift_term_on_pi_both_shifted_test() {
   // shift_term on Pi should shift both domain and codomain
   let pi =
-    Pi(
-      Var(1, single("file.gleam", 1, 1)),
-      Var(2, single("file.gleam", 1, 2)),
-      single("file.gleam", 1, 3),
-    )
+    Pi([], #("pi_param", Var(1, single("file.gleam", 1, 1))), Var(2, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
   let shifted = shift_term(pi, 1)
   assert shifted
-    == Pi(
-      Var(2, single("file.gleam", 1, 1)),
-      Var(3, single("file.gleam", 1, 2)),
-      single("file.gleam", 1, 3),
-    )
+    == Pi([], #("pi_param", Var(2, single("file.gleam", 1, 1))), Var(3, single("file.gleam", 1, 2)), single("file.gleam", 1, 3))
 }
 
 pub fn shift_term_on_ann_both_shifted_test() {

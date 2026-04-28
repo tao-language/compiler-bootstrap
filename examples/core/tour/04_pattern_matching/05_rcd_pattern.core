@@ -1,0 +1,8 @@
+// Record pattern follows the syntax `{field_name: pattern}`
+// If a pattern has a field not present in the match arg, it's a pattern mismatch.
+$match {x: 1, y: 2} {
+| {x: 1, y: _} => 0   // matches when `x` equals 1 and `y` always, does not bind anything
+| {x: z} => z         // matches and binds field `x` as `z`
+| {x} => x            // syntax sugar, equivalent to {x: x}
+| {} => 0             // matches any record, but does not bind anything
+}

@@ -86,15 +86,13 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
       match_neutral(state, head1, spine1, head2, spine2)
 
     // ── Lambda — unify param types ───────────────────────────
-    VLam(#(_, ptype1), _), VLam(#(_, ptype2), _) ->
-      match_values(state, ptype1, ptype2)
+    VLam(_env1, _implicits1, param1, _body1), VLam(_env2, _implicits2, param2, _body2) ->
+      match_values(state, param1.1, param2.1)
 
     // ── Pi types — unify domains, then codomains ─────────────
-    VPi(domain1, codomain1), VPi(domain2, codomain2) -> {
-      let s1 = match_values(state, domain1, domain2)
-      let bound =
-        State(..s1, vars: [#("pi_param", #(domain2, domain2)), ..s1.vars])
-      match_values(bound, codomain1, shift_value(codomain2, 1))
+    VPi(_env1, _implicits1, domain1, codomain1), VPi(_env2, _implicits2, domain2, codomain2) -> {
+      let s1 = match_values(state, domain1.1, domain2.1)
+      match_values(s1, codomain1, codomain2)
     }
 
     // ── Constructor — tag must match, then unify args ────────
@@ -273,10 +271,10 @@ fn shift_value(value: Value, n: Int) -> Value {
   case value {
     VNeut(head, spine) ->
       VNeut(shift_head(head, n), list.map(spine, fn(e) { shift_elim(e, n) }))
-    VPi(domain, codomain) ->
-      VPi(shift_value(domain, n), shift_value(codomain, n))
-    VLam(#(name, param), _) ->
-      VLam(#(name, shift_value(param, n)), Var(0, single("", 0, 0)))
+    VPi(env, implicits, domain, codomain) ->
+      VPi(env, implicits, domain, shift_value(codomain, n))
+    VLam(env1, implicits, #(name, param), body) ->
+      VLam(env1, implicits, #(name, shift_value(param, n)), body)
     VLit(value) -> VLit(value)
     VCtr(tag, arg) -> VCtr(tag, shift_value(arg, n))
     VRcd(fields) ->

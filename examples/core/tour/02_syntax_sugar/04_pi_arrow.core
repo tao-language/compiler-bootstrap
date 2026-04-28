@@ -1,0 +1,3 @@
+// Omitting a domain name makes it a non-dependent function type.
+// This is equivalent to `$pi(_: a) -> a`
+$pi(a) -> a

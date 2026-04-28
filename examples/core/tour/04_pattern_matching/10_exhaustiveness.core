@@ -1,0 +1,8 @@
+// The compiler checks for exhaustive and redundant cases.
+// Numeric types are treated as "infinite" types which require a wildcard pattern at the end.
+// If the argument
+
+$match #Some(42) {
+| #Some(x) => x
+| #None(_) => 0
+}

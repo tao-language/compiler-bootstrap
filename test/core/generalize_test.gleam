@@ -54,12 +54,12 @@ fn vrcd(fields: List(#(String, Value))) -> Value {
 
 /// Helper to construct a Pi type value.
 fn vpi(domain: Value, codomain: Value) -> Value {
-  VPi(domain, codomain)
+  VPi([], [], #("pi_param", domain), codomain)
 }
 
 /// Helper to construct a lambda value.
 fn vlam(param: #(String, Value), body: Term) -> Value {
-  VLam(param, body)
+  VLam([], [], param, body)
 }
 
 // ============================================================================
@@ -338,7 +338,7 @@ pub fn replace_holes_with_vars_multiple_test() {
   // 2 -> 0, 1 -> 1
   let result = generalize.replace_holes_with_vars(val, subst)
   case result {
-    VPi(VNeut(HVar(1), []), VNeut(HVar(0), [])) -> True
+    VPi([], [], #("pi_param", VNeut(HVar(1), [])), VNeut(HVar(0), [])) -> True
     _ -> False
   }
   |> should.be_true
@@ -424,14 +424,14 @@ pub fn replace_holes_with_vars_spine_preserved_test() {
 
 /// Nested VPi with holes.
 pub fn replace_holes_with_vars_nested_test() {
-  // VPi(vhole(1), VPi(vhole(2), vhole(3)))
-  let inner = VPi(vhole(2), vhole(3))
-  let val = VPi(vhole(1), inner)
+  // VPi([], [], #("pi_param", vhole(1)), VPi(vhole(2), vhole(3)))
+  let inner = VPi([], [], #("pi_param", vhole(2)), vhole(3))
+  let val = VPi([], [], #("pi_param", vhole(1)), inner)
   let subst = generalize.create_hole_subst([1, 2, 3], 0)
   // Sorted descending: [3, 2, 1] -> 3:0, 2:1, 1:2
   let result = generalize.replace_holes_with_vars(val, subst)
   case result {
-    VPi(VNeut(HVar(2), []), VPi(VNeut(HVar(1), []), VNeut(HVar(0), []))) -> True
+    VPi([], [], #("pi_param", VNeut(HVar(2), [])), VPi([], [], #("pi_param", VNeut(HVar(1), [])), VNeut(HVar(0), []))) -> True
     _ -> False
   }
   |> should.be_true
@@ -470,7 +470,7 @@ pub fn replace_holes_term_in_vlam_test() {
   let subst = generalize.create_hole_subst([0], 0)
   let result = generalize.replace_holes_with_vars(val, subst)
   case result {
-    VLam(#("x", VNeut(HVar(0), [])), _body) -> True
+    VLam([], [], #("x", VNeut(HVar(0), [])), _body) -> True
     _ -> False
   }
   |> should.be_true
@@ -478,12 +478,12 @@ pub fn replace_holes_term_in_vlam_test() {
 
 /// Pi type with holes.
 pub fn replace_holes_term_pi_test() {
-  let val = VPi(vhole(0), vhole(1))
+  let val = VPi([], [], #("pi_param", vhole(0)), vhole(1))
   let subst = generalize.create_hole_subst([0, 1], 0)
   // 1 -> 0, 0 -> 1 (sorted descending: [1, 0])
   let result = generalize.replace_holes_with_vars(val, subst)
   case result {
-    VPi(VNeut(HVar(1), []), VNeut(HVar(0), [])) -> True
+    VPi([], [], #("pi_param", VNeut(HVar(1), [])), VNeut(HVar(0), [])) -> True
     _ -> False
   }
   |> should.be_true

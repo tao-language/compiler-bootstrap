@@ -1,0 +1,22 @@
+// Lambda implicit parameters are enclosed between <brackets>.
+// There can be zero or more implicit parameters, zero if omitted.
+// Implicit parameters are semantically the same as explicit ones,
+// but they can be auto-expanded during type inference.
+// This is semantically equivalent to `$pi(a: $Type) -> $pi(_: a) -> a`
+$let identity: $pi<a: $Type>(a) -> a =
+  // This is semantically equivalent to `$fn(a: $Type) => $fn(x: a) => x`
+  $fn<a: $Type>(x: a) => x;
+
+// This is equivalent to identity(?, 42) due to the implicit parameter.
+// Then type inference fills it to identity($Int, 42).
+identity(42)
+
+// For example, for more implicit parameters:
+//   $let f = $fn<a: $Type, b: $Type>(x: a) => $fn(y: b) => {x: x, y: y}
+// Is sementically equivalent to:
+//   $let f = $fn(a: $Type) => $fn(b: $Type) => $fn(x: a) => $fn(y: b) => {x: x, y: y}
+// But it allows us to call it in any of the following ways:
+//   f(1)(2)
+//   f($Int)(1)(2)
+//   f($Int)($Int)(1)(2)
+// This is because implicit parameters are auto-expanded as needed.

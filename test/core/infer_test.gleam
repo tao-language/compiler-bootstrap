@@ -59,11 +59,11 @@ fn typ(lvl: Int) -> Term {
 }
 
 fn lam(param_name: String, param_type: Term, body: Term) -> Term {
-  Lam(#(param_name, param_type), body, sp())
+  Lam([], #(param_name, param_type), body, sp())
 }
 
 fn pi(domain: Term, codomain: Term) -> Term {
-  Pi(domain, codomain, sp())
+  Pi([], #("pi_param", domain), codomain, sp())
 }
 
 fn app(fun: Term, arg: Term) -> Term {
@@ -209,11 +209,11 @@ pub fn infer_lambda_identity_test() {
   let result = infer(initial_state([]), lam)
   let #(value, type_, _) = result
   assert case value {
-    VLam(#("x", _), _) -> True
+    VLam([], [], #("x", _), _) -> True
     _ -> False
   }
   assert case type_ {
-    VPi(_, _) -> True
+    VPi([], [], #("pi_param", _), _) -> True
     _ -> False
   }
 }
@@ -230,7 +230,7 @@ pub fn infer_lambda_constant_test() {
     _ -> False
   }
   assert case type_ {
-    VPi(_, _) -> True
+    VPi([], [], #("pi_param", _), _) -> True
     _ -> False
   }
 }
@@ -247,7 +247,7 @@ pub fn infer_pi_type_test() {
   let result = infer(initial_state([]), pi)
   let #(value, type_, _) = result
   assert case value {
-    VPi(_, _) -> True
+    VPi([], [], #("pi_param", _), _) -> True
     _ -> False
   }
   assert type_ == v_neut(0)
@@ -443,7 +443,7 @@ pub fn infer_roundtrip_lambda_test() {
     _ -> False
   }
   assert case type_ {
-    VPi(_, _) -> True
+    VPi([], [], #("pi_param", _), _) -> True
     _ -> False
   }
 }

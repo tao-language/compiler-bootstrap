@@ -1,0 +1,6 @@
+$let empty = {};
+$let fields1 = {x: 1};
+$let fields2 = {x: 1, y: 2};
+$let fields3 = {x: 1, y: 2, z: 3};
+
+0

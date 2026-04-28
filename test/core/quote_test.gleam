@@ -218,29 +218,29 @@ pub fn quote_neut_hole_with_spine_test() {
 
 pub fn quote_lam_simple_test() {
   let body: Term = Var(0, single("", 0, 0))
-  let value = VLam(#("x", VRcd([])), body)
+  let value = VLam([], [], #("x", VRcd([])), body)
   let term = quote(value)
-  let expected = Lam(#("x", Rcd([], single("", 0, 0))), Var(0, single("", 0, 0)), single("", 0, 0))
+  let expected = Lam([], #("x", Rcd([], single("", 0, 0))), Var(0, single("", 0, 0)), single("", 0, 0))
   assert term == expected
 }
 
 pub fn quote_lam_nested_test() {
   let inner_body: Term = Var(0, single("", 0, 0))
-  let inner = VLam(#("y", vi(0)), inner_body)
+  let inner = VLam([], [], #("y", vi(0)), inner_body)
   let outer_body: Term = Var(0, single("", 0, 0))
   let _ignored = inner
-  let value = VLam(#("x", VRcd([])), outer_body)
+  let value = VLam([], [], #("x", VRcd([])), outer_body)
   let term = quote(value)
-  let expected = Lam(#("x", Rcd([], single("", 0, 0))), Var(0, single("", 0, 0)), single("", 0, 0))
+  let expected = Lam([], #("x", Rcd([], single("", 0, 0))), Var(0, single("", 0, 0)), single("", 0, 0))
   assert term == expected
 }
 
 pub fn quote_lam_needs_nested_quote_test() {
   let inner_body: Term = Var(0, single("", 0, 0))
-  let inner_lam: Value = VLam(#("y", vi(1)), inner_body)
+  let inner_lam: Value = VLam([], [], #("y", vi(1)), inner_body)
   let value = VCtr("Tag", inner_lam)
   let term = quote(value)
-  let expected = Ctr("Tag", Lam(#("y", Lit(LitInt(1), single("", 0, 0))), Var(0, single("", 0, 0)), single("", 0, 0)), single("", 0, 0))
+  let expected = Ctr("Tag", Lam([], #("y", Lit(LitInt(1), single("", 0, 0))), Var(0, single("", 0, 0)), single("", 0, 0)), single("", 0, 0))
   assert term == expected
 }
 
@@ -251,23 +251,23 @@ pub fn quote_lam_needs_nested_quote_test() {
 pub fn quote_pi_simple_test() {
   let domain: Value = vi(0)
   let codomain: Value = vi(1)
-  let value = VPi(domain, codomain)
+  let value = VPi([], [], #("pi_param", domain), codomain)
   let term = quote(value)
-  let expected = Pi(Lit(LitInt(0), single("", 0, 0)), Lit(LitInt(1), single("", 0, 0)), single("", 0, 0))
+  let expected = Pi([], #("pi_param", Lit(LitInt(0), single("", 0, 0))), Lit(LitInt(1), single("", 0, 0)), single("", 0, 0))
   assert term == expected
 }
 
 pub fn quote_pi_with_vlam_codomain_test() {
   let domain: Value = vi(0)
   let lam_body: Term = Var(0, single("", 0, 0))
-  let codomain: Value = VLam(#("x", vi(1)), lam_body)
-  let value = VPi(domain, codomain)
+  let codomain: Value = VLam([], [], #("x", vi(1)), lam_body)
+  let value = VPi([], [], #("pi_param", domain), codomain)
   let term = quote(value)
   // The domain is vi(0) -> Lit(LitInt(0), span)
-  // The codomain is VLam -> Lam(#("x", Lit(LitInt(1), span)), Var(0, span), span)
-  let expected_codomain = Lam(#("x", Lit(LitInt(1), single("", 0, 0))), Var(0, single("", 0, 0)), single("", 0, 0))
+  // The codomain is VLam -> Lam([], #("x", Lit(LitInt(1), span)), Var(0, span), span)
+  let expected_codomain = Lam([], #("x", Lit(LitInt(1), single("", 0, 0))), Var(0, single("", 0, 0)), single("", 0, 0))
   assert case term {
-    Pi(Lit(LitInt(0), _), actual_codomain, _) -> actual_codomain == expected_codomain
+    Pi([], #("pi_param", Lit(LitInt(0), _)), actual_codomain, _) -> actual_codomain == expected_codomain
     _ -> False
   }
 }
@@ -281,13 +281,13 @@ pub fn quote_pi_with_vlam_codomain_test() {
 // without evaluating the body.
 
 pub fn quote_does_not_evaluate_vlam_body_test() {
-  let body: Term = Lam(#("inner", Lit(LitInt(0), single("", 0, 0))), Var(0, single("", 0, 0)), single("", 0, 0))
-  let value = VLam(#("x", vi(0)), body)
+  let body: Term = Lam([], #("inner", Lit(LitInt(0), single("", 0, 0))), Var(0, single("", 0, 0)), single("", 0, 0))
+  let value = VLam([], [], #("x", vi(0)), body)
   let term = quote(value)
   assert case term {
-    Lam(#(_, _param), inner_body, _) ->
+    Lam(_, #(_, _param), inner_body, _) ->
       case inner_body {
-        Lam(#("inner", _), _, _) -> True
+        Lam([], #("inner", _), _, _) -> True
         _ -> False
       }
     _ -> False
@@ -296,10 +296,10 @@ pub fn quote_does_not_evaluate_vlam_body_test() {
 
 pub fn quote_preserves_lam_body_test() {
   let body: Term = Var(1, single("", 0, 0))
-  let value = VLam(#("x", vi(0)), body)
+  let value = VLam([], [], #("x", vi(0)), body)
   let term = quote(value)
   assert case term {
-    Lam(#("x", _), body2, _) -> body2 == Var(1, single("", 0, 0))
+    Lam([], #("x", _), body2, _) -> body2 == Var(1, single("", 0, 0))
     _ -> False
   }
 }
@@ -318,11 +318,11 @@ pub fn quote_ctr_with_complex_arg_test() {
 pub fn quote_nested_vlam_vpi_test() {
   let domain: Value = vi(0)
   let lam_body: Term = Var(0, single("", 0, 0))
-  let codomain: Value = VLam(#("f", VPi(vi(0), vi(1))), lam_body)
-  let value = VPi(domain, codomain)
+  let codomain: Value = VLam([], [], #("f", VPi([], [], #("pi_param", vi(0)), vi(1))), lam_body)
+  let value = VPi([], [], #("pi_param", domain), codomain)
   let term = quote(value)
   assert case term {
-    Pi(domain_t, Lam(#("f", _), _, _), _) ->
+    Pi([], #("pi_param", domain_t), Lam([], #("f", _), _, _), _) ->
       case domain_t {
         Lit(LitInt(0), _) -> True
         _ -> False
@@ -366,11 +366,11 @@ pub fn quote_at_level_vs_value_level_test() {
 pub fn force_and_quote_integration_test() {
   let state = initial_state([])
   // Evaluate: identity function applied to 42
-  let id_fn: Value = VLam(#("x", VRcd([])), Var(0, single("", 0, 0)))
+  let id_fn: Value = VLam([], [], #("x", VRcd([])), Var(0, single("", 0, 0)))
   let result = force(state, id_fn)
   // The result should be a VLam (not forced — it's not a hole)
   assert case result {
-    VLam(#("x", _), _) -> True
+    VLam([], [], #("x", _), _) -> True
     _ -> False
   }
 }
@@ -399,14 +399,14 @@ pub fn evaluate_identity_then_quote_test() {
   let state = initial_state([])
   let body = Var(0, single("", 0, 0))
   let param_type = Lit(LitInt(0), single("", 0, 0))
-  let lam = Lam(#("x", param_type), body, single("", 0, 0))
+  let lam = Lam([], #("x", param_type), body, single("", 0, 0))
   let value = evaluate(state, lam)
   // The evaluated value is a VLam
   assert case value {
-    VLam(#("x", _), _body2) -> {
+    VLam([], [], #("x", _), _body2) -> {
       let quoted = quote(value)
       case quoted {
-        Lam(#("x", _), inner_body, _) -> {
+        Lam([], #("x", _), inner_body, _) -> {
           // The body Var(0) should be preserved
           inner_body == Var(0, single("", 0, 0))
         }
@@ -421,7 +421,7 @@ pub fn evaluate_lam_app_then_quote_test() {
   let state = initial_state([])
   let body = Var(0, single("", 0, 0))
   let param_type = Lit(LitInt(0), single("", 0, 0))
-  let lam = Lam(#("x", param_type), body, single("", 0, 0))
+  let lam = Lam([], #("x", param_type), body, single("", 0, 0))
   let arg = Lit(LitInt(42), single("", 0, 0))
   let result = evaluate(state, App(lam, arg, single("", 0, 0)))
   // After evaluation, we get VLit(LitInt(42))
@@ -448,9 +448,9 @@ pub fn quote_deeply_nested_ctr_test() {
 pub fn quote_vpi_domain_neut_test() {
   let domain: Value = vl(0)
   let codomain: Value = vi(1)
-  let value = VPi(domain, codomain)
+  let value = VPi([], [], #("pi_param", domain), codomain)
   let term = quote(value)
-  let expected = Pi(Var(0, single("", 0, 0)), Lit(LitInt(1), single("", 0, 0)), single("", 0, 0))
+  let expected = Pi([], #("pi_param", Var(0, single("", 0, 0))), Lit(LitInt(1), single("", 0, 0)), single("", 0, 0))
   assert term == expected
 }
 
@@ -470,10 +470,10 @@ pub fn quote_hvar_with_complex_spine_test() {
 pub fn quote_lam_with_pi_type_test() {
   let domain: Value = vi(0)
   let codomain: Value = vi(1)
-  let param_type: Value = VPi(domain, codomain)
+  let param_type: Value = VPi([], [], #("pi_param", domain), codomain)
   let body: Term = Var(0, single("", 0, 0))
-  let value = VLam(#("f", param_type), body)
+  let value = VLam([], [], #("f", param_type), body)
   let term = quote(value)
-  let expected = Lam(#("f", Pi(Lit(LitInt(0), single("", 0, 0)), Lit(LitInt(1), single("", 0, 0)), single("", 0, 0))), Var(0, single("", 0, 0)), single("", 0, 0))
+  let expected = Lam([], #("f", Pi([], #("pi_param", Lit(LitInt(0), single("", 0, 0))), Lit(LitInt(1), single("", 0, 0)), single("", 0, 0))), Var(0, single("", 0, 0)), single("", 0, 0))
   assert term == expected
 }

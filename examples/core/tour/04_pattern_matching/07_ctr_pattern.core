@@ -1,0 +1,4 @@
+$match #Some(42) {
+| #Some(x) => x
+| #None(_) => 0
+}

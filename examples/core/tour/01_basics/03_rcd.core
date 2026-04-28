@@ -1,0 +1,2 @@
+// Records are a collection of named fields.
+{x: 1, y: 2}

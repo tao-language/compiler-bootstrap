@@ -1,0 +1,33 @@
+type Bool {
+| True
+| False
+}
+
+$let Bool = $fn(ctr) => $match ctr {
+| #True(_) => #Bool({})
+| #False(_) => #Bool({})
+}
+
+type Option(a) {
+| Some(x: a)
+| None
+}
+
+// typeof(Some(42)) ~> Some(Int)
+// typeof(None)     ~> None
+
+let Option = fn(a) => fn(ctr: typeof(ctr)) =>
+
+type Vec(n, a) {
+| Nil : Vec(0, a)
+| Cons(x: a, xs: Vec(m, a)) : Vec(m + 1, a)
+}
+
+let Vec = fn(n, a) => fn(ctr: ) =>
+
+$let Vec = $fn(args) => $match args {
+| {n, a} => $fn(ctr) => $match ctr {
+  | #Nil(_) => #Vec(0, a)
+  | #Cons({x: a, xs: #Vec(m, a)})
+  }
+}

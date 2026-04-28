@@ -117,13 +117,13 @@ fn elim_arg_value(elim: Elim) -> Value {
 /// Returns `Ok(result)` if beta reduction succeeds, `Error(Nil)` otherwise.
 fn try_apply(value: Value, arg: Value) -> Result(Value, Nil) {
   case value {
-    VLam(param, body) -> {
+    VLam(env, implicits, param, body) -> {
       let #(_, param_type) = param
       let shifted_body = shift_term(body, 1)
       let substituted = subst_term_var(0, arg, shifted_body)
       // Return the substituted term wrapped in a lambda — evaluation
       // happens when this lambda is applied
-      Ok(VLam(#("x", param_type), substituted))
+      Ok(VLam(env, implicits, #("x", param_type), substituted))
     }
     _ -> Error(Nil)
   }
@@ -146,18 +146,24 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
         False -> Var(i, span)
       }
     Hole(id, span) -> Hole(id, span)
-    Lam(#(name, param), body, span) ->
-      Lam(#(name, param), subst_term_from(idx, value, body, from + 1), span)
+    Lam(implicits, #(name, param), body, span) ->
+      Lam(
+        list.map(implicits, fn(i) { #(i.0, subst_term_from(idx, value, i.1, from)) }),
+        #(name, subst_term_from(idx, value, param, from)),
+        subst_term_from(idx, value, body, from + 1 + list.length(implicits)),
+        span,
+      )
     App(fun, arg, span) ->
       App(
         subst_term_from(idx, value, fun, from),
         subst_term_from(idx, value, arg, from),
         span,
       )
-    Pi(domain, codomain, span) ->
+    Pi(implicits, #(name, domain), codomain, span) ->
       Pi(
-        subst_term_from(idx, value, domain, from),
-        subst_term_from(idx, value, codomain, from),
+        list.map(implicits, fn(i) { #(i.0, subst_term_from(idx, value, i.1, from)) }),
+        #(name, subst_term_from(idx, value, domain, from)),
+        subst_term_from(idx, value, codomain, from + 1 + list.length(implicits)),
         span,
       )
     Lit(lit, span) -> Lit(lit, span)
@@ -182,10 +188,15 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
         subst_term_from(idx, value, type_, from),
         span,
       )
-    Call(name, args, span) ->
+    Call(name, args, typed_args, return_type, span) ->
       Call(
         name,
         list.map(args, fn(a) { subst_term_from(idx, value, a, from) }),
+        list.map(typed_args, fn(ta) { #(subst_term_from(idx, value, ta.0, from), subst_term_from(idx, value, ta.1, from)) }),
+        case return_type {
+          Some(t) -> Some(subst_term_from(idx, value, t, from))
+          None -> None
+        },
         span,
       )
     Rcd(fields, span) ->
@@ -241,16 +252,19 @@ fn neut_head_to_term(head: Head) -> Term {
 pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
   case value {
     VNeut(head, spine) -> neut_head_to_term_with_spine(head, spine, n)
-    VLam(param, body) -> {
+    VLam(_env, implicits, param, body) -> {
       // VLam's body is already a Term — convert param type (Value) to Term
       let new_n = n + 1
-      let converted_param = force_levels_to_indices(param.1, new_n)
-      Lam(#(param.0, converted_param), body, single("", 0, 0))
+      let converted_implicits = list.map(implicits, fn(i) { #(i.0, force_levels_to_indices(i.1, new_n)) })
+      let converted_param = #(param.0, force_levels_to_indices(param.1, new_n))
+      Lam(converted_implicits, converted_param, body, single("", 0, 0))
     }
-    VPi(domain, codomain) -> {
-      let converted_domain = force_levels_to_indices(domain, n)
-      let converted_codomain = force_levels_to_indices(codomain, n + 1)
-      Pi(converted_domain, converted_codomain, single("", 0, 0))
+    VPi(_env, implicits, domain, codomain) -> {
+      let new_n = n + 1
+      let converted_implicits = list.map(implicits, fn(i) { #(i.0, force_levels_to_indices(i.1, new_n)) })
+      let converted_domain = #(domain.0, force_levels_to_indices(domain.1, new_n))
+      let converted_codomain = force_levels_to_indices(codomain, new_n)
+      Pi(converted_implicits, converted_domain, converted_codomain, single("", 0, 0))
     }
     VLit(lit) -> Lit(lit, single("", 0, 0))
     VCtr(tag, arg) ->
@@ -325,9 +339,21 @@ fn value_string(value: Value) -> String {
         [] -> neut_head_to_string(head)
         _ -> neut_to_string(head, spine)
       }
-    VLam(param, body) -> "%fn(" <> param.0 <> ") => " <> term_string(body)
-    VPi(domain, codomain) ->
-      "%fn(_ : " <> value_string(domain) <> ") -> " <> value_string(codomain)
+    VLam(_, implicits, param, body) -> {
+      let implicit_str = case implicits {
+        [] -> ""
+        _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
+      }
+      "%fn(" <> implicit_str <> param.0 <> ") => " <> term_string(body)
+    }
+    VPi(_, implicits, domain, codomain) -> {
+      let implicit_str = case implicits {
+        [] -> ""
+        _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
+      }
+      // domain is #(String, Value), codomain is Value
+      "%fn(" <> implicit_str <> " _ : " <> value_string(domain.1) <> ") -> " <> value_string(codomain)
+    }
     VLit(lit) -> literal_string(lit)
     VCtr(tag, arg) -> "#" <> tag <> "(" <> value_string(arg) <> ")"
     VRcd(fields) ->
@@ -370,17 +396,22 @@ fn term_string(term: Term) -> String {
   case term {
     Var(i, _) -> "#" <> int.to_string(i)
     Hole(id, _) -> "?" <> int.to_string(id)
-    Lam(#(name, param), body, _) ->
-      "%fn("
-      <> name
-      <> ": "
-      <> term_string(param)
-      <> ") => "
-      <> term_string(body)
+    Lam(implicits, #(name, param), body, _) -> {
+      let implicit_str = case implicits {
+        [] -> ""
+        _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 <> ": " <> term_string(i.1) }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
+      }
+      "%fn(" <> implicit_str <> name <> ": " <> term_string(param) <> ") => " <> term_string(body)
+    }
     App(fun, arg, _) ->
       "fun(" <> term_string(fun) <> ": " <> term_string(arg) <> ")"
-    Pi(domain, codomain, _) ->
-      "%fn(_) : " <> term_string(domain) <> " -> " <> term_string(codomain)
+    Pi(implicits, #(name, domain), codomain, _) -> {
+      let implicit_str = case implicits {
+        [] -> ""
+        _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 <> ": " <> term_string(i.1) }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
+      }
+      "%fn(" <> implicit_str <> name <> ": " <> term_string(domain) <> ") -> " <> term_string(codomain)
+    }
     Lit(lit, _) -> literal_string(lit)
     Ctr(tag, arg, _) ->
       case arg {
@@ -396,17 +427,21 @@ fn term_string(term: Term) -> String {
       })
       <> "\n}"
     Ann(t, type_, _) -> term_string(t) <> " : " <> term_string(type_)
-    Call(name, args, _) ->
-      "call("
-      <> name
-      <> "["
-      <> list.fold(args, "", fn(acc, a) {
+    Call(name, args, typed_args, return_type, _) ->
+      "call(" <> name <> "[" <> list.fold(args, "", fn(acc, a) {
         case acc {
           "" -> term_string(a)
           _ -> acc <> ", " <> term_string(a)
         }
-      })
-      <> "])"
+      }) <> "]" <> case typed_args {
+        [] -> ""
+        _ -> " |typed " <> list.fold(typed_args, "", fn(acc, ta) {
+          acc <> term_string(ta.0) <> ":" <> term_string(ta.1) <> ", "
+        })
+      } <> case return_type {
+        Some(t) -> " -> " <> term_string(t)
+        None -> ""
+      } <> "])"
     Rcd(fields, _) ->
       case fields {
         [] -> "()"

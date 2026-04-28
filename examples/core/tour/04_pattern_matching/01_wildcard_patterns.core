@@ -1,0 +1,3 @@
+match 42 {
+| _ => 0  // matches anything, does not define any name
+}

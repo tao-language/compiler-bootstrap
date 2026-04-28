@@ -1,0 +1,11 @@
+// Core is a very basic language, syntax sugar makes it easier to read/write Core.
+
+// This allows us to define variables.
+// There's no Let term, it's just a beta reduction.
+// This is equivalent to `($fn(x: $Int) => x)(42)`
+$let x: $Int = 0;
+
+// Note that definitions can be shadowed, even of different types.
+$let x: $Int = 42;
+
+x  // final result is 42

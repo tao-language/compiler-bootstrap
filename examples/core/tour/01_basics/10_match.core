@@ -1,0 +1,7 @@
+// Core supports pattern matching directly for better error messages.
+// Note that pattern matching can return different types on each branch.
+// To make sure all branches have the same type you can add a type annotation.
+$match 0 {
+| 0 => 1      // returns $Int
+| _ => 3.14   // wildcard pattern, returns $Float
+}

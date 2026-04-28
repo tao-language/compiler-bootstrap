@@ -95,10 +95,10 @@ pub fn eval_lambda_creates_vlam_test() {
   let state = initial_state([])
   let body = Var(0, single("", 1, 1))
   let param_type = Rcd([], single("", 1, 1))
-  let term = Lam(#("x", param_type), body, single("", 1, 1))
+  let term = Lam([], #("x", param_type), body, single("", 1, 1))
   let value = evaluate(state, term)
   assert case value {
-    VLam(#(name, _), body_term) -> name == "x" && body_term == body
+    VLam(_, _, #(name, _), body_term) -> name == "x" && body_term == body
     _ -> False
   }
 }
@@ -112,10 +112,10 @@ pub fn eval_lambda_with_complex_body_test() {
       single("", 1, 1),
     )
   let param_type = Rcd([], single("", 1, 1))
-  let term = Lam(#("f", param_type), body, single("", 1, 1))
+  let term = Lam([], #("f", param_type), body, single("", 1, 1))
   let value = evaluate(state, term)
   assert case value {
-    VLam(#("f", _), body_term) -> {
+    VLam([], [], #("f", _), body_term) -> {
       case body_term {
         App(Var(0, _), Lit(LitInt(1), _), _) -> True
         _ -> False
@@ -134,7 +134,7 @@ pub fn eval_app_applies_lambda_test() {
   let state = initial_state([])
   let lam_body = Var(0, single("", 1, 1))
   let param_type = Rcd([], single("", 1, 1))
-  let lam = Lam(#("x", param_type), lam_body, single("", 1, 1))
+  let lam = Lam([], #("x", param_type), lam_body, single("", 1, 1))
   let app_term = App(lam, Lit(LitInt(42), single("", 1, 1)), single("", 1, 1))
   let value = evaluate(state, app_term)
   assert value == VLit(LitInt(42))
@@ -145,7 +145,7 @@ pub fn eval_app_identity_function_test() {
   let state = initial_state([])
   let body = Var(0, single("", 1, 1))
   let param_type = Rcd([], single("", 1, 1))
-  let identity = Lam(#("x", param_type), body, single("", 1, 1))
+  let identity = Lam([], #("x", param_type), body, single("", 1, 1))
   let app = App(identity, Lit(LitInt(42), single("", 1, 1)), single("", 1, 1))
   let value = evaluate(state, app)
   assert value == VLit(LitInt(42))
@@ -155,13 +155,9 @@ pub fn eval_app_nested_beta_test() {
   // ((fn(x) => fn(y) => x) 42) 100 -> 42
   let state = initial_state([])
   let inner_lam =
-    Lam(
-      #("y", Rcd([], single("", 1, 1))),
-      Var(1, single("", 1, 1)),
-      single("", 1, 1),
-    )
+    Lam([], #("y", Rcd([], single("", 1, 1))), Var(1, single("", 1, 1)), single("", 1, 1))
   let outer_lam =
-    Lam(#("x", Rcd([], single("", 1, 1))), inner_lam, single("", 1, 1))
+    Lam([], #("x", Rcd([], single("", 1, 1))), inner_lam, single("", 1, 1))
   let app1 = App(outer_lam, Lit(LitInt(42), single("", 1, 1)), single("", 1, 1))
   let app2 = App(app1, Lit(LitInt(100), single("", 1, 1)), single("", 1, 1))
   let value = evaluate(state, app2)
@@ -210,11 +206,7 @@ pub fn eval_app_type_application_returns_error_test() {
   // Applying a Pi type (which is not a function at value level)
   let state = initial_state([])
   let pi =
-    Pi(
-      Lit(LitInt(0), single("", 1, 1)),
-      Lit(LitInt(1), single("", 1, 1)),
-      single("", 1, 1),
-    )
+    Pi([], #("pi_param", Lit(LitInt(0), single("", 1, 1))), Lit(LitInt(1), single("", 1, 1)), single("", 1, 1))
   let app = App(pi, Lit(LitInt(42), single("", 1, 1)), single("", 1, 1))
   let value = evaluate(state, app)
   assert value == VErr
@@ -229,7 +221,7 @@ pub fn do_app_beta_reduction_test() {
   let state = initial_state([])
   let arg = VLit(LitInt(42))
   let body = Var(0, single("", 1, 1))
-  let lam = VLam(#("x", VRcd([])), body)
+  let lam = VLam([], [], #("x", VRcd([])), body)
   let result = do_app(state, lam, arg)
   // The body Var(0) is substituted with the argument (converted to a Term
   // via value_to_neut → force_levels_to_indices), then evaluated.
@@ -261,19 +253,19 @@ pub fn eval_pi_type_test() {
   let state = initial_state([])
   let domain = Lit(LitInt(0), single("", 1, 1))
   let codomain = Lit(LitInt(1), single("", 1, 1))
-  let pi = Pi(domain, codomain, single("", 1, 1))
+  let pi = Pi([], #("pi_param", domain), codomain, single("", 1, 1))
   let value = evaluate(state, pi)
-  assert value == VPi(VLit(LitInt(0)), VLit(LitInt(1)))
+  assert value == VPi([], [], #("pi_param", VLit(LitInt(0))), VLit(LitInt(1)))
 }
 
 pub fn eval_pi_with_vars_test() {
   let state = initial_state([])
   let domain = Var(1, single("", 1, 1))
   let codomain = Var(0, single("", 1, 1))
-  let pi = Pi(domain, codomain, single("", 1, 1))
+  let pi = Pi([], #("pi_param", domain), codomain, single("", 1, 1))
   let value = evaluate(state, pi)
   // domain becomes VNeut(HVar(1)), codomain (shifted by 1) becomes Var(0, _) -> VNeut(HVar(0))
-  assert value == VPi(VNeut(HVar(1), []), VNeut(HVar(0), []))
+  assert value == VPi([], [], #("pi_param", VNeut(HVar(1), [])), VNeut(HVar(0), []))
 }
 
 // ============================================================================
@@ -530,14 +522,14 @@ pub fn eval_call_with_ffi_test() {
   }
   let state = initial_state([FfiEntry("double", ffi_fn)])
   let call =
-    Call("double", [Lit(LitInt(42), single("", 1, 1))], single("", 1, 1))
+    Call("double", [Lit(LitInt(42), single("", 1, 1))], [], None, single("", 1, 1))
   let value = evaluate(state, call)
   assert value == VLit(LitInt(99))
 }
 
 pub fn eval_call_with_missing_ffi_returns_error_test() {
   let state = initial_state([])
-  let call = Call("nonexistent", [], single("", 1, 1))
+  let call = Call("nonexistent", [], [], None, single("", 1, 1))
   let value = evaluate(state, call)
   assert value == VErr
 }
@@ -545,7 +537,7 @@ pub fn eval_call_with_missing_ffi_returns_error_test() {
 pub fn eval_call_ffi_returns_none_returns_error_test() {
   let ffi_fn = fn(_args: List(#(Value, Value))) -> Option(Value) { None }
   let state = initial_state([FfiEntry("bad_ffi", ffi_fn)])
-  let call = Call("bad_ffi", [], single("", 1, 1))
+  let call = Call("bad_ffi", [], [], None, single("", 1, 1))
   let value = evaluate(state, call)
   assert value == VErr
 }
@@ -704,12 +696,12 @@ pub fn value_to_string_vevr_test() {
 
 pub fn value_to_string_vlam_test() {
   let body = Var(0, single("", 1, 1))
-  let s = value_to_string(VLam(#("x", VRcd([])), body))
+  let s = value_to_string(VLam([], [], #("x", VRcd([])), body))
   assert s == "%fn(x) => #0"
 }
 
 pub fn value_to_string_vpi_test() {
-  let s = value_to_string(VPi(VLit(LitInt(0)), VNeut(HVar(0), [])))
+  let s = value_to_string(VPi([], [], #("pi_param", VLit(LitInt(0))), VNeut(HVar(0), [])))
   assert s == "%fn(_) : 0 -> v0"
 }
 
@@ -858,7 +850,7 @@ pub fn eval_call_evaluates_args_first_test() {
   }
   // Use a simpler arg - just a literal
   let state = initial_state([FfiEntry("echo", ffi_fn)])
-  let call = Call("echo", [Lit(LitInt(99), single("", 1, 1))], single("", 1, 1))
+  let call = Call("echo", [Lit(LitInt(99), single("", 1, 1))], [], None, single("", 1, 1))
   let value = evaluate(state, call)
   assert value == VLit(LitInt(99))
 }
@@ -901,7 +893,7 @@ pub fn is_truth_rejects_non_constructor_values_test() {
   assert is_truth("True", VNeut(HVar(0), [])) == False
   assert is_truth("True", VErr) == False
   assert is_truth("True", VRcd([])) == False
-  assert is_truth("True", VPi(VLit(LitInt(0)), VNeut(HVar(0), []))) == False
+  assert is_truth("True", VPi([], [], #("pi_param", VLit(LitInt(0))), VNeut(HVar(0), []))) == False
 }
 
 pub fn is_truth_configurable_constructor_test() {

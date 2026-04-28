@@ -123,7 +123,7 @@ pub fn unify_same_pi_type_test() {
   let dom = VNeut(HHole(0), [])
   let codom = VNeut(HHole(1), [])
   let state = initial_state([])
-  let final = unify(state, VPi(dom, codom), VPi(dom, codom))
+  let final = unify(state, VPi([], [], #("pi_param", dom), codom), VPi([], [], #("pi_param", dom), codom))
   assert final.errors == []
 }
 
@@ -133,8 +133,8 @@ pub fn unify_mismatched_pi_domain_test() {
   let final =
     unify(
       state,
-      VPi(VLit(LitInt(42)), VNeut(HHole(0), [])),
-      VPi(VLit(LitInt(43)), VNeut(HHole(0), [])),
+      VPi([], [], #("pi_param", VLit(LitInt(42))), VNeut(HHole(0), [])),
+      VPi([], [], #("pi_param", VLit(LitInt(43))), VNeut(HHole(0), [])),
     )
   assert list.length(final.errors) >= 1
 }
@@ -148,8 +148,8 @@ pub fn unify_same_lam_type_test() {
   let final =
     unify(
       state,
-      VLam(#("x", VNeut(HHole(0), [])), Var(0, single("", 0, 0))),
-      VLam(#("y", VNeut(HHole(0), [])), Var(0, single("", 0, 0))),
+      VLam([], [], #("x", VNeut(HHole(0), [])), Var(0, single("", 0, 0))),
+      VLam([], [], #("y", VNeut(HHole(0), [])), Var(0, single("", 0, 0))),
     )
   assert final.errors == []
 }
@@ -159,8 +159,8 @@ pub fn unify_mismatched_lam_type_test() {
   let final =
     unify(
       state,
-      VLam(#("x", VLit(LitInt(42))), Var(0, single("", 0, 0))),
-      VLam(#("y", VLit(LitFloat(3.14))), Var(0, single("", 0, 0))),
+      VLam([], [], #("x", VLit(LitInt(42))), Var(0, single("", 0, 0))),
+      VLam([], [], #("y", VLit(LitFloat(3.14))), Var(0, single("", 0, 0))),
     )
   assert list.length(final.errors) >= 1
 }

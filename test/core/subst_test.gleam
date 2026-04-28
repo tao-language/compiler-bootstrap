@@ -119,11 +119,11 @@ pub fn apply_spine_lambda_consumes_one_test() {
   let arg = VCtr("Just", VLit(LitInt(42)))
   let param_type = VNeut(HHole(0), [])
   let body = Var(0, single("", 0, 0))
-  let value = VLam(#("x", param_type), body)
+  let value = VLam([], [], #("x", param_type), body)
   let result = apply_spine(value, [EApp(arg)])
   // VLam consumes arg: body Var(0) → shifted to Var(1) → not substituted
   assert case result {
-    VLam(#("x", _), Var(1, _)) -> True
+    VLam([], [], #("x", _), Var(1, _)) -> True
     _ -> False
   }
 }
@@ -137,12 +137,12 @@ pub fn apply_spine_multiple_elements_test() {
   let _state = def_var(initial_state([]), "x", VLit(LitInt(1)), VLit(LitInt(1)))
   let param_type = VNeut(HHole(0), [])
   let body = Var(0, single("", 0, 0))
-  let value = VLam(#("x", param_type), body)
+  let value = VLam([], [], #("x", param_type), body)
   let result =
     apply_spine(value, [EApp(VLit(LitInt(1))), EApp(VLit(LitInt(2)))])
   // First arg consumed, second arg can't apply to substituted result
   assert case result {
-    VLam(#(_name, _param_type), _body) -> True
+    VLam(_, _, #(_name, _param_type), _body) -> True
     _ -> False
   }
 }
@@ -186,12 +186,12 @@ pub fn shift_term_lambda_test() {
   // Lambda: param shifted by 1 (0 → 1), body shifted by 1 from +1 (0 → 0 since 0 < 1)
   let param = Var(0, single("test", 1, 1))
   let body = Var(0, single("test", 1, 2))
-  let t = Lam(#("x", param), body, single("test", 1, 3))
+  let t = Lam([], #("x", param), body, single("test", 1, 3))
   let shifted = shift_term(t, 1)
   // Param Var(0) at from=0 → Var(1) (0 >= 0)
   // Body Var(0) at from=1 → Var(0) (0 < 1, stays)
   assert case shifted {
-    Lam(#("x", Var(1, _)), Var(0, _), _) -> True
+    Lam([], #("x", Var(1, _)), Var(0, _), _) -> True
     _ -> False
   }
 }
@@ -212,10 +212,10 @@ pub fn shift_term_pi_test() {
   // Pi: both domain and codomain shifted
   let domain = Var(0, single("test", 1, 1))
   let codomain = Var(1, single("test", 1, 2))
-  let t = Pi(domain, codomain, single("test", 1, 3))
+  let t = Pi([], #("pi_param", domain), codomain, single("test", 1, 3))
   let shifted = shift_term(t, 1)
   assert case shifted {
-    Pi(Var(1, _), Var(2, _), _) -> True
+    Pi([], #("pi_param", Var(1, _)), Var(2, _), _) -> True
     _ -> False
   }
 }
@@ -245,12 +245,12 @@ pub fn shift_term_nested_lambda_test() {
   //   - inner body Var(0) at from=2 → Var(0) (0 < 2, still bound)
   let body = Var(0, single("test", 1, 1))
   let inner =
-    Lam(#("y", Var(0, single("test", 1, 2))), body, single("test", 1, 3))
+    Lam([], #("y", Var(0, single("test", 1, 2))), body, single("test", 1, 3))
   let outer =
-    Lam(#("x", Var(1, single("test", 1, 4))), inner, single("test", 1, 5))
+    Lam([], #("x", Var(1, single("test", 1, 4))), inner, single("test", 1, 5))
   let shifted = shift_term(outer, 1)
   assert case shifted {
-    Lam(#("x", Var(2, _)), Lam(#("y", Var(0, _)), Var(0, _), _), _) -> True
+    Lam([], #("x", Var(2, _)), Lam([], #("y", Var(0, _)), Var(0, _), _), _) -> True
     _ -> False
   }
 }
@@ -259,14 +259,10 @@ pub fn shift_term_selective_by_scope_test() {
   // shift_term shifts ALL indices by default
   // param Var(0) at from=0 → Var(1), body Var(1) at from=1 → Var(2)
   let t =
-    Lam(
-      #("x", Var(0, single("test", 1, 1))),
-      Var(1, single("test", 1, 2)),
-      single("test", 1, 3),
-    )
+    Lam([], #("x", Var(0, single("test", 1, 1))), Var(1, single("test", 1, 2)), single("test", 1, 3))
   let shifted = shift_term(t, 1)
   assert case shifted {
-    Lam(#("x", Var(1, _)), Var(2, _), _) -> True
+    Lam([], #("x", Var(1, _)), Var(2, _), _) -> True
     _ -> False
   }
 }
@@ -291,11 +287,11 @@ pub fn subst_term_var_skip_bound_test() {
   // Substitution should not reach under binders
   let arg = VCtr("Nothing", VLit(LitInt(0)))
   let body = Var(0, single("test", 1, 1))
-  let t = Lam(#("x", Var(0, single("test", 1, 2))), body, single("test", 1, 3))
+  let t = Lam([], #("x", Var(0, single("test", 1, 2))), body, single("test", 1, 3))
   let result = subst_term_var(0, arg, t)
   // Var(0) inside body is the lambda's parameter — should be preserved
   assert case result {
-    Lam(#("x", _), Var(0, _), _) -> True
+    Lam([], #("x", _), Var(0, _), _) -> True
     _ -> False
   }
 }
@@ -343,14 +339,10 @@ pub fn subst_term_var_pi_test() {
   // Pi domain and codomain should be substituted
   let arg = VLit(LitInt(42))
   let t =
-    Pi(
-      Var(0, single("test", 1, 1)),
-      Var(1, single("test", 1, 2)),
-      single("test", 1, 3),
-    )
+    Pi([], #("pi_param", Var(0, single("test", 1, 1))), Var(1, single("test", 1, 2)), single("test", 1, 3))
   let result = subst_term_var(0, arg, t)
   assert case result {
-    Pi(Lit(LitInt(42), _), Var(1, _), _) -> True
+    Pi([], #("pi_param", Lit(LitInt(42), _)), Var(1, _), _) -> True
     _ -> False
   }
 }
@@ -363,11 +355,11 @@ pub fn subst_term_var_nested_lambda_preserves_binder_test() {
   let arg = VCtr("Just", VLit(LitInt(0)))
   let body = Var(0, single("test", 1, 1))
   let inner =
-    Lam(#("y", Var(0, single("test", 1, 2))), body, single("test", 1, 3))
-  let t = Lam(#("x", Var(1, single("test", 1, 4))), inner, single("test", 1, 5))
+    Lam([], #("y", Var(0, single("test", 1, 2))), body, single("test", 1, 3))
+  let t = Lam([], #("x", Var(1, single("test", 1, 4))), inner, single("test", 1, 5))
   let result = subst_term_var(0, arg, t)
   assert case result {
-    Lam(#("x", Var(1, _)), Lam(#("y", Var(0, _)), Var(0, _), _), _) -> True
+    Lam([], #("x", Var(1, _)), Lam([], #("y", Var(0, _)), Var(0, _), _), _) -> True
     _ -> False
   }
 }
@@ -450,11 +442,11 @@ pub fn force_levels_to_indices_vlam_test() {
   // Lambda: param type (Value) converted to Term, body is already a Term
   let param_type = VNeut(HHole(0), [])
   let body = Var(0, single("", 0, 0))
-  let value = VLam(#("x", param_type), body)
+  let value = VLam([], [], #("x", param_type), body)
   let result = force_levels_to_indices(value, 0)
   // param type: Hole(0) → Hole(0), body: Var(0) unchanged
   assert case result {
-    Lam(#("x", Hole(0, _)), Var(0, _), _) -> True
+    Lam([], #("x", Hole(0, _)), Var(0, _), _) -> True
     _ -> False
   }
 }
@@ -463,11 +455,11 @@ pub fn force_levels_to_indices_vpi_test() {
   // Pi: domain at n, codomain at n+1
   let domain = VLit(LitInt(42))
   let codomain = VNeut(HHole(0), [])
-  let value = VPi(domain, codomain)
+  let value = VPi([], [], #("pi_param", domain), codomain)
   let result = force_levels_to_indices(value, 0)
   // domain: Lit(42), codomain: Hole(0) at n=1 → Hole(0)
   assert case result {
-    Pi(Lit(LitInt(42), _), Hole(0, _), _) -> True
+    Pi([], #("pi_param", Lit(LitInt(42), _)), Hole(0, _), _) -> True
     _ -> False
   }
 }
@@ -544,7 +536,7 @@ pub fn force_to_string_vctr_test() {
 pub fn force_to_string_vlam_test() {
   let param_type = VNeut(HHole(0), [])
   let body = Var(0, single("", 0, 0))
-  let value = VLam(#("x", param_type), body)
+  let value = VLam([], [], #("x", param_type), body)
   let result = force_to_string(value)
   assert result == "%fn(x) => #0"
 }
@@ -589,23 +581,23 @@ pub fn force_force_levels_to_indices_empty_record_test() {
 
 pub fn force_force_levels_to_indices_deeply_nested_test() {
   // Deep nesting: HVar(0) under 2 lambdas → index 1
-  // Inner: VLam("z", body) where body = Var(0)
-  // Outer: VLam("x", inner_lam) where param = HVar(1)
+  // Inner: VLam([], [], "z", body) where body = Var(0)
+  // Outer: VLam([], [], "x", inner_lam) where param = HVar(1)
   let inner_param = VNeut(HHole(0), [])
   let inner_body = Var(0, single("", 0, 0))
-  let _inner_lam = VLam(#("z", inner_param), inner_body)
+  let _inner_lam = VLam([], [], #("z", inner_param), inner_body)
   // For outer: param type is HVar(1) at n=1 → abs_index(1,1) = 0
   // body is VLam (a Value) — but VLam's body field IS a Term
-  // VLam(#("x", outer_param), inner_lam) — inner_lam is a Value, not a Term!
+  // VLam([], [], #("x", outer_param), inner_lam) — inner_lam is a Value, not a Term!
   // This test is tricky because VLam's body is a Term.
   // Let's use a simpler nested case with Terms directly.
   let param_type = VNeut(HHole(0), [])
   let body_term = Var(0, single("", 0, 0))
-  let value = VLam(#("x", param_type), body_term)
+  let value = VLam([], [], #("x", param_type), body_term)
   let result = force_levels_to_indices(value, 0)
   // Param (hole 0) → Hole(0), body (Var(0)) → Var(0)
   assert case result {
-    Lam(#("x", Hole(0, _)), Var(0, _), _) -> True
+    Lam([], #("x", Hole(0, _)), Var(0, _), _) -> True
     _ -> False
   }
 }
@@ -613,11 +605,11 @@ pub fn force_force_levels_to_indices_deeply_nested_test() {
 pub fn force_force_levels_to_indices_nested_lambda_param_test() {
   // Verify lambda param type conversion under nesting
   let body = Var(0, single("", 0, 0))
-  let value = VLam(#("x", VNeut(HHole(0), [])), body)
+  let value = VLam([], [], #("x", VNeut(HHole(0), [])), body)
   let result = force_levels_to_indices(value, 0)
   // Param (hole 0 at n=1) → Hole(0), body (Var at n=1) → Var(0)
   assert case result {
-    Lam(#("x", Hole(0, _)), Var(0, _), _) -> True
+    Lam([], #("x", Hole(0, _)), Var(0, _), _) -> True
     _ -> False
   }
 }
@@ -636,10 +628,10 @@ pub fn force_force_levels_to_indices_pi_under_lam_test() {
   // Simple VLam test: param type converted to Term
   let param = VNeut(HHole(0), [])
   let inner_body = Var(0, single("", 0, 0))
-  let value = VLam(#("x", param), inner_body)
+  let value = VLam([], [], #("x", param), inner_body)
   let result = force_levels_to_indices(value, 0)
   assert case result {
-    Lam(#("x", Hole(0, _)), Var(0, _), _) -> True
+    Lam([], #("x", Hole(0, _)), Var(0, _), _) -> True
     _ -> False
   }
 }
@@ -661,14 +653,10 @@ pub fn force_shift_term_record_test() {
 pub fn force_shift_term_call_test() {
   // Call args should be shifted
   let t =
-    Call(
-      "f",
-      [Var(0, single("t", 1, 1)), Var(1, single("t", 1, 2))],
-      single("t", 1, 3),
-    )
+    Call("f", [Var(0, single("t", 1, 1)), Var(1, single("t", 1, 2))], [], None, single("t", 1, 3))
   let shifted = shift_term(t, 1)
   assert case shifted {
-    Call("f", [Var(1, _), Var(2, _)], _) -> True
+    Call("f", [Var(1, _), Var(2, _)], [], None, _) -> True
     _ -> False
   }
 }
@@ -698,16 +686,12 @@ pub fn force_shift_term_pi_bound_test() {
   // Pi type: codomain Var(0) is bound in domain scope
   // Var(0) in domain, Var(0) in codomain (referring to domain's param)
   let domain =
-    Lam(
-      #("x", Var(0, single("t", 1, 1))),
-      Var(1, single("t", 1, 2)),
-      single("t", 1, 3),
-    )
+    Lam([], #("x", Var(0, single("t", 1, 1))), Var(1, single("t", 1, 2)), single("t", 1, 3))
   let codomain = Var(0, single("t", 1, 4))
-  let t = Pi(domain, codomain, single("t", 1, 5))
+  let t = Pi([], #("pi_param", domain), codomain, single("t", 1, 5))
   let shifted = shift_term(t, 1)
   assert case shifted {
-    Pi(Lam(#("x", Var(1, _)), Var(2, _), _), Var(1, _), _) -> True
+    Pi([], #("pi_param", Lam([], #("x", Var(1, _)), Var(2, _), _)), Var(1, _), _) -> True
     _ -> False
   }
 }

@@ -12,7 +12,7 @@ import core/subst.{force}
 import core/unify.{unify}
 import gleam/int
 import gleam/list
-import gleam/option.{Some, None}
+import gleam/option.{type Option, Some, None}
 import syntax/span.{type Span}
 
 // ============================================================================
@@ -26,12 +26,12 @@ pub fn infer(state: state.State, term: ast.Term) -> #(ast.Value, ast.Value, stat
     ast.Hole(id, span) -> infer_hole(state, id, span)
     ast.Lit(value, span) -> infer_lit(state, value, span)
     ast.Typ(level, span) -> infer_typ(state, level, span)
-    ast.Lam(param, body, span) -> infer_lam(state, param, body, span)
-    ast.Pi(domain, codomain, span) -> infer_pi(state, domain, codomain, span)
+    ast.Lam(implicits, param, body, span) -> infer_lam(state, implicits, param, body, span)
+    ast.Pi(implicits, domain, codomain, span) -> infer_pi(state, implicits, domain, codomain, span)
     ast.App(fun, arg, span) -> infer_app(state, fun, arg, span)
     ast.Ann(inner, type_, span) -> infer_ann(state, inner, type_, span)
     ast.Match(arg, cases, span) -> infer_match(state, arg, cases, span)
-    ast.Call(name, args, span) -> infer_call(state, name, args, span)
+    ast.Call(name, args, typed_args, return_type, span) -> infer_call(state, name, args, typed_args, return_type, span)
     ast.Rcd(fields, span) -> infer_rcd(state, fields, span)
     ast.Ctr(tag, arg, span) -> infer_ctr(state, tag, arg, span)
     ast.Err(message, span) -> infer_err(state, message, span)
@@ -109,6 +109,7 @@ fn infer_typ(
 
 fn infer_lam(
   state: state.State,
+  implicits: List(#(String, ast.Term)),
   param: #(String, ast.Term),
   body: ast.Term,
   _span: Span,
@@ -116,6 +117,12 @@ fn infer_lam(
   let param_name = param.0
   let param_type_term = param.1
   let param_val = evaluate(state, param_type_term)
+
+  // Evaluate implicits
+  let implicit_env = list.map(implicits, fn(i) {
+    let ival = evaluate(state, i.1)
+    #(i.0, ival)
+  })
 
   let bound_value = ast.VNeut(ast.HVar(0), [])
   let state_ext = state.State(
@@ -125,21 +132,25 @@ fn infer_lam(
 
   let #(_body_val, body_type, state5) = infer(state_ext, body)
 
-  let lam_value = ast.VLam(#(param_name, param_val), body)
-  let pi_type = ast.VPi(param_val, body_type)
+  let env = list.map(state.vars, fn(v) { v.1.0 })
+  let lam_value = ast.VLam(env, implicit_env, #(param_name, param_val), body)
+  let pi_type = ast.VPi(env, implicit_env, #(param_name, param_val), body_type)
 
   #(lam_value, pi_type, state5)
 }
 
 fn infer_pi(
   state: state.State,
-  domain: ast.Term,
+  _implicits: List(#(String, ast.Term)),
+  domain: #(String, ast.Term),
   codomain: ast.Term,
   _span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
-  let dom_val = evaluate(state, domain)
+  let dom_name = domain.0
+  let dom_term = domain.1
+  let dom_val = evaluate(state, dom_term)
   let codom_val = evaluate(state, codomain)
-  let pi_type = ast.VPi(dom_val, codom_val)
+  let pi_type = ast.VPi([], [], #(dom_name, dom_val), codom_val)
   #(pi_type, ast.VNeut(ast.HVar(0), []), state)
 }
 
@@ -154,8 +165,8 @@ fn infer_app(
   let _fun_type2 = fun_type2
 
   case fun_type {
-    ast.VPi(domain, codomain) -> {
-      let #(arg_val, _, state3) = check(state2, arg, domain)
+    ast.VPi(_env, _implicits, domain, codomain) -> {
+      let #(arg_val, _, state3) = check(state2, arg, domain.1)
       let _arg_bound = arg_val
       #(codomain, codomain, state3)
     }
@@ -234,17 +245,30 @@ fn infer_call(
   state: state.State,
   name: String,
   args: List(ast.Term),
+  typed_args: List(#(ast.Term, ast.Term)),
+  return_type: Option(ast.Term),
   span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
+  // If typed args are provided, validate them and use the return type if present
+  let validated_args = case typed_args {
+    [] -> args
+    _ -> list.map(typed_args, fn(ta) { ta.0 })
+  }
   case state.lookup_ffi(state, name) {
     Ok(FfiEntry(_fn_name, impl_fn)) -> {
-      let eval_args = list.map(args, fn(a) { evaluate(state, a) })
+      let eval_args = list.map(validated_args, fn(a) { evaluate(state, a) })
       let arg_types = list.map(eval_args, fn(_v) { ast.VNeut(ast.HHole(0), []) })
       let arg_pairs = list.map2(eval_args, arg_types, fn(v, t) { #(v, t) })
-      case impl_fn(arg_pairs) {
-        Some(result) -> #(result, result, state)
-        None -> #(ast.VErr, ast.VErr, state)
+      let result = case impl_fn(arg_pairs) {
+        Some(r) -> r
+        None -> ast.VErr
       }
+      // If return type is specified, check against it
+      let result_type = case return_type {
+        Some(rt) -> evaluate(state, rt)
+        None -> result
+      }
+      #(result, result_type, state)
     }
     Error(_) -> {
       let new_state = state.with_err(

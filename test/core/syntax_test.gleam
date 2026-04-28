@@ -150,7 +150,7 @@ pub fn parse_lambda_simple_test() {
   let #(term, errors) = parse("%fn(x: ()) => x")
   // Debug: check term type and errors separately
   let term_ok = case term {
-    Lam(#("x", Rcd([], _)), Var(0, _), _) -> True
+    Lam([], #("x", Rcd([], _)), Var(0, _), _) -> True
     _ -> False
   }
   let errors_ok = case errors {
@@ -167,7 +167,7 @@ pub fn parse_lambda_simple_test() {
 pub fn parse_lambda_with_literal_body_test() {
   let #(term, errors) = parse("%fn(x: ()) => 42")
   let term_ok = case term {
-    Lam(#("x", Rcd([], _)), Lit(LitInt(42), _), _) -> True
+    Lam([], #("x", Rcd([], _)), Lit(LitInt(42), _), _) -> True
     _ -> False
   }
   let errors_ok = case errors {
@@ -184,9 +184,9 @@ pub fn parse_nested_lambda_binding_works_test() {
   // %fn(x: ()) => %fn(y: ()) => x references outer x (Var(1))
   let #(term, errors) = parse("%fn(x: ()) => %fn(y: ()) => x")
   let term_ok = case term {
-    Lam(#("x", Rcd([], _)), body, _) ->
+    Lam([], #("x", Rcd([], _)), body, _) ->
       case body {
-        Lam(#("y", Rcd([], _)), Var(1, _), _) -> True
+        Lam([], #("y", Rcd([], _)), Var(1, _), _) -> True
         _ -> False
       }
     _ -> False
@@ -205,9 +205,9 @@ pub fn parse_inner_variable_shadows_outer_test() {
   // %fn(x: ()) => %fn(x: ()) => x (inner x shadows outer x)
   let #(term, errors) = parse("%fn(x: ()) => %fn(x: ()) => x")
   let term_ok = case term {
-    Lam(#("x", Rcd([], _)), body, _) ->
+    Lam([], #("x", Rcd([], _)), body, _) ->
       case body {
-        Lam(#("x", Rcd([], _)), Var(0, _), _) -> True
+        Lam([], #("x", Rcd([], _)), Var(0, _), _) -> True
         _ -> False
       }
     _ -> False
@@ -229,7 +229,7 @@ pub fn parse_inner_variable_shadows_outer_test() {
 pub fn parse_fun_type_with_name_test() {
   let #(term, errors) = parse("fun(x) -> x -> x")
   let term_ok = case term {
-    Pi(Var(0, _), Var(0, _), _) -> True
+    Pi([], #("pi_param", Var(0, _)), Var(0, _), _) -> True
     _ -> False
   }
   let errors_ok = case errors {
@@ -245,7 +245,7 @@ pub fn parse_fun_type_with_name_test() {
 pub fn parse_fun_type_two_params_test() {
   let #(term, errors) = parse("fun(x) -> x -> fun(y) -> y -> x")
   let term_ok = case term {
-    Pi(Var(0, _), Pi(Var(0, _), Var(1, _), _), _) -> True
+    Pi([], #("pi_param", Var(0, _)), Pi([], #("pi_param", Var(0, _)), Var(1, _), _), _) -> True
     _ -> False
   }
   let errors_ok = case errors {
@@ -265,7 +265,7 @@ pub fn parse_fun_type_two_params_test() {
 pub fn parse_let_simple_binding_test() {
   let #(term, errors) = parse("%let x = 42; x")
   let term_ok = case term {
-    App(Lam(#("x", Rcd(_, _)), Var(0, _), _), Lit(LitInt(42), _), _) -> True
+    App(Lam([], #("x", Rcd(_, _)), Var(0, _), _), Lit(LitInt(42), _), _) -> True
     _ -> False
   }
   let errors_ok = case errors {
@@ -281,7 +281,7 @@ pub fn parse_let_simple_binding_test() {
 pub fn parse_let_with_lambda_test() {
   let #(term, errors) = parse("%let f = %fn(x: ()) => x; f")
   let term_ok = case term {
-    App(Lam(#("f", Rcd(_, _)), _, _), Lam(#("x", Rcd([], _)), Var(0, _), _), _) ->
+    App(Lam([], #("f", Rcd(_, _)), _, _), Lam([], #("x", Rcd([], _)), Var(0, _), _), _) ->
       True
     _ -> False
   }
@@ -390,7 +390,7 @@ pub fn parse_nested_match_structure_test() {
 pub fn parse_simple_fix_test() {
   let #(term, errors) = parse("%fix x = x")
   let term_ok = case term {
-    App(Lam(#("x", Rcd(_, _)), _, _), _, _) -> True
+    App(Lam([], #("x", Rcd(_, _)), _, _), _, _) -> True
     _ -> False
   }
   let errors_ok = case errors {

@@ -1,0 +1,2 @@
+// Represents a runtime error, and takes an error message.
+$error "my runtime error message"

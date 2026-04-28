@@ -1,0 +1,4 @@
+// Function application is represented with parentheses.
+// Application always takes exactly one argument.
+// You can use records to pass zero or multiple arguments.
+($fn(x: $Int) => x)(42)

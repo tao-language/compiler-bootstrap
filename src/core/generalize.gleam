@@ -28,6 +28,7 @@ import core/ast.{
   HVar, Hole, Lam, Lit, Match, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi,
   VRcd, Var,
 }
+import gleam/option.{None, Some}
 import gleam/int
 import gleam/list
 
@@ -65,15 +66,21 @@ fn free_holes_from(value: Value, binding: Int) -> List(Int) {
         })
       list.append(holes, spine_holes)
     }
-    VLam(#(_name, param), body) -> {
+    VLam(_env, implicits, #(_name, param), body) -> {
+      let implicit_holes = list.fold(implicits, [], fn(acc, i) {
+        list.append(acc, free_holes_from(i.1, binding + 1))
+      })
       let param_holes = free_holes_from(param, binding + 1)
       let body_holes = free_holes_term(body, binding + 1)
-      list.append(param_holes, body_holes)
+      list.append(list.append(implicit_holes, param_holes), body_holes)
     }
-    VPi(domain, codomain) -> {
-      let domain_holes = free_holes_from(domain, binding)
+    VPi(_env, implicits, domain, codomain) -> {
+      let implicit_holes = list.fold(implicits, [], fn(acc, i) {
+        list.append(acc, free_holes_from(i.1, binding))
+      })
+      let domain_holes = free_holes_from(domain.1, binding)
       let codomain_holes = free_holes_from(codomain, binding)
-      list.append(domain_holes, codomain_holes)
+      list.append(list.append(implicit_holes, domain_holes), codomain_holes)
     }
     VLit(_) -> []
     VCtr(_, arg) -> free_holes_from(arg, binding)
@@ -101,20 +108,26 @@ fn free_holes_term(term: Term, binding: Int) -> List(Int) {
   case term {
     Var(_, _) -> []
     Hole(id, _) -> [id]
-    Lam(#(_name, param), body, _) -> {
-      let param_holes = free_holes_term(param, binding + 1)
+    Lam(implicits, param, body, _) -> {
+      let implicit_holes = list.fold(implicits, [], fn(acc, i) {
+        list.append(acc, free_holes_term(i.1, binding + 1))
+      })
+      let param_holes = free_holes_term(param.1, binding + 1)
       let body_holes = free_holes_term(body, binding + 1)
-      list.append(param_holes, body_holes)
+      list.append(list.append(implicit_holes, param_holes), body_holes)
     }
     App(fun, arg, _) -> {
       let fun_holes = free_holes_term(fun, binding)
       let arg_holes = free_holes_term(arg, binding)
       list.append(fun_holes, arg_holes)
     }
-    Pi(domain, codomain, _) -> {
-      let domain_holes = free_holes_term(domain, binding)
+    Pi(implicits, domain, codomain, _) -> {
+      let implicit_holes = list.fold(implicits, [], fn(acc, i) {
+        list.append(acc, free_holes_term(i.1, binding))
+      })
+      let domain_holes = free_holes_term(domain.1, binding)
       let codomain_holes = free_holes_term(codomain, binding + 1)
-      list.append(domain_holes, codomain_holes)
+      list.append(list.append(implicit_holes, domain_holes), codomain_holes)
     }
     Lit(_, _) -> []
     Ctr(_, arg, _) -> free_holes_term(arg, binding)
@@ -131,10 +144,20 @@ fn free_holes_term(term: Term, binding: Int) -> List(Int) {
       let type_holes = free_holes_term(type_, binding)
       list.append(term_holes, type_holes)
     }
-    Call(_, args, _) -> {
-      list.fold(args, [], fn(acc, a) {
+    Call(_, args, typed_args, return_type, _) -> {
+      let args_holes = list.fold(args, [], fn(acc, a) {
         list.append(acc, free_holes_term(a, binding))
       })
+      let typed_holes = list.fold(typed_args, [], fn(acc, ta) {
+        let term_h = free_holes_term(ta.0, binding)
+        let type_h = free_holes_term(ta.1, binding)
+        list.append(list.append(acc, term_h), type_h)
+      })
+      let ret_holes = case return_type {
+        Some(t) -> free_holes_term(t, binding)
+        None -> []
+      }
+      list.append(list.append(args_holes, typed_holes), ret_holes)
     }
     Rcd(fields, _) -> {
       list.fold(fields, [], fn(acc, f) {
@@ -173,15 +196,21 @@ fn free_levels_from(value: Value, binding: Int) -> List(Int) {
         })
       list.append(levels, spine_levels)
     }
-    VLam(#(_name, param), body) -> {
-      let param_levels = free_levels_from(param, binding + 1)
+    VLam(_env, implicits, param, body) -> {
+      let implicit_levels = list.fold(implicits, [], fn(acc, i) {
+        list.append(acc, free_levels_from(i.1, binding + 1))
+      })
+      let param_levels = free_levels_from(param.1, binding + 1)
       let body_levels = free_levels_term(body, binding + 1)
-      list.append(param_levels, body_levels)
+      list.append(list.append(implicit_levels, param_levels), body_levels)
     }
-    VPi(domain, codomain) -> {
-      let domain_levels = free_levels_from(domain, binding)
+    VPi(_env, implicits, domain, codomain) -> {
+      let implicit_levels = list.fold(implicits, [], fn(acc, i) {
+        list.append(acc, free_levels_from(i.1, binding))
+      })
+      let domain_levels = free_levels_from(domain.1, binding)
       let codomain_levels = free_levels_from(codomain, binding)
-      list.append(domain_levels, codomain_levels)
+      list.append(list.append(implicit_levels, domain_levels), codomain_levels)
     }
     VLit(_) -> []
     VCtr(_, arg) -> free_levels_from(arg, binding)
@@ -213,20 +242,26 @@ fn free_levels_term(term: Term, binding: Int) -> List(Int) {
         False -> []
       }
     Hole(_, _) -> []
-    Lam(#(_name, param), body, _) -> {
-      let param_levels = free_levels_term(param, binding + 1)
+    Lam(implicits, param, body, _) -> {
+      let implicit_levels = list.fold(implicits, [], fn(acc, i) {
+        list.append(acc, free_levels_term(i.1, binding + 1))
+      })
+      let param_levels = free_levels_term(param.1, binding + 1)
       let body_levels = free_levels_term(body, binding + 1)
-      list.append(param_levels, body_levels)
+      list.append(list.append(implicit_levels, param_levels), body_levels)
     }
     App(fun, arg, _) -> {
       let fun_levels = free_levels_term(fun, binding)
       let arg_levels = free_levels_term(arg, binding)
       list.append(fun_levels, arg_levels)
     }
-    Pi(domain, codomain, _) -> {
-      let domain_levels = free_levels_term(domain, binding)
+    Pi(implicits, domain, codomain, _) -> {
+      let implicit_levels = list.fold(implicits, [], fn(acc, i) {
+        list.append(acc, free_levels_term(i.1, binding))
+      })
+      let domain_levels = free_levels_term(domain.1, binding)
       let codomain_levels = free_levels_term(codomain, binding + 1)
-      list.append(domain_levels, codomain_levels)
+      list.append(list.append(implicit_levels, domain_levels), codomain_levels)
     }
     Lit(_, _) -> []
     Ctr(_, arg, _) -> free_levels_term(arg, binding)
@@ -243,10 +278,20 @@ fn free_levels_term(term: Term, binding: Int) -> List(Int) {
       let type_levels = free_levels_term(type_, binding)
       list.append(term_levels, type_levels)
     }
-    Call(_, args, _) -> {
-      list.fold(args, [], fn(acc, a) {
+    Call(_, args, typed_args, return_type, _) -> {
+      let args_levels = list.fold(args, [], fn(acc, a) {
         list.append(acc, free_levels_term(a, binding))
       })
+      let typed_levels = list.fold(typed_args, [], fn(acc, ta) {
+        let term_l = free_levels_term(ta.0, binding)
+        let type_l = free_levels_term(ta.1, binding)
+        list.append(list.append(acc, term_l), type_l)
+      })
+      let ret_levels = case return_type {
+        Some(t) -> free_levels_term(t, binding)
+        None -> []
+      }
+      list.append(list.append(args_levels, typed_levels), ret_levels)
     }
     Rcd(fields, _) -> {
       list.fold(fields, [], fn(acc, f) {
@@ -319,13 +364,10 @@ fn subst_holes(value: Value, subst: List(#(Int, Int))) -> Value {
         })
       VNeut(new_head, new_spine)
     }
-    VLam(#(name, param_type), body) ->
-      VLam(
-        #(name, subst_holes(param_type, subst)),
-        subst_holes_term(body, subst),
-      )
-    VPi(domain, codomain) ->
-      VPi(subst_holes(domain, subst), subst_holes(codomain, subst))
+    VLam(env, implicits, #(name, param_type), body) ->
+      VLam(env, implicits, #(name, subst_holes(param_type, subst)), subst_holes_term(body, subst))
+    VPi(env, implicits, domain, codomain) ->
+      VPi(env, implicits, domain, subst_holes(codomain, subst))
     VLit(lit) -> VLit(lit)
     VCtr(tag, arg) -> VCtr(tag, subst_holes(arg, subst))
     VRcd(fields) ->
@@ -343,17 +385,19 @@ fn subst_holes_term(term: Term, subst: List(#(Int, Int))) -> Term {
         Error(_) -> Hole(id, span)
       }
     }
-    Lam(#(name, param), body, span) ->
+    Lam(implicits, #(name, param), body, span) ->
       Lam(
+        list.map(implicits, fn(i) { #(i.0, subst_holes_term(i.1, subst)) }),
         #(name, subst_holes_term(param, subst)),
         subst_holes_term(body, subst),
         span,
       )
     App(fun, arg, span) ->
       App(subst_holes_term(fun, subst), subst_holes_term(arg, subst), span)
-    Pi(domain, codomain, span) ->
+    Pi(implicits, #(name, domain), codomain, span) ->
       Pi(
-        subst_holes_term(domain, subst),
+        list.map(implicits, fn(i) { #(i.0, subst_holes_term(i.1, subst)) }),
+        #(name, subst_holes_term(domain, subst)),
         subst_holes_term(codomain, subst),
         span,
       )
@@ -369,8 +413,17 @@ fn subst_holes_term(term: Term, subst: List(#(Int, Int))) -> Term {
       )
     Ann(term, type_, span) ->
       Ann(subst_holes_term(term, subst), subst_holes_term(type_, subst), span)
-    Call(name, args, span) ->
-      Call(name, list.map(args, fn(a) { subst_holes_term(a, subst) }), span)
+    Call(name, args, typed_args, return_type, span) ->
+      Call(
+        name,
+        list.map(args, fn(a) { subst_holes_term(a, subst) }),
+        list.map(typed_args, fn(ta) { #(subst_holes_term(ta.0, subst), subst_holes_term(ta.1, subst)) }),
+        case return_type {
+          Some(t) -> Some(subst_holes_term(t, subst))
+          None -> None
+        },
+        span,
+      )
     Rcd(fields, span) ->
       Rcd(
         list.map(fields, fn(f) { #(f.0, subst_holes_term(f.1, subst)) }),

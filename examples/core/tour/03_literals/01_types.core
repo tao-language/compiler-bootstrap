@@ -1,0 +1,7 @@
+// Types universes, the type of a type increments the universe.
+$let type0: $Type = $Int;         // implicit universe 0
+$let type0: $Type<0> = $Int;      // explicit universe
+$let type1: $Type<1> = $Type<0>;  // $Type<0>'s type is of universe 1
+$let type2: $Type<2> = $Type<1>;
+
+0

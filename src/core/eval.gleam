@@ -52,24 +52,34 @@ pub fn evaluate(state: State, term: Term) -> Value {
   case term {
     Var(index, _) -> VNeut(HVar(index), [])
     Hole(id, _) -> VNeut(HHole(id), [])
-    Lam(#(name, param_type), body, _span) -> {
+    Lam(implicits, #(name, param_type), body, _span) -> {
       // Evaluate the parameter type term to a value, then force to
       // resolve any holes in it. The body remains as a Term (closure).
       let param_val = force(state, evaluate(state, param_type))
-      VLam(#(name, param_val), body)
+      let env = list.map(state.vars, fn(v) { v.1.0 })
+      let implicit_env = list.map(implicits, fn(i) {
+        let ival = force(state, evaluate(state, i.1))
+        #(i.0, ival)
+      })
+      VLam(env, implicit_env, #(name, param_val), body)
     }
     App(fun, arg, _) -> {
       let fun_val = evaluate(state, fun)
       let arg_val = evaluate(state, arg)
       do_app(state, fun_val, arg_val)
     }
-    Pi(domain, codomain, _) -> {
+    Pi(implicits, #(name, domain), codomain, _) -> {
       // Evaluate domain to a value. The codomain references the domain
       // at type level — no shift needed since Pi doesn't create a runtime
       // variable binding.
+      let env = list.map(state.vars, fn(v) { v.1.0 })
       let dom = evaluate(state, domain)
       let codom = evaluate(state, codomain)
-      VPi(dom, codom)
+      let implicit_env = list.map(implicits, fn(i) {
+        let ival = evaluate(state, i.1)
+        #(i.0, ival)
+      })
+      VPi(env, implicit_env, #(name, dom), codom)
     }
     Lit(value, _) -> VLit(value)
     Ctr(tag, arg, _) -> VCtr(tag, evaluate(state, arg))
@@ -80,7 +90,7 @@ pub fn evaluate(state: State, term: Term) -> Value {
       let scrutinee = evaluate(state, arg)
       do_match(state.truth_ctr, scrutinee, cases, [])
     }
-    Call(name, args, _) -> {
+    Call(name, args, typed_args, return_type, span) -> {
       // Evaluate all arguments
       let eval_args = list.map(args, fn(a) { evaluate(state, a) })
       // Look up FFI entry
@@ -133,7 +143,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     // β-reduction: substitute the argument for the lambda parameter, then
     // evaluate the body. The body's indices are already relative to this
     // lambda — no shift needed.
-    VLam(_param, body) -> {
+    VLam(_env, _implicits, #(_pname, _param_type), body) -> {
       // The body's Var(0) refers to the lambda parameter at the current scope.
       // Substitute Var(0) with the argument value (converted to a Term).
       // No shift needed — the body's indices are already relative to this lambda.
@@ -145,7 +155,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     // Error propagates
     VErr -> VErr
     // Cannot apply a type/value that isn't a function — return error
-    VPi(_, _) | VCtr(_, _) | VLit(_) | VRcd(_) -> VErr
+    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) -> VErr
   }
 }
 
@@ -324,10 +334,11 @@ pub fn value_to_string(value: Value) -> String {
         }
       }
     }
-    VLam(#(name, _), body) -> "%fn(" <> name <> ") => " <> term_to_string(body)
-    VPi(domain, codomain) ->
-      "%fn(_) : "
-      <> value_to_string(domain)
+    VLam(_env, _implicits, #(name, _param), body) -> "%fn(" <> name <> ") => " <> term_to_string(body)
+    VPi(_env, _implicits, domain, codomain) ->
+      "<>"
+      <> "#(_) : "
+      <> value_to_string(domain.1)
       <> " -> "
       <> value_to_string(codomain)
     VLit(lit) ->
