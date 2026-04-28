@@ -1,0 +1,54 @@
+// Type definitions in Core: explicit construction of TypeDef values.
+// Types are stored in the environment via $let binding.
+// $type constructs a TypeDef value (internally: VType(TypeDef)).
+
+// Monomorphic type: Bool has no type parameters.
+// The TypeDef declares two constructors: #True and #False.
+$let Bool = $type {
+  | #True
+  | #False
+}
+
+// $let binds the TypeDef to "Bool" in the environment.
+// #True and #False become pattern-matchable constructor tags.
+$let b1 = #True
+$let b2 = #False
+
+// Polymorphic type: Option has one type parameter `a`.
+// For parametric types, $type returns a function of the type params.
+// $fn(a) wraps the type parameter; the rest is the TypeDef.
+$let Option = $type $fn(a) {
+  | #None
+  | #Some(_a: a)
+}
+
+// $Some(42) is sugar for #Some(42), producing Option($Int).
+$let opt = #Some(42)
+
+// A three-variant type.
+$let Tri = $type {
+  | #Red
+  | #Green
+  | #Blue
+}
+
+$let t1 = #Red
+$let t2 = #Green
+$let t3 = #Blue
+
+// Named fields in constructors.
+$let Pair = $type $fn(a, b) {
+  | #MakePair(_first: a, _second: b)
+}
+
+$let p = #MakePair(x: 1, y: "hello")
+
+// GADT-style type: Vec uses index extraction from constructor arguments.
+// The index `n` in the result type is computed at runtime by inspecting
+// the type of the `xs` argument (looked up in the environment).
+$let Vec = $type $fn(n, a) {
+  | #Nil
+  | #Cons(_head: a, _tail: Vec(m, a)) -> Vec($plus(m, 1), a)
+}
+
+$let v = #Cons(x: 1, xs: #Cons(x: 2, xs: #Nil()))
