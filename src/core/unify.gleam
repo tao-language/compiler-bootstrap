@@ -18,7 +18,7 @@
 /// must agree. All errors accumulate in state; no early returns.
 import core/ast.{
   type Elim, type Head, type Value, EApp, HHole, HVar, VCtr, VErr, VLam, VLit,
-  VNeut, VPi, VRcd, VTypeDef, Var,
+  VNeut, VPi, VRcd,
 }
 import core/state.{type State, State, TypeMismatch, with_err}
 import gleam/int
@@ -264,43 +264,6 @@ pub fn occurs_check(_level: Int, _value: Value) -> Bool {
   // Always return False to allow recursive types
   False
 }
-
-/// Shift De Bruijn levels in a value by n.
-/// Used when binding a variable under a Pi-type binder.
-fn shift_value(value: Value, n: Int) -> Value {
-  case value {
-    VNeut(head, spine) ->
-      VNeut(shift_head(head, n), list.map(spine, fn(e) { shift_elim(e, n) }))
-    VPi(env, implicits, domain, codomain) ->
-      VPi(env, implicits, domain, shift_value(codomain, n))
-    VLam(env1, implicits, #(name, param), body) ->
-      VLam(env1, implicits, #(name, shift_value(param, n)), body)
-    VLit(value) -> VLit(value)
-    VCtr(tag, arg) -> VCtr(tag, shift_value(arg, n))
-    VRcd(fields) ->
-      VRcd(list.map(fields, fn(f) { #(f.0, shift_value(f.1, n)) }))
-    VTypeDef(name: name, params: params, constructors: constructors) -> VTypeDef(
-      name: name,
-      params: params,
-      constructors: constructors,
-    )
-    VErr -> VErr
-  }
-}
-
-fn shift_head(head: Head, n: Int) -> Head {
-  case head {
-    HVar(level) -> HVar(level + n)
-    HHole(id) -> HHole(id)
-  }
-}
-
-fn shift_elim(e: Elim, n: Int) -> Elim {
-  case e {
-    EApp(arg) -> EApp(shift_value(arg, n))
-  }
-}
-
 // ── Error helpers ─────────────────────────────────────────────────
 
 fn add_type_mismatch_error(

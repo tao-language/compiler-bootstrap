@@ -308,10 +308,10 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
       let shift_cons = fn(ctor: #(String, Value, Value, Span)) -> #(String, Term, Term, Span) {
         let a = case ctor { #(x, _, _, _) -> x }
         let b = case ctor { #(_, x, _, _) -> x }
-        let c = case ctor { #(_, _, x, _) -> x }
+        let result = case ctor { #(_, _, x, _) -> x }
         let d = case ctor { #(_, _, _, x) -> x }
         let r1: Term = force_levels_to_indices(b, n)
-        let r2: Term = force_levels_to_indices(c, n)
+        let r2: Term = force_levels_to_indices(result, n)
         let r3: #(String, Term, Term, Span) = #(a, r1, r2, d)
         r3
       }
@@ -419,7 +419,7 @@ fn value_string(value: Value) -> String {
           })
           <> "}"
       }
-    VTypeDef(name: n, params: p, constructors: c) -> {
+    VTypeDef(name: n, params: p, constructors: _c) -> {
       "<type " <> n <> "[" <> list.fold(p, "", fn(acc, param) {
         case acc {
           "" -> param.0

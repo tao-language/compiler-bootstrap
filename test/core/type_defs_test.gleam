@@ -16,7 +16,6 @@ import core/ast.{
   VLit,
   HVar,
   HHole,
-  VRcd,
   EApp,
   Int as LitInt,
   find_constructor,
@@ -165,7 +164,7 @@ pub fn subst_hvar_zero_test() {
 
 /// HVar beyond args returns unchanged.
 pub fn subst_hvar_beyond_args_test() {
-  let template = VNeut(HVar(5), [])
+  let _template = VNeut(HVar(5), [])
   let args = [v_lit_int(42)]
   let result = compute_constructor_type([], args, "Some")
   assert case result {
@@ -176,7 +175,7 @@ pub fn subst_hvar_beyond_args_test() {
 
 /// HHole is not substituted.
 pub fn subst_hhole_test() {
-  let template = VNeut(HHole(42), [])
+  let _template = VNeut(HHole(42), [])
   let args = [v_lit_int(42)]
   let result = compute_constructor_type([], args, "Some")
   assert case result {
@@ -227,7 +226,7 @@ pub fn type_of_type_def_returns_pi_test() {
   let constructors = make_constructors(["Some", "None"], v_neut(0), v_neut(0))
   let result = type_of_type_def(constructors)
   assert case result {
-    VPi(_, _, _, VPi(_, _, _, VTypeDef(_, _, constructors))) -> constructors == constructors
+    VPi(_, _, _, VPi(_, _, _, VTypeDef(_, _, _constructors))) -> True
     _ -> False
   }
 }
@@ -241,7 +240,7 @@ pub fn vtypef_is_marker_test() {
   let v = VTypeDef(name: "Option", params: [ #("a", v_neut(0)) ], constructors: [])
   assert case v {
     VTypeDef(name: name, params: params, constructors: constructors) ->
-      name == "Option" && list.length(params) == 1 && list.length(constructors) == 0
+      name == "Option" && list.length(params) == 1 && constructors == []
   }
 }
 

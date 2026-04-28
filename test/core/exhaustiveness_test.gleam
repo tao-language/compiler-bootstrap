@@ -6,7 +6,7 @@
 /// - Redundant pattern detection
 /// - TypeDef construction and extraction
 
-import core/ast.{type Value, type Head, HHole, make_neut, find_constructor}
+import core/ast.{type Value, HHole, make_neut}
 import core/exhaustiveness.{
   check_exhaustiveness,
   extract_tags,
@@ -14,7 +14,6 @@ import core/exhaustiveness.{
 }
 import core/state.{type State, type Error, MatchMissing, initial_state}
 import gleam/list
-import gleam/option.{Some, None}
 import gleam/string
 import gleeunit
 import syntax/span.{single, type Span}
@@ -225,7 +224,6 @@ pub fn check_exhaustiveness_full_coverage_property_test() {
   ]
 
   let states = list.map(type_pairs, fn(pair) {
-    let name = pair.0
     let constructors = pair.1
     let full_covered = constructors
     let state = make_state()

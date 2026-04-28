@@ -171,8 +171,8 @@ fn free_holes_term(term: Term, binding: Int) -> List(Int) {
         list.append(acc, free_holes_term(p.1, binding))
       })
       let ctor_holes = list.fold(constructors, [], fn(acc, c) {
-        list.append(acc, free_holes_term(c.1, binding))
-        list.append(acc, free_holes_term(c.2, binding))
+        let acc2 = list.append(acc, free_holes_term(c.1, binding))
+        list.append(acc2, free_holes_term(c.2, binding))
       })
       list.append(param_holes, ctor_holes)
     }
@@ -316,8 +316,8 @@ fn free_levels_term(term: Term, binding: Int) -> List(Int) {
         list.append(acc, free_levels_term(p.1, binding))
       })
       let ctor_levels = list.fold(constructors, [], fn(acc, c) {
-        list.append(acc, free_levels_term(c.1, binding))
-        list.append(acc, free_levels_term(c.2, binding))
+        let acc2 = list.append(acc, free_levels_term(c.1, binding))
+        list.append(acc2, free_levels_term(c.2, binding))
       })
       list.append(param_levels, ctor_levels)
     }

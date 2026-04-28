@@ -19,14 +19,14 @@ import gleam/option.{None, Some}
 
 /// Convert a Term-level TypeDef param to a Value-level param.
 /// Just wraps the term in a neutral value for now.
-fn term_param_to_value(state: State, param: #(String, Term)) -> #(String, Value) {
+fn term_param_to_value(_state: State, param: #(String, Term)) -> #(String, Value) {
   let #(name, _) = param
   #(name, VNeut(HHole(0), []))
 }
 
 /// Convert a Term-level TypeDef constructor to a Value-level constructor.
 /// Just wraps the terms in neutral values for now.
-fn term_ctor_to_value(state: State, ctor: #(String, Term, Term, Span)) -> #(String, Value, Value, Span) {
+fn term_ctor_to_value(_state: State, ctor: #(String, Term, Term, Span)) -> #(String, Value, Value, Span) {
   let #(tag, _, _, span) = ctor
   #(tag, VNeut(HHole(0), []), VNeut(HHole(0), []), span)
 }
@@ -105,7 +105,7 @@ pub fn evaluate(state: State, term: Term) -> Value {
       let scrutinee = evaluate(state, arg)
       do_match(state.truth_ctr, scrutinee, cases, [])
     }
-    Call(name, args, typed_args, return_type, span) -> {
+    Call(name, args, _typed_args, _return_type, _span) -> {
       // Evaluate all arguments
       let eval_args = list.map(args, fn(a) { evaluate(state, a) })
       // Look up FFI entry

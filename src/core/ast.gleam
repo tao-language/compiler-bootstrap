@@ -123,7 +123,6 @@ pub fn find_constructor(
   let match_tag = fn(c: #(String, Value, Value, Span)) {
     case c {
       #(t, _, _, _) -> t == tag
-      _ -> False
     }
   }
   case list.find(constructors, match_tag) {
@@ -453,7 +452,7 @@ pub fn term_to_string(term: Term) -> String {
           <> "}"
       }
     Typ(level, _) -> "%Type(" <> int.to_string(level) <> ")"
-    TypeDef(name: name, params: params, constructors: constructors, span: span) -> {
+    TypeDef(name: name, params: params, constructors: constructors, span: _span) -> {
       let params_str = list.fold(params, "", fn(acc, p) {
         case acc {
           "" -> p.0
@@ -469,14 +468,6 @@ pub fn term_to_string(term: Term) -> String {
       }) <> " }"
     }
     Err(msg, _) -> "\"" <> msg <> "\""
-  }
-}
-
-fn name_from_pi(term: Term) -> String {
-  case term {
-    Ann(Var(i, _), _, _) -> "_" <> int.to_string(i)
-    Ann(Hole(id, _), _, _) -> "_" <> int.to_string(id)
-    _ -> "_"
   }
 }
 
@@ -545,7 +536,7 @@ pub fn value_to_string(value: Value) -> String {
           })
           <> "}"
       }
-    VTypeDef(name: n, params: p, constructors: c) -> {
+    VTypeDef(name: n, params: p, constructors: _c) -> {
       let params_str = list.fold(p, "", fn(acc, param) {
         case acc {
           "" -> param.0
@@ -555,14 +546,6 @@ pub fn value_to_string(value: Value) -> String {
       "<VTypeDef " <> n <> "[" <> params_str <> "]>"
     }
     VErr -> "\"error\""
-  }
-}
-
-fn name_from_pi_value(value: Value) -> String {
-  case value {
-    VNeut(HVar(level), _) -> "_" <> int.to_string(level)
-    VNeut(HHole(id), _) -> "_" <> int.to_string(id)
-    _ -> "_"
   }
 }
 
