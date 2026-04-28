@@ -1,8 +1,10 @@
-// Single line comments start with double slash.
-/* Multi line comments are C-style too,
-   enclosed in slash-star. */
+// Single line comments are C-style, starting with double slash.
+/*
+  Multi line comments are C-style too,
+  enclosed in slash-star.
+*/
 
-// Use a REPL-like syntax to add examples that can be tested.
+// Use a REPL-like syntax to add testable examples.
 > 1 + 1
 2
 
@@ -14,5 +16,5 @@ let x = 42
 > x ~> 42
 
 // Definitions can optionally have type annotations.
-let pi: F64 = 3.14  // F64 stands for a Float of 64 bits.
+let pi: F64 = 3.14  // F64 stands for a 64 bit floating point number.
 > pi ~> 3.14
