@@ -15,8 +15,18 @@
 // Field order doesn't matter.
 > {x: 1, y: 2} ~> {y: 2, x: 1}
 
-// Access a field with (.)
-> {x: 10, y: 20}.x ~> 10
+// Access a field with the dot operator (.)
+let point = {x: 10, y: 20}
+> point.x ~> 10
 
-spread (eg. {..entry, x: 10}),
+// Use the spread operator (..) to update a field.
+> {..point, x: 0} ~> {x: 0, y: 20}
+
+// Note that values are immutable, so the original `point` is unaffected.
+> point ~> {x: 10, y: 20}
+
+// You can also add new fields with spread since it's creating a new record.
+> {..point, z: 30} ~> {x: 10, y: 20, z: 30}
+
+// Record queries can make massaging data easier.
 select (eg. entry.{name, total: sum(entry.items)}
