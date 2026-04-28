@@ -1,10 +1,22 @@
-/**
- * Records have named fields
- */
-
+// Records have named fields, similar to JSON objects.
+// They can have zero or more fields.
 > {} ~> {}
+> {x: 1} ~> {x: 1}
+> {x: 1, y: 2} ~> {x: 1, y: 2}
 
-records: {}, {x: 1, y: 2}
-dot (eg. entry.name),
+// Tests can span multiple lines.
+// A `|` under the `>` signals a line continuation.
+> {
+|   x: 1,
+|   y: 2, // a trailing comma is allowed
+|  }
+{x: 1, y: 2}
+
+// Field order doesn't matter.
+> {x: 1, y: 2} ~> {y: 2, x: 1}
+
+// Access a field with (.)
+> {x: 10, y: 20}.x ~> 10
+
 spread (eg. {..entry, x: 10}),
 select (eg. entry.{name, total: sum(entry.items)}
