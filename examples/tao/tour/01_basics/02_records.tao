@@ -29,4 +29,6 @@ let point = {x: 10, y: 20}
 > {..point, z: 30} ~> {x: 10, y: 20, z: 30}
 
 // Record queries can make massaging data easier.
-select (eg. entry.{name, total: sum(entry.items)}
+// All fields in the record being queried are accessible.
+> point.{x, sum: x + y}
+{x: 10, sum: 30}
