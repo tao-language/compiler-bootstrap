@@ -63,32 +63,19 @@ fn make_constructors(
 pub fn vtypef_name_test() {
   let vdef = VTypeDef(
     name: "Option",
-    params: [ #("a", v_neut(0)) ],
     constructors: [],
   )
   let str = value_to_string(VTypeDef(
     name: vdef.name,
-    params: vdef.params,
     constructors: vdef.constructors,
   ))
-  assert str == "<VTypeDef Option[a]>"
-}
-
-/// VTypeDef with correct param_count.
-pub fn vtypef_param_count_test() {
-  let vdef = VTypeDef(
-    name: "Option",
-    params: [ #("a", v_neut(0)) ],
-    constructors: [],
-  )
-  assert list.length(vdef.params) == 1
+  assert str == "<VTypeDef Option>"
 }
 
 /// VTypeDef with multiple constructors.
 pub fn vtypef_multiple_constructors_test() {
   let vdef = VTypeDef(
     name: "Bool",
-    params: [],
     constructors: [
       #("True", v_neut(0), v_neut(0), single("test", 0, 0)),
       #("False", v_neut(0), v_neut(0), single("test", 0, 0)),
@@ -226,7 +213,7 @@ pub fn type_of_type_def_returns_pi_test() {
   let constructors = make_constructors(["Some", "None"], v_neut(0), v_neut(0))
   let result = type_of_type_def(constructors)
   assert case result {
-    VPi(_, _, _, VPi(_, _, _, VTypeDef(_, _, _constructors))) -> True
+    VPi(_, _, _, VPi(_, _, _, VTypeDef(_, _constructors))) -> True
     _ -> False
   }
 }
@@ -237,16 +224,16 @@ pub fn type_of_type_def_returns_pi_test() {
 
 /// VTypeDef is a simple marker (no data).
 pub fn vtypef_is_marker_test() {
-  let v = VTypeDef(name: "Option", params: [ #("a", v_neut(0)) ], constructors: [])
+  let v = VTypeDef(name: "Option", constructors: [])
   assert case v {
-    VTypeDef(name: name, params: params, constructors: constructors) ->
-      name == "Option" && list.length(params) == 1 && constructors == []
+    VTypeDef(name: name, constructors: constructors) ->
+      name == "Option" && constructors == []
   }
 }
 
 /// VTypeDef in env lookup.
 pub fn vtypef_string_test() {
-  let v = VTypeDef(name: "Option", params: [ #("a", v_neut(0)) ], constructors: [])
+  let v = VTypeDef(name: "Option", constructors: [])
   let str = value_to_string(v)
-  assert str == "<VTypeDef Option[a]>"
+  assert str == "<VTypeDef Option>"
 }

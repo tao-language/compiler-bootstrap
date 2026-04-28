@@ -17,13 +17,6 @@ import gleam/option.{None, Some}
 // MAIN EVALUATION
 // ============================================================================
 
-/// Convert a Term-level TypeDef param to a Value-level param.
-/// Just wraps the term in a neutral value for now.
-fn term_param_to_value(_state: State, param: #(String, Term)) -> #(String, Value) {
-  let #(name, _) = param
-  #(name, VNeut(HHole(0), []))
-}
-
 /// Convert a Term-level TypeDef constructor to a Value-level constructor.
 /// Just wraps the terms in neutral values for now.
 fn term_ctor_to_value(_state: State, ctor: #(String, Term, Term, Span)) -> #(String, Value, Value, Span) {
@@ -121,10 +114,9 @@ pub fn evaluate(state: State, term: Term) -> Value {
       }
     }
     Typ(level, _) -> VNeut(HVar(level), [])
-    TypeDef(name: n, params: p, constructors: c, span: _) -> {
-      let value_params = list.map(p, fn(param) { term_param_to_value(state, param) })
+    TypeDef(name: n, constructors: c, span: _) -> {
       let value_constructors = list.map(c, fn(ctor) { term_ctor_to_value(state, ctor) })
-      VTypeDef(name: n, params: value_params, constructors: value_constructors)
+      VTypeDef(name: n, constructors: value_constructors)
     }
     Err(msg, _) -> {
       let _ = msg
@@ -175,7 +167,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     // Error propagates
     VErr -> VErr
     // Cannot apply a type/value that isn't a function — return error
-    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) | VTypeDef(name: _, params: _, constructors: _) -> VErr
+    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) | VTypeDef(name: _, constructors: _) -> VErr
   }
 }
 
@@ -381,6 +373,6 @@ pub fn value_to_string(value: Value) -> String {
           <> "}"
       }
     VErr -> "\"error\""
-    VTypeDef(name: _, params: _, constructors: _) -> "<type _>"
+    VTypeDef(name: _, constructors: _) -> "<type _>"
   }
 }

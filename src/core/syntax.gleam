@@ -104,7 +104,7 @@ fn term_span(term: Term) -> Span {
     Call(_, _, _, _, span) -> span
     Rcd(_, span) -> span
     Typ(_, span) -> span
-    TypeDef(_, _, _, span) -> span
+    TypeDef(_, _, span) -> span
     Err(_, span) -> span
   }
 }
@@ -688,7 +688,7 @@ fn term_to_string(term: Term) -> String {
     Call(_, _, _, _, _) -> "call"
     Rcd(_, _) -> "rcd"
     Typ(_, _) -> "type"
-    TypeDef(_, _, _, _) -> "type def"
+    TypeDef(_, _, _) -> "type def"
     Err(msg, _) -> msg
   }
 }
