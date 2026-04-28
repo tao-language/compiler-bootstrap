@@ -1,0 +1,10 @@
+/**
+ * Records have named fields
+ */
+
+> {} ~> {}
+
+records: {}, {x: 1, y: 2}
+dot (eg. entry.name),
+spread (eg. {..entry, x: 10}),
+select (eg. entry.{name, total: sum(entry.items)}

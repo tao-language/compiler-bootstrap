@@ -275,6 +275,9 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       #(TypRef("F32", span), #(rest, pos + 1, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "F64", _), ..rest] ->
       #(TypRef("F64", span), #(rest, pos + 1, env, fn_, errors))
+    // Type definition: $type { | #C(args) -> ReturnType } or $type<>(...)
+    [Token("Op", "$", _), Token("Name", "type", _), ..rest] ->
+      parse_type_def(#(rest, 0, env, fn_, errors), span)
     // FFI builtin calls: % followed by function name
     [Token("Op", "%", _), Token("Name", v, _), ..rest] ->
       parse_ffi_call(#(rest, 0, env, fn_, errors), v, span)
@@ -388,6 +391,75 @@ fn parse_typed_arg_list_acc(p: Parser, acc: List(#(Term, Term))) -> #(List(#(Ter
       let #(type_, p8) = parse_term(p7)
       parse_typed_arg_list_acc(p8, [#(arg, type_), ..acc])
     }
+  }
+}
+
+// Type definition: $type { | #C(args) -> ReturnType } or $type<>(...)
+fn parse_type_def(p: Parser, span: Span) -> #(Term, Parser) {
+  let #(tokens, pos, env, fn_, errors) = p
+  case list.drop(tokens, pos) {
+    // $type<> -> type with explicit empty type params, then { ... }
+    [Token("Op", "<", _), Token("Op", ">", _), ..rest] -> {
+      let p1 = #(rest, pos + 2, env, fn_, errors)
+      let #(rtokens, rpos, renv, rfn_, rerrors) = p1
+      case list.drop(rtokens, rpos) {
+        [Token("Punct", "{", _), ..rest2] -> {
+          let p2 = #(rest2, rpos + 1, renv, rfn_, rerrors)
+          let #(body, p3) = parse_type_def_body(p2)
+          let #(ttokens, tpos, tenv, tfn_, terrors) = p3
+          let p4 = #(ttokens, tpos, tenv, tfn_, terrors)
+          #(TypeDef("", body, current_span(p4)), p4)
+        }
+        _ -> #(Typ(0, span), p1)
+      }
+    }
+    // $type { ... }
+    [Token("Punct", "{", _), ..rest] -> {
+      let p1 = #(rest, pos + 1, env, fn_, errors)
+      let #(body, p2) = parse_type_def_body(p1)
+      let #(tokens, pos, env, fn_, errors) = p2
+      let p3 = #(tokens, pos, env, fn_, errors)
+      #(TypeDef("", body, current_span(p3)), p3)
+    }
+    // $type alone -> universe type
+    _ -> #(Typ(0, span), p)
+  }
+}
+
+// Parse type definition body: { | #C(arg) -> ReturnType }
+fn parse_type_def_body(p: Parser) -> #(List(#(String, Term, Term, Span)), Parser) {
+  parse_type_def_cases(p, [])
+}
+
+fn parse_type_def_cases(p: Parser, acc: List(#(String, Term, Term, Span))) -> #(List(#(String, Term, Term, Span)), Parser) {
+  let #(tokens, pos, env, fn_, errors) = p
+  let p1 = #(tokens, pos, env, fn_, errors)
+  let p2 = skip("|", p1)
+  let #(tokens2, pos2, env2, fn2, errors2) = p2
+  case list.drop(tokens2, pos2) {
+    [Token("Punct", "}", _), ..] -> #(list.reverse(acc), p2)
+    _ -> {
+      // Parse constructor: #Name(pattern) -> ReturnType
+      let p3 = #(tokens2, pos2, env2, fn2, errors2)
+      let #(tag, p4) = expect_name_after_hash(p3)
+      let p5 = skip("(", p4)
+      let #(pattern, p6) = parse_term(p5)
+      let p7 = skip(")", p6)
+      let p8 = skip("->", p7)
+      let #(ret_type, p9) = parse_term(p8)
+      let p10 = skip("}", p9)
+      let span = current_span(p10)
+      parse_type_def_cases(p10, [#(tag, pattern, ret_type, span), ..acc])
+    }
+  }
+}
+
+fn expect_name_after_hash(p: Parser) -> #(String, Parser) {
+  let p1 = skip("#", p)
+  let #(name, p2) = expect_name_opt(p1)
+  case name {
+    "" -> #("", p1)
+    _ -> #(name, p2)
   }
 }
 
