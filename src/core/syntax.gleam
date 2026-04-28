@@ -346,30 +346,47 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
   }
 }
 
-// FFI call: %name(args...) or %name(arg: Type, arg: Type) -> ReturnType
-// Placeholder - full implementation in Phase 2b.5
+// FFI call: %name(arg: Type, arg: Type) -> ReturnType
 fn parse_ffi_call(p: Parser, name: String, _span: Span) -> #(Term, Parser) {
   let p1 = skip("(", p)
-  let #(args, p2) = parse_term_list(p1)
+  let #(typed_args, p2) = parse_typed_arg_list(p1)
   let p3 = skip(")", p2)
-  // For now, just return args without typed_args or return_type
-  let final_span = current_span(p3)
-  #(Call(name, args, [], None, final_span), p3)
+  let #(rtokens, rpos, renv, rfn_, rerrors) = p3
+  let _p4 = #(rtokens, rpos, renv, rfn_, rerrors)
+  let #(return_type, p5) = case list.drop(rtokens, rpos) {
+    [Token("Op", "->", _), ..] -> {
+      let p6 = #(rtokens, rpos + 1, renv, rfn_, rerrors)
+      let #(rt, p7) = parse_term(p6)
+      #(Some(rt), p7)
+    }
+    _ -> #(None, p3)
+  }
+  let final_span = current_span(p5)
+  let arg_list = list.map(typed_args, fn(t) { t.0 })
+  #(Call(name, arg_list, typed_args, return_type, final_span), p5)
 }
 
-// Parse a comma-separated list of terms (for FFI call args)
-fn parse_term_list(p: Parser) -> #(List(Term), Parser) {
-  parse_term_list_acc(p, [])
+// Parse a comma-separated list of typed arguments (arg: Type, arg: Type)
+fn parse_typed_arg_list(p: Parser) -> #(List(#(Term, Term)), Parser) {
+  parse_typed_arg_list_acc(p, [])
 }
 
-fn parse_term_list_acc(p: Parser, acc: List(Term)) -> #(List(Term), Parser) {
-  let p1 = skip(",", p)
-  let #(tokens, pos, _, _, _) = p1
-  case list.drop(tokens, pos) {
-    [Token("Punct", ")", _), ..] -> #(list.reverse(acc), p1)
+fn parse_typed_arg_list_acc(p: Parser, acc: List(#(Term, Term))) -> #(List(#(Term, Term)), Parser) {
+  let #(tokens, pos, env, fn_, errors) = p
+  let p1 = #(tokens, pos, env, fn_, errors)
+  let p2 = skip(",", p1)
+  let #(tokens2, pos2, _env2, _fn2, _errors2) = p2
+  case list.drop(tokens2, pos2) {
+    [Token("Punct", ")", _), ..] -> #(list.reverse(acc), p2)
     _ -> {
-      let #(arg, p2) = parse_term(p1)
-      parse_term_list_acc(p2, [arg, ..acc])
+      let #(arg, p4) = parse_term(p2)
+      let #(atokens, apos, aenv, afn_, aerrors) = p4
+      let p5 = #(atokens, apos, aenv, afn_, aerrors)
+      let p6 = skip(":", p5)
+      let #(ttokens, tpos, tenv, tfn_, terrors) = p6
+      let p7 = #(ttokens, tpos, tenv, tfn_, terrors)
+      let #(type_, p8) = parse_term(p7)
+      parse_typed_arg_list_acc(p8, [#(arg, type_), ..acc])
     }
   }
 }
