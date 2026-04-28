@@ -18,7 +18,7 @@
 /// must agree. All errors accumulate in state; no early returns.
 import core/ast.{
   type Elim, type Head, type Value, EApp, HHole, HVar, VCtr, VErr, VLam, VLit,
-  VNeut, VPi, VRcd, Var,
+  VNeut, VPi, VRcd, VType, Var,
 }
 import core/state.{type State, State, TypeMismatch, with_err}
 import gleam/int
@@ -279,6 +279,7 @@ fn shift_value(value: Value, n: Int) -> Value {
     VCtr(tag, arg) -> VCtr(tag, shift_value(arg, n))
     VRcd(fields) ->
       VRcd(list.map(fields, fn(f) { #(f.0, shift_value(f.1, n)) }))
+    VType(td) -> VType(td)
     VErr -> VErr
   }
 }

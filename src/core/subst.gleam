@@ -26,8 +26,8 @@ import core/ast.{
   type Case, type Elim, type Head, type Literal, type Pattern, type Term,
   type Value, Ann, App, Call, Case, Ctr, EApp, Err, Float as LitFloat, HHole,
   HVar, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit,
-  PVar, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, Var, make_neut,
-  shift_opt, shift_term,
+  PVar, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VType, Var,
+  make_neut, shift_opt, shift_term,
 }
 import core/state.{type State, lookup_var}
 import gleam/int
@@ -274,6 +274,7 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
         list.map(fields, fn(f) { #(f.0, force_levels_to_indices(f.1, n)) }),
         single("", 0, 0),
       )
+    VType(_) -> Err("<type _>", single("", 0, 0))
     VErr -> Err("error", single("", 0, 0))
   }
 }
@@ -369,6 +370,7 @@ fn value_string(value: Value) -> String {
           })
           <> "}"
       }
+    VType(td) -> "<type " <> td.name <> ">"
     VErr -> "\"error\""
   }
 }

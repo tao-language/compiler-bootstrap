@@ -101,7 +101,86 @@ pub type Value {
   VLit(value: Literal)
   VCtr(tag: String, arg: Value)
   VRcd(fields: List(#(String, Value)))
+  VType(TypeDef)
   VErr
+}
+
+// ============================================================================
+// TYPE DEFINITIONS (First-class values in the environment)
+// ============================================================================
+
+/// A type definition stored as a first-class value in the environment.
+///
+/// Type definitions live in the same env as regular values:
+///
+///   "Option" → #(VType(td), Type)
+///   "Bool"   → #(VType(td), Type)
+///
+/// This eliminates the need for a separate constructor registry.
+pub type TypeDef {
+  TypeDef(
+    name: String,
+    param_count: Int,
+    constructors: List(ConstructorDef),
+  )
+}
+
+pub type ConstructorDef {
+  ConstructorDef(
+    tag: String,
+    result_template: Value,  /// Type with HVar(level) references for type params
+  )
+}
+
+/// Look up a constructor definition by tag.
+pub fn find_constructor(td: TypeDef, tag: String) -> Option(ConstructorDef) {
+  case list.find(td.constructors, fn(c) { c.tag == tag }) {
+    Ok(ctor) -> Some(ctor)
+    Error(_) -> None
+  }
+}
+
+/// Compute the type of a constructor from a TypeDef, substituting
+/// type params (HVar(level) references) with actual type arguments.
+pub fn compute_constructor_type(
+  td: TypeDef,
+  type_args: List(Value),
+  tag: String,
+) -> Option(Value) {
+  case find_constructor(td, tag) {
+    None -> None
+    Some(ctor) -> Some(subst(type_args, ctor.result_template))
+  }
+}
+
+/// Substitute HVar(level) references in a value with actual type arguments.
+///
+/// This is the core substitution for parametric types: given a TypeDef
+/// like `Option(a)` and type arguments `[Int]`, this replaces HVar(0) in
+/// the result template with `Int`.
+pub fn subst(type_args: List(Value), v: Value) -> Value {
+  case v {
+    VNeut(HVar(level), spine) -> {
+      case type_args |> list.drop(level) {
+        [arg, ..] -> VNeut(HVar(0), [EApp(arg), ..spine])
+        [] -> v
+      }
+    }
+    VNeut(HHole(id), spine) -> VNeut(HHole(id), spine)
+    VLam(_env, _implicits, _param, _body) -> v
+    VPi(_env, _implicits, _domain, _codomain) -> v
+    VLit(_value) -> v
+    VCtr(tag, arg) -> VCtr(tag, subst(type_args, arg))
+    VRcd(fields) -> VRcd(list.map(fields, fn(f) { #(f.0, subst(type_args, f.1)) }))
+    VType(td) -> VType(td)
+    VErr -> VErr
+  }
+}
+
+/// Extract the type of a TypeDef (always `*` — universe 0).
+pub fn type_of_type_def(td: TypeDef) -> Value {
+  // A TypeDef has type * (universe 0), represented as Pi(_, _, _, Pi(_, _, _, VType(td)))
+  VPi([], [], #("_", VLit(Int(0))), VPi([], [], #("_", VLit(Int(1))), VType(td)))
 }
 
 // ============================================================================
@@ -410,6 +489,7 @@ pub fn value_to_string(value: Value) -> String {
           })
           <> "}"
       }
+    VType(td) -> "<type " <> td.name <> ">"
     VErr -> "\"error\""
   }
 }

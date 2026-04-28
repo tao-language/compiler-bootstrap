@@ -26,7 +26,7 @@
 import core/ast.{
   type Head, type Term, type Value, Ann, App, Call, Case, Ctr, EApp, Err, HHole,
   HVar, Hole, Lam, Lit, Match, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi,
-  VRcd, Var,
+  VRcd, VType, Var,
 }
 import gleam/option.{None, Some}
 import gleam/int
@@ -89,6 +89,7 @@ fn free_holes_from(value: Value, binding: Int) -> List(Int) {
         list.append(acc, free_holes_from(f.1, binding))
       })
     }
+    VType(_) -> []
     VErr -> []
   }
 }
@@ -219,6 +220,7 @@ fn free_levels_from(value: Value, binding: Int) -> List(Int) {
         list.append(acc, free_levels_from(f.1, binding))
       })
     }
+    VType(_) -> []
     VErr -> []
   }
 }
@@ -372,6 +374,7 @@ fn subst_holes(value: Value, subst: List(#(Int, Int))) -> Value {
     VCtr(tag, arg) -> VCtr(tag, subst_holes(arg, subst))
     VRcd(fields) ->
       VRcd(list.map(fields, fn(f) { #(f.0, subst_holes(f.1, subst)) }))
+    VType(td) -> VType(td)
     VErr -> VErr
   }
 }

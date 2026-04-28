@@ -3,7 +3,7 @@ import core/ast.{
   type Case, type Pattern, type Term, type Value, Ann, App, Call,
   Case as CoreCase, Ctr, EApp, Err, Float as LitFloat, HHole, HVar, Hole,
   Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, Pi, Rcd,
-  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, Var, term_to_string,
+  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VType, Var, term_to_string,
 }
 import core/state.{type State, FfiEntry, State, lookup_ffi}
 import core/subst.{force, subst_term_var}
@@ -155,7 +155,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     // Error propagates
     VErr -> VErr
     // Cannot apply a type/value that isn't a function — return error
-    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) -> VErr
+    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) | VType(_) -> VErr
   }
 }
 
@@ -361,5 +361,6 @@ pub fn value_to_string(value: Value) -> String {
           <> "}"
       }
     VErr -> "\"error\""
+    VType(_) -> "<type _>"
   }
 }

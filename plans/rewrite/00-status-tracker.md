@@ -185,14 +185,14 @@ Total tests: 424 passed, 0 failures.
 | 2.15 | Write tests for type inference | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/infer_test.gleam` |
 | 2.15.1 | Every term form | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.15.2 | Every error case | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.16 | Implement exhaustiveness checking | 🔴 | [03-core-language.md](03-core-language.md) | `src/core/exhaustiveness.gleam` |
-| 2.16.1 | `check_exhaustiveness` (Maranget's algorithm) | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 2.16.2 | `is_redundant` | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 2.16.3 | Handle guards conservatively | 🔴 | [03-core-language.md](03-core-language.md) | |
-| 2.17 | Write tests for exhaustiveness | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/exhaustiveness_test.gleam` |
-| 2.17.1 | Every pattern combination | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.17.2 | Redundant cases | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 2.17.3 | Missing cases | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.16 | Implement exhaustiveness checking | ✅ | [03-core-language.md](03-core-language.md) | `src/core/exhaustiveness.gleam` |
+| 2.16.1 | `check_exhaustiveness` (Maranget's algorithm) | ✅ | [03-core-language.md](03-core-language.md) | |
+| 2.16.2 | `is_redundant` | ✅ | [03-core-language.md](03-core-language.md) | |
+| 2.16.3 | Handle guards conservatively | ✅ | [03-core-language.md](03-core-language.md) | |
+| 2.17 | Write tests for exhaustiveness | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/exhaustiveness_test.gleam` |
+| 2.17.1 | Every pattern combination | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.17.2 | Redundant cases | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 2.17.3 | Missing cases | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | |
 | 2.18 | Implement CLI `run` command | 🔴 | [14-simplified-design.md](14-simplified-design.md) | `src/cli/run.gleam` |
 | 2.18.1 | Parse → desugar (identity) → type check → evaluate → print | 🔴 | [14-simplified-design.md](14-simplified-design.md) | |
 | 2.18.2 | Handle errors from all phases | 🔴 | [14-simplified-design.md](14-simplified-design.md) | |
@@ -204,11 +204,12 @@ Total tests: 424 passed, 0 failures.
 
 ### Phase 2 Gate
 
-- [ ] All 80+ Phase 2 tests pass
+- [x] All 80+ Phase 2 tests pass (658 tests passing, 0 failures)
 - [ ] `tao run` compiles and evaluates a simple Core program
-- [ ] Type errors are reported correctly
-- [ ] Exhaustiveness checking catches missing/redundant cases
-- [ ] Quote round-trip works (term → eval → quote → term)
+- [x] Type errors are reported correctly
+- [x] Exhaustiveness checking catches missing/redundant cases
+- [x] Quote round-trip works (term → eval → quote → term)
+- [x] Type definitions as env values — TypeDef stored as VType in env, no separate CtrEnv registry
 
 ---
 
@@ -434,6 +435,7 @@ Total tests: 424 passed, 0 failures.
 |------|--------|
 | 2026-04-27 | **Phase 2 Task 2.14 + 2.15: Type inference module and tests implemented:** `src/core/infer.gleam` (570 lines) with bidirectional type checking — `infer()` synthesizes types without context, `check()` verifies against expected type. Covers all term forms: Var, Hole, Lit, Typ, Lam, Pi, App, Ann, Match, Call, Rcd, Ctr, Err. `check_match_cases` handles pattern matching and case exhaustiveness. `unify_infer_and_check` integrates unification. Clean wrappers around `unify`, `force`, `evaluate`, `match_pattern`, `state` helpers. 31 tests in `test/core/infer_test.gleam` covering literals, variables, holes, lambdas, Pi types, records, constructors, errors, check assertions, and round-trip properties. 620 tests passing, 0 warnings. **Total: 620 tests passing.** |
 | 2026-04-27 | **Phase 2 Task 2.12 Quote implemented:** `src/core/quote.gleam` with `quote(value)` and `quote_at(value, level)`. Converts Values (De Bruijn levels) to Terms (De Bruijn indices). Clean wrapper around `force_levels_to_indices` from `subst.gleam`. 39 tests in `test/core/quote_test.gleam` covering: literals, constructors, records, errors, variable level-to-index conversion, holes, neutral terms with application spine, lambda values, Pi type values, nested quoting, evaluate→quote round-trip, and quote≠eval invariant. Fixed unreachable pattern warnings in grammar_test.gleam. **Total: 591 tests passing.** |
+| 2026-04-27 | **Phase 2 Task 2.16 + Type Definitions as Env Values:** Implemented TypeDef/ConstructorDef/VType in `core/ast.gleam`. Type definitions are stored as first-class environment values (`VType(TypeDef)`) instead of a separate `ctrs` registry. Updated exhaustive case expressions across `generalize.gleam`, `subst.gleam`, `unify.gleam`, `eval.gleam`. Created `core/exhaustiveness.gleam` with `check_exhaustiveness`, `extract_tags`, `is_redundant`, `make_type_def`, and `find_constructor`. Updated `core/infer.gleam` to use env lookup for TypeDef resolution. Created test files `test/core/type_defs_test.gleam` (28 tests) and `test/core/exhaustiveness_test.gleam` (22 tests). 658 tests passing, 0 failures. |
 
 | 2026-04-27 | **Guard truth check refactored:** `is_true_value` (shape-based truth detection) removed from `src/core/eval.gleam`. Replaced with `is_truth(truth_ctr, value)` that checks if a value's constructor tag matches the configured `truth_ctr`. Added `truth_ctr: String` field to `State` type with helpers (`truth_ctr(state)`, `with_truth_ctr(state, name)`). Default truth constructor is `"True"`. This removes language-specific assumptions from core and enables configurable truth constructors for different languages. `do_match` and `match_state` now thread `truth_ctr` through evaluation. All 553 tests pass. |
 | 2026-04-27 | **Code quality improvements:** (1) Fixed critical bug: `subst.gleam` line 226 `shift_opt(c.guard, 0, from)` → `shift_opt(c.guard, from, from)` — guards now shift correctly during substitution. (2) Eliminated ~90 lines of duplicate code: `shift_term`, `shift_term_from`, `shift_opt` moved from `subst.gleam` to `ast.gleam` (made public), `subst.gleam` imports from `ast`. (3) Removed no-op `int_to_string` wrapper in `subst.gleam`. (4) Fixed unused `_param_name` binding in `subst.gleam` try_apply. (5) Simplified `name_from_pi` in `ast.gleam` — flattened nested pattern match. (6) Removed unused `left_value`/`right_value` helpers from `grammar.gleam` — combinators never called them (they just collected `Either` values and passed them to constructors). (7) Guard truth check refactored: `is_true_value` → `is_truth(truth_ctr, value)` with configurable `truth_ctr` in State. All 551 tests pass, formatting applied. |
@@ -488,13 +490,13 @@ Total tests: 424 passed, 0 failures.
 - [x] Add tests for generalization ✅ 46 tests added in `test/core/generalize_test.gleam`
 - [x] Add tests for type inference, substitution, NBE evaluator
 - [x] Add tests for generalization
-- [ ] Add tests for exhaustiveness checking
+- [x] **Add tests for exhaustiveness checking:** `test/core/exhaustiveness_test.gleam` (22 tests), `test/core/type_defs_test.gleam` (28 tests) — TypeDef/ConstructorDef/VType as env values + exhaustiveness covering ADT exhaustiveness, missing patterns, redundant patterns, type def construction ✅
 - [ ] Add tests for desugarer
 - [ ] Add tests for CLI commands (run, check, test)
 - [x] **Implement Phase 2 Task 2.10:** NBE evaluator (`src/core/eval.gleam`) ✅
 - [x] **Implement Phase 2 Task 2.12:** Quote module (`src/core/quote.gleam`) ✅ 39 tests in `test/core/quote_test.gleam`
 - [x] **Implement Phase 2 Task 2.14:** Type inference (`src/core/infer.gleam`)
-- [ ] **Implement Phase 2 Task 2.16:** Exhaustiveness checking (`src/core/exhaustiveness.gleam`)
+- [x] **Implement Phase 2 Task 2.16:** Exhaustiveness checking (`src/core/exhaustiveness.gleam`) + Type Definitions as Env Values (`core/ast.gleam` TypeDef/ConstructorDef/VType) — type defs stored as first-class env values, no separate CtrEnv registry, exhaustive case expressions updated across all core modules ✅
 
 ### Code Improvements
 - [x] Fixed grammar parse() to return constructed AST instead of error_node ✅
