@@ -12,8 +12,20 @@ let greeting: Text = "Hello "
 "Hello World!"
 
 // Escape sequences start with \ and are interpreted in special ways.
+// - `\n`: newline
+// - `\r`: carriage return
+// - `\t`: horizontal tab
+// - `\"`: double quote to avoid closing the text literal
+// - `\\`: backslash
+// - `\a`: alert
+// - `\b`: backspace
+// - `\e`: escape
+// - `\0`: null character
+// - `\xHH`: hexadecimal
+// - `\uHHHH`: unicode
+> "Hello\x21" ~> "Hello!"  // ASCII hex 21 is '!'
 
-// Use triple (""") for a multi-line string.
+// Use triple (""") for a multi-line text.
 // The opening and closing (""") must be on a line on its own.
 // The text within can be indented, which helps with readability.
 // The indentation from the first line is trimmed from the rest of the lines.
@@ -23,3 +35,8 @@ let multiline = """
 """
 > multiline
 "Hello\n World!"
+
+// Raw text literals start with r" or r""" for multi-line raw text.
+// There are no escape sequences in raw text except for \" and \\.
+// These can be useful for C:\\Windows\paths or for regular expressions.
+> r"\d+\.\d+" ~> "\\d+\\.\\d+"
