@@ -281,6 +281,9 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       parse_let(#(rest, 0, env, fn_, errors), span)
     [Token("Op", "$", _), Token("Name", "match", _), ..rest] ->
       parse_match(#(rest, 0, env, fn_, errors), span)
+    // Also support plain match (without $)
+    [Token("Name", "match", _), ..rest] ->
+      parse_match(#(rest, 0, env, fn_, errors), span)
     [Token("Op", "$", _), Token("Name", "fix", _), ..rest] ->
       parse_fix(#(rest, 0, env, fn_, errors), span)
     // Numeric type keywords: $Int, $Float, $I8-$I64, $U8-$U64, $F16-$F64
@@ -703,18 +706,23 @@ fn parse_app(p: Parser, span: Span) -> #(Term, Parser) {
   #(App(fun_arg, arg, final_span), rest_errors)
 }
 
-// Match: $match arg { | pattern ? guard => body }
+// Match: $match arg { | pattern ? guard => body } or match arg { | pattern => body }
 fn parse_match(p: Parser, span: Span) -> #(Term, Parser) {
-  let p1 = skip("%", p)
+  let p1 = case p {
+    #(tokens, pos, env, fn_, errors) ->
+      case list.drop(tokens, pos) {
+        [Token("Op", "$", _), ..] -> skip("$", p)
+        _ -> p
+      }
+  }
   let p2 = skip("match", p1)
-  let p3 = skip("arg", p2)
-  let #(arg, p4) = parse_term(p3)
-  let p5 = skip("{", p4)
-  let p6 = parse_cases(p5)
-  let #(cases, rest) = p6
-  let p7 = skip("}", rest)
+  let #(arg, p3) = parse_term(p2)
+  let p4 = skip("{", p3)
+  let p5 = parse_cases(p4)
+  let #(cases, rest) = p5
+  let p6 = skip("}", rest)
   let final_span = merge(span, case_list_span(cases, span))
-  #(Match(arg, cases, final_span), p7)
+  #(Match(arg, cases, final_span), p6)
 }
 
 fn parse_cases(p: Parser) -> #(List(Case), Parser) {
