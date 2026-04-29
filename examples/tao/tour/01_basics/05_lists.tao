@@ -1,0 +1,5 @@
+// Lists are ordered collections of the same type.
+// They are written using square brackets.
+
+let empty = []
+let prime_numbers = [2, 3, 5, 7, 11]

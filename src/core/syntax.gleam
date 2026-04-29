@@ -792,9 +792,17 @@ fn parse_let(p: Parser, span: Span) -> #(Term, Parser) {
   }
   let p5 = skip("=", p4)
   let #(value, rest) = parse_term(p5)
-  let p6 = skip(";", rest)
   let let_span = merge(span, term_span(value))
-  let #(body, rest_final) = parse_term(p6)
+  // Check for semicolon or newline as separator
+  let p6 = case rest {
+    #(tokens, pos, env, fn_, errors) ->
+      case list.drop(tokens, pos) {
+        [Token("Punct", ";", _), ..] -> skip(";", rest)
+        _ -> rest
+      }
+  }
+  let p7 = add_binding(p6, name)
+  let #(body, rest_final) = parse_term(p7)
   let body_span = merge(let_span, term_span(body))
   #(let_var(name, param_type, value, body, body_span), rest_final)
 }
