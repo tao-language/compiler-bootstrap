@@ -1,15 +1,18 @@
+// Pipes (|>) and (<|) are used to create data pipelines.
+// The direction of the "arrow" reflects the flow of data.
+
 fn add_one(n: I32) -> I32 = n + 1
 fn double(n: I32) -> I32 = n * 2
 
 // Forward Pipe (|>) for linear transformations.
-// `x |> f` is equivalent to `f(x)`.
-// Read it like: x then f then g ...
+// `x |> f` is equivalent to `f(x)`
+// Read it like: with x, do f then g ...
 // For example: double(add_one(10))
-> 10 |> add_one |> double
+> 10 |> add_one |> double  // (10 + 1) * 2
 22
 
 // Backward Pipe (<|) for removing parentheses at the end of a long expression.
 // `f <| x` is equivalent to `f(x)`
 // For example: add_one(double(add_one(10)))
-> add_one <| double <| add_one <| 10
+> add_one <| double <| add_one <| 10  // ((10 + 1) * 2) + 1
 23
