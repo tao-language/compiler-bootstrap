@@ -215,9 +215,8 @@ fn infer_match(
   let #(result_val, result_type, final_state) =
     check_match_cases(state2, arg_val, arg_type, cases, [])
 
-  let final_val = evaluate(final_state, arg)
-  let _result_val = result_val
-  #(final_val, result_type, final_state)
+  // result_val is already the evaluated body of the matching case
+  #(result_val, result_type, final_state)
 }
 
 fn check_match_cases(

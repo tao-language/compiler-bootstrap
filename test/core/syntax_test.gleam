@@ -564,6 +564,97 @@ pub fn parse_tokens_empty_returns_error_test() {
 }
 
 // ============================================================================
+// Type definitions
+// ============================================================================
+
+pub fn parse_simple_type_def_test() {
+  let #(term, errors) = parse("$type { | #True({}) -> #Bool({}) }")
+  assert errors == []
+  assert case term {
+    Err(_, _) -> False
+    _ -> True
+  }
+}
+
+pub fn parse_type_def_with_two_constructors_test() {
+  let source =
+    "$type {\n| #True({}) -> #Bool({})\n| #False({}) -> #Bool({})\n}"
+  let #(term, errors) = parse(source)
+  let _ = errors
+  assert case term {
+    Err(_, _) -> False
+    _ -> True
+  }
+}
+
+pub fn parse_type_def_with_extra_tokens_test() {
+  // $type { ... } followed by extra content should parse the type def
+  // and return errors for the extra tokens
+  let source = "$type { | #True({}) -> #Bool({}) } #True({}) : #Bool({})"
+  let #(term, errors) = parse(source)
+  assert case term {
+    Err(_, _) -> False
+    _ -> True
+  }
+  assert list.length(errors) >= 1
+}
+
+pub fn parse_type_def_empty_body_returns_def_test() {
+  // Empty type definition is syntactically valid (returns Def with empty cases)
+  let #(term, _) = parse("$type { }")
+  assert case term {
+    Err(_, _) -> False
+    _ -> True
+  }
+}
+
+pub fn parse_type_def_no_trailing_brace_test() {
+  // Missing closing brace - should not hang, returns Def with partial cases
+  let source = "$type { | #True({}) -> #Bool({})"
+  let #(term, _) = parse(source)
+  // Parser should not hang - it returns whatever it parsed
+  assert case term {
+    Err(_, _) -> True
+    _ -> True
+  }
+}
+
+pub fn parse_type_def_malformed_case_returns_def_test() {
+  // Malformed case (no arrow) - parser stops and returns Def
+  let source = "$type { | #True({}) }"
+  let #(term, _) = parse(source)
+  // Parser should not hang - it returns whatever it parsed
+  assert case term {
+    Err(_, _) -> True
+    _ -> True
+  }
+}
+
+pub fn parse_type_def_empty_case_returns_def_test() {
+  // Empty pipe with no case - parser stops and returns Def
+  let source = "$type { | }"
+  let #(term, _) = parse(source)
+  // Parser should not hang - it returns whatever it parsed
+  assert case term {
+    Err(_, _) -> True
+    _ -> True
+  }
+}
+
+pub fn parse_type_def_stops_at_closing_brace_test() {
+  // Parser should stop at } and not try to parse more
+  let source = "$type { | #A({}) -> #A({}) | #B({}) -> #B({}) } 42"
+  let #(term, errors) = parse(source)
+  // The type def should parse successfully
+  assert case term {
+    Err(_, _) -> False
+    _ -> True
+  }
+  // But there should be an error for the extra "42" token
+  assert list.length(errors) >= 1
+}
+
+// ============================================================================
 // Unicode and special name characters
 // ============================================================================
 

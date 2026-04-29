@@ -50,10 +50,11 @@ pub fn parse_tokens(
   filename: String,
 ) -> #(Term, List(ParseError)) {
   let state = #(tokens, 0, [], filename, [])
-  let #(term, state2) = parse_term(state)
+  let span = single(filename, 1, 1)
+  let #(term, state2) = parse_term_with_app(state, span)
   let #(tokens2, pos2, _, _, errs) = state2
   case term {
-    Err(msg, _) -> #(Err(msg, single(filename, 1, 1)), errs)
+    Err(msg, _) -> #(Err(msg, span), errs)
     t -> {
       let rest = try_peek(tokens2, pos2)
       case rest {
@@ -296,6 +297,11 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
     // Operators
     [Token("Op", v, _), ..] -> {
       case v {
+        "#" -> {
+          let #(tokens, pos, env, fn_, errors) = p
+          let span = current_span(p)
+          parse_ctr(#(tokens, pos + 1, env, fn_, errors), span)
+        }
         "-" -> {
           let p = #(tokens, pos + 1, env, fn_, errors)
           let #(body, p2) = parse_term(p)
@@ -336,7 +342,7 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       parse_list(#(rest, 0, env, fn_, errors), span)
     [Token("Punct", "{", _), ..rest] ->
       parse_rcd(#(rest, 0, env, fn_, errors), span)
-    [Token("Punct", "#", _), ..rest] ->
+    [Token(_, "#", _), ..rest] ->
       parse_ctr(#(rest, 0, env, fn_, errors), span)
     [Token("Eof", ..), ..] -> {
       let e = Err("unexpected end of input", span)
@@ -346,6 +352,29 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       let e = Err("unexpected token: " <> v, span)
       #(e, #(tokens, pos + 1, env, fn_, errors))
     }
+  }
+}
+
+/// Parse a term optionally followed by application arguments.
+/// E.g., `fun(arg)` or `(fun)(arg)` are parsed as App(fun, arg).
+fn parse_term_with_app(p: Parser, span: Span) -> #(Term, Parser) {
+  let #(term, rest) = parse_term(p)
+  parse_app_chain(rest, term, span)
+}
+
+/// Recursively parse application arguments.
+fn parse_app_chain(p: Parser, fun: Term, span: Span) -> #(Term, Parser) {
+  let #(tokens, pos, env, fn_, errors) = p
+  case list.drop(tokens, pos) {
+    [Token("Punct", "(", _), ..rest] -> {
+      let p_arg = #(rest, 0, env, fn_, errors)
+      let #(arg, p2) = parse_term(p_arg)
+      let p3 = skip(")", p2)
+      let app_span = merge(span, term_span(arg))
+      let app = App(fun, arg, app_span)
+      parse_app_chain(p3, app, app_span)
+    }
+    _ -> #(fun, p)
   }
 }
 
@@ -383,13 +412,22 @@ fn parse_typed_arg_list_acc(p: Parser, acc: List(#(Term, Term))) -> #(List(#(Ter
     [Token("Punct", ")", _), ..] -> #(list.reverse(acc), p2)
     _ -> {
       let #(arg, p4) = parse_term(p2)
-      let #(atokens, apos, aenv, afn_, aerrors) = p4
-      let p5 = #(atokens, apos, aenv, afn_, aerrors)
-      let p6 = skip(":", p5)
-      let #(ttokens, tpos, tenv, tfn_, terrors) = p6
-      let p7 = #(ttokens, tpos, tenv, tfn_, terrors)
-      let #(type_, p8) = parse_term(p7)
-      parse_typed_arg_list_acc(p8, [#(arg, type_), ..acc])
+      // Guard: if parse_term didn't advance, we're not at a valid argument.
+      // Return accumulated args to avoid infinite loop.
+      case p4 {
+        #(tokens4, pos4, env4, fn4, errors4) ->
+          case pos4 == pos2 {
+            True -> #(list.reverse(acc), p4)
+            False -> {
+              let p5 = #(tokens4, pos4, env4, fn4, errors4)
+              let p6 = skip(":", p5)
+              let #(ttokens, tpos, tenv, tfn_, terrors) = p6
+              let p7 = #(ttokens, tpos, tenv, tfn_, terrors)
+              let #(type_, p8) = parse_term(p7)
+              parse_typed_arg_list_acc(p8, [#(arg, type_), ..acc])
+            }
+          }
+      }
     }
   }
 }
@@ -442,14 +480,32 @@ fn parse_type_def_cases(p: Parser, acc: List(#(String, Term, Term, Span))) -> #(
       // Parse constructor: #Name(pattern) -> ReturnType
       let p3 = #(tokens2, pos2, env2, fn2, errors2)
       let #(tag, p4) = expect_name_after_hash(p3)
-      let p5 = skip("(", p4)
-      let #(pattern, p6) = parse_term(p5)
-      let p7 = skip(")", p6)
-      let p8 = skip("->", p7)
-      let #(ret_type, p9) = parse_term(p8)
-      let p10 = skip("}", p9)
-      let span = current_span(p10)
-      parse_type_def_cases(p10, [#(tag, pattern, ret_type, span), ..acc])
+      // Guard: if no constructor name found, we're not at a valid case.
+      // Return accumulated cases to avoid infinite loop.
+      case tag {
+        "" -> #(list.reverse(acc), p3)
+        name -> {
+          let p5 = skip("(", p4)
+          let #(pattern, p6) = parse_term(p5)
+          let p7 = skip(")", p6)
+          let p8 = skip("->", p7)
+          let #(ret_type, p9) = parse_term(p8)
+          let p10 = skip("}", p9)
+          let span = current_span(p10)
+          // Guard: ensure the parser advanced to avoid infinite recursion
+          case p10 {
+            #(tokens10, pos10, _, _, _) ->
+              case pos10 == pos2 {
+                True -> #(list.reverse(acc), p10)
+                False ->
+                  parse_type_def_cases(
+                    p10,
+                    [#(name, pattern, ret_type, span), ..acc],
+                  )
+              }
+          }
+        }
+      }
     }
   }
 }
@@ -481,12 +537,10 @@ fn parse_ctr(p: Parser, span: Span) -> #(Term, Parser) {
           let p3 = #(rest, 0, env, fn_, errors)
           let #(arg, p4) = parse_term(p3)
           let p5 = skip(")", p4)
-          let rcd = Rcd([#("arg", arg)], arg_span)
-          #(Ctr(name, rcd, span), p5)
+          #(Ctr(name, arg, span), p5)
         }
         _ -> {
-          let rcd = Rcd([], span)
-          #(Ctr(name, rcd, span), p2)
+          #(Ctr(name, Rcd([], span), span), p2)
         }
       }
     }
@@ -523,8 +577,7 @@ fn parse_rcd_fields(
     )
     [Token("Eof", ..), ..] -> #(list.reverse(acc), p)
     _ -> {
-      let p1 = skip("Name", p)
-      let #(name, p2) = expect_name_opt(p1)
+      let #(name, p2) = expect_name_opt(p)
       let p3 = skip(":", p2)
       let #(value, p4) = parse_term(p3)
       let p5 = skip(",", p4)
@@ -596,7 +649,7 @@ fn parse_lambda(p: Parser, span: Span) -> #(Term, Parser) {
   let p5 = skip(")", p4)
   let p6 = skip("=>", p5)
   let p7 = add_binding(p6, name)
-  let #(body, rest) = parse_term(p7)
+  let #(body, rest) = parse_term_with_app(p7, merge(span, current_span(p7)))
   let final_span = merge(span, term_span(body))
   #(Lam([], #(name, param_type), body, final_span), rest)
 }
@@ -653,19 +706,29 @@ fn parse_cases_acc(p: Parser, acc: List(Case)) -> #(List(Case), Parser) {
     [Token("Eof", ..), ..] -> #(acc, p)
     _ -> {
       let p1 = skip("|", p)
-      let #(pattern, _) = parse_pattern(p1)
-      let #(guard, p3) = case list.drop(tokens, pos) {
-        [Token("Op", "?", _), ..] -> {
-          let p = #(tokens, pos + 1, env, fn_, errors)
-          let #(g, p2) = parse_term(p)
-          #(Some(g), p2)
-        }
-        _ -> #(None, p)
+      // Guard: if skip("|") didn't advance, we're not at a valid case.
+      // Return accumulated cases to avoid infinite loop.
+      case p1 {
+        #(tokens1, pos1, _, _, _) ->
+          case pos1 == pos {
+            True -> #(acc, p1)
+            False -> {
+              let #(pattern, p2) = parse_pattern(p1)
+              let #(guard, p3) = case list.drop(tokens1, pos1) {
+                [Token("Op", "?", _), ..] -> {
+                  let p = #(tokens1, pos1 + 1, env, fn_, errors)
+                  let #(g, p4) = parse_term(p)
+                  #(Some(g), p4)
+                }
+                _ -> #(None, p2)
+              }
+              let p4 = skip("=>", p3)
+              let #(body, rest_errors) = parse_term(p4)
+              let case_term = CoreCase(pattern, guard, body, span)
+              parse_cases_acc(rest_errors, [case_term, ..acc])
+            }
+          }
       }
-      let p4 = skip("=>", p3)
-      let #(body, rest_errors) = parse_term(p4)
-      let case_term = CoreCase(pattern, guard, body, span)
-      parse_cases_acc(rest_errors, [case_term, ..acc])
     }
   }
 }
@@ -745,6 +808,24 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
       PAny(span),
       #(tokens, pos + 1, env, fn_, errors),
     )
+    [Token("Op", "#", _), ..rest] -> {
+      let p1 = #(tokens, pos + 1, env, fn_, errors)
+      let #(name, p2) = expect_name_opt(p1)
+      case name {
+        "" -> #(PAny(span), p1)
+        _ ->
+          case list.drop(tokens, pos) {
+            [Token("Op", "#", _), Token("Name", v, _), Token("Punct", "(", _), ..inner_rest] -> {
+              let p3 = #(inner_rest, 0, env, fn_, errors)
+              let #(inner, p4) = parse_pattern(p3)
+              let p5 = skip(")", p4)
+              let final_span = merge(span, current_span(p5))
+              #(PCtr(v, inner, final_span), p5)
+            }
+            _ -> #(PAny(span), p1)
+          }
+      }
+    }
     [Token("Name", v, _), ..rest] -> {
       let p1 = #(tokens, pos + 1, env, fn_, errors)
       case rest {
