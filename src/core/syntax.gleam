@@ -28,7 +28,7 @@
 import core/ast.{
   type Case, type Pattern, type Term, Ann, App, Call, Case as CoreCase, Ctr, Err, TypeDef,
   Float as LitFloat, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr, PLit,
-  PUnit, PVar, Pi, Rcd, Typ, TypRef, Var, let_var,
+  PRcd, PUnit, PVar, Pi, Rcd, Typ, TypRef, Var, let_var,
 }
 import gleam/float
 import gleam/int
@@ -99,6 +99,14 @@ fn current_span(p: Parser) -> Span {
   }
 }
 
+/// Get span for a specific position in the token stream.
+fn span_for_pos(tokens: List(Token), pos: Int) -> Span {
+  case list.drop(tokens, pos) {
+    [] -> single("unknown", 0, 0)
+    [Token(_, _, span), ..] -> span
+  }
+}
+
 fn term_span(term: Term) -> Span {
   case term {
     Var(_, span) -> span
@@ -131,7 +139,20 @@ fn skip(kind: String, p: Parser) -> Parser {
           fn_,
           errors,
         )
-        _ -> p
+        _ -> {
+          let got = case list.drop(tokens, pos) {
+            [Token(k, v, _), ..] -> k <> " '" <> v <> "'"
+            [] -> "end of input"
+            _ -> "unexpected token"
+          }
+          let err = ParseError(
+            span: span_for_pos(tokens, pos),
+            expected: "->",
+            got: got,
+            context: "",
+          )
+          #(tokens, pos, env, fn_, [err, ..errors])
+        }
       }
     }
     "=>" -> {
@@ -143,7 +164,20 @@ fn skip(kind: String, p: Parser) -> Parser {
           fn_,
           errors,
         )
-        _ -> p
+        _ -> {
+          let got = case list.drop(tokens, pos) {
+            [Token(k, v, _), ..] -> k <> " '" <> v <> "'"
+            [] -> "end of input"
+            _ -> "unexpected token"
+          }
+          let err = ParseError(
+            span: span_for_pos(tokens, pos),
+            expected: "=>",
+            got: got,
+            context: "",
+          )
+          #(tokens, pos, env, fn_, [err, ..errors])
+        }
       }
     }
     _ -> {
@@ -251,31 +285,31 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       parse_fix(#(rest, 0, env, fn_, errors), span)
     // Numeric type keywords: $Int, $Float, $I8-$I64, $U8-$U64, $F16-$F64
     [Token("Op", "$", _), Token("Name", "Int", _), ..rest] ->
-      #(TypRef("Int", span), #(rest, pos + 2, env, fn_, errors))
+      #(TypRef("Int", span), #(rest, 0, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "Float", _), ..rest] ->
-      #(TypRef("Float", span), #(rest, pos + 2, env, fn_, errors))
+      #(TypRef("Float", span), #(rest, 0, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "I8", _), ..rest] ->
-      #(TypRef("I8", span), #(rest, pos + 2, env, fn_, errors))
+      #(TypRef("I8", span), #(rest, 0, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "I16", _), ..rest] ->
-      #(TypRef("I16", span), #(rest, pos + 2, env, fn_, errors))
+      #(TypRef("I16", span), #(rest, 0, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "I32", _), ..rest] ->
-      #(TypRef("I32", span), #(rest, pos + 2, env, fn_, errors))
+      #(TypRef("I32", span), #(rest, 0, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "I64", _), ..rest] ->
-      #(TypRef("I64", span), #(rest, pos + 2, env, fn_, errors))
+      #(TypRef("I64", span), #(rest, 0, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "U8", _), ..rest] ->
-      #(TypRef("U8", span), #(rest, pos + 2, env, fn_, errors))
+      #(TypRef("U8", span), #(rest, 0, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "U16", _), ..rest] ->
-      #(TypRef("U16", span), #(rest, pos + 2, env, fn_, errors))
+      #(TypRef("U16", span), #(rest, 0, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "U32", _), ..rest] ->
-      #(TypRef("U32", span), #(rest, pos + 2, env, fn_, errors))
+      #(TypRef("U32", span), #(rest, 0, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "U64", _), ..rest] ->
-      #(TypRef("U64", span), #(rest, pos + 2, env, fn_, errors))
+      #(TypRef("U64", span), #(rest, 0, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "F16", _), ..rest] ->
-      #(TypRef("F16", span), #(rest, pos + 2, env, fn_, errors))
+      #(TypRef("F16", span), #(rest, 0, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "F32", _), ..rest] ->
-      #(TypRef("F32", span), #(rest, pos + 2, env, fn_, errors))
+      #(TypRef("F32", span), #(rest, 0, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "F64", _), ..rest] ->
-      #(TypRef("F64", span), #(rest, pos + 2, env, fn_, errors))
+      #(TypRef("F64", span), #(rest, 0, env, fn_, errors))
     // Type definition: $type { | #C(args) -> ReturnType } or $type<>(...)
     [Token("Op", "$", _), Token("Name", "type", _), ..rest] ->
       parse_type_def(#(rest, 0, env, fn_, errors), span)
@@ -441,7 +475,7 @@ fn parse_type_def(p: Parser, span: Span) -> #(Term, Parser) {
   case list.drop(tokens, pos) {
     // $type<> -> type with explicit empty type params, then { ... }
     [Token("Op", "<", _), Token("Op", ">", _), ..rest] -> {
-      let p1 = #(rest, pos + 2, env, fn_, errors)
+      let p1 = #(rest, 0, env, fn_, errors)
       let #(rtokens, rpos, renv, rfn_, rerrors) = p1
       case list.drop(rtokens, rpos) {
         [Token("Punct", "{", _), ..rest2] -> {
@@ -456,7 +490,7 @@ fn parse_type_def(p: Parser, span: Span) -> #(Term, Parser) {
     }
     // $type { ... }
     [Token("Punct", "{", _), ..rest] -> {
-      let p1 = #(rest, pos + 1, env, fn_, errors)
+      let p1 = #(rest, 0, env, fn_, errors)
       let #(body, p2) = parse_type_def_body(p1)
       let #(tokens, pos, env, fn_, errors) = p2
       let p3 = #(tokens, pos, env, fn_, errors)
@@ -576,7 +610,7 @@ fn parse_rcd_fields(
     }
     [Token("Punct", "}", _), ..rest] -> #(
       list.reverse(acc),
-      #(rest, pos + 1, env, fn_, errors),
+      #(rest, 0, env, fn_, errors),
     )
     [Token("Eof", ..), ..] -> #(list.reverse(acc), p)
     _ -> {
@@ -704,7 +738,7 @@ fn parse_cases_acc(p: Parser, acc: List(Case)) -> #(List(Case), Parser) {
     }
     [Token("Punct", "}", _), ..rest] -> #(
       acc,
-      #(rest, pos + 1, env, fn_, errors),
+      #(rest, 0, env, fn_, errors),
     )
     [Token("Eof", ..), ..] -> #(acc, p)
     _ -> {
@@ -740,13 +774,28 @@ fn parse_cases_acc(p: Parser, acc: List(Case)) -> #(List(Case), Parser) {
 fn parse_let(p: Parser, span: Span) -> #(Term, Parser) {
   let p1 = skip("let", p)
   let #(name, p2) = expect_name_opt(p1)
-  let p3 = skip("=", p2)
-  let #(value, rest) = parse_term(p3)
-  let p4 = skip(";", rest)
+  // Check for optional type annotation
+  let p3 = case p2 {
+    #(tokens, pos, env, fn_, errors) ->
+      case list.drop(tokens, pos) {
+        [Token("Punct", ":", _), ..] -> skip(":", p2)
+        _ -> p2
+      }
+  }
+  // Parse optional type or use Rcd as default
+  let #(param_type, p4) = case p3 {
+    #(tokens, pos, env, fn_, errors) ->
+      case list.drop(tokens, pos) {
+        [Token("Op", "$", _), ..] -> parse_term(p3)
+        _ -> #(Rcd([], span), p3)
+      }
+  }
+  let p5 = skip("=", p4)
+  let #(value, rest) = parse_term(p5)
+  let p6 = skip(";", rest)
   let let_span = merge(span, term_span(value))
-  let #(body, rest_final) = parse_term(p4)
+  let #(body, rest_final) = parse_term(p6)
   let body_span = merge(let_span, term_span(body))
-  let param_type = Rcd([], span)
   #(let_var(name, param_type, value, body, body_span), rest_final)
 }
 
@@ -790,7 +839,7 @@ fn parse_list_items_acc(p: Parser, acc: List(Term)) -> #(List(Term), Parser) {
     }
     [Token("Punct", "]", _), ..rest] -> #(
       list.reverse(acc),
-      #(rest, pos + 1, env, fn_, errors),
+      #(rest, 0, env, fn_, errors),
     )
     [Token("Eof", ..), ..] -> #(list.reverse(acc), p)
     _ -> {
@@ -807,7 +856,7 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
   let #(tokens, pos, env, fn_, errors) = p
   case list.drop(tokens, pos) {
     [] -> #(PAny(span), p)
-    [Token("_", _, _), ..] -> #(
+    [Token("Name", "_", _), ..] -> #(
       PAny(span),
       #(tokens, pos + 1, env, fn_, errors),
     )
@@ -879,7 +928,63 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
         }
       }
     }
+    // Record pattern: {field: pattern, ...}
+    [Token("Punct", "{", _), ..rest] -> {
+      let p1 = #(rest, 0, env, fn_, errors)
+      let #(fields, p2) = parse_pattern_fields(p1)
+      let p3 = skip("}", p2)
+      let final_span = merge(span, current_span(p3))
+      #(PRcd(fields, final_span), p3)
+    }
     _ -> #(PAny(span), p)
+  }
+}
+
+fn parse_pattern_fields(p: Parser) -> #(List(#(String, Pattern)), Parser) {
+  parse_pattern_fields_acc(p, [])
+}
+
+fn parse_pattern_fields_acc(
+  p: Parser,
+  acc: List(#(String, Pattern)),
+) -> #(List(#(String, Pattern)), Parser) {
+  let #(tokens, pos, env, fn_, errors) = p
+  case list.drop(tokens, pos) {
+    [] -> #(list.reverse(acc), p)
+    [Token("Punct", "}", _), ..rest] -> #(
+      list.reverse(acc),
+      #(rest, 0, env, fn_, errors),
+    )
+    _ -> {
+      // Parse field: either {name} or {name: pattern}
+      let #(name, p2) = expect_name_opt(p)
+      case name {
+        "" -> {
+          // Empty or invalid, just return
+          #(list.reverse(acc), p)
+        }
+        v -> {
+          // Check for {name: pattern} or {name} (sugar for {name: name})
+          let p3 = case p2 {
+            #(tokens, pos, env, fn_, errors) ->
+              case list.drop(tokens, pos) {
+                [Token("Punct", ":", _), ..] -> skip(":", p2)
+                _ -> p2
+              }
+          }
+          let #(inner, p4) = parse_pattern(p3)
+          let p5 = skip("}", p4)
+          let p6 = case p5 {
+            #(tokens, pos, env, fn_, errors) ->
+              case list.drop(tokens, pos) {
+                [Token("Punct", ",", _), ..] -> skip(",", p5)
+                _ -> p5
+              }
+          }
+          parse_pattern_fields_acc(p6, [#(v, inner), ..acc])
+        }
+      }
+    }
   }
 }
 
