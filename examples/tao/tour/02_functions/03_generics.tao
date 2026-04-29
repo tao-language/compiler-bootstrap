@@ -1,0 +1,15 @@
+// Generic (polymorphic) functions can be used on different types as long
+// as type constraints hold.
+
+// Polymorphic parameters optionally go inbetween angle brackets (<>).
+fn identity<a>(x: a) -> a {
+  return x
+}
+
+> identity(42) ~> 42
+
+// There can be zero or more polymorphic parameters.
+fn swap<a, b>(pair: (a, b)) -> (b, a) {
+  let (x, y) = pair
+  return (y, x)
+}

@@ -1,0 +1,30 @@
+// Arrow functions return an expression directly.
+fn double(n) => n + n
+
+// Since this function is untyped, it's generic and will work on
+// any type that satisfies it (type-safe duck typing).
+> double(3) ~> 6
+> double(3.3) ~> 6.6
+
+// Functions can have optional type annotations.
+// Block functions have a sequence of statements as body.
+fn square(n: I32) -> I32 {
+  // let definitions are statements.
+  let result = n * n
+  // Blocks require a return statement.
+  return result
+}
+
+> square(3) ~> 9
+
+// Anonymous or lambda functions are just expressions.
+let add = fn(x, y) =>
+  x + y
+
+> add(2, 3) ~> 5
+
+// Arrow functions can also have type annotations.
+let mul = fn(x: I32, y: I32) -> I32 =>
+  x * y
+
+> mul(2, 3) ~> 6

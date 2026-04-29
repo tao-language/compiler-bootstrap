@@ -1,17 +1,17 @@
 // Here's an example of a type-safe expression using GADTs.
 $let Expr = $fn(a: $Type) => $type {
-| #LitInt($Int) -> #Expr($Int)
+| #LitInt($I32) -> #Expr($I32)
 | #LitBool(#Bool({})) -> #Expr(#Bool({}))
-| #Add({x: #Expr($Int), y: #Expr($Int)}) -> #Expr($Int)
-| #IsZero(#Expr($Int)) -> #Expr(#Bool({}))
+| #Add({x: #Expr($I32), y: #Expr($I32)}) -> #Expr($I32)
+| #IsZero(#Expr($I32)) -> #Expr(#Bool({}))
 }
 
 // Type-safe evaluator.
 $let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr {
 | #LitInt(n) => n
 | #LitBool(b) => b
-| #Add({x, y}) => %int_add(eval(x), eval(y)) -> $Int
-| #IsZero(e) => %int_eq(eval(x), 0)
+| #Add({x, y}) => %i32_add(eval(x), eval(y)) -> $I32
+| #IsZero(e) => %i32_eq(eval(x), 0: $I32) -> $Bool({})
 }
 
-eval(#Add({x: #LitInt(1), y: #LitInt(2)})) : $Int
+eval(#Add({x: #LitInt(1), y: #LitInt(2)})) : $I32
