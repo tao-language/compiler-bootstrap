@@ -1,0 +1,23 @@
+// A generic (polymorphic) type uses type parameters.
+// Type parameters are usually single letters like 'a', 'b', 'c', etc.
+// But you can use any variable name to help with readability.
+
+// For example, this State type has a generic parameter `a` to hold
+// any kind of data payload after it loads successfully.
+type State(a) {
+  | Init
+  | Success(data: a)
+  | Failure(reason: Text)
+}
+
+// We can then write generic functions on top of the generic types.
+fn is_ready<a>(state: State(a)) -> Bool
+= match state {
+| Success(_) => True
+| _ => False
+}
+
+> is_ready(Init) ~> False
+> is_ready(Success(42)) ~> True
+> is_ready(Success("My text")) ~> True
+> is_ready(Failure("Something went wrong")) ~> False

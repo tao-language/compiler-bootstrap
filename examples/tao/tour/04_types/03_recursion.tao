@@ -1,0 +1,25 @@
+// Type definitions can be recursive.
+// A recursive type refers to itself in its own definition.
+// This allows for data structures that can grow to any size, like lists or trees.
+
+// For example, a simple linked list is recursive.
+type List(a) {
+| Nil
+| Cons(a, List(a))
+}
+
+fn sum(list: List(Int)) -> Int
+= match list {
+| Nil => 0
+| Cons(x, xs) => x + sum(xs)
+}
+
+> sum(Nil) ~> 0
+> sum(Cons(1, Nil)) ~> 1
+> sum(Cons(1, Cons(2, Nil))) ~> 3
+
+// Here's how to define a simple binary tree.
+type Tree(a) {
+| Leaf
+| Branch(value: a, left: Tree(a), right: Tree(a))
+}

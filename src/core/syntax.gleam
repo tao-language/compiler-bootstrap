@@ -251,31 +251,31 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       parse_fix(#(rest, 0, env, fn_, errors), span)
     // Numeric type keywords: $Int, $Float, $I8-$I64, $U8-$U64, $F16-$F64
     [Token("Op", "$", _), Token("Name", "Int", _), ..rest] ->
-      #(TypRef("Int", span), #(rest, pos + 1, env, fn_, errors))
+      #(TypRef("Int", span), #(rest, pos + 2, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "Float", _), ..rest] ->
-      #(TypRef("Float", span), #(rest, pos + 1, env, fn_, errors))
+      #(TypRef("Float", span), #(rest, pos + 2, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "I8", _), ..rest] ->
-      #(TypRef("I8", span), #(rest, pos + 1, env, fn_, errors))
+      #(TypRef("I8", span), #(rest, pos + 2, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "I16", _), ..rest] ->
-      #(TypRef("I16", span), #(rest, pos + 1, env, fn_, errors))
+      #(TypRef("I16", span), #(rest, pos + 2, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "I32", _), ..rest] ->
-      #(TypRef("I32", span), #(rest, pos + 1, env, fn_, errors))
+      #(TypRef("I32", span), #(rest, pos + 2, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "I64", _), ..rest] ->
-      #(TypRef("I64", span), #(rest, pos + 1, env, fn_, errors))
+      #(TypRef("I64", span), #(rest, pos + 2, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "U8", _), ..rest] ->
-      #(TypRef("U8", span), #(rest, pos + 1, env, fn_, errors))
+      #(TypRef("U8", span), #(rest, pos + 2, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "U16", _), ..rest] ->
-      #(TypRef("U16", span), #(rest, pos + 1, env, fn_, errors))
+      #(TypRef("U16", span), #(rest, pos + 2, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "U32", _), ..rest] ->
-      #(TypRef("U32", span), #(rest, pos + 1, env, fn_, errors))
+      #(TypRef("U32", span), #(rest, pos + 2, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "U64", _), ..rest] ->
-      #(TypRef("U64", span), #(rest, pos + 1, env, fn_, errors))
+      #(TypRef("U64", span), #(rest, pos + 2, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "F16", _), ..rest] ->
-      #(TypRef("F16", span), #(rest, pos + 1, env, fn_, errors))
+      #(TypRef("F16", span), #(rest, pos + 2, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "F32", _), ..rest] ->
-      #(TypRef("F32", span), #(rest, pos + 1, env, fn_, errors))
+      #(TypRef("F32", span), #(rest, pos + 2, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "F64", _), ..rest] ->
-      #(TypRef("F64", span), #(rest, pos + 1, env, fn_, errors))
+      #(TypRef("F64", span), #(rest, pos + 2, env, fn_, errors))
     // Type definition: $type { | #C(args) -> ReturnType } or $type<>(...)
     [Token("Op", "$", _), Token("Name", "type", _), ..rest] ->
       parse_type_def(#(rest, 0, env, fn_, errors), span)
@@ -290,7 +290,10 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
         "type" -> #(Typ(0, span), #(tokens, pos + 1, env, fn_, errors))
         "true" -> #(Rcd([], span), #(tokens, pos + 1, env, fn_, errors))
         "fun" -> parse_app(#(tokens, pos + 1, env, fn_, errors), span)
-        _ -> parse_var(#(tokens, pos + 1, env, fn_, errors), v, span)
+        _ -> {
+          let #(var_term, var_rest) = parse_var(#(tokens, pos + 1, env, fn_, errors), v, span)
+          parse_app_chain(var_rest, var_term, span)
+        }
       }
     }
 

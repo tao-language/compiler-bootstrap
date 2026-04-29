@@ -15,7 +15,7 @@
 /// - Edge cases (empty input, extra tokens, unicode)
 import core/ast.{
   App, Case as CoreCase, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
-  Match, PAny, PLit, PUnit, Pi, Rcd, Typ, Var,
+  Match, PAny, PLit, PUnit, Pi, Rcd, Typ, TypRef, Var,
 }
 import core/syntax.{parse, parse_tokens}
 import gleam/list
@@ -662,6 +662,90 @@ pub fn parse_unicode_name_produces_undefined_error_test() {
   let #(term, _) = parse("λ")
   assert case term {
     Err(_, _) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Application parsing tests
+
+pub fn parse_var_application_test() {
+  // x(42) should parse to App(Var(x), Lit(42))
+  let #(term, _) = parse("x(42)")
+  // The term should be an App (even if with an error in the function position)
+  assert case term {
+    App(_, Lit(LitInt(42), _), _) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_lambda_body_is_variable_test() {
+  // $fn(x: $Int) => x should parse to Lam with body Var(0)
+  let #(term, _) = parse("$fn(x: $Int) => x")
+  // First check if it's a Lam at all
+  assert case term {
+    Lam([], #("x", param_type), body, _) -> {
+      // Check param type is Int
+      let param_ok = case param_type {
+        TypRef("Int", _) -> True
+        _ -> False
+      }
+      // Check body is Var(0)
+      let body_ok = case body {
+        Var(0, _) -> True
+        _ -> False
+      }
+      param_ok && body_ok
+    }
+    _ -> False
+  }
+}
+
+pub fn parse_lambda_body_is_application_test() {
+  // $fn(x: $Int) => x(42) should parse to Lam(App(Var(0), Lit(42)))
+  let #(term, _) = parse("$fn(x: $Int) => x(42)")
+  // First check if it's a Lam at all
+  assert case term {
+    Lam([], #("x", param_type), body, _) -> {
+      // Check param type is Int
+      let param_ok = case param_type {
+        TypRef("Int", _) -> True
+        _ -> False
+      }
+      // Check body is App(Lit(42))
+      let body_ok = case body {
+        App(_, Lit(LitInt(42), _), _) -> True
+        Lit(_, _) -> False  // Body is just Lit, not App
+        _ -> False
+      }
+      param_ok && body_ok
+    }
+    _ -> False
+  }
+}
+
+pub fn parse_lambda_application_outside_test() {
+  // ($fn(x: $Int) => x)(42) should parse to App(Lam(...), Lit(42))
+  let #(term, _) = parse("($fn(x: $Int) => x)(42)")
+  assert case term {
+    App(
+      Lam([], #("x", _), Var(0, _), _),
+      Lit(LitInt(42), _),
+      _,
+    ) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_nested_application_test() {
+  // f(1)(2) should parse to App(App(Var(f), Lit(1)), Lit(2))
+  let #(term, _) = parse("f(1)(2)")
+  assert case term {
+    App(
+      App(_, Lit(LitInt(1), _), _),
+      Lit(LitInt(2), _),
+      _,
+    ) -> True
     _ -> False
   }
 }
