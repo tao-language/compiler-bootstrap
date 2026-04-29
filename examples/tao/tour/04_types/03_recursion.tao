@@ -23,3 +23,35 @@ type Tree(a) {
 | Leaf
 | Branch(value: a, left: Tree(a), right: Tree(a))
 }
+
+/* Example tree:
+      10
+     /  \
+    5    15
+   / \     \
+  2   7     20
+*/
+let tree =  Branch(
+  value: 10,
+  left: Branch(
+    value: 5,
+    left: Branch(2, Leaf, Leaf),
+    right: Branch(7, Leaf, Leaf),
+  ),
+  right: Branch(
+    value: 15,
+    left: Leaf,
+    right: Branch(20, Leaf, Leaf),
+  ),
+)
+
+// Depth-First Search (DFS), recursively search branches.
+fn contains<a>(tree: Tree(a), target: a) -> Bool
+= match tree {
+| Leaf => False
+| Branch(value, left, right) =>
+    value == target || contains(left, target) || contains(right, target)
+}
+
+> contains(tree, 7) ~> True
+> contains(tree, 42) ~> False
