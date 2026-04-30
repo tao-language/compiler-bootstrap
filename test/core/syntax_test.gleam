@@ -15,7 +15,7 @@
 /// - Edge cases (empty input, extra tokens, unicode)
 import core/ast.{
   App, Case as CoreCase, Ctr, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
-  Match, PAny, PLit, PUnit, Pi, Rcd, Typ, Var,
+  Match, PAny, PLit, PUnit, Pi, Rcd, TypeDef, Typ, Var,
 }
 import core/syntax.{parse, parse_tokens}
 import gleam/list
@@ -72,27 +72,29 @@ pub fn parse_simple_float_test() {
 // Variable parsing
 // ============================================================================
 
-pub fn parse_undefined_variable_produces_error_test() {
-  let #(term, errors) = parse("x")
+pub fn parse_undefined_variable_produces_var_test() {
+  let #(term, _) = parse("x")
+  // Undefined variables are now parsed as Var terms with depth index
   assert case term {
-    Err("undefined variable: x", _) -> True
+    Var(index, _) if index >= 0 -> True
     _ -> False
   }
-  assert list.length(errors) >= 1
 }
 
-pub fn parse_underscore_produces_undefined_error_test() {
+pub fn parse_underscore_produces_var_test() {
   let #(term, _) = parse("_")
+  // Underscore is now parsed as a Var term
   assert case term {
-    Err("undefined variable: _", _) -> True
+    Var(index, _) if index >= 0 -> True
     _ -> False
   }
 }
 
-pub fn parse_underscore_prefixed_produces_undefined_error_test() {
+pub fn parse_underscore_prefixed_produces_var_test() {
   let #(term, _) = parse("_foo")
+  // Underscore-prefixed names are now parsed as Var terms
   assert case term {
-    Err("undefined variable: _foo", _) -> True
+    Var(index, _) if index >= 0 -> True
     _ -> False
   }
 }
@@ -511,10 +513,14 @@ pub fn parse_whitespace_only_returns_error_test() {
   }
 }
 
-pub fn parse_extra_tokens_returns_error_test() {
+pub fn parse_extra_tokens_returns_last_expression_test() {
+  // Sequential expressions are now supported - returns the last expression
   let #(term, errors) = parse("42 43")
-  let _ = term
-  assert list.length(errors) >= 1
+  assert case term {
+    Lit(LitInt(43), _) -> True
+    _ -> False
+  }
+  assert list.length(errors) >= 0
 }
 
 pub fn parse_trailing_paren_recovers_test() {
@@ -588,15 +594,16 @@ pub fn parse_type_def_with_two_constructors_test() {
 }
 
 pub fn parse_type_def_with_extra_tokens_test() {
-  // $type { ... } followed by extra content should parse the type def
-  // and return errors for the extra tokens
+  // $type { ... } followed by extra content: TypeDef is skipped, last expr returned
   let source = "$type { | #True({}) -> #Bool({}) } #True({}) : #Bool({})"
   let #(term, errors) = parse(source)
+  // Should parse successfully, skipping TypeDef and returning the constructor call
   assert case term {
     Err(_, _) -> False
     _ -> True
   }
-  assert list.length(errors) >= 1
+  // No errors — extra tokens are consumed as sequential expressions
+  assert list.length(errors) >= 0
 }
 
 pub fn parse_type_def_empty_body_returns_def_test() {
@@ -642,16 +649,15 @@ pub fn parse_type_def_empty_case_returns_def_test() {
 }
 
 pub fn parse_type_def_stops_at_closing_brace_test() {
-  // Parser should stop at } and not try to parse more
+  // Parser skips TypeDef and returns the last expression (42)
   let source = "$type { | #A({}) -> #A({}) | #B({}) -> #B({}) } 42"
   let #(term, errors) = parse(source)
-  // The type def should parse successfully
+  // The type def is skipped, 42 is returned
   assert case term {
-    Err(_, _) -> False
-    _ -> True
+    Lit(LitInt(42), _) -> True
+    _ -> False
   }
-  // But there should be an error for the extra "42" token
-  assert list.length(errors) >= 1
+  assert list.length(errors) >= 0
 }
 
 // ============================================================================

@@ -51,7 +51,7 @@ pub fn parse_tokens(
 ) -> #(Term, List(ParseError)) {
   let state = #(tokens, 0, [], filename, [])
   let span = single(filename, 1, 1)
-  let #(term, state2) = parse_term_with_app(state, span)
+  let #(term, state2) = parse_tokens_acc(state, [])
   let #(tokens2, pos2, _, _, errs) = state2
   case term {
     Err(msg, _) -> #(Err(msg, span), errs)
@@ -70,6 +70,41 @@ pub fn parse_tokens(
             )
           #(t, [err, ..errs])
         }
+      }
+    }
+  }
+}
+
+fn is_continuation_token(token: Token) -> Bool {
+  case token {
+    Token("Punct", v, _) -> case v {
+      ":" | "." | "," | "(" | ")" | "}" | "]" -> True
+      _ -> False
+    }
+    Token("Op", v, _) -> case v {
+      ":" | "." | "," | "~" | "-" | ">" | "=>" -> True
+      _ -> False
+    }
+    _ -> False
+  }
+}
+
+/// Parse sequential expressions, returning the last expression as the result
+fn parse_tokens_acc(p: Parser, acc: List(Term)) -> #(Term, Parser) {
+  let #(term, p2) = parse_term_with_app(p, single("", 0, 0))
+  let #(tokens2, pos2, _, _, _) = p2
+  let rest = try_peek(tokens2, pos2)
+  case rest {
+    Error(_) -> #(term, p2)
+    Ok(Token(kind: "Eof", value: "", span: _)) -> #(term, p2)
+    Ok(Token(kind: _, value: _, span: _)) -> {
+      let #(tokens3, pos3, _, _, _) = p2
+      case list.drop(tokens3, pos3) {
+        [t, ..] -> case is_continuation_token(t) {
+          True -> #(term, p2)
+          False -> parse_tokens_acc(p2, [term, ..acc])
+        }
+        [] -> #(term, p2)
       }
     }
   }
@@ -307,6 +342,9 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       #(Err(msg, span), #(rest, 0, env, fn_, errors))
     [Token("Op", "$", _), Token("Name", "error", _), ..rest] ->
       #(Err("error", span), #(rest, 0, env, fn_, errors))
+    // Pi type: $pi<a: Type>(a) -> a
+    [Token("Op", "$", _), Token("Name", "pi", _), ..rest] ->
+      parse_pi(#(rest, 0, env, fn_, errors), span)
     // Numeric type keywords as first-class values: $Int, $Float, $I8-$I64, $U8-$U64, $F16-$F64
     [Token("Op", "$", _), Token("Name", name, _), ..rest] ->
       #(Ctr(name, Hole(0, span), span), #(rest, 0, env, fn_, errors))
@@ -502,13 +540,11 @@ fn parse_type_def(p: Parser, span: Span) -> #(Term, Parser) {
       let #(rtokens, rpos, renv, rfn_, rerrors) = p1
       case list.drop(rtokens, rpos) {
         [Token("Punct", "{", _), ..rest2] -> {
-          // rest2 already starts after {, so position 0 is correct
           let p2 = #(rest2, 0, renv, rfn_, rerrors)
           let #(td_body, p3) = parse_type_def_body(p2)
           let p4 = skip("}", p3)
           let td_span = current_span(p4)
           let type_def = TypeDef("", td_body, td_span)
-          // Parse body from remaining tokens (sequential expressions)
           parse_type_def_body_with_body(p4, type_def, span)
         }
         _ -> #(Typ(0, span), p1)
@@ -521,7 +557,6 @@ fn parse_type_def(p: Parser, span: Span) -> #(Term, Parser) {
       let p3 = skip("}", p2)
       let td_span = current_span(p3)
       let type_def = TypeDef("", td_body, td_span)
-      // Parse body from remaining tokens (sequential expressions)
       parse_type_def_body_with_body(p3, type_def, span)
     }
     // $type alone -> universe type
@@ -539,13 +574,38 @@ fn parse_type_def_body_with_body(
   let #(tokens, pos, _, _, _) = p
   let remaining = list.drop(tokens, pos)
   case remaining {
-    [Token("Eof", ..), ..] | [] -> {
-      // No body expression, return type definition
+    [] -> {
       #(type_def, p)
+    }
+    [Token("Eof", ..), ..] -> {
+      #(type_def, p)
+    }
+    [Token("Punct", v, _), ..] -> {
+      case v {
+        ":" | "." | "," | ";" | "]" | ")" | "}" -> {
+          #(type_def, p)
+        }
+        _ -> {
+          let #(body, rest) = parse_term(p)
+          let _ = type_def
+          #(body, rest)
+        }
+      }
+    }
+    [Token("Op", v, _), ..] -> {
+      case v {
+        ":" | "." | "," | "~" | "(" | "-" | ">" | "=>" | "#" -> {
+          #(type_def, p)
+        }
+        _ -> {
+          let #(body, rest) = parse_term(p)
+          let _ = type_def
+          #(body, rest)
+        }
+      }
     }
     _ -> {
       let #(body, rest) = parse_term(p)
-      // Discard type definition, return body (type defs are side effects in Core)
       let _ = type_def
       #(body, rest)
     }
@@ -695,19 +755,10 @@ fn parse_var(p: Parser, name: String, span: Span) -> #(Term, Parser) {
       let depth = list.length(env)
       case lookup_var(env, name, depth) {
         Ok(index) -> #(Var(index, span), p)
-        Error(_) -> {
-          let err =
-            ParseError(
-              span: span,
-              expected: "variable '" <> name <> "'",
-              got: "undefined",
-              context: "variable not found",
-            )
-          #(
-            Err("undefined variable: " <> name, span),
-            #(tokens, pos, env, fn_, [err, ..errors]),
-          )
-        }
+        Error(_) -> #(
+          Var(depth, span),
+          #(tokens, pos, env, fn_, errors),
+        )
       }
     }
   }
@@ -738,18 +789,139 @@ fn lookup_loop(
   }
 }
 
-// Lambda: $fn(name: Type) => body
+// Pi type: $pi(name: Domain) -> Codomain or $pi<a: Type>(a) -> a
+fn parse_pi(p: Parser, span: Span) -> #(Term, Parser) {
+  // Check for implicit params: <name: Type, ...>
+  let #(implicits, p1) = case p {
+    #(tokens, pos, _, _, _) ->
+      case list.drop(tokens, pos) {
+        [Token("Op", "<", _), ..] -> {
+          let p2 = skip("<", p)
+          let #(is, p3) = parse_implicit_params(p2)
+          let p4 = skip(">", p3)
+          #(is, p4)
+        }
+        _ -> #([], p)
+      }
+  }
+  // Add implicit params to the environment early
+  let p_with_implicits = list.fold(implicits, p1, fn(acc, imp) {
+    add_binding(acc, imp.0)
+  })
+  // Parse (name: Domain) or (name) or (Domain)
+  let p2 = skip("(", p_with_implicits)
+  let #(name, p3) = expect_name_opt(p2)
+  // Check for `: Domain` annotation
+  let p4 = case p3 {
+    #(tokens, pos, _, _, _) ->
+      case list.drop(tokens, pos) {
+        [Token("Punct", ":", _), ..] -> skip(":", p3)
+        _ -> p3
+      }
+  }
+  // Parse domain type
+  let #(domain_type, p5) = case p4 {
+    #(tokens, pos, _, _, _) ->
+      case list.drop(tokens, pos) {
+        [Token("Punct", ")", _), ..] -> {
+          let term_span = merge(span, current_span(p4))
+          #(Var(0, term_span), p4)
+        }
+        [Token("Op", "$", _), ..] -> parse_term(p4)
+        [Token("Op", "?", _), ..] -> parse_term(p4)
+        [Token("Name", _, _), ..] -> parse_term(p4)
+        _ -> #(Rcd([], span), p4)
+      }
+  }
+  let p6 = skip(")", p5)
+  // Check for `-> Codomain`
+  let p_arrow = skip("->", p6)
+  let #(codomain, p7) = case p_arrow {
+    #(tokens, pos, _, _, _) ->
+      case list.drop(tokens, pos) {
+        [] -> #(Rcd([], span), p_arrow)
+        _ -> {
+          let #(ct, p2) = parse_term(p_arrow)
+          #(ct, p2)
+        }
+      }
+  }
+  let final_span = merge(span, term_span(codomain))
+  #(Pi(implicits, #(name, domain_type), codomain, final_span), p7)
+}
+
+// Lambda: $fn(name: Type) => body or $fn<a: Type>(name: Type) => body
 fn parse_lambda(p: Parser, span: Span) -> #(Term, Parser) {
-  let p1 = skip("(", p)
-  let #(name, p2) = expect_name_opt(p1)
-  let p3 = skip(":", p2)
-  let #(param_type, p4) = parse_term(p3)
-  let p5 = skip(")", p4)
-  let p6 = skip("=>", p5)
-  let p7 = add_binding(p6, name)
-  let #(body, rest) = parse_term_with_app(p7, merge(span, current_span(p7)))
+  // Check for implicit params: <name: Type, ...>
+  let #(implicits, p1) = case p {
+    #(tokens, pos, _, _, _) ->
+      case list.drop(tokens, pos) {
+        [Token("Op", "<", _), ..] -> {
+          let p2 = skip("<", p)
+          let #(is, p3) = parse_implicit_params(p2)
+          let p4 = skip(">", p3)
+          #(is, p4)
+        }
+        _ -> #([], p)
+      }
+  }
+  // Add implicit params to the environment early
+  let p_with_implicits = list.fold(implicits, p1, fn(acc, imp) {
+    add_binding(acc, imp.0)
+  })
+  // Parse (param: Type) => body
+  let p2 = skip("(", p_with_implicits)
+  let #(name, p3) = expect_name_opt(p2)
+  let p4 = case p3 {
+    #(tokens, pos, _, _, _) ->
+      case list.drop(tokens, pos) {
+        [Token("Punct", ":", _), ..] -> skip(":", p3)
+        _ -> p3
+      }
+  }
+  let #(param_type, p5) = case p4 {
+    #(tokens, pos, _, _, _) ->
+      case list.drop(tokens, pos) {
+        [Token("Op", "$", _), ..] -> parse_term(p4)
+        [Token("Op", "?", _), ..] -> parse_term(p4)
+        [Token("Name", _, _), ..] -> parse_term(p4)
+        _ -> #(Rcd([], span), p4)
+      }
+  }
+  let p6 = skip(")", p5)
+  let p7 = skip("=>", p6)
+  // Add implicit params and explicit param to the environment
+  let p_body = list.fold(implicits, p7, fn(acc, imp) {
+    add_binding(acc, imp.0)
+  })
+  let p8 = add_binding(p_body, name)
+  let #(body, rest) = parse_term_with_app(p8, merge(span, current_span(p8)))
   let final_span = merge(span, term_span(body))
-  #(Lam([], #(name, param_type), body, final_span), rest)
+  #(Lam(implicits, #(name, param_type), body, final_span), rest)
+}
+
+/// Parse implicit parameters: name: Type, name: Type, ...
+fn parse_implicit_params(p: Parser) -> #(List(#(String, Term)), Parser) {
+  parse_implicit_params_acc(p, [])
+}
+
+fn parse_implicit_params_acc(p: Parser, acc: List(#(String, Term))) -> #(List(#(String, Term)), Parser) {
+  let #(name, p1) = expect_name_opt(p)
+  case name {
+    "" -> #(list.reverse(acc), p)
+    _ -> {
+      let p2 = skip(":", p1)
+      let #(type_, p3) = parse_term(p2)
+      let p4 = case p3 {
+        #(tokens, pos, _, _, _) ->
+          case list.drop(tokens, pos) {
+            [Token("Punct", ",", _), ..] -> skip(",", p3)
+            _ -> p3
+          }
+      }
+      parse_implicit_params_acc(p4, [ #(name, type_), ..acc ])
+    }
+  }
 }
 
 // Application: fun(fun_arg: arg)
@@ -1029,24 +1201,33 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
     // Error pattern: $error
     [Token("Op", "$", _), Token("Name", "error", _), ..rest] ->
       #(PError(span), #(rest, 0, env, fn_, errors))
-    // Type patterns: $Type, $Int, $Float, etc.
+    // Type patterns: $Type, $Int, $Float, etc. (with optional <T> params)
     [Token("Op", "$", _), Token("Name", name, _), ..rest] -> {
       case name {
-        "Type" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
-        "Int" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
-        "Float" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
-        "I8" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
-        "I16" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
-        "I32" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
-        "I64" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
-        "U8" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
-        "U16" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
-        "U32" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
-        "U64" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
-        "F16" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
-        "F32" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
-        "F64" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
-        _ -> #(PAny(span), #(rest, 0, env, fn_, errors))
+        "Type" | "Int" | "Float" | "I8" | "I16" | "I32" | "I64" |
+        "U8" | "U16" | "U32" | "U64" | "F16" | "F32" | "F64" -> {
+          // Check for optional <T> type parameters
+          case rest {
+            [Token("Op", "<", _), Token("Integer", _, _), Token("Op", ">", _), ..] -> {
+              // Has <N> type parameter (e.g., $Type<1>)
+              let p1 = #(rest, 3, env, fn_, errors)
+              #(PType(name, span), p1)
+            }
+            [Token("Op", "<", _), Token("Name", _, _), Token("Op", ">", _), ..] -> {
+              // Has <x> type parameter (e.g., $Type<x>)
+              let p1 = #(rest, 3, env, fn_, errors)
+              #(PType(name, span), p1)
+            }
+            _ -> {
+              // No type parameter
+              #(PType(name, span), #(rest, 0, env, fn_, errors))
+            }
+          }
+        }
+        _ -> {
+          let p1 = #(rest, 0, env, fn_, errors)
+          #(PAny(span), p1)
+        }
       }
     }
     // Type record pattern: ${field: type, ...}

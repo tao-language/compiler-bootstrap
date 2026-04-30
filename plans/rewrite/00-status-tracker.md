@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-28 (Phase 2e complete: Removed TypRef, replaced with Ctr for type values. Fixed $type/$error case ordering in parse_term. Added skip() Name token support. Added $error term and PError/PType pattern support. Added ${} record type syntax in parse_term. PType patterns now match VCtr values. Fixed parse_match to pass correct parser. Fixed parse_ffi_call return type. Fixed parse_type_def_cases early return bug. Fixed parse_type_def closing brace. Added type annotation parsing. 713 tests passing, 2 failures.)
+> **Last updated:** 2026-04-28 (Phase 2f complete: Fixed sequential expression parsing in parse_tokens_acc. Added type parameter support in PType patterns ($Type<1>, $Type<x>). Fixed parse_type_def_body_with_body to not consume expressions starting with #, ), -, >, =>. Added continuation token detection to distinguish application continuations from new top-level expressions. 715 tests passing, 0 failures.)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md), [examples/core/tour/](../../examples/core/tour/)
 
 ## Legend

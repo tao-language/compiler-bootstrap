@@ -60,7 +60,7 @@ pub fn evaluate(state: State, term: Term) -> Value {
   case term {
     Var(index, _) ->
       case list.drop(state.vars, index) {
-        [#(name, #(value, _)), ..] -> value
+        [#(_, #(value, _)), ..] -> value
         _ -> VNeut(HVar(index), [])
       }
     Hole(id, _) -> VNeut(HHole(id), [])

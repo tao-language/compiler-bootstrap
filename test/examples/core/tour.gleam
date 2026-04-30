@@ -205,8 +205,6 @@ fn test_file(name: String, term: Term) -> Bool {
 
 // ============================================================================
 // EXPECTED VALUES MAPPING
-/// Every tour file is mapped to its expected evaluation result.
-/// This provides documentation and a strong correctness guarantee.
 // ============================================================================
 
 pub fn expected_values() -> List(#(String, Value, String)) {
