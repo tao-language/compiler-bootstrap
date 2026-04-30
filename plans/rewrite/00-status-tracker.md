@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-28 (Phase 2e complete: Removed TypRef, replaced with Ctr for type values. Fixed $type/$error case ordering in parse_term. Added skip() Name token support. Added $error term and PError/PType pattern support. Added ${} record type syntax in parse_term. PType patterns now match VCtr values. Fixed parse_match to pass correct parser. 710 tests passing, 5 failures.)
+> **Last updated:** 2026-04-28 (Phase 2e complete: Removed TypRef, replaced with Ctr for type values. Fixed $type/$error case ordering in parse_term. Added skip() Name token support. Added $error term and PError/PType pattern support. Added ${} record type syntax in parse_term. PType patterns now match VCtr values. Fixed parse_match to pass correct parser. Fixed parse_ffi_call return type. Fixed parse_type_def_cases early return bug. Fixed parse_type_def closing brace. Added type annotation parsing. 713 tests passing, 2 failures.)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md), [examples/core/tour/](../../examples/core/tour/)
 
 ## Legend

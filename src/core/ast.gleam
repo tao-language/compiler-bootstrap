@@ -52,14 +52,30 @@ pub type LiteralType {
 pub type Term {
   Var(index: Int, span: Span)
   Hole(id: Int, span: Span)
-  Lam(implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span)
+  Lam(
+    implicits: List(#(String, Term)),
+    param: #(String, Term),
+    body: Term,
+    span: Span,
+  )
   App(fun: Term, arg: Term, span: Span)
-  Pi(implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span)
+  Pi(
+    implicits: List(#(String, Term)),
+    domain: #(String, Term),
+    codomain: Term,
+    span: Span,
+  )
   Lit(value: Literal, span: Span)
   Ctr(tag: String, arg: Term, span: Span)
   Match(arg: Term, cases: List(Case), span: Span)
   Ann(term: Term, type_: Term, span: Span)
-  Call(name: String, args: List(Term), typed_args: List(#(Term, Term)), return_type: Option(Term), span: Span)
+  Call(
+    name: String,
+    args: List(Term),
+    typed_args: List(#(Term, Term)),
+    return_type: Option(Term),
+    span: Span,
+  )
   Rcd(fields: List(#(String, Term)), span: Span)
   Typ(level: Int, span: Span)
   TypeDef(
@@ -107,21 +123,28 @@ pub type Elim {
 ///
 /// Values use De Bruijn levels for variables (relative to their
 /// binding site), and De Bruijn indices for bodies.
-
 /// Alias for the evaluation environment.
-pub type Env = List(Value)
+pub type Env =
+  List(Value)
 
 pub type Value {
   VNeut(head: Head, spine: List(Elim))
-  VLam(env: Env, implicits: List(#(String, Value)), param: #(String, Value), body: Term)
-  VPi(env: Env, implicits: List(#(String, Value)), domain: #(String, Value), codomain: Value)
+  VLam(
+    env: Env,
+    implicits: List(#(String, Value)),
+    param: #(String, Value),
+    body: Term,
+  )
+  VPi(
+    env: Env,
+    implicits: List(#(String, Value)),
+    domain: #(String, Value),
+    codomain: Value,
+  )
   VLit(value: Literal)
   VCtr(tag: String, arg: Value)
   VRcd(fields: List(#(String, Value)))
-  VTypeDef(
-    name: String,
-    constructors: List(#(String, Value, Value, Span)),
-  )
+  VTypeDef(name: String, constructors: List(#(String, Value, Value, Span)))
   VErr
 }
 
@@ -171,32 +194,36 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
     VPi(_env, _implicits, _domain, _codomain) -> v
     VLit(_value) -> v
     VCtr(tag, arg) -> VCtr(tag, subst(type_args, arg))
-    VRcd(fields) -> VRcd(list.map(fields, fn(f) { #(f.0, subst(type_args, f.1)) }))
-    VTypeDef(name: n, constructors: c) -> VTypeDef(
-      name: n,
-      constructors: c,
-    )
+    VRcd(fields) ->
+      VRcd(list.map(fields, fn(f) { #(f.0, subst(type_args, f.1)) }))
+    VTypeDef(name: n, constructors: c) -> VTypeDef(name: n, constructors: c)
     VErr -> VErr
   }
 }
 
 /// Extract the type of a TypeDef (always `*` — universe 0).
-pub fn type_of_type_def(constructors: List(#(String, Value, Value, Span))) -> Value {
+pub fn type_of_type_def(
+  constructors: List(#(String, Value, Value, Span)),
+) -> Value {
   // A TypeDef has type * (universe 0), represented as Pi(_, _, _, Pi(_, _, _, VTypeDef))
   // Note: This function only needs the constructors list, not the full TypeDef
   let _ = constructors
-  VPi([], [], #("_", VLit(Int(0))), VPi([], [], #("_", VLit(Int(1))), VTypeDef(
-    name: "",
-    constructors: constructors,
-  )))
+  VPi(
+    [],
+    [],
+    #("_", VLit(Int(0))),
+    VPi(
+      [],
+      [],
+      #("_", VLit(Int(1))),
+      VTypeDef(name: "", constructors: constructors),
+    ),
+  )
 }
 
 /// Create a TypeDef from simple constructor tags (no result types).
 /// Uses HVar(0) placeholders for all result types.
-pub fn make_type_def(
-  name: String,
-  constructor_tags: List(String),
-) -> Term {
+pub fn make_type_def(name: String, constructor_tags: List(String)) -> Term {
   let self_type = Var(0, single("", 0, 0))
   let result_type = Var(0, single("", 0, 0))
   TypeDef(
@@ -319,7 +346,10 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
         name,
         list.map(args, fn(a) { shift_term_from(a, shift, from) }),
         list.map(typed_args, fn(ta) {
-          #(shift_term_from(ta.0, shift, from), shift_term_from(ta.1, shift, from))
+          #(
+            shift_term_from(ta.0, shift, from),
+            shift_term_from(ta.1, shift, from),
+          )
         }),
         case return_type {
           Some(t) -> Some(shift_term_from(t, shift, from))
@@ -336,15 +366,15 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
     TypeDef(name: n, constructors: cons, span: s) -> {
       let shift_cons = fn(c) {
         case c {
-          #(tag, self_ty, result, s) ->
-            #(tag, shift_term_from(self_ty, shift, from), shift_term_from(result, shift, from), s)
+          #(tag, self_ty, result, s) -> #(
+            tag,
+            shift_term_from(self_ty, shift, from),
+            shift_term_from(result, shift, from),
+            s,
+          )
         }
       }
-      TypeDef(
-        name: n,
-        constructors: list.map(cons, shift_cons),
-        span: s,
-      )
+      TypeDef(name: n, constructors: list.map(cons, shift_cons), span: s)
     }
     Err(msg, span) -> Err(msg, span)
   }
@@ -373,7 +403,19 @@ pub fn term_to_string(term: Term) -> String {
     Lam(implicits, #(name, param_type), func_body, _) -> {
       let implicit_str = case implicits {
         [] -> ""
-        _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 <> ": " <> term_to_string(i.1) }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
+        _ ->
+          "<"
+          <> list.fold(
+            list.map(implicits, fn(i) { i.0 <> ": " <> term_to_string(i.1) }),
+            "",
+            fn(acc, s) {
+              case acc {
+                "" -> s
+                _ -> acc <> ", " <> s
+              }
+            },
+          )
+          <> ">"
       }
       "$fn("
       <> implicit_str
@@ -388,7 +430,19 @@ pub fn term_to_string(term: Term) -> String {
     Pi(implicits, #(name, domain), codomain, _) -> {
       let implicit_str = case implicits {
         [] -> ""
-        _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 <> ": " <> term_to_string(i.1) }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
+        _ ->
+          "<"
+          <> list.fold(
+            list.map(implicits, fn(i) { i.0 <> ": " <> term_to_string(i.1) }),
+            "",
+            fn(acc, s) {
+              case acc {
+                "" -> s
+                _ -> acc <> ", " <> s
+              }
+            },
+          )
+          <> ">"
       }
       "$fn("
       <> implicit_str
@@ -424,20 +478,29 @@ pub fn term_to_string(term: Term) -> String {
     Ann(term, type_, _) ->
       term_to_string(term) <> " : " <> term_to_string(type_)
     Call(name, args, typed_args, return_type, _) ->
-      "call(" <> name <> "[" <> list.fold(args, "", fn(acc, a) {
+      "call("
+      <> name
+      <> "["
+      <> list.fold(args, "", fn(acc, a) {
         case acc {
           "" -> term_to_string(a)
           _ -> acc <> ", " <> term_to_string(a)
         }
-      }) <> "]" <> case typed_args {
+      })
+      <> "]"
+      <> case typed_args {
         [] -> ""
-        _ -> " |typed " <> list.fold(typed_args, "", fn(acc, ta) {
-          acc <> term_to_string(ta.0) <> ":" <> term_to_string(ta.1) <> ", "
-        })
-      } <> case return_type {
+        _ ->
+          " |typed "
+          <> list.fold(typed_args, "", fn(acc, ta) {
+            acc <> term_to_string(ta.0) <> ":" <> term_to_string(ta.1) <> ", "
+          })
+      }
+      <> case return_type {
         Some(t) -> " -> " <> term_to_string(t)
         None -> ""
-      } <> "])"
+      }
+      <> "])"
     Rcd(fields, _) ->
       case fields {
         [] -> "()"
@@ -453,13 +516,31 @@ pub fn term_to_string(term: Term) -> String {
       }
     Typ(level, _) -> "%Type(" <> int.to_string(level) <> ")"
     TypeDef(name: name, constructors: constructors, span: _span) -> {
-      "type " <> name <> " { "
+      "type "
+      <> name
+      <> " { "
       <> list.fold(constructors, "", fn(acc, c) {
         case acc {
-          "" -> "#" <> c.0 <> "(" <> term_to_string(c.1) <> " -> " <> term_to_string(c.2) <> ")"
-          _ -> acc <> ", #" <> c.0 <> "(" <> term_to_string(c.1) <> " -> " <> term_to_string(c.2) <> ")"
+          "" ->
+            "#"
+            <> c.0
+            <> "("
+            <> term_to_string(c.1)
+            <> " -> "
+            <> term_to_string(c.2)
+            <> ")"
+          _ ->
+            acc
+            <> ", #"
+            <> c.0
+            <> "("
+            <> term_to_string(c.1)
+            <> " -> "
+            <> term_to_string(c.2)
+            <> ")"
         }
-      }) <> " }"
+      })
+      <> " }"
     }
     Err(msg, _) -> "\"" <> msg <> "\""
   }
@@ -491,12 +572,15 @@ fn pattern_to_string(pat: Pattern) -> String {
     PRcd(fields, _) -> {
       case fields {
         [] -> "{}"
-        _ -> "{" <> list.fold(fields, "", fn(acc, f) {
-          case acc {
-            "" -> f.0 <> ": " <> pattern_to_string(f.1)
-            _ -> acc <> ", " <> f.0 <> ": " <> pattern_to_string(f.1)
-          }
-        }) <> "}"
+        _ ->
+          "{"
+          <> list.fold(fields, "", fn(acc, f) {
+            case acc {
+              "" -> f.0 <> ": " <> pattern_to_string(f.1)
+              _ -> acc <> ", " <> f.0 <> ": " <> pattern_to_string(f.1)
+            }
+          })
+          <> "}"
       }
     }
     PError(_) -> "$error"
@@ -514,16 +598,35 @@ pub fn value_to_string(value: Value) -> String {
     VLam(_, implicits, #(name, _param_type), body) -> {
       let implicit_str = case implicits {
         [] -> ""
-        _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
+        _ ->
+          "<"
+          <> list.fold(list.map(implicits, fn(i) { i.0 }), "", fn(acc, s) {
+            case acc {
+              "" -> s
+              _ -> acc <> ", " <> s
+            }
+          })
+          <> ">"
       }
       "$fn(" <> implicit_str <> name <> ") => " <> term_to_string(body)
     }
     VPi(_, implicits, #(name, domain), codomain) -> {
       let implicit_str = case implicits {
         [] -> ""
-        _ -> "<" <> list.fold(list.map(implicits, fn(i) { i.0 }), "", fn(acc, s) { case acc { "" -> s _ -> acc <> ", " <> s } }) <> ">"
+        _ ->
+          "<"
+          <> list.fold(list.map(implicits, fn(i) { i.0 }), "", fn(acc, s) {
+            case acc {
+              "" -> s
+              _ -> acc <> ", " <> s
+            }
+          })
+          <> ">"
       }
-      "$fn(" <> implicit_str <> name <> ": "
+      "$fn("
+      <> implicit_str
+      <> name
+      <> ": "
       <> value_to_string(domain)
       <> ") -> "
       <> value_to_string(codomain)

@@ -334,6 +334,7 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
         "#" -> {
           let #(tokens, pos, env, fn_, errors) = p
           let span = current_span(p)
+          let _ = "DEBUG: parse_ctr at pos " <> int.to_string(pos)
           parse_ctr(#(tokens, pos + 1, env, fn_, errors), span)
         }
         "-" -> {
@@ -376,8 +377,6 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       parse_list(#(rest, 0, env, fn_, errors), span)
     [Token("Punct", "{", _), ..rest] ->
       parse_rcd(#(rest, 0, env, fn_, errors), span)
-    [Token(_, "#", _), ..rest] ->
-      parse_ctr(#(rest, 0, env, fn_, errors), span)
     [Token("Eof", ..), ..] -> {
       let e = Err("unexpected end of input", span)
       #(e, p)
@@ -505,11 +504,12 @@ fn parse_type_def(p: Parser, span: Span) -> #(Term, Parser) {
         [Token("Punct", "{", _), ..rest2] -> {
           // rest2 already starts after {, so position 0 is correct
           let p2 = #(rest2, 0, renv, rfn_, rerrors)
-          let #(body, p3) = parse_type_def_body(p2)
+          let #(td_body, p3) = parse_type_def_body(p2)
           let p4 = skip("}", p3)
-          let #(ttokens, tpos, tenv, tfn_, terrors) = p4
-          let p5 = #(ttokens, tpos, tenv, tfn_, terrors)
-          #(TypeDef("", body, current_span(p5)), p5)
+          let td_span = current_span(p4)
+          let type_def = TypeDef("", td_body, td_span)
+          // Parse body from remaining tokens (sequential expressions)
+          parse_type_def_body_with_body(p4, type_def, span)
         }
         _ -> #(Typ(0, span), p1)
       }
@@ -517,13 +517,38 @@ fn parse_type_def(p: Parser, span: Span) -> #(Term, Parser) {
     // $type { ... }
     [Token("Punct", "{", _), ..rest] -> {
       let p1 = #(rest, 0, env, fn_, errors)
-      let #(body, p2) = parse_type_def_body(p1)
+      let #(td_body, p2) = parse_type_def_body(p1)
       let p3 = skip("}", p2)
-      let #(tokens, pos, env, fn_, errors) = p3
-      #(TypeDef("", body, current_span(p3)), p3)
+      let td_span = current_span(p3)
+      let type_def = TypeDef("", td_body, td_span)
+      // Parse body from remaining tokens (sequential expressions)
+      parse_type_def_body_with_body(p3, type_def, span)
     }
     // $type alone -> universe type
     _ -> #(Typ(0, span), p)
+  }
+}
+
+/// Parse a type definition followed by a body expression.
+/// The type definition is stored in an environment and the body is returned.
+fn parse_type_def_body_with_body(
+  p: Parser,
+  type_def: Term,
+  outer_span: Span,
+) -> #(Term, Parser) {
+  let #(tokens, pos, _, _, _) = p
+  let remaining = list.drop(tokens, pos)
+  case remaining {
+    [Token("Eof", ..), ..] | [] -> {
+      // No body expression, return type definition
+      #(type_def, p)
+    }
+    _ -> {
+      let #(body, rest) = parse_term(p)
+      // Discard type definition, return body (type defs are side effects in Core)
+      let _ = type_def
+      #(body, rest)
+    }
   }
 }
 
@@ -835,7 +860,7 @@ fn parse_let(p: Parser, span: Span) -> #(Term, Parser) {
       }
   }
   let p5 = skip("=", p4)
-  let #(value, rest) = parse_term(p5)
+  let #(value, rest) = parse_term_with_app(p5, span)
   let let_span = merge(span, term_span(value))
   // Check for semicolon or newline as separator
   let p6 = case rest {
@@ -846,7 +871,15 @@ fn parse_let(p: Parser, span: Span) -> #(Term, Parser) {
       }
   }
   let p7 = add_binding(p6, name)
-  let #(body, rest_final) = parse_term(p7)
+  // Check if there's a body expression (not Eof or empty)
+  let #(body, rest_final) = case p7 {
+    #(tokens, pos, _, _, _) ->
+      case list.drop(tokens, pos) {
+        [Token("Eof", ..), ..] -> #(value, p7)
+        [] -> #(value, p7)
+        _ -> parse_term_with_app(p7, let_span)
+      }
+  }
   let body_span = merge(let_span, term_span(body))
   #(let_var(name, param_type, value, body, body_span), rest_final)
 }
