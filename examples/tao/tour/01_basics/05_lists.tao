@@ -1,16 +1,16 @@
-// Lists are ordered collections of the same type.
+// Lists are immutable ordered collections of the same type.
 
 // They are written using square brackets.
 let empty = []
-let prime_numbers = [2, 3, 5, 7, 11]
+let primes = [2, 3, 5, 7, 11]
 
 // Lists are immutable, transformations create new lists.
-> prime_numbers.push(13)
+> primes.push(13)
 [2, 3, 5, 7, 11, 13]
 
-> prime_numbers + [13, 17]
+> primes + [13, 17]
 [2, 3, 5, 7, 11, 13, 17]
 
 // The original list has not changed.
-> prime_numbers
+> primes
 [2, 3, 5, 7, 11]
