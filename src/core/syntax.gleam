@@ -1012,7 +1012,25 @@ fn parse_pattern_fields_acc(
                 _ -> p2
               }
           }
-          let #(inner, p4) = parse_pattern(p3)
+          // Determine if this is {name} sugar (no colon, followed by } or ,)
+          let current = current_span(p3)
+          let #(inner, p4) = case p3 {
+            #(tokens, pos, env, fn_, errors) ->
+              case list.drop(tokens, pos) {
+                [Token("Punct", "}", _), ..] -> {
+                  let p2 = add_binding(p3, v)
+                  #(PVar(v, current), p2)
+                }
+                [Token("Punct", ",", _), ..] -> {
+                  let p2 = add_binding(skip(",", p3), v)
+                  #(PVar(v, current), p2)
+                }
+                _ -> {
+                  let #(pat, p) = parse_pattern(p3)
+                  #(pat, p)
+                }
+              }
+          }
           let p5 = skip("}", p4)
           let p6 = case p5 {
             #(tokens, pos, env, fn_, errors) ->

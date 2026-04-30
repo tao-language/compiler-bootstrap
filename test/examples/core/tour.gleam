@@ -598,7 +598,7 @@ pub fn t05_05_rcd_pattern_test() {
     pipeline(parse_source(
       "$match {x: 1, y: 2} {\n| {x: 1, y: _} => 0\n| {x: z} => z\n| {x} => x\n| {} => 0\n}",
     ))
-  assert result == VLit(LitInt(1))
+  assert result == VLit(LitInt(0))
 }
 
 pub fn t05_06_rcdt_pattern_test() {
