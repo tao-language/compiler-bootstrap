@@ -235,58 +235,6 @@ pub fn no_verr_in_expected_values_test() {
   assert verr_count == 1
 }
 
-// ---- Simple value assertions ----
-
-pub fn literal_42_test() {
-  assert pipeline(parse_source("12345")) == VLit(LitInt(12_345))
-}
-
-pub fn records_test() {
-  let result = pipeline(parse_source("{x: 1, y: 2}"))
-  assert result == VRcd([#("x", VLit(LitInt(1))), #("y", VLit(LitInt(2)))])
-}
-
-pub fn constructor_some_test() {
-  let result = pipeline(parse_source("#Some(42)"))
-  assert result == VCtr("Some", VLit(LitInt(42)))
-}
-
-pub fn lambda_identity_test() {
-  let result = pipeline(parse_source("$fn(x: $I32) => x"))
-  case result {
-    VLam(_, _, #("x", _), body) ->
-      case body {
-        Var(0, _) -> True
-        _ -> False
-      }
-    _ -> False
-  }
-}
-
-pub fn function_application_test() {
-  let result = pipeline(parse_source("($fn(x: $Int) => x)(42)"))
-  assert result == VLit(LitInt(42))
-}
-
-pub fn pattern_match_int_test() {
-  let result = pipeline(parse_source("$match 0 { | 0 => 1 | _ => 3.14 }"))
-  assert result == VLit(LitInt(1))
-}
-
-pub fn pattern_match_ctr_test() {
-  let result =
-    pipeline(parse_source(
-      "$match #Some(42) { | #Some(x) => x | #None(_) => 0 }",
-    ))
-  assert result == VLit(LitInt(42))
-}
-
-pub fn guard_test() {
-  let result =
-    pipeline(parse_source("$match 42 { | x ? x ~ 42 => 0 | _ => 1 }"))
-  assert result == VLit(LitInt(0))
-}
-
 // ---- Individual file tests ----
 
 pub fn t01_introduction_test() {
@@ -296,7 +244,7 @@ pub fn t01_introduction_test() {
 
 pub fn t02_type_test() {
   let result = pipeline(parse_source("$Type"))
-  case result {
+  assert case result {
     VNeut(HVar(0), []) -> True
     _ -> False
   }
@@ -309,7 +257,7 @@ pub fn t03_records_test() {
 
 pub fn t04_record_types_test() {
   let result = pipeline(parse_source("${x: $Int, y: $Int = 0}"))
-  case result {
+  assert case result {
     VNeut(HVar(0), _) -> True
     _ -> False
   }
@@ -330,7 +278,7 @@ pub fn t06_constructors_test() {
 
 pub fn t07_lambda_functions_test() {
   let result = pipeline(parse_source("$fn(x: $I32) => x"))
-  case result {
+  assert case result {
     VLam(_, _, #("x", _), body) ->
       case body {
         Var(0, _) -> True
@@ -342,7 +290,7 @@ pub fn t07_lambda_functions_test() {
 
 pub fn t08_pi_types_test() {
   let result = pipeline(parse_source("$pi(x: $Type) -> x"))
-  case result {
+  assert case result {
     VPi(_, _, #("pi_param", _), VNeut(HVar(0), _)) -> True
     _ -> False
   }
@@ -391,7 +339,7 @@ pub fn t02_02_let_untyped_test() {
 
 pub fn t02_03_lam_untyped_test() {
   let result = pipeline(parse_source("$fn(x) => x"))
-  case result {
+  assert case result {
     VLam(_, _, #("x", _), body) ->
       case body {
         Var(0, _) -> True
@@ -403,7 +351,7 @@ pub fn t02_03_lam_untyped_test() {
 
 pub fn t02_04_pi_arrow_test() {
   let result = pipeline(parse_source("$pi(a) -> a"))
-  case result {
+  assert case result {
     VPi(_, _, #("pi_param", _), VNeut(HVar(0), _)) -> True
     _ -> False
   }
@@ -462,7 +410,7 @@ pub fn t04_03_gadt_vec_test() {
     pipeline(parse_source(
       "$let Vec = $fn(args: ${n: $U32, a: $Type}) => $match args {\n| {n, a} => $type {\n| #Nil({}) -> #Vec({n: 0, a: a})\n| #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %i32_add(m, 1) -> $I32, a: a})\n}\n}\n\n#Cons({x: 42, xs: #Nil({})}) : #Vec({n: 1, a: $Int})",
     ))
-  case result {
+  assert case result {
     VNeut(HHole(0), [EApp(VCtr("Nil", VRcd([])))]) -> True
     _ -> False
   }
@@ -473,7 +421,7 @@ pub fn t04_04_gadt_expr_test() {
     pipeline(parse_source(
       "$let Expr = $fn(a: $Type) => $type {\n| #LitInt($Int) -> #Expr($Int)\n| #LitBool(#Bool({})) -> #Expr(#Bool({}))\n| #Add({x: #Expr($Int), y: #Expr($Int)}) -> #Expr($Int)\n| #IsZero(#Expr($Int)) -> #Expr(#Bool({}))\n}\n\n$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr {\n| #LitInt(n) => n\n| #LitBool(b) => b\n| #Add({x, y}) => %i32_add(eval(x), eval(y)) -> $I32\n| #IsZero(e) => %i32_eq(eval(x), 0: $I32) -> $Bool({})\n}\n\neval(#Add({x: #LitInt(1), y: #LitInt(2)})) : $Int",
     ))
-  case result {
+  assert case result {
     VNeut(HHole(0), [EApp(VLit(LitInt(0)))]) -> True
     _ -> False
   }
@@ -553,7 +501,7 @@ pub fn t07_01_default_values_test() {
     pipeline(parse_source(
       "$let point: ${x: $Int, y: $Int = 0} = {x: 1};\n\np.y",
     ))
-  case result {
+  assert case result {
     VNeut(HVar(0), _) -> True
     _ -> False
   }
@@ -567,22 +515,4 @@ pub fn t07_02_implicit_params_test() {
   assert result == VLit(LitInt(42))
 }
 
-// ============================================================================
-// DEBUG
-// ============================================================================
 
-pub fn debug_parse_01_introduction() {
-  let term = parse_source("42")
-  case term {
-    Lit(LitInt(42), _) -> True
-    _ -> False
-  }
-}
-
-pub fn debug_parse_07_constructors() {
-  let term = parse_source("#Some(42)")
-  case term {
-    Ctr("Some", Lit(LitInt(42), _), _) -> True
-    _ -> False
-  }
-}

@@ -160,7 +160,7 @@ pub fn parse_lambda_simple_test() {
     _ -> False
   }
   // This will fail if either term is wrong OR errors exist
-  case term_ok, errors_ok {
+  assert case term_ok, errors_ok {
     True, True -> True
     _, _ -> False
   }
@@ -176,7 +176,7 @@ pub fn parse_lambda_with_literal_body_test() {
     [] -> True
     _ -> False
   }
-  case term_ok, errors_ok {
+  assert case term_ok, errors_ok {
     True, True -> True
     _, _ -> False
   }
@@ -197,7 +197,7 @@ pub fn parse_nested_lambda_binding_works_test() {
     [] -> True
     _ -> False
   }
-  case term_ok, errors_ok {
+  assert case term_ok, errors_ok {
     True, True -> True
     _, _ -> False
   }
@@ -218,7 +218,7 @@ pub fn parse_inner_variable_shadows_outer_test() {
     [] -> True
     _ -> False
   }
-  case term_ok, errors_ok {
+  assert case term_ok, errors_ok {
     True, True -> True
     _, _ -> False
   }
@@ -238,7 +238,7 @@ pub fn parse_fun_type_with_name_test() {
     [] -> True
     _ -> False
   }
-  case term_ok, errors_ok {
+  assert case term_ok, errors_ok {
     True, True -> True
     _, _ -> False
   }
@@ -254,7 +254,7 @@ pub fn parse_fun_type_two_params_test() {
     [] -> True
     _ -> False
   }
-  case term_ok, errors_ok {
+  assert case term_ok, errors_ok {
     True, True -> True
     _, _ -> False
   }
@@ -274,7 +274,7 @@ pub fn parse_let_simple_binding_test() {
     [] -> True
     _ -> False
   }
-  case term_ok, errors_ok {
+  assert case term_ok, errors_ok {
     True, True -> True
     _, _ -> False
   }
@@ -291,7 +291,7 @@ pub fn parse_let_with_lambda_test() {
     [] -> True
     _ -> False
   }
-  case term_ok, errors_ok {
+  assert case term_ok, errors_ok {
     True, True -> True
     _, _ -> False
   }
@@ -315,7 +315,7 @@ pub fn parse_empty_match_error_test() {
     [] -> True
     _ -> False
   }
-  case term_ok, errors_ok {
+  assert case term_ok, errors_ok {
     True, True -> True
     _, _ -> False
   }
@@ -331,7 +331,7 @@ pub fn parse_match_with_cases_test() {
     [] -> True
     _ -> False
   }
-  case term_ok, errors_ok {
+  assert case term_ok, errors_ok {
     True, True -> True
     _, _ -> False
   }
@@ -347,7 +347,7 @@ pub fn parse_match_with_unit_pattern_test() {
     [] -> True
     _ -> False
   }
-  case term_ok, errors_ok {
+  assert case term_ok, errors_ok {
     True, True -> True
     _, _ -> False
   }
@@ -363,7 +363,7 @@ pub fn parse_match_with_literal_pattern_test() {
     [] -> True
     _ -> False
   }
-  case term_ok, errors_ok {
+  assert case term_ok, errors_ok {
     True, True -> True
     _, _ -> False
   }
@@ -379,7 +379,7 @@ pub fn parse_nested_match_structure_test() {
     [] -> True
     _ -> False
   }
-  case term_ok, errors_ok {
+  assert case term_ok, errors_ok {
     True, True -> True
     _, _ -> False
   }
@@ -399,7 +399,7 @@ pub fn parse_simple_fix_test() {
     [] -> True
     _ -> False
   }
-  case term_ok, errors_ok {
+  assert case term_ok, errors_ok {
     True, True -> True
     _, _ -> False
   }
