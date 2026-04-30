@@ -423,6 +423,13 @@ fn parse_app_chain(p: Parser, fun: Term, span: Span) -> #(Term, Parser) {
       )
       parse_app_chain(p2, match_term, match_span)
     }
+    [Token("Punct", ":", _), ..rest] -> {
+      let p1 = #(rest, 0, env, fn_, errors)
+      let #(type_, p2) = parse_term(p1)
+      let ann_span = merge(span, term_span(type_))
+      let annotated = Ann(fun, type_, ann_span)
+      parse_app_chain(p2, annotated, ann_span)
+    }
     _ -> #(fun, p)
   }
 }
