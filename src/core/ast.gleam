@@ -62,7 +62,6 @@ pub type Term {
   Call(name: String, args: List(Term), typed_args: List(#(Term, Term)), return_type: Option(Term), span: Span)
   Rcd(fields: List(#(String, Term)), span: Span)
   Typ(level: Int, span: Span)
-  TypRef(name: String, span: Span)
   TypeDef(
     name: String,
     constructors: List(#(String, Term, Term, Span)),
@@ -347,7 +346,6 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
         span: s,
       )
     }
-    TypRef(name, span) -> TypRef(name, span)
     Err(msg, span) -> Err(msg, span)
   }
 }
@@ -463,7 +461,6 @@ pub fn term_to_string(term: Term) -> String {
         }
       }) <> " }"
     }
-    TypRef(name, _) -> "$" <> name
     Err(msg, _) -> "\"" <> msg <> "\""
   }
 }

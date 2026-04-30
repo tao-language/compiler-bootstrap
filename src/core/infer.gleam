@@ -35,7 +35,6 @@ pub fn infer(state: state.State, term: ast.Term) -> #(ast.Value, ast.Value, stat
     ast.Rcd(fields, span) -> infer_rcd(state, fields, span)
     ast.Ctr(tag, arg, span) -> infer_ctr(state, tag, arg, span)
     ast.TypeDef(name, constructors, span) -> infer_type_def(state, name, constructors, span)
-    ast.TypRef(name, span) -> infer_typ_ref(state, name, span)
     ast.Err(message, span) -> infer_err(state, message, span)
   }
 }
@@ -101,15 +100,6 @@ fn infer_lit(
 
 /// Infer a numeric type reference ($Int, $Float, $I8, etc.).
 /// These are type constructors that can be used in annotations.
-fn infer_typ_ref(
-  state: state.State,
-  _name: String,
-  _span: Span,
-) -> #(ast.Value, ast.Value, state.State) {
-  // For now, return the type reference as a neutral type
-  let type_value = ast.VNeut(ast.HVar(0), [])
-  #(type_value, type_value, state)
-}
 
 fn infer_typ(
   state: state.State,

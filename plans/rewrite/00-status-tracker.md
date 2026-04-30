@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-28 (Updated: 2026-04-28 - Phase 2d-2e complete (numeric types, TypRef, FFI calls). Phase 3.1 complete ($type definition parsing). 699 tests passing, 16 failures.)
+> **Last updated:** 2026-04-28 (Phase 2e complete: Removed TypRef, replaced with Ctr for type values. Fixed $type/$error case ordering in parse_term. Added skip() Name token support. Added $error term and PError/PType pattern support. 707 tests passing, 8 failures.)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md), [examples/core/tour/](../../examples/core/tour/)
 
 ## Legend

@@ -27,8 +27,8 @@
 ///   - Type definitions: $type { | #C(arg) -> ResultType }
 import core/ast.{
   type Case, type Pattern, type Term, Ann, App, Call, Case as CoreCase, Ctr, Err, TypeDef,
-  Float as LitFloat, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr, PLit,
-  PRcd, PUnit, PVar, Pi, Rcd, Typ, TypRef, Var, let_var,
+  Float as LitFloat, Hole, Int as LitInt, Lam, Lit, Match, PAny, PAlias, PCtr, PError, PLit,
+  PType, PRcd, PUnit, PVar, Pi, Rcd, Typ, Var, let_var,
 }
 import gleam/float
 import gleam/int
@@ -122,7 +122,6 @@ fn term_span(term: Term) -> Span {
     Rcd(_, span) -> span
     Typ(_, span) -> span
     TypeDef(_, _, span) -> span
-    TypRef(_, span) -> span
     Err(_, span) -> span
   }
 }
@@ -197,6 +196,13 @@ fn skip(kind: String, p: Parser) -> Parser {
           errors,
         )
         [Token("Op", opval, _), ..] if opval == kind -> #(
+          tokens,
+          pos + 1,
+          env,
+          fn_,
+          errors,
+        )
+        [Token("Name", nval, _), ..] if nval == kind -> #(
           tokens,
           pos + 1,
           env,
@@ -286,36 +292,17 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       parse_match(#(rest, 0, env, fn_, errors), span)
     [Token("Op", "$", _), Token("Name", "fix", _), ..rest] ->
       parse_fix(#(rest, 0, env, fn_, errors), span)
-    // Numeric type keywords: $Int, $Float, $I8-$I64, $U8-$U64, $F16-$F64
-    [Token("Op", "$", _), Token("Name", "Int", _), ..rest] ->
-      #(TypRef("Int", span), #(rest, 0, env, fn_, errors))
-    [Token("Op", "$", _), Token("Name", "Float", _), ..rest] ->
-      #(TypRef("Float", span), #(rest, 0, env, fn_, errors))
-    [Token("Op", "$", _), Token("Name", "I8", _), ..rest] ->
-      #(TypRef("I8", span), #(rest, 0, env, fn_, errors))
-    [Token("Op", "$", _), Token("Name", "I16", _), ..rest] ->
-      #(TypRef("I16", span), #(rest, 0, env, fn_, errors))
-    [Token("Op", "$", _), Token("Name", "I32", _), ..rest] ->
-      #(TypRef("I32", span), #(rest, 0, env, fn_, errors))
-    [Token("Op", "$", _), Token("Name", "I64", _), ..rest] ->
-      #(TypRef("I64", span), #(rest, 0, env, fn_, errors))
-    [Token("Op", "$", _), Token("Name", "U8", _), ..rest] ->
-      #(TypRef("U8", span), #(rest, 0, env, fn_, errors))
-    [Token("Op", "$", _), Token("Name", "U16", _), ..rest] ->
-      #(TypRef("U16", span), #(rest, 0, env, fn_, errors))
-    [Token("Op", "$", _), Token("Name", "U32", _), ..rest] ->
-      #(TypRef("U32", span), #(rest, 0, env, fn_, errors))
-    [Token("Op", "$", _), Token("Name", "U64", _), ..rest] ->
-      #(TypRef("U64", span), #(rest, 0, env, fn_, errors))
-    [Token("Op", "$", _), Token("Name", "F16", _), ..rest] ->
-      #(TypRef("F16", span), #(rest, 0, env, fn_, errors))
-    [Token("Op", "$", _), Token("Name", "F32", _), ..rest] ->
-      #(TypRef("F32", span), #(rest, 0, env, fn_, errors))
-    [Token("Op", "$", _), Token("Name", "F64", _), ..rest] ->
-      #(TypRef("F64", span), #(rest, 0, env, fn_, errors))
     // Type definition: $type { | #C(args) -> ReturnType } or $type<>(...)
     [Token("Op", "$", _), Token("Name", "type", _), ..rest] ->
       parse_type_def(#(rest, 0, env, fn_, errors), span)
+    // Error term: $error "message" or $error (without message)
+    [Token("Op", "$", _), Token("Name", "error", _), Token("String", msg, _), ..rest] ->
+      #(Err(msg, span), #(rest, 0, env, fn_, errors))
+    [Token("Op", "$", _), Token("Name", "error", _), ..rest] ->
+      #(Err("error", span), #(rest, 0, env, fn_, errors))
+    // Numeric type keywords as first-class values: $Int, $Float, $I8-$I64, $U8-$U64, $F16-$F64
+    [Token("Op", "$", _), Token("Name", name, _), ..rest] ->
+      #(Ctr(name, Hole(0, span), span), #(rest, 0, env, fn_, errors))
     // FFI builtin calls: % followed by function name
     [Token("Op", "%", _), Token("Name", v, _), ..rest] ->
       parse_ffi_call(#(rest, 0, env, fn_, errors), v, span)
@@ -968,6 +955,37 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
         }
       }
     }
+    // Error pattern: $error
+    [Token("Op", "$", _), Token("Name", "error", _), ..rest] ->
+      #(PError(span), #(rest, 0, env, fn_, errors))
+    // Type patterns: $Type, $Int, $Float, etc.
+    [Token("Op", "$", _), Token("Name", name, _), ..rest] -> {
+      case name {
+        "Type" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
+        "Int" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
+        "Float" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
+        "I8" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
+        "I16" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
+        "I32" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
+        "I64" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
+        "U8" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
+        "U16" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
+        "U32" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
+        "U64" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
+        "F16" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
+        "F32" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
+        "F64" -> #(PType(name, span), #(rest, 0, env, fn_, errors))
+        _ -> #(PAny(span), #(rest, 0, env, fn_, errors))
+      }
+    }
+    // Type record pattern: ${field: type, ...}
+    [Token("Op", "$", _), Token("Punct", "{", _), ..rest] -> {
+      let p1 = #(rest, 0, env, fn_, errors)
+      let #(fields, p2) = parse_pattern_fields(p1)
+      let p3 = skip("}", p2)
+      let final_span = merge(span, current_span(p3))
+      #(PRcd(fields, final_span), p3)
+    }
     // Record pattern: {field: pattern, ...}
     [Token("Punct", "{", _), ..rest] -> {
       let p1 = #(rest, 0, env, fn_, errors)
@@ -1073,7 +1091,6 @@ fn term_to_string(term: Term) -> String {
     Rcd(_, _) -> "rcd"
     Typ(_, _) -> "type"
     TypeDef(_, _, _) -> "type def"
-    TypRef(name, _) -> "$" <> name
     Err(msg, _) -> msg
   }
 }

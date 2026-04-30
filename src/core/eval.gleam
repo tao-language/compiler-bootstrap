@@ -3,7 +3,7 @@ import core/ast.{
   type Case, type Pattern, type Term, type Value, Ann, App, Call,
   Case as CoreCase, Ctr, EApp, Err, Float as LitFloat, HHole, HVar, Hole,
   Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, PAlias, PType, PRcd, PError, Pi, Rcd,
-  Typ, TypRef, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VTypeDef, TypeDef, Var, term_to_string,
+  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VTypeDef, TypeDef, Var, term_to_string,
 }
 import core/state.{type State, FfiEntry, State, lookup_ffi}
 import syntax/span.{type Span}
@@ -121,11 +121,6 @@ pub fn evaluate(state: State, term: Term) -> Value {
     TypeDef(name: n, constructors: c, span: _) -> {
       let value_constructors = list.map(c, fn(ctor) { term_ctor_to_value(state, ctor) })
       VTypeDef(name: n, constructors: value_constructors)
-    }
-    TypRef(_name, _) -> {
-      // Numeric type references are unresolved during term_to_value
-      // They will be resolved by the type checker
-      VErr
     }
     Err(msg, _) -> {
       let _ = msg
