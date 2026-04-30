@@ -9,7 +9,7 @@
 /// doesn't have file I/O. Each file is mapped to its expected
 /// evaluation result.
 import core/ast.{
-  type Term, type Value, Ctr, EApp, Err, HHole, HVar, Int as LitInt,
+  type Term, type Value, Ctr, EApp, HHole, HVar, Int as LitInt,
   Lit, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, Var,
 }
 import core/eval.{evaluate}
