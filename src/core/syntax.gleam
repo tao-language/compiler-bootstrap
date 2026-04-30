@@ -293,10 +293,10 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
     [Token("Op", "$", _), Token("Name", "let", _), ..rest] ->
       parse_let(#(rest, 0, env, fn_, errors), span)
     [Token("Op", "$", _), Token("Name", "match", _), ..rest] ->
-      parse_match(#(rest, 0, env, fn_, errors), span)
+      parse_match(#(tokens, pos, env, fn_, errors), span)
     // Also support plain match (without $)
     [Token("Name", "match", _), ..rest] ->
-      parse_match(#(rest, 0, env, fn_, errors), span)
+      parse_match(#(tokens, pos, env, fn_, errors), span)
     [Token("Op", "$", _), Token("Name", "fix", _), ..rest] ->
       parse_fix(#(rest, 0, env, fn_, errors), span)
     // Type definition: $type { | #C(args) -> ReturnType } or $type<>(...)
