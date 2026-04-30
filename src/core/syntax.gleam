@@ -495,8 +495,8 @@ fn parse_type_def(p: Parser, span: Span) -> #(Term, Parser) {
     [Token("Punct", "{", _), ..rest] -> {
       let p1 = #(rest, 0, env, fn_, errors)
       let #(body, p2) = parse_type_def_body(p1)
-      let #(tokens, pos, env, fn_, errors) = p2
-      let p3 = #(tokens, pos, env, fn_, errors)
+      let p3 = skip("}", p2)
+      let #(tokens, pos, env, fn_, errors) = p3
       #(TypeDef("", body, current_span(p3)), p3)
     }
     // $type alone -> universe type
@@ -530,7 +530,7 @@ fn parse_type_def_cases(p: Parser, acc: List(#(String, Term, Term, Span))) -> #(
           let p7 = skip(")", p6)
           let p8 = skip("->", p7)
           let #(ret_type, p9) = parse_term(p8)
-          let p10 = skip("}", p9)
+          let p10 = p9
           let span = current_span(p10)
           // Guard: ensure the parser advanced to avoid infinite recursion
           case p10 {

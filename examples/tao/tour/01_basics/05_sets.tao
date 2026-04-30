@@ -2,13 +2,14 @@
 
 // They are written using curly brackets starting with #.
 let empty = #{}
-let primes = #{2, 3, 5, 7, 11}
+let primes: Set(Int) = #{2, 3, 5, 7, 11}
 
-// Sets are immutable, transformations create new lists.
-> primes.add(13)
+// Sets are immutable, transformations create new sets.
+> add(primes, 13)
 #{2, 3, 5, 7, 11, 13}
 
-> primes + #{13, 17}
+// Merge sets with (+), it's automatically deduplicated.
+> primes + #{13, 17, 2}
 #{2, 3, 5, 7, 11, 13, 17}
 
 // The original set has not changed.

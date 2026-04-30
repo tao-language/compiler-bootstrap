@@ -2,10 +2,10 @@
 
 // They are written using square brackets.
 let empty = []
-let primes = [2, 3, 5, 7, 11]
+let primes: List(Int) = [2, 3, 5, 7, 11]
 
 // Lists are immutable, transformations create new lists.
-> primes.push(13)
+> push(primes, 13)
 [2, 3, 5, 7, 11, 13]
 
 > primes + [13, 17]

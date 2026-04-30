@@ -1,0 +1,30 @@
+// Maps are immutable unordered collections of key value pairs.
+// They look similar to records, but the key can be any type.
+// Keys must be unique.
+
+// All the keys must be of the same type, as well as all the values.
+let inventory: Map(Text, Int) = {"Apples": 5, "Oranges": 2}
+
+// For an empty map, {:} is used to differentiate from empty record {}.
+let empty = {:}
+
+// Maps are immutable, transformations create new maps.
+> set(inventory, "Pears", 4))
+{"Apples": 5, "Oranges": 2, "Pears": 4}
+
+// Merge maps with (+), entries at the right take precedence.
+> inventory + {"Pears": 4, "Apples": 8}
+{"Apples": 8, "Oranges": 2, "Pears": 4}
+
+// The original map has not changed.
+> inventory
+{"Apples": 5, "Oranges": 2}
+
+// Order doesn't matter.
+> inventory
+{"Oranges": 2, "Apples": 5}
+
+// Keys must be unique, it's automatically deduplicated.
+// Last entries take precedence.
+> {"A": 1, "B": 3, "A": 2}
+{"A": 2, "B": 3}
