@@ -13,6 +13,7 @@ let empty = {:}
 {"Apples": 5, "Oranges": 2, "Pears": 4}
 
 // Merge maps with (+), entries at the right take precedence.
+// This can be used to add or update entries.
 > inventory + {"Pears": 4, "Apples": 8}
 {"Apples": 8, "Oranges": 2, "Pears": 4}
 
