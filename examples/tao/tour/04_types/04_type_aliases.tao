@@ -1,0 +1,24 @@
+// Type aliases give a more readable or meaningful name to a type.
+
+// Define aliases for basic types to clarify their purpose.
+type UserId = U32
+type MessageId = U32
+
+// Type alias a record type, makes it easier to read and write.
+type Message = {
+  id: MessageId,
+  user_id: UserId,
+  message: Text
+}
+
+let message: Message = {
+  id: 12345,    // MessageId
+  user_id: 42,  // UserId
+  content: "Hi there! 👋",
+}
+
+// The type alias helps to document the intent of types.
+fn get_author(message: Message) -> UserId
+= message.user_id
+
+> get_author(message) ~> 42

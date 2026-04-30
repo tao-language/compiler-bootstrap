@@ -1,0 +1,22 @@
+// Generalized Algebraic Data Types (GADT) allow each variant
+// to be of a different type.
+
+// Here's an example of a type-safe expression using GADTs.
+type Expr(a) {
+| LitInt(Int) -> Expr(Int)
+| LitBool(Bool) -> Expr(Bool)
+| Add(Expr(Int), Expr(Int)) -> Expr(Int)
+| IsZero(Expr(Int)) -> Expr(Bool)
+}
+
+// Type-safe evaluator.
+fn eval<a>(expr: Expr(a)) -> a
+= match expr {
+  | LitInt(n) => n
+  | LitBool(b) => b
+  | Add(x, y) => eval(x) + eval(y)
+  | IsZero(e) => eval(e) == 0
+}
+
+> eval(Add(LitInt(1), LitInt(2))) ~> 3
+> eval(IsZero(LitInt(5))) ~> False
