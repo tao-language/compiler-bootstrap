@@ -15,7 +15,7 @@
 /// - Edge cases (empty input, extra tokens, unicode)
 import core/ast.{
   App, Case as CoreCase, Ctr, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
-  Match, PAny, PLit, PUnit, Pi, Rcd, TypeDef, Typ, Var,
+  Match, PAny, PLit, PUnit, Pi, Rcd, Typ, Var,
 }
 import core/syntax.{parse, parse_tokens}
 import gleam/list

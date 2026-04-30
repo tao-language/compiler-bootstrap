@@ -9,16 +9,14 @@
 /// doesn't have file I/O. Each file is mapped to its expected
 /// evaluation result.
 import core/ast.{
-  type Term, type Value, Ctr, EApp, Err, HHole, HVar, Hole, Int as LitInt, Lam,
-  Lit, Match, Pi, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, Var,
+  type Term, type Value, Ctr, EApp, Err, HHole, HVar, Int as LitInt,
+  Lit, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, Var,
 }
 import core/eval.{evaluate}
-import core/infer.{infer}
-import core/state.{type FfiEntry, FfiEntry, has_errors, initial_state}
+import core/state.{type FfiEntry, FfiEntry, initial_state}
 import core/syntax.{parse}
 import gleam/list
-import gleam/option.{type Option, None, Some}
-import gleam/string
+import gleam/option.{type Option, Some}
 import gleeunit
 import syntax/span.{type Span, single}
 
@@ -76,79 +74,6 @@ pub fn tour_files() -> List(String) {
   ]
 }
 
-/// Map file path to source content.
-fn tour_source(path: String) -> String {
-  case path {
-    "examples/core/tour/01_basics/01_introduction.core" -> "42"
-    "examples/core/tour/01_basics/02_type.core" -> "$Type"
-    "examples/core/tour/01_basics/03_records.core" -> "{x: 1, y: 2}"
-    "examples/core/tour/01_basics/04_record_types.core" ->
-      "${x: $Int, y: $Int = 0}"
-    "examples/core/tour/01_basics/05_type_defs.core" ->
-      "$type {\n| #True({}) -> #Bool({})\n| #False({}) -> #Bool({})\n}\n\n#True({}) : #Bool({})"
-    "examples/core/tour/01_basics/06_constructors.core" -> "#Some(42)"
-    "examples/core/tour/01_basics/07_lambda_functions.core" ->
-      "$fn(x: $I32) => x"
-    "examples/core/tour/01_basics/08_pi_types.core" -> "$pi(x: $Type) -> x"
-    "examples/core/tour/01_basics/09_function_applications.core" ->
-      "($fn(x: $Int) => x)(42)"
-    "examples/core/tour/01_basics/10_type_annotations.core" -> "42 : $I32"
-    "examples/core/tour/01_basics/11_pattern_match.core" ->
-      "$match 0 {\n| 0 => 1\n| _ => 3.14\n}"
-    "examples/core/tour/01_basics/12_builtin_calls.core" ->
-      "$let _ = %i32_add(1: $I32, 2: $I32) -> $I32;\n0"
-    "examples/core/tour/01_basics/13_holes.core" -> "($fn(x: ?) => x)(42)"
-    "examples/core/tour/01_basics/14_errors.core" ->
-      "$error \"my runtime error message\""
-    "examples/core/tour/02_syntax_sugar/01_let.core" ->
-      "$let x: $Int = 0\n$let x: $Int = 42\nx"
-    "examples/core/tour/02_syntax_sugar/02_let_untyped.core" -> "$let x = 42\nx"
-    "examples/core/tour/02_syntax_sugar/03_lam_untyped.core" -> "$fn(x) => x"
-    "examples/core/tour/02_syntax_sugar/04_pi_arrow.core" -> "$pi(a) -> a"
-    "examples/core/tour/03_literals/01_types.core" ->
-      "$let type0: $Type = $Int;\n$let type0: $Type<0> = $Int;\n$let type1: $Type<1> = $Type<0>;\n$let type2: $Type<2> = $Type<1>;\n0"
-    "examples/core/tour/03_literals/02_integers.core" ->
-      "$let int: $Int = 1;\n$let int8: $I8 = 1;\n$let int16: $I16 = 1;\n$let int32: $I32 = 1;\n$let int64: $I64 = 1;\n\n$let uint8: $U8 = 1;\n$let uint16: $U16 = 1;\n$let uint32: $U32 = 1;\n$let uint64: $U64 = 1;\n\n0"
-    "examples/core/tour/03_literals/03_floats.core" ->
-      "$let float: $Float = 1.1;\n$let float16: $F16 = 1.1;\n$let float32: $F32 = 1.1;\n$let float64: $F64 = 1.1;\n\n$let float_int_lit: $Float = 42;\n\n0"
-    "examples/core/tour/03_literals/04_records.core" ->
-      "$let empty = {};\n$let fields1 = {x: 1};\n$let fields2 = {x: 1, y: 2};\n$let fields3 = {x: 1, y: 2, z: 3};\n\n0"
-    "examples/core/tour/04_type_definitions/01_monomorphic.core" ->
-      "$let Bool = $type<>{\n| #True({}) -> #Bool({})\n| #False({}) -> #Bool({})\n}\n\n$let Color = $type {\n| #Red({}) -> #Color({})\n| #Green({}) -> #Color({})\n| #Blue({}) -> #Color({})\n}\n\n#True({}) : #Bool({})"
-    "examples/core/tour/04_type_definitions/02_polymorphic.core" ->
-      "$let Option = $fn(a: $Type) => $type {\n| #Some(a) -> #Option(a)\n| #None({}) -> #Option(a)\n}\n\n#Some(42) : #Option($Int)"
-    "examples/core/tour/04_type_definitions/03_gadt_vec.core" ->
-      "$let Vec = $fn(args: ${n: $U32, a: $Type}) => $match args {\n| {n, a} => $type {\n| #Nil({}) -> #Vec({n: 0, a: a})\n| #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %i32_add(m, 1) -> $I32, a: a})\n}\n}\n\n#Cons({x: 42, xs: #Nil({})}) : #Vec({n: 1, a: $Int})"
-    "examples/core/tour/04_type_definitions/04_gadt_expr.core" ->
-      "$let Expr = $fn(a: $Type) => $type {\n| #LitInt($Int) -> #Expr($Int)\n| #LitBool(#Bool({})) -> #Expr(#Bool({}))\n| #Add({x: #Expr($Int), y: #Expr($Int)}) -> #Expr($Int)\n| #IsZero(#Expr($Int)) -> #Expr(#Bool({}))\n}\n\n$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr {\n| #LitInt(n) => n\n| #LitBool(b) => b\n| #Add({x, y}) => %i32_add(eval(x), eval(y)) -> $I32\n| #IsZero(e) => %i32_eq(eval(x), 0: $I32) -> $Bool({})\n}\n\neval(#Add({x: #LitInt(1), y: #LitInt(2)})) : $Int"
-    "examples/core/tour/05_pattern_matching/01_wildcard_patterns.core" ->
-      "match 42 {\n| _ => 0\n}"
-    "examples/core/tour/05_pattern_matching/02_alias_pattern.core" ->
-      "match 42 {\n| x@_ => x\n| y => y\n}"
-    "examples/core/tour/05_pattern_matching/03_type_pattern.core" ->
-      "$match $Type {\n| $Type => 0\n| $Type<1> => 1\n| $Type<x> => x\n| $Int => 0\n| $Float => 0\n| $I8 => 0\n| $I16 => 0\n| $I32 => 0\n| $I64 => 0\n| $U8 => 0\n| $U16 => 0\n| $U32 => 0\n| $U64 => 0\n| $F16 => 0\n| $F32 => 0\n| $F64 => 0\n}"
-    "examples/core/tour/05_pattern_matching/04_int_pattern.core" ->
-      "$match 42 {\n| 0 => 1\n| _ => 2\n}"
-    "examples/core/tour/05_pattern_matching/05_rcd_pattern.core" ->
-      "$match {x: 1, y: 2} {\n| {x: 1, y: _} => 0\n| {x: z} => z\n| {x} => x\n| {} => 0\n}"
-    "examples/core/tour/05_pattern_matching/06_rcdt_pattern copy.core" ->
-      "$match ${x: $Int, y: $Float} {\n| ${x: $Int, y: _} => 0\n| ${x: z} => z\n| ${x} => x\n| ${} => 0\n}"
-    "examples/core/tour/05_pattern_matching/07_ctr_pattern.core" ->
-      "$match #Some(42) {\n| #Some(x) => x\n| #None(_) => 0\n}"
-    "examples/core/tour/05_pattern_matching/08_error_pattern.core" ->
-      "$match $error \"my error message\" {\n| $error => 0\n}"
-    "examples/core/tour/05_pattern_matching/09_guards.core" ->
-      "$match 42 {\n| x ? x ~ 42 => 0\n| _ => 1\n}"
-    "examples/core/tour/05_pattern_matching/10_exhaustiveness.core" ->
-      "$match #Some(42) {\n| #Some(x) => x\n| #None(_) => 0\n}"
-    "examples/core/tour/07_advanced/01_default_values.core" ->
-      "$let point: ${x: $Int, y: $Int = 0} = {x: 1};\n\np.y"
-    "examples/core/tour/07_advanced/02_implicit_params.core" ->
-      "$let identity: $pi<a: $Type>(a) -> a =\n$fn<a: $Type>(x: a) => x\n\nidentity(42)"
-    _ -> ""
-  }
-}
-
 // ============================================================================
 // FFI STUBS — only the operations used by tour files
 // ============================================================================
@@ -194,13 +119,6 @@ fn parse_source(source: String) -> Term {
 fn pipeline(term: Term) -> Value {
   let state = initial_state(ffi_entries())
   evaluate(state, term)
-}
-
-/// Run full pipeline and assert no VErr.
-fn test_file(name: String, term: Term) -> Bool {
-  let _ = name
-  let _ = term
-  True
 }
 
 // ============================================================================
@@ -282,13 +200,6 @@ pub fn expected_values() -> List(#(String, Value, String)) {
     #("01_default_values", VNeut(HVar(0), []), "p.y — neutral"),
     #("02_implicit_params", VLit(LitInt(42)), "identity(42)"),
   ]
-}
-
-fn expected_name_for(_index: Int) -> String {
-  case expected_values() {
-    [] -> ""
-    [#(name, _, _), ..] -> name
-  }
 }
 
 // ============================================================================

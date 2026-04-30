@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-28 (Phase 2f complete: Fixed sequential expression parsing in parse_tokens_acc. Added type parameter support in PType patterns ($Type<1>, $Type<x>). Fixed parse_type_def_body_with_body to not consume expressions starting with #, ), -, >, =>. Added continuation token detection to distinguish application continuations from new top-level expressions. 715 tests passing, 0 failures.)
+> **Last updated:** 2026-04-28 (Phase 2g complete: Fixed all compiler warnings. Removed unreachable patterns in skip(). Fixed unused variable warnings in syntax.gleam by prefixing with _. Removed unused outer_span parameter from parse_type_def_body_with_body. Removed unused imports and dead code from test files (TypeDef, Match, Pi, infer, has_errors, None, string, test_file, expected_name_for, tour_source). 715 tests passing, 0 failures.)
 > **Reference:** [01-rewrite-plan.md](01-rewrite-plan.md), [14-simplified-design.md](14-simplified-design.md), [11-implementation-roadmap.md](11-implementation-roadmap.md), [examples/core/tour/](../../examples/core/tour/)
 
 ## Legend
