@@ -386,6 +386,15 @@ pub fn lookup_env(name: String, bindings: List(#(String, Value))) -> Value {
 // ============================================================================
 
 /// Format an evaluation result as a human-readable string.
+/// Debug: print a value as a string for inspection.
+/// Returns "__VErr__" for errors, otherwise delegates to value_to_string.
+pub fn debug_value(value: Value) -> String {
+  case value {
+    VErr -> "__VErr__"
+    _ -> value_to_string(value)
+  }
+}
+
 pub fn value_to_string(value: Value) -> String {
   case value {
     VNeut(head, spine) -> {

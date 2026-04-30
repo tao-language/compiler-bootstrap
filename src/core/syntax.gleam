@@ -432,19 +432,24 @@ fn parse_ffi_call(p: Parser, name: String, _span: Span) -> #(Term, Parser) {
   let p1 = skip("(", p)
   let #(typed_args, p2) = parse_typed_arg_list(p1)
   let p3 = skip(")", p2)
-  let #(rtokens, rpos, renv, rfn_, rerrors) = p3
-  let _p4 = #(rtokens, rpos, renv, rfn_, rerrors)
-  let #(return_type, p5) = case list.drop(rtokens, rpos) {
-    [Token("Op", "->", _), ..] -> {
-      let p6 = #(rtokens, rpos + 1, renv, rfn_, rerrors)
-      let #(rt, p7) = parse_term(p6)
-      #(Some(rt), p7)
+  // Check for return type annotation: `-> Type`
+  let p_arrow = skip("->", p3)
+  let #(rt, p4) = case p_arrow {
+    #(tokens, new_pos, env, fn_, errors) -> {
+      let #(tokens, old_pos, _, _, _) = p3
+      case new_pos > old_pos {
+        True -> {
+          // `->` was consumed, parse return type
+          let #(type_, p5) = parse_term(#(tokens, new_pos, env, fn_, errors))
+          #(Some(type_), p5)
+        }
+        False -> #(None, p3)
+      }
     }
-    _ -> #(None, p3)
   }
-  let final_span = current_span(p5)
+  let final_span = current_span(p4)
   let arg_list = list.map(typed_args, fn(t) { t.0 })
-  #(Call(name, arg_list, typed_args, return_type, final_span), p5)
+  #(Call(name, arg_list, typed_args, rt, final_span), p4)
 }
 
 // Parse a comma-separated list of typed arguments (arg: Type, arg: Type)
@@ -491,11 +496,13 @@ fn parse_type_def(p: Parser, span: Span) -> #(Term, Parser) {
       let #(rtokens, rpos, renv, rfn_, rerrors) = p1
       case list.drop(rtokens, rpos) {
         [Token("Punct", "{", _), ..rest2] -> {
-          let p2 = #(rest2, rpos + 1, renv, rfn_, rerrors)
+          // rest2 already starts after {, so position 0 is correct
+          let p2 = #(rest2, 0, renv, rfn_, rerrors)
           let #(body, p3) = parse_type_def_body(p2)
-          let #(ttokens, tpos, tenv, tfn_, terrors) = p3
-          let p4 = #(ttokens, tpos, tenv, tfn_, terrors)
-          #(TypeDef("", body, current_span(p4)), p4)
+          let p4 = skip("}", p3)
+          let #(ttokens, tpos, tenv, tfn_, terrors) = p4
+          let p5 = #(ttokens, tpos, tenv, tfn_, terrors)
+          #(TypeDef("", body, current_span(p5)), p5)
         }
         _ -> #(Typ(0, span), p1)
       }
@@ -515,7 +522,12 @@ fn parse_type_def(p: Parser, span: Span) -> #(Term, Parser) {
 
 // Parse type definition body: { | #C(arg) -> ReturnType }
 fn parse_type_def_body(p: Parser) -> #(List(#(String, Term, Term, Span)), Parser) {
-  parse_type_def_cases(p, [])
+  let #(cases, rest) = parse_type_def_cases(p, [])
+  case cases {
+    [] -> #(cases, rest)
+    [_] -> #(cases, rest)
+    _ -> #(cases, rest)
+  }
 }
 
 fn parse_type_def_cases(p: Parser, acc: List(#(String, Term, Term, Span))) -> #(List(#(String, Term, Term, Span)), Parser) {
@@ -525,6 +537,7 @@ fn parse_type_def_cases(p: Parser, acc: List(#(String, Term, Term, Span))) -> #(
   let #(tokens2, pos2, env2, fn2, errors2) = p2
   case list.drop(tokens2, pos2) {
     [Token("Punct", "}", _), ..] -> #(list.reverse(acc), p2)
+    [Token("Eof", ..), ..] -> #(list.reverse(acc), p2)
     _ -> {
       // Parse constructor: #Name(pattern) -> ReturnType
       let p3 = #(tokens2, pos2, env2, fn2, errors2)
@@ -539,16 +552,20 @@ fn parse_type_def_cases(p: Parser, acc: List(#(String, Term, Term, Span))) -> #(
           let p7 = skip(")", p6)
           let p8 = skip("->", p7)
           let #(ret_type, p9) = parse_term(p8)
-          let p10 = p9
-          let span = current_span(p10)
-          // Guard: ensure the parser advanced to avoid infinite recursion
-          case p10 {
-            #(tokens10, pos10, _, _, _) ->
-              case pos10 == pos2 {
-                True -> #(list.reverse(acc), p10)
+          let span = current_span(p9)
+          // Guard: ensure the parser advanced to avoid infinite recursion.
+          // Check if p9's token list is the same as tokens2 and position advanced.
+          case p9 {
+            #(t9, pos9, _, _, _) ->
+              case t9 == tokens2 && pos9 > pos2 {
+                True ->
+                  parse_type_def_cases(
+                    p9,
+                    [#(name, pattern, ret_type, span), ..acc],
+                  )
                 False ->
                   parse_type_def_cases(
-                    p10,
+                    p9,
                     [#(name, pattern, ret_type, span), ..acc],
                   )
               }
@@ -912,6 +929,13 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
         [] -> {
           let p2 = add_binding(p1, v)
           #(PVar(v, span), p2)
+        }
+        [Token("Op", "@", _), ..inner_rest] -> {
+          let p2 = #(inner_rest, 0, env, fn_, errors)
+          let #(inner, p3) = parse_pattern(p2)
+          let p4 = add_binding(p3, v)
+          let final_span = merge(span, current_span(p4))
+          #(PAlias(v, inner, final_span), p4)
         }
         [Token("Punct", "(", _), ..inner_rest] -> {
           let p2 = #(inner_rest, 0, env, fn_, errors)
