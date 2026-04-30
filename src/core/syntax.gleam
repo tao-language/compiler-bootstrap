@@ -360,7 +360,7 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
         "unit" -> #(Rcd([], span), #(tokens, pos + 1, env, fn_, errors))
         "type" -> #(Typ(0, span), #(tokens, pos + 1, env, fn_, errors))
         "true" -> #(Rcd([], span), #(tokens, pos + 1, env, fn_, errors))
-        "fun" -> parse_app(#(tokens, pos + 1, env, fn_, errors), span)
+        "fun" -> parse_pi(#(tokens, pos + 1, env, fn_, errors), span)
         _ -> {
           let #(var_term, var_rest) = parse_var(#(tokens, pos + 1, env, fn_, errors), v, span)
           parse_app_chain(var_rest, var_term, span)
@@ -403,7 +403,7 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
     // Also handles () as unit (Rcd with empty fields)
     [Token("Punct", "(", _), Token("Punct", ")", _), ..rest] -> #(
       Rcd([], span),
-      #(rest, 2, env, fn_, errors),
+      #(rest, 0, env, fn_, errors),
     )
     [Token("Punct", "(", _), ..rest] -> {
       let p = #(rest, 0, env, fn_, errors)
@@ -827,10 +827,7 @@ fn parse_pi(p: Parser, span: Span) -> #(Term, Parser) {
           let term_span = merge(span, current_span(p4))
           #(Var(0, term_span), p4)
         }
-        [Token("Op", "$", _), ..] -> parse_term(p4)
-        [Token("Op", "?", _), ..] -> parse_term(p4)
-        [Token("Name", _, _), ..] -> parse_term(p4)
-        _ -> #(Rcd([], span), p4)
+        _ -> parse_term(p4)
       }
   }
   let p6 = skip(")", p5)
@@ -882,10 +879,8 @@ fn parse_lambda(p: Parser, span: Span) -> #(Term, Parser) {
   let #(param_type, p5) = case p4 {
     #(tokens, pos, _, _, _) ->
       case list.drop(tokens, pos) {
-        [Token("Op", "$", _), ..] -> parse_term(p4)
-        [Token("Op", "?", _), ..] -> parse_term(p4)
-        [Token("Name", _, _), ..] -> parse_term(p4)
-        _ -> #(Rcd([], span), p4)
+        [Token("Punct", ")", _), ..] -> #(Rcd([], span), p4) // no annotation
+        _ -> parse_term(p4)
       }
   }
   let p6 = skip(")", p5)
