@@ -897,7 +897,10 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
     [Token("Name", v, _), ..rest] -> {
       let p1 = #(tokens, pos + 1, env, fn_, errors)
       case rest {
-        [] -> #(PVar(v, span), p1)
+        [] -> {
+          let p2 = add_binding(p1, v)
+          #(PVar(v, span), p2)
+        }
         [Token("Punct", "(", _), ..inner_rest] -> {
           let p2 = #(inner_rest, 0, env, fn_, errors)
           let #(inner, p3) = parse_pattern(p2)
@@ -905,7 +908,10 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
           let final_span = merge(span, current_span(p4))
           #(PCtr(v, inner, final_span), p4)
         }
-        _ -> #(PVar(v, span), p1)
+        _ -> {
+          let p2 = add_binding(p1, v)
+          #(PVar(v, span), p2)
+        }
       }
     }
     [Token("Punct", "(", _), Token("Punct", ")", _), ..] -> {
