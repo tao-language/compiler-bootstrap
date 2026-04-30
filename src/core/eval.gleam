@@ -317,12 +317,13 @@ pub fn match_pattern(
       }
     }
     PType(_type_name, _) -> {
-      // Type patterns match on the type universe
+      // Type patterns match on the type universe or type constructors
       case value {
         VNeut(HHole(_), _) -> Ok(bindings)
         VNeut(HVar(_), _) -> Ok(bindings)
         VPi(_, _, _, _) -> Ok(bindings)
         VTypeDef(_, _) -> Ok(bindings)
+        VCtr(_tag, _) -> Ok(bindings)  // Types are now first-class VCtr values
         _ -> Error(Nil)
       }
     }

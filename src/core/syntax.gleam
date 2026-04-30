@@ -280,6 +280,13 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       #(Hole(parsed_id, new_span), #(tokens, new_pos, env, fn_, errors))
     }
 
+    // Record type syntax: ${field: type, ...} (parsed as record term)
+    [Token("Op", "$", _), Token("Punct", "{", _), ..rest] -> {
+      let p1 = #(rest, 0, env, fn_, errors)
+      let #(fields, p2) = parse_rcd_fields(p1, [])
+      let p3 = skip("}", p2)
+      #(Rcd(fields, span), p3)
+    }
     // Prefixed tokens: $ followed by keyword
     [Token("Op", "$", _), Token("Name", "fn", _), ..rest] ->
       parse_lambda(#(rest, 0, env, fn_, errors), span)
