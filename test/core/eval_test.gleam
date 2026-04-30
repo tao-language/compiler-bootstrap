@@ -377,7 +377,7 @@ pub fn eval_match_first_case_matches_test() {
   ]
   let term = Match(scrutinee, cases, single("", 1, 1))
   let value = evaluate(state, term)
-  assert value == VNeut(HVar(0), [])
+  assert value == VLit(LitInt(42))
 }
 
 pub fn eval_match_fallback_any_test() {
@@ -498,10 +498,10 @@ pub fn eval_match_nested_match_test() {
   ]
   let term = Match(outer_scrutinee, outer_cases, single("", 1, 1))
   let value = evaluate(state, term)
-  // Inner match resolves #Some(42) -> v=42
-  // Outer match resolves #Some(VNeut(HVar(0))) -> v = VNeut(HVar(0))
-  // Final body returns v = VNeut(HVar(0))
-  assert value == VNeut(HVar(0), [])
+  // Inner match evaluates to 42
+  // Outer match resolves #Some(42) -> v=42
+  // Final body returns v = 42
+  assert value == VLit(LitInt(42))
 }
 
 // ============================================================================

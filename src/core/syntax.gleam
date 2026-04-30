@@ -414,6 +414,21 @@ fn parse_app_chain(p: Parser, fun: Term, span: Span) -> #(Term, Parser) {
       let app = App(fun, arg, app_span)
       parse_app_chain(p3, app, app_span)
     }
+    [Token("Op", "~", _), ..rest] -> {
+      let p_rhs = #(rest, 0, env, fn_, errors)
+      let #(rhs, p2) = parse_pattern(p_rhs)
+      let match_span = merge(span, term_span(fun))
+      // Encode `fun ~ rhs` as `$match fun { | rhs => #True | _ => #False }`
+      let match_term = Match(
+        fun,
+        [
+          CoreCase(rhs, None, Ctr("True", Rcd([], match_span), match_span), match_span),
+          CoreCase(PAny(match_span), None, Ctr("False", Rcd([], match_span), match_span), match_span),
+        ],
+        match_span,
+      )
+      parse_app_chain(p2, match_term, match_span)
+    }
     _ -> #(fun, p)
   }
 }
@@ -759,16 +774,19 @@ fn parse_cases_acc(p: Parser, acc: List(Case)) -> #(List(Case), Parser) {
             True -> #(acc, p1)
             False -> {
               let #(pattern, p2) = parse_pattern(p1)
-              let #(guard, p3) = case list.drop(tokens1, pos1) {
-                [Token("Op", "?", _), ..] -> {
-                  let p = #(tokens1, pos1 + 1, env, fn_, errors)
-                  let #(g, p4) = parse_term(p)
-                  #(Some(g), p4)
-                }
-                _ -> #(None, p2)
+              let #(guard, p3) = case p2 {
+                #(tokens2, pos2, env2, fn2, errors2) ->
+                  case list.drop(tokens2, pos2) {
+                    [Token("Op", "?", _), ..] -> {
+                      let p = #(tokens2, pos2 + 1, env2, fn2, errors2)
+                      let #(g, p4) = parse_term(p)
+                      #(Some(g), p4)
+                    }
+                    _ -> #(None, p2)
+                  }
               }
-              let p4 = skip("=>", p3)
-              let #(body, rest_errors) = parse_term(p4)
+              let p5 = skip("=>", p3)
+              let #(body, rest_errors) = parse_term(p5)
               let case_term = CoreCase(pattern, guard, body, span)
               parse_cases_acc(rest_errors, [case_term, ..acc])
             }

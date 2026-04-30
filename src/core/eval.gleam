@@ -58,7 +58,11 @@ fn term_ctor_to_value(_state: State, ctor: #(String, Term, Term, Span)) -> #(Str
 /// ```
 pub fn evaluate(state: State, term: Term) -> Value {
   case term {
-    Var(index, _) -> VNeut(HVar(index), [])
+    Var(index, _) ->
+      case list.drop(state.vars, index) {
+        [#(name, #(value, _)), ..] -> value
+        _ -> VNeut(HVar(index), [])
+      }
     Hole(id, _) -> VNeut(HHole(id), [])
     Lam(implicits, #(name, param_type), body, _span) -> {
       // Evaluate the parameter type term to a value, then force to
