@@ -15,10 +15,11 @@
 /// - Evaluate → Quote round-trip
 
 import core/ast.{
-  Err,
-  type Term, type Value, App, Ctr, EApp, Hole, HHole, HVar, Lam, Lit,
+  type Term, type Value,
+  App, Ctr, EApp, Err, Hole, HHole, HVar, Lam, Lit,
   Pi, Rcd, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, Var,
   Int as LitInt, Float as LitFloat,
+  VTypeDef, TypeDef,
 }
 import core/quote.{quote, quote_at}
 import core/state.{initial_state}
@@ -90,7 +91,7 @@ pub fn quote_ctr_test() {
   assert term == expected
 }
 
-pub fn quote_nested_ctr_test() {
+pub fn quote_nested_ctr_values_test() {
   let value = VCtr("Outer", VCtr("Inner", vi(1), ))
   let term = quote(value)
   let expected = Ctr("Outer", Ctr("Inner", Lit(LitInt(1), single("", 0, 0)), single("", 0, 0)), single("", 0, 0))
@@ -476,4 +477,98 @@ pub fn quote_lam_with_pi_type_test() {
   let term = quote(value)
   let expected = Lam([], #("f", Pi([], #("pi_param", Lit(LitInt(0), single("", 0, 0))), Lit(LitInt(1), single("", 0, 0)), single("", 0, 0))), Var(0, single("", 0, 0)), single("", 0, 0))
   assert term == expected
+}
+
+// ============================================================================
+// VTYPEDEF QUOTE TESTS
+// ============================================================================
+
+
+fn v_neut(level: Int) -> Value {
+  VNeut(HVar(level), [])
+}
+
+fn v_typef() -> Value {
+  VTypeDef(
+    name: "Option",
+    constructors: [],
+  )
+}
+
+pub fn quote_vtypef_empty_test() {
+  let value = v_typef()
+  let term = quote(value)
+  assert case term {
+    TypeDef(name: "Option", constructors: [], span: _) -> True
+    _ -> False
+  }
+}
+
+pub fn quote_vtypef_with_constructors_test() {
+  let self_type = v_neut(0)
+  let result_type = VCtr("Option", VNeut(HVar(0), []))
+  let constructors = [
+    #("Some", self_type, result_type, single("test", 1, 1)),
+    #("None", self_type, self_type, single("test", 2, 1)),
+  ]
+  let value = VTypeDef(name: "Bool", constructors: constructors)
+  let term = quote(value)
+  assert case term {
+    TypeDef(name: "Bool", constructors: cons, span: _) ->
+      case cons {
+        [#("Some", _, _, _), #("None", _, _, _)] -> True
+        [#("Some", _, _, _), #("None", _, _, _), ..] -> True
+        _ -> False
+      }
+    _ -> False
+  }
+}
+
+// ============================================================================
+// NESTED QUOTE TESTS
+// ============================================================================
+
+/// Nested VCtr values produce nested constructor terms.
+pub fn quote_nested_ctr_deep_test() {
+  let inner: Value = VCtr("Inner", vi(1))
+  let outer: Value = VCtr("Outer", inner)
+  let term = quote(outer)
+  assert case term {
+    Ctr("Outer", Ctr("Inner", Lit(LitInt(1), _), _), _) -> True
+    _ -> False
+  }
+}
+
+
+// ============================================================================
+// EVALUATE → QUOTE ROUND-TRIP TESTS
+// ============================================================================
+
+/// Evaluate a term, then quote its value — should produce an equivalent term.
+pub fn roundtrip_eval_quote_int_test() {
+  let state = initial_state([])
+  let term = Lit(LitInt(42), single("test", 1, 1))
+  let value = evaluate(state, term)
+  let quoted = quote(value)
+  assert case term {
+    Lit(LitInt(42), _) -> True
+    _ -> False
+  }
+  assert case quoted {
+    Lit(LitInt(42), _) -> True
+    _ -> False
+  }
+}
+
+/// Evaluate a lambda, quote it back — should produce a lambda.
+pub fn roundtrip_eval_quote_lam_test() {
+  let state = initial_state([])
+  let body = Var(0, single("test", 1, 1))
+  let term = Lam([], #("x", Lit(LitInt(0), single("test", 1, 1))), body, single("test", 1, 1))
+  let value = evaluate(state, term)
+  let quoted = quote(value)
+  assert case quoted {
+    Lam([], #("x", _), Var(0, _), _) -> True
+    _ -> False
+  }
 }
