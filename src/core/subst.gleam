@@ -26,7 +26,7 @@ import core/ast.{
   type Case, type Elim, type Head, type Literal, type Pattern, type Term,
   type Value, Ann, App, Call, Case, Ctr, EApp, Err, Float as LitFloat, HHole,
   HVar, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit,
-  PVar, PAlias, PType, PRcd, PError, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VTypeDef, TypeDef, Var,
+  PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VTypeDef, TypeDef, Var,
   make_neut, shift_opt, shift_term,
 }
 import core/state.{type State, lookup_var}
@@ -203,6 +203,16 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
       Rcd(
         list.map(fields, fn(f) {
           #(f.0, subst_term_from(idx, value, f.1, from))
+        }),
+        span,
+      )
+    RcdT(fields, span) ->
+      RcdT(
+        list.map(fields, fn(f) {
+          #(f.0, subst_term_from(idx, value, f.1, from), case f.2 {
+            Some(t) -> Some(subst_term_from(idx, value, t, from))
+            None -> None
+          })
         }),
         span,
       )
@@ -492,6 +502,25 @@ fn term_string(term: Term) -> String {
           })
           <> "}"
       }
+    RcdT(fields, _) ->
+      "$"
+      <> "{" 
+      <> list.fold(
+        fields,
+        "",
+        fn(acc, f: #(String, Term, option.Option(Term))) {
+          let field_str = f.0 <> ": " <> term_string(f.1)
+          let field_with_default = case f.2 {
+            Some(t) -> field_str <> " = " <> term_string(t)
+            None -> field_str
+          }
+          case acc {
+            "" -> field_with_default
+            _ -> acc <> ", " <> field_with_default
+          }
+        },
+      )
+      <> "}"
     Typ(level, _) -> "%Type(" <> int.to_string(level) <> ")"
     TypeDef(name, constructors, _) -> {
       "type " <> name <> " { "

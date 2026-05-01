@@ -2,7 +2,7 @@
 import core/ast.{
   type Case, type Pattern, type Term, type Value, Ann, App, Call,
   Case as CoreCase, Ctr, EApp, Err, Float as LitFloat, HHole, HVar, Hole,
-  Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, PAlias, PType, PRcd, PError, Pi, Rcd,
+  Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT,
   Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VTypeDef, TypeDef, Var, term_to_string,
 }
 import core/state.{type State, FfiEntry, State, lookup_ffi}
@@ -97,6 +97,13 @@ pub fn evaluate(state: State, term: Term) -> Value {
     Ctr(tag, arg, _) -> VCtr(tag, evaluate(state, arg))
     Rcd(fields, _) ->
       VRcd(list.map(fields, fn(f) { #(f.0, evaluate(state, f.1)) }))
+    // Record type: ${field: type = default?, ...}
+    // Evaluates to a neutral value representing the record type
+    RcdT(fields, _) -> {
+      // Build a neutral spine with field names
+      let field_names = list.map(fields, fn(f) { f.0 })
+      VNeut(HVar(0), list.map(field_names, fn(name) { EApp(VCtr(name, VRcd([]))) }))
+    }
     Ann(term, _, _) -> evaluate(state, term)
     Match(arg, cases, _) -> {
       let scrutinee = evaluate(state, arg)

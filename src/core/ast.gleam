@@ -77,6 +77,7 @@ pub type Term {
     span: Span,
   )
   Rcd(fields: List(#(String, Term)), span: Span)
+  RcdT(fields: List(#(String, Term, Option(Term))), span: Span)
   Typ(level: Int, span: Span)
   TypeDef(
     name: String,
@@ -362,6 +363,17 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
         list.map(fields, fn(f) { #(f.0, shift_term_from(f.1, shift, from)) }),
         span,
       )
+    RcdT(fields, span) ->
+      RcdT(
+        list.map(fields, fn(f) {
+          let shifted_default = case f.2 {
+            Some(t) -> Some(shift_term_from(t, shift, from))
+            None -> None
+          }
+          #(f.0, shift_term_from(f.1, shift, from), shifted_default)
+        }),
+        span,
+      )
     Typ(level, span) -> Typ(level, span)
     TypeDef(name: n, constructors: cons, span: s) -> {
       let shift_cons = fn(c) {
@@ -514,6 +526,21 @@ pub fn term_to_string(term: Term) -> String {
           })
           <> "}"
       }
+    RcdT(fields, _) ->
+      "$"
+      <> "{" 
+      <> list.fold(fields, "", fn(acc, f) {
+        let field_str = f.0 <> ": " <> term_to_string(f.1)
+        let field_with_default = case f.2 {
+          Some(default_) -> field_str <> " = " <> term_to_string(default_)
+          None -> field_str
+        }
+        case acc {
+          "" -> field_with_default
+          _ -> acc <> ", " <> field_with_default
+        }
+      })
+      <> "}"
     Typ(level, _) -> "%Type(" <> int.to_string(level) <> ")"
     TypeDef(name: name, constructors: constructors, span: _span) -> {
       "type "

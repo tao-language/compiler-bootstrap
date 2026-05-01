@@ -33,6 +33,7 @@ pub fn infer(state: state.State, term: ast.Term) -> #(ast.Value, ast.Value, stat
     ast.Match(arg, cases, span) -> infer_match(state, arg, cases, span)
     ast.Call(name, args, typed_args, return_type, span) -> infer_call(state, name, args, typed_args, return_type, span)
     ast.Rcd(fields, span) -> infer_rcd(state, fields, span)
+    ast.RcdT(fields, span) -> infer_rcd_type(state, fields, span)
     ast.Ctr(tag, arg, span) -> infer_ctr(state, tag, arg, span)
     ast.TypeDef(name, constructors, span) -> infer_type_def(state, name, constructors, span)
     ast.Err(message, span) -> infer_err(state, message, span)
@@ -291,6 +292,20 @@ fn infer_rcd(
   let #(field_vals, field_types, new_state) =
     infer_fields(state, fields, [], [])
   let _field_types = field_types
+  #(ast.VRcd(field_vals), ast.VNeut(ast.HVar(0), []), new_state)
+}
+
+/// Infer a record type: ${name: type, ...
+fn infer_rcd_type(
+  state: state.State,
+  fields: List(#(String, ast.Term, option.Option(ast.Term))),
+  _span: Span,
+) -> #(ast.Value, ast.Value, state.State) {
+  // Evaluate each field's type annotation to a value
+  let type_fields = list.map(fields, fn(f) { #(f.0, f.1) })
+  let #(field_vals, _, new_state) =
+    infer_fields(state, type_fields, [], [])
+  // Record type evaluates to a neutral value representing the type
   #(ast.VRcd(field_vals), ast.VNeut(ast.HVar(0), []), new_state)
 }
 

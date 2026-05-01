@@ -28,12 +28,12 @@
 import core/ast.{
   type Case, type Pattern, type Term, Ann, App, Call, Case as CoreCase, Ctr, Err, TypeDef,
   Float as LitFloat, Hole, Int as LitInt, Lam, Lit, Match, PAny, PAlias, PCtr, PError, PLit,
-  PType, PRcd, PUnit, PVar, Pi, Rcd, Typ, Var, let_var,
+  PType, PRcd, PUnit, PVar, Pi, Rcd, RcdT, Typ, Var, let_var,
 }
 import gleam/float
 import gleam/int
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 import syntax/base_lexer.{type Token, Token, tokenize}
 import syntax/grammar.{type ParseError, ParseError}
 import syntax/span.{type Span, Span, merge, single}
@@ -155,6 +155,7 @@ fn term_span(term: Term) -> Span {
     Ann(_, _, span) -> span
     Call(_, _, _, _, span) -> span
     Rcd(_, span) -> span
+    RcdT(_, span) -> span
     Typ(_, span) -> span
     TypeDef(_, _, span) -> span
     Err(_, span) -> span
@@ -313,12 +314,12 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       #(Hole(parsed_id, new_span), #(tokens, new_pos, env, fn_, errors))
     }
 
-    // Record type syntax: ${field: type, ...} (parsed as record term)
+    // Record type syntax: ${field: type, ...} (record type with optional defaults)
     [Token("Op", "$", _), Token("Punct", "{", _), ..rest] -> {
       let p1 = #(rest, 0, env, fn_, errors)
-      let #(fields, p2) = parse_rcd_fields(p1, [])
+      let #(fields, p2) = parse_rcd_type_fields(p1, [])
       let p3 = skip("}", p2)
-      #(Rcd(fields, span), p3)
+      #(RcdT(fields, span), p3)
     }
     // Prefixed tokens: $ followed by keyword
     [Token("Op", "$", _), Token("Name", "fn", _), ..rest] ->
@@ -347,9 +348,12 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
     // Pi type: $pi<a: Type>(a) -> a
     [Token("Op", "$", _), Token("Name", "pi", _), ..rest] ->
       parse_pi(#(rest, 0, env, fn_, errors), span)
-    // Numeric type keywords as first-class values: $Int, $Float, $I8-$I64, $U8-$U64, $F16-$F64
+    // Built-in type values: $Type (the type of types), $Int, $Float, etc.
     [Token("Op", "$", _), Token("Name", name, _), ..rest] ->
-      #(Ctr(name, Hole(0, span), span), #(rest, 0, env, fn_, errors))
+      case name {
+        "Type" -> #(Typ(0, span), #(rest, 0, env, fn_, errors))
+        _ -> #(Ctr(name, Hole(0, span), span), #(rest, 0, env, fn_, errors))
+      }
     // FFI builtin calls: % followed by function name
     [Token("Op", "%", _), Token("Name", v, _), ..rest] ->
       parse_ffi_call(#(rest, 0, env, fn_, errors), v, span)
@@ -744,6 +748,49 @@ fn parse_rcd_fields(
   }
 }
 
+/// Parse record type fields: ${name: type = default?, name: type, ...}
+/// Returns List(#(name, type, Option(default)))
+fn parse_rcd_type_fields(
+  p: Parser,
+  acc: List(#(String, Term, Option(Term))),
+) -> #(List(#(String, Term, Option(Term))), Parser) {
+  let #(tokens, pos, env, fn_, errors) = p
+  case list.drop(tokens, pos) {
+    [] -> {
+      let err =
+        ParseError(
+          span: current_span(p),
+          expected: "field",
+          got: "EOF",
+          context: "in record type",
+        )
+      #(list.reverse(acc), #(tokens, pos, env, fn_, [err, ..errors]))
+    }
+    [Token("Punct", "}", _), ..rest] -> #(
+      list.reverse(acc),
+      #(rest, 0, env, fn_, errors),
+    )
+    [Token("Eof", ..), ..] -> #(list.reverse(acc), p)
+    _ -> {
+      let #(name, p2) = expect_name_opt(p)
+      let p3 = skip(":", p2)
+      let #(type_, p4) = parse_term(p3)
+      // Check for optional default: = default
+      let #(tokens2, pos2, env2, fn2, err2) = p4
+      let #(default_val, p5) = case list.drop(tokens2, pos2) {
+        [Token("Punct", "=", _), ..rest] -> {
+          let p_eq = #(rest, 0, env2, fn2, err2)
+          let #(default_, p_eq2) = parse_term(p_eq)
+            #(Some(default_), p_eq2)
+        }
+        _ -> #(None, p4)
+      }
+      let p6 = skip(",", p5)
+      parse_rcd_type_fields(p6, [#(name, type_, default_val), ..acc])
+    }
+  }
+}
+
 fn parse_var(p: Parser, name: String, span: Span) -> #(Term, Parser) {
   case is_keyword(name) {
     True -> {
@@ -920,16 +967,6 @@ fn parse_implicit_params_acc(p: Parser, acc: List(#(String, Term))) -> #(List(#(
 }
 
 // Application: fun(fun_arg: arg)
-fn parse_app(p: Parser, span: Span) -> #(Term, Parser) {
-  let p1 = skip("(", p)
-  let p2 = skip(":", p1)
-  let #(fun_arg, rest1) = parse_term(p2)
-  let p3 = skip(")", rest1)
-  let p4 = skip(",", p3)
-  let #(arg, rest_errors) = parse_term(p4)
-  let final_span = merge(span, term_span(arg))
-  #(App(fun_arg, arg, final_span), rest_errors)
-}
 
 // Match: $match arg { | pattern ? guard => body } or match arg { | pattern => body }
 fn parse_match(p: Parser, span: Span) -> #(Term, Parser) {
@@ -1336,6 +1373,7 @@ fn term_to_string(term: Term) -> String {
     Ann(_, _, _) -> "ann"
     Call(_, _, _, _, _) -> "call"
     Rcd(_, _) -> "rcd"
+    RcdT(_, _) -> "rcd_type"
     Typ(_, _) -> "type"
     TypeDef(_, _, _) -> "type def"
     Err(msg, _) -> msg

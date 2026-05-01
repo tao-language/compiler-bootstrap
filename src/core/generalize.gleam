@@ -25,7 +25,7 @@
 /// De Bruijn index 0).
 import core/ast.{
   type Head, type Term, type Value, Ann, App, Call, Case, Ctr, EApp, Err, HHole,
-  HVar, Hole, Lam, Lit, Match, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi,
+  HVar, Hole, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi,
   VRcd, VTypeDef, TypeDef, Var,
 }
 import gleam/option.{None, Some}
@@ -163,6 +163,15 @@ fn free_holes_term(term: Term, binding: Int) -> List(Int) {
     Rcd(fields, _) -> {
       list.fold(fields, [], fn(acc, f) {
         list.append(acc, free_holes_term(f.1, binding))
+      })
+    }
+    RcdT(fields, _) -> {
+      list.fold(fields, [], fn(acc, f) {
+        let acc2 = list.append(acc, free_holes_term(f.1, binding))
+        case f.2 {
+          Some(t) -> list.append(acc2, free_holes_term(t, binding))
+          None -> acc2
+        }
       })
     }
     Typ(_, _) -> []
@@ -306,6 +315,15 @@ fn free_levels_term(term: Term, binding: Int) -> List(Int) {
         list.append(acc, free_levels_term(f.1, binding))
       })
     }
+    RcdT(fields, _) -> {
+      list.fold(fields, [], fn(acc, f) {
+        let acc2 = list.append(acc, free_levels_term(f.1, binding))
+        case f.2 {
+          Some(t) -> list.append(acc2, free_levels_term(t, binding))
+          None -> acc2
+        }
+      })
+    }
     Typ(_, _) -> []
     TypeDef(_, constructors, _) -> {
       list.fold(constructors, [], fn(acc, c) {
@@ -445,6 +463,20 @@ fn subst_holes_term(term: Term, subst: List(#(Int, Int))) -> Term {
     Rcd(fields, span) ->
       Rcd(
         list.map(fields, fn(f) { #(f.0, subst_holes_term(f.1, subst)) }),
+        span,
+      )
+    RcdT(fields, span) ->
+      RcdT(
+        list.map(
+          fields,
+          fn(f: #(String, ast.Term, option.Option(ast.Term))) {
+            let new_default: option.Option(ast.Term) = case f.2 {
+              Some(t) -> Some(subst_holes_term(t, subst))
+              None -> None
+            }
+            #(f.0, subst_holes_term(f.1, subst), new_default)
+          },
+        ),
         span,
       )
     Typ(level, span) -> Typ(level, span)
