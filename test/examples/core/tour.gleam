@@ -9,8 +9,8 @@
 /// doesn't have file I/O. Each file is mapped to its expected
 /// evaluation result.
 import core/ast.{
-  type Term, type Value, Ctr, EApp, HHole, HVar, Int as LitInt,
-  Lit, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, Var,
+  type Term, type Value, EApp, HHole, HVar, Int as LitInt,
+  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, Var,
 }
 import core/eval.{evaluate}
 import core/state.{type FfiEntry, FfiEntry, initial_state}
