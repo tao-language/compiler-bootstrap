@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-05-01 (Phase 2 complete — 772 tests passing, 0 failures. Dead code cleanup: removed ~10 unused variables, debug prints, and compiler warnings. Zero warnings.)
+> **Last updated:** 2026-05-02 (Phase 2d: Added VRcdT value type for record types with defaults — 778 tests passing, 0 failures.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 
 ## Legend
@@ -516,7 +516,7 @@
 | Phase 5: Extended + Polish | 3-4 | 18 | 0 | 🔴 Not started | Operator overloading, error codes |
 | **Total** | **26-32** | **188+** | **706+** | **Phase 2 complete** | **No CLI yet** |
 
-**Code metrics:** 13 source files, 6183 total lines, 706 tests passing, 17 failing.
+**Code metrics:** 13 source files, 6183 total lines, 778 tests passing, 0 failing.
 
 ---
 
@@ -806,6 +806,7 @@ Both categories indicate the parser produces slightly different AST structure th
 
 | Date | Change |
 |------|--------|
+| 2026-05-02 | **Phase 2d: VRcdT value type for record types with defaults.** Added `VRcdT(fields: List(#(String, Value, Option(Value))))` to `Value` type in `ast.gleam` to represent record type values with optional default values. Updated all exhaustive pattern matches across `unify.gleam`, `subst.gleam`, `generalize.gleam`, `eval.gleam`, `infer.gleam`, `cli/run.gleam`. Updated `infer_rcd_type` to return `VRcdT` instead of `VRcd`, preserving default values from the parsed record type. Updated `eval` to produce `VRcdT` from `RcdT` terms. Added `VRcdT` unification in `unify.gleam` (field-by-field matching). Added `VRcdT` string representation in `value_to_string`. Updated tour test expectations. Added 6 new tests for `VRcdT` construction and behavior. **778 tests passing, 0 failures.** |
 | 2026-05-01 | **Phase 2i: Wildcard type support.** Implemented `$Int`/`$Float` wildcard type matching: (1) `unify.gleam` — added wildcard type matching in `match_values`: `$Int` matches any integer literal, `$Float` matches any float/int literal, mismatch error for `$Int`↔float. Added helper functions `is_wildcard` and `literal_matches_wildcard`. (2) `eval.gleam` — extended `PType` pattern matching to handle wildcard type patterns with specific type tag matching. `$Int` matches `VLit(Int)`, `$Float` matches `VLit(Float)` and `VLit(Int)`, specific types match by tag name. (3) `unify_test.gleam` — added 15 new tests covering `is_wildcard`, wildcard unification, and mismatch cases. **738 tests passing, 0 failures.** |
 | 2026-04-30 | **Phase 2h: Test assertion audit complete.** All 17 tests that silently passed without `assert` now correctly fail. Added span preservation tests (`infer_lit_span_test`, `infer_var_span_test`) and comprehensive error path tests (`infer_var_undefined_error`, `infer_not_a_function_int`, `infer_not_a_function_record`, `infer_not_a_function_constructor`, `infer_var_shadowing`, `infer_var_nesting`, `infer_ffi_call_success`, `infer_ffi_call_undefined`) to infer_test. Added VTypeDef/nested value/round-trip tests to quote_test. Removed empty minimal_test.gleam. **706 passed, 17 failures.** |
 | 2026-04-30 | **Phase 2g: Compiler warnings fixed.** Removed unused `debug_parse_07_constructors` and `debug_parse_01_introduction` functions from tour.gleam. **715 tests passing, 0 failures.** |
