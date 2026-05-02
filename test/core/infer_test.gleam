@@ -20,12 +20,13 @@
 
 import core/ast.{
   type Term, type Value,
-  Ann, App, Call, Ctr, Err, Hole, HHole, HVar, Lam, Lit, Pi, Rcd, Typ,
-  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, Var,
+  Ann, App, Call, Ctr, Err, Hole, HHole, HVar, Lam, Lit, Pi, Rcd, RcdT, Typ,
+  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, Var,
   Int as LitInt, Float as LitFloat,
 }
 import core/infer.{check, infer}
 import core/state.{FfiEntry, initial_state, State}
+import gleam/list
 import gleam/option.{None, Some, type Option}
 import gleeunit
 import syntax/span.{single, type Span}
@@ -639,6 +640,88 @@ pub fn infer_call_ffi_not_found_test() {
   assert value == VErr
   assert type_ == VErr
   assert state_.errors != []
+}
+
+// ============================================================================
+// RECORD TYPE DEFAULTS
+// ============================================================================
+
+pub fn infer_rcdt_no_defaults_test() {
+  // Record type with no defaults should produce VRcdT with None defaults
+  let rcdt = RcdT([
+    #("x", Var(0, sp()), None),
+    #("y", Var(0, sp()), None),
+  ], sp())
+  let result = infer(initial_state([]), rcdt)
+  let #(value, _, _) = result
+  assert case value {
+    VRcdT(fields) ->
+      list.length(fields) == 2
+    _ -> False
+  }
+}
+
+pub fn infer_rcdt_with_defaults_test() {
+  // Record type with defaults should produce VRcdT with Some defaults
+  let rcdt = RcdT([
+    #("x", Var(0, sp()), None),
+    #("y", Var(0, sp()), Some(Lit(LitInt(0), sp()))),
+  ], sp())
+  let result = infer(initial_state([]), rcdt)
+  let #(value, _, _) = result
+  assert case value {
+    VRcdT(fields) ->
+      list.length(fields) == 2
+    _ -> False
+  }
+}
+
+pub fn check_rcd_fills_defaults_test() {
+  // When checking a record against a record type with defaults,
+  // missing fields should be filled with defaults
+  let rcd = Rcd([#("x", Lit(LitInt(1), sp()))], sp())
+  let rcdt_type = VRcdT([
+    #("x", VNeut(HVar(0), []), None),
+    #("y", VNeut(HVar(0), []), Some(VLit(LitInt(0)))),
+  ])
+  let result = check(initial_state([]), rcd, rcdt_type)
+  let #(value, _, _) = result
+  // The record should now have both x and y fields
+  assert case value {
+    VRcd(fields) ->
+      list.length(fields) == 2
+    _ -> False
+  }
+}
+
+pub fn check_rcd_no_defaults_needed_test() {
+  // When checking a record against a record type with no defaults,
+  // the record should be unchanged
+  let rcd = Rcd([#("x", Lit(LitInt(1), sp()))], sp())
+  let rcdt_type = VRcdT([
+    #("x", VNeut(HVar(0), []), None),
+  ])
+  let result = check(initial_state([]), rcd, rcdt_type)
+  let #(value, _, _) = result
+  assert case value {
+    VRcd(fields) ->
+      list.length(fields) == 1
+    _ -> False
+  }
+}
+
+pub fn check_rcd_not_rcdt_no_fill_test() {
+  // When checking a record against a non-record-type, no defaults are filled
+  let rcd = Rcd([#("x", Lit(LitInt(1), sp()))], sp())
+  let expected = VNeut(HVar(0), [])
+  let result = check(initial_state([]), rcd, expected)
+  let #(value, _, _) = result
+  // The record should still have only one field
+  assert case value {
+    VRcd(fields) ->
+      list.length(fields) == 1
+    _ -> False
+  }
 }
 
 

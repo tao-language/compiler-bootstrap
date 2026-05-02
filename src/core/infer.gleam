@@ -8,7 +8,7 @@
 import core/ast
 import core/state.{FfiEntry}
 import core/eval.{evaluate, match_pattern}
-import core/subst.{force}
+import core/subst.{force, force_levels_to_indices}
 import core/unify.{unify}
 import gleam/int
 import gleam/list
@@ -41,13 +41,73 @@ pub fn infer(state: state.State, term: ast.Term) -> #(ast.Value, ast.Value, stat
 }
 
 /// Check that a term has the expected type (verification).
+///
+/// When checking a record literal against a record type with defaults,
+/// fills in missing fields with the default values from the expected type.
 pub fn check(
   state: state.State,
   term: ast.Term,
   expected: ast.Value,
 ) -> #(ast.Value, ast.Value, state.State) {
-  let #(value, inferred, new_state) = infer(state, term)
+  // Fill in record defaults if checking a record against a record type
+  let filled_term = fill_record_defaults(term, expected)
+  let #(value, inferred, new_state) = infer(state, filled_term)
   unify_infer_and_check(new_state, value, inferred, expected)
+}
+
+/// Fill in missing record fields with defaults from the expected record type.
+///
+/// When the term is a record literal (`Rcd`) and the expected type is a
+/// record type (`VRcdT`) with default values, this fills in any missing
+/// fields with their defaults.
+///
+/// For example, checking `{x: 1}` against `${x: $Int, y: $Int = 0}` produces
+/// `{x: 1, y: 0}` — the missing `y` field is filled with the default `0`.
+fn fill_record_defaults(
+  term: ast.Term,
+  expected: ast.Value,
+) -> ast.Term {
+  case term, expected {
+    ast.Rcd(fields, span), ast.VRcdT(expected_fields) -> {
+      // Build a map of field name -> default value (if any)
+      let defaults = build_defaults(expected_fields)
+      // Fill in missing fields
+      let filled = fill_fields(fields, defaults)
+      case filled == fields {
+        True -> term
+        False -> ast.Rcd(filled, span)
+      }
+    }
+    _, _ -> term
+  }
+}
+
+/// Build a list of (name, default_term) pairs from a VRcdT's fields.
+fn build_defaults(
+  expected: List(#(String, ast.Value, option.Option(ast.Value))),
+) -> List(#(String, ast.Term)) {
+  list.fold(expected, [], fn(acc, field) {
+    case field {
+      #(_, _, Some(default_val)) ->
+        [#(field.0, force_levels_to_indices(default_val, 0)), ..acc]
+      _ -> acc
+    }
+  })
+}
+
+/// Fill in missing fields in a record with defaults.
+fn fill_fields(
+  fields: List(#(String, ast.Term)),
+  defaults: List(#(String, ast.Term)),
+) -> List(#(String, ast.Term)) {
+  // Get the names of existing fields
+  let existing_names = list.map(fields, fn(f) { f.0 })
+  // Find defaults for fields not in existing
+  let missing = list.filter(defaults, fn(d) {
+    !list.contains(existing_names, d.0)
+  })
+  // Append missing fields to existing
+  list.append(fields, missing)
 }
 
 // ============================================================================
