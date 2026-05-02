@@ -323,14 +323,36 @@ pub fn match_pattern(
         _ -> Error(Nil)
       }
     }
-    PType(_type_name, _) -> {
-      // Type patterns match on the type universe or type constructors
+    PType(type_name, _) -> {
+      // Type patterns match on type-level values and wildcard types.
+      // PType("Int", _) matches any integer literal (wildcard matching).
+      // PType("Float", _) matches any float or integer literal.
+      // PType("Type", _) matches any type-level value.
+      // PType("I8"), PType("I16"), etc. match their specific type constructor.
       case value {
+        // Wildcard type matching on literal values
+        VLit(ast.Int(_)) ->
+          case type_name {
+            "Int" | "I8" | "I16" | "I32" | "I64" | "U8" | "U16" | "U32" | "U64" ->
+              Ok(bindings)
+            _ -> Error(Nil)
+          }
+        VLit(ast.Float(_)) ->
+          case type_name {
+            "Float" | "F16" | "F32" | "F64" -> Ok(bindings)
+            _ -> Error(Nil)
+          }
+        // Type-level value matching
         VNeut(HHole(_), _) -> Ok(bindings)
         VNeut(HVar(_), _) -> Ok(bindings)
         VPi(_, _, _, _) -> Ok(bindings)
         VTypeDef(_, _) -> Ok(bindings)
-        VCtr(_tag, _) -> Ok(bindings)  // Types are now first-class VCtr values
+        // Match specific type constructors by name
+        VCtr(tag, _) ->
+          case tag == type_name {
+            True -> Ok(bindings)
+            False -> Error(Nil)
+          }
         _ -> Error(Nil)
       }
     }

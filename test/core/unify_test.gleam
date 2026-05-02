@@ -20,7 +20,7 @@ import core/ast.{
   VNeut, VPi, VRcd, Var,
 }
 import core/state.{TypeMismatch, def_var, initial_state}
-import core/unify.{occurs_check, unify}
+import core/unify.{is_wildcard, literal_matches_wildcard, occurs_check, unify}
 import gleam/list
 import gleeunit
 import syntax/span.{single}
@@ -343,4 +343,124 @@ pub fn unify_nested_vctr_test() {
       VCtr("Outer", VCtr("Inner", VNeut(HHole(0), []))),
     )
   assert final.errors == []
+}
+
+// ============================================================================
+// Wildcard type matching — $Int and $Float
+// ============================================================================
+
+/// Test that `is_wildcard` correctly identifies $Int and $Float.
+pub fn is_wildcard_int_test() {
+  let state = initial_state([])
+  let int_type = VCtr("Int", VNeut(HHole(0), []))
+  assert is_wildcard(int_type)
+}
+
+pub fn is_wildcard_float_test() {
+  let state = initial_state([])
+  let float_type = VCtr("Float", VNeut(HHole(0), []))
+  assert is_wildcard(float_type)
+}
+
+pub fn is_wildcard_not_other_ctr_test() {
+  let state = initial_state([])
+  let other_type = VCtr("Some", VNeut(HHole(0), []))
+  assert case is_wildcard(other_type) {
+    False -> True
+    _ -> False
+  }
+}
+
+pub fn is_wildcard_not_literal_test() {
+  assert case is_wildcard(VLit(LitFloat(3.14))) {
+    False -> True
+    _ -> False
+  }
+}
+
+/// Wildcard type matching: $Int matches any integer literal.
+pub fn unify_int_wildcard_matches_int_test() {
+  let int_type = VCtr("Int", VNeut(HHole(0), []))
+  let int_val = VLit(LitInt(42))
+  let final = unify(initial_state([]), int_type, int_val)
+  assert final.errors == []
+}
+
+/// Wildcard type matching: $Int matches integer literal in reverse direction.
+pub fn unify_int_wildcard_matches_int_reverse_test() {
+  let state = initial_state([])
+  let int_type = VCtr("Int", VNeut(HHole(0), []))
+  let int_val = VLit(LitInt(99))
+  let final = unify(state, int_val, int_type)
+  assert final.errors == []
+}
+
+/// Wildcard type matching: $Float matches float literal.
+pub fn unify_float_wildcard_matches_float_test() {
+  let state = initial_state([])
+  let float_type = VCtr("Float", VNeut(HHole(0), []))
+  let float_val = VLit(LitFloat(3.14))
+  let final = unify(state, float_type, float_val)
+  assert final.errors == []
+}
+
+/// Wildcard type matching: $Float matches integer literal too.
+pub fn unify_float_wildcard_matches_int_test() {
+  let state = initial_state([])
+  let float_type = VCtr("Float", VNeut(HHole(0), []))
+  let int_val = VLit(LitInt(42))
+  let final = unify(state, float_type, int_val)
+  assert final.errors == []
+}
+
+/// Mismatch: $Int does NOT match a float literal.
+pub fn unify_int_wildcard_rejects_float_test() {
+  let state = initial_state([])
+  let int_type = VCtr("Int", VNeut(HHole(0), []))
+  let float_val = VLit(LitFloat(3.14))
+  let final = unify(state, int_type, float_val)
+  assert list.length(final.errors) >= 1
+}
+
+/// $Int matches $I32 — both are integer type constructors.
+pub fn unify_int_type_matches_specific_int_test() {
+  let state = initial_state([])
+  let int_type = VCtr("Int", VNeut(HHole(0), []))
+  let i32_type = VCtr("I32", VNeut(HHole(0), []))
+  let final = unify(state, int_type, i32_type)
+  // Int and I32 are different tags — should produce mismatch
+  // (they are both VCtr but with different tags)
+  assert list.length(final.errors) >= 1
+}
+
+/// Wildcard $Int does NOT match a non-wildcard VCtr tag.
+pub fn unify_int_wildcard_rejects_ctr_test() {
+  let state = initial_state([])
+  let int_type = VCtr("Int", VNeut(HHole(0), []))
+  let ctr_val = VCtr("Some", VNeut(HHole(0), []))
+  let final = unify(state, int_type, ctr_val)
+  assert list.length(final.errors) >= 1
+}
+
+/// literal_matches_wildcard helper.
+pub fn literal_matches_wildcard_int_for_int_test() {
+  // Integer literal matches $Int wildcard
+  assert literal_matches_wildcard(LitInt(42), "Int")
+}
+
+pub fn literal_matches_wildcard_int_for_float_test() {
+  // $Float matches integer literals too
+  assert literal_matches_wildcard(LitInt(42), "Float")
+}
+
+pub fn literal_matches_wildcard_float_for_float_test() {
+  assert literal_matches_wildcard(LitFloat(3.14), "Float")
+}
+
+pub fn literal_matches_wildcard_float_rejects_int_test() {
+  // $Int does NOT match float literals
+  case literal_matches_wildcard(LitFloat(3.14), "Int") {
+    False -> True
+    _ -> False
+  }
 }
