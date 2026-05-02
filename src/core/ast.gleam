@@ -42,7 +42,7 @@ pub type LiteralType {
 }
 
 // ============================================================================
-// TERMS (Syntax level — De Bruijn indices)
+// TERMS (Syntax level - De Bruijn indices)
 // ============================================================================
 
 /// Core terms. The AST for type checking and evaluation.
@@ -106,10 +106,10 @@ pub type Case {
 }
 
 // ============================================================================
-// VALUES (Semantics level — De Bruijn levels)
+// VALUES (Semantics level - De Bruijn levels)
 // ============================================================================
 
-/// Neutral term head — the start of a neutral spine.
+/// Neutral term head - the start of a neutral spine.
 pub type Head {
   HVar(level: Int)
   HHole(id: Int)
@@ -120,7 +120,7 @@ pub type Elim {
   EApp(arg: Value)
 }
 
-/// Core values — normalized terms after evaluation.
+/// Core values - normalized terms after evaluation.
 ///
 /// Values use De Bruijn levels for variables (relative to their
 /// binding site), and De Bruijn indices for bodies.
@@ -145,6 +145,7 @@ pub type Value {
   VLit(value: Literal)
   VCtr(tag: String, arg: Value)
   VRcd(fields: List(#(String, Value)))
+  VRcdT(fields: List(#(String, Value, Option(Value))))
   VTypeDef(name: String, constructors: List(#(String, Value, Value, Span)))
   VErr
 }
@@ -197,12 +198,20 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
     VCtr(tag, arg) -> VCtr(tag, subst(type_args, arg))
     VRcd(fields) ->
       VRcd(list.map(fields, fn(f) { #(f.0, subst(type_args, f.1)) }))
+    VRcdT(fields) ->
+      VRcdT(list.map(fields, fn(f) {
+        let new_default = case f.2 {
+          Some(d) -> Some(subst(type_args, d))
+          None -> None
+        }
+        #(f.0, subst(type_args, f.1), new_default)
+      }))
     VTypeDef(name: n, constructors: c) -> VTypeDef(name: n, constructors: c)
     VErr -> VErr
   }
 }
 
-/// Extract the type of a TypeDef (always `*` — universe 0).
+/// Extract the type of a TypeDef (always `*` - universe 0).
 ///
 /// A TypeDef has type * (universe 0), represented as a nested Pi type:
 /// Pi(_, _, _, Pi(_, _, _, VTypeDef(name: "", constructors: constructors)))
@@ -262,7 +271,7 @@ pub fn error_term(message: String, span: Span) -> Term {
 
 /// Syntax sugar for let bindings: `let name = value; body`.
 ///
-/// This is desugared to `App(Lam([], (name, param_type), body), value)` —
+/// This is desugared to `App(Lam([], (name, param_type), body), value)` -
 /// a beta-reduction application. The `param_type` is typically unit.
 pub fn let_var(
   name: String,
@@ -283,7 +292,7 @@ pub fn let_var(
 /// Positive shift opens up scopes (e.g., when inserting a new binder).
 /// Negative shift closes scopes (e.g., when leaving a binder).
 ///
-/// Only shifts indices >= `from` — this allows selective shifting
+/// Only shifts indices >= `from` - this allows selective shifting
 /// (e.g., shifting only free indices, not bound ones).
 pub fn shift_term(term: Term, shift: Int) -> Term {
   shift_term_from(term, shift, 0)
@@ -291,7 +300,7 @@ pub fn shift_term(term: Term, shift: Int) -> Term {
 
 /// Shift all De Bruijn indices in a term by `shift`, starting from `from`.
 ///
-/// Only shifts indices >= `from` — this allows selective shifting
+/// Only shifts indices >= `from` - this allows selective shifting
 /// (e.g., shifting only free indices, not bound ones).
 pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
   case term {
@@ -406,7 +415,7 @@ pub fn shift_opt(term: Option(Term), shift: Int, from: Int) -> Option(Term) {
 
 /// Format a term for debugging / display.
 ///
-/// This is NOT a formatter — it's a simple string representation for
+/// This is NOT a formatter - it's a simple string representation for
 /// debugging. The actual formatter lives in the syntax layer.
 pub fn term_to_string(term: Term) -> String {
   case term {
@@ -528,7 +537,7 @@ pub fn term_to_string(term: Term) -> String {
       }
     RcdT(fields, _) ->
       "$"
-      <> "{" 
+      <> "{"
       <> list.fold(fields, "", fn(acc, f) {
         let field_str = f.0 <> ": " <> term_to_string(f.1)
         let field_with_default = case f.2 {
@@ -665,7 +674,7 @@ pub fn value_to_string(value: Value) -> String {
       case fields {
         [] -> "()"
         _ ->
-          "{"
+          "{" 
           <> list.fold(fields, "", fn(acc, f) {
             case acc {
               "" -> f.0 <> ": " <> value_to_string(f.1)
@@ -674,6 +683,21 @@ pub fn value_to_string(value: Value) -> String {
           })
           <> "}"
       }
+    VRcdT(fields) ->
+      "$" 
+      <> "{" 
+      <> list.fold(fields, "", fn(acc, f) {
+        let field_str = f.0 <> ": " <> value_to_string(f.1)
+        let with_default = case f.2 {
+          Some(d) -> field_str <> " = " <> value_to_string(d)
+          None -> field_str
+        }
+        case acc {
+          "" -> with_default
+          _ -> acc <> ", " <> with_default
+        }
+      })
+      <> "}"
     VTypeDef(name: n, constructors: _c) -> {
       "<VTypeDef " <> n <> ">"
     }

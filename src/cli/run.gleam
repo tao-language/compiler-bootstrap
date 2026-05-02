@@ -18,7 +18,8 @@ import gleam/float
 import gleam/string
 import simplifile
 import syntax/grammar.{type ParseError, ParseError as ParseErrorCtor}
-import core/ast.{type Value, type Head, VLit, VNeut, VCtr, VPi, VLam, VRcd, VTypeDef, VErr, HVar, HHole, Int, Float as AstFloat}
+import core/ast.{type Value, type Head, VLit, VNeut, VCtr, VPi, VLam, VRcd, VRcdT, VTypeDef, VErr, HVar, HHole, Int, Float as AstFloat}
+import gleam/option.{Some, None}
 
 /// CLI command types.
 pub type Command {
@@ -189,6 +190,19 @@ fn format_value(value: Value) -> String {
       "$pi(" <> domain.0 <> ": " <> format_type(domain.1) <> ") -> " <> format_type(codomain)
     VCtr(tag, arg) -> "#" <> tag <> "(" <> format_value(arg) <> ")"
     VRcd(fields) -> "{ " <> string.join(list.map(fields, fn(f) { f.0 <> ": " <> format_value(f.1) }), with: ", ") <> " }"
+    VRcdT(fields) ->
+      "${ " 
+      <> string.join(
+        list.map(fields, fn(f) {
+          let field_str = f.0 <> ": " <> format_value(f.1)
+          case f.2 {
+            Some(d) -> field_str <> " = " <> format_value(d)
+            None -> field_str
+          }
+        }),
+        with: ", ",
+      )
+      <> " }"
     VLam(_env, _implicits, param, _) -> "$fn(" <> param.0 <> ") => <lambda>"
     VTypeDef(name: n, constructors: _) -> "<VTypeDef " <> n <> ">"
     VErr -> "<error>"

@@ -10,7 +10,7 @@
 /// evaluation result.
 import core/ast.{
   type Term, type Value, EApp, HHole, HVar, Int as LitInt,
-  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, Var,
+  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, Var,
 }
 import core/eval.{evaluate}
 import core/state.{type FfiEntry, FfiEntry, initial_state}
@@ -258,7 +258,8 @@ pub fn t03_records_test() {
 pub fn t04_record_types_test() {
   let result = pipeline(parse_source("${x: $Int, y: $Int = 0}"))
   assert case result {
-    VNeut(HVar(0), _) -> True
+    VRcdT(fields) ->
+      list.length(fields) == 2
     _ -> False
   }
 }

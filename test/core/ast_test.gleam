@@ -1,11 +1,12 @@
 import core/ast.{
   Ann, App, Case, Ctr, EApp, Err, Float as LitFloat, HHole, HVar, Hole,
-  Int as LitInt, Lam, Lit, Match, PAny, PCtr, PLit, PUnit, PVar, Pi, Rcd, Typ,
-  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, Var, error_term, make_hole_neut,
+  Int as LitInt, Lam, Lit, Match, PAny, PCtr, PLit, PUnit, PVar, Pi, Rcd, RcdT, Typ,
+  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, Var, error_term, make_hole_neut,
   make_neut, make_var_neut, shift_term, term_to_string, value_to_string,
 }
+import gleam/option.{Some, None}
 import gleam/list
-import gleam/option.{None}
+import gleam/string
 import gleeunit
 import syntax/span.{single}
 
@@ -829,4 +830,65 @@ pub fn value_inequality_on_different_head_test() {
   let v1 = VNeut(HVar(0), [])
   let v2 = VNeut(HHole(0), [])
   assert v1 != v2
+}
+
+// ============================================================================
+// VRcdT — Record type value construction
+// ============================================================================
+
+pub fn vrcdt_empty_test() {
+  let v = VRcdT([])
+  assert case v {
+    VRcdT([]) -> True
+    _ -> False
+  }
+}
+
+pub fn vrcdt_single_field_test() {
+  let v = VRcdT([#("x", VNeut(HVar(0), []), None)])
+  assert case v {
+    VRcdT([#("x", VNeut(HVar(0), []), None)]) -> True
+    _ -> False
+  }
+}
+
+pub fn vrcdt_with_default_test() {
+  let v = VRcdT([#("y", VNeut(HVar(0), []), Some(VLit(LitInt(0))))])
+  assert case v {
+    VRcdT([#("y", _, Some(VLit(LitInt(0))))]) -> True
+    _ -> False
+  }
+}
+
+pub fn vrcdt_multiple_fields_test() {
+  let v = VRcdT([
+    #("x", VNeut(HVar(0), []), None),
+    #("y", VNeut(HVar(0), []), Some(VLit(LitInt(0)))),
+  ])
+  assert case v {
+    VRcdT(fields) -> list.length(fields) == 2
+    _ -> False
+  }
+}
+
+pub fn vrcdt_term_construction_test() {
+  let t = RcdT([
+    #("x", Var(0, single("test", 1, 1)), None),
+    #("y", Var(0, single("test", 1, 1)), Some(Lit(LitInt(0), single("test", 1, 1)))),
+  ], single("test", 1, 1))
+  assert case t {
+    RcdT(fields, _) ->
+      list.length(fields) == 2
+    _ -> False
+  }
+}
+
+pub fn vrcdt_value_to_string_test() {
+  let v = VRcdT([
+    #("x", VNeut(HVar(0), []), None),
+    #("y", VNeut(HVar(0), []), Some(VLit(LitInt(0)))),
+  ])
+  let s = value_to_string(v)
+  assert string.contains(s, "x")
+  assert string.contains(s, "y")
 }

@@ -1,12 +1,12 @@
-/// Substitution — Hole resolution and level-to-index conversion.
+/// Substitution - Hole resolution and level-to-index conversion.
 ///
 /// The `subst` module handles two key operations in the compiler pipeline:
 ///
-/// 1. **`force`** — Resolves holes (unbound metavariables) by looking them
+/// 1. **`force`** - Resolves holes (unbound metavariables) by looking them
 ///    up in the state, then applies the resulting neutral spine through beta
 ///    reduction. This turns a potentially open neutral term into a value.
 ///
-/// 2. **`force_levels_to_indices`** — Converts a `Value` (which uses De Bruijn
+/// 2. **`force_levels_to_indices`** - Converts a `Value` (which uses De Bruijn
 ///    levels for variables) into a `Term` (which uses De Bruijn indices).
 ///    This is used by the quote module to turn runtime values back into
 ///    syntax.
@@ -26,7 +26,7 @@ import core/ast.{
   type Case, type Elim, type Head, type Literal, type Pattern, type Term,
   type Value, Ann, App, Call, Case, Ctr, EApp, Err, Float as LitFloat, HHole,
   HVar, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit,
-  PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VTypeDef, TypeDef, Var,
+  PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTypeDef, TypeDef, Var,
   make_neut, shift_opt, shift_term,
 }
 import core/state.{type State, lookup_var}
@@ -39,10 +39,10 @@ import gleam/option.{None, Some}
 ///
 /// This function performs two operations:
 ///
-/// 1. **Hole resolution** — If the value's head is a hole (`HHole(id)`), look
+/// 1. **Hole resolution** - If the value's head is a hole (`HHole(id)`), look
 ///    up the binding in state (`"hole{id}"`) and substitute it.
 ///
-/// 2. **Spine application** — Apply each `EApp(arg)` in the spine by doing
+/// 2. **Spine application** - Apply each `EApp(arg)` in the spine by doing
 ///    beta reduction if the head is a lambda, or building a new neutral term
 ///    if not.
 ///
@@ -121,7 +121,7 @@ fn try_apply(value: Value, arg: Value) -> Result(Value, Nil) {
       let #(_, param_type) = param
       let shifted_body = shift_term(body, 1)
       let substituted = subst_term_var(0, arg, shifted_body)
-      // Return the substituted term wrapped in a lambda — evaluation
+      // Return the substituted term wrapped in a lambda - evaluation
       // happens when this lambda is applied
       Ok(VLam(env, implicits, #("x", param_type), substituted))
     }
@@ -139,7 +139,7 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
     Var(i, span) ->
       // Substitute Var(idx + from) which corresponds to the variable at
       // the outer scope's index `idx`. The `from` parameter tracks nesting
-      // depth — inside a lambda, Var(0) refers to the lambda's parameter,
+      // depth - inside a lambda, Var(0) refers to the lambda's parameter,
       // while Var(1) refers to the outer scope's Var(0), etc.
       case i == idx + from {
         True -> value_to_neut(value)
@@ -279,7 +279,7 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
   case value {
     VNeut(head, spine) -> neut_head_to_term_with_spine(head, spine, n)
     VLam(_env, implicits, param, body) -> {
-      // VLam's body is already a Term — convert param type (Value) to Term
+      // VLam's body is already a Term - convert param type (Value) to Term
       let new_n = n + 1
       let converted_implicits = list.map(implicits, fn(i) { #(i.0, force_levels_to_indices(i.1, new_n)) })
       let converted_param = #(param.0, force_levels_to_indices(param.1, new_n))
@@ -298,6 +298,17 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
     VRcd(fields) ->
       Rcd(
         list.map(fields, fn(f) { #(f.0, force_levels_to_indices(f.1, n)) }),
+        single("", 0, 0),
+      )
+    VRcdT(fields) ->
+      RcdT(
+        list.map(fields, fn(f) {
+          let default_term = case f.2 {
+            Some(d) -> Some(force_levels_to_indices(d, n))
+            None -> None
+          }
+          #(f.0, force_levels_to_indices(f.1, n), default_term)
+        }),
         single("", 0, 0),
       )
     VTypeDef(name: vname, constructors: c) -> {
@@ -404,7 +415,7 @@ fn value_string(value: Value) -> String {
       case fields {
         [] -> "()"
         _ ->
-          "{"
+          "{" 
           <> list.fold(fields, "", fn(acc, f) {
             case acc {
               "" -> f.0 <> ": " <> value_string(f.1)
@@ -413,8 +424,23 @@ fn value_string(value: Value) -> String {
           })
           <> "}"
       }
+    VRcdT(fields) ->
+      "$" 
+      <> "{" 
+      <> list.fold(fields, "", fn(acc, f) {
+        let field_str = f.0 <> ": " <> value_string(f.1)
+        let with_default = case f.2 {
+          Some(d) -> field_str <> " = " <> value_string(d)
+          None -> field_str
+        }
+        case acc {
+          "" -> with_default
+          _ -> acc <> ", " <> with_default
+        }
+      })
+      <> "}"
     VTypeDef(name: n, constructors: _c) -> {
-      "<type " <> n 
+      "<type " <> n
     }
     VErr -> "\"error\""
   }
@@ -504,7 +530,7 @@ fn term_string(term: Term) -> String {
       }
     RcdT(fields, _) ->
       "$"
-      <> "{" 
+      <> "{"
       <> list.fold(
         fields,
         "",

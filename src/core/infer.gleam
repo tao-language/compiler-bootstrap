@@ -289,18 +289,44 @@ fn infer_rcd(
   #(ast.VRcd(field_vals), ast.VNeut(ast.HVar(0), []), new_state)
 }
 
-/// Infer a record type: ${name: type, ...
+/// Infer a record type: ${name: type, default?, ...}
 fn infer_rcd_type(
   state: state.State,
   fields: List(#(String, ast.Term, option.Option(ast.Term))),
   _span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
-  // Evaluate each field's type annotation to a value
-  let type_fields = list.map(fields, fn(f) { #(f.0, f.1) })
-  let #(field_vals, _, new_state) =
-    infer_fields(state, type_fields, [], [])
-  // Record type evaluates to a neutral value representing the type
-  #(ast.VRcd(field_vals), ast.VNeut(ast.HVar(0), []), new_state)
+  // Evaluate each field's type annotation and optional default to values
+  let #(field_vals, new_state) = infer_rcd_type_fields(state, fields, [], [])
+  // Record type evaluates to VRcdT carrying field types and defaults
+  #(ast.VRcdT(field_vals), ast.VNeut(ast.HVar(0), []), new_state)
+}
+
+/// Recursively infer record type fields with their optional defaults.
+fn infer_rcd_type_fields(
+  state: state.State,
+  fields: List(#(String, ast.Term, option.Option(ast.Term))),
+  acc: List(#(String, ast.Value, option.Option(ast.Value))),
+  _types_acc: List(#(String, ast.Value)),
+) -> #(
+  List(#(String, ast.Value, option.Option(ast.Value))),
+  state.State,
+) {
+  case fields {
+    [] -> #(list.reverse(acc), state)
+    [#(name, field_type, default), ..rest] -> {
+      let #(field_val, _, state2) = infer(state, field_type)
+      let default_val = case default {
+        Some(d) -> Some(evaluate(state2, d))
+        None -> None
+      }
+      infer_rcd_type_fields(
+        state2,
+        rest,
+        [#(name, field_val, default_val), ..acc],
+        [],
+      )
+    }
+  }
 }
 
 fn infer_fields(

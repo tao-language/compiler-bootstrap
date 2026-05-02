@@ -19,11 +19,12 @@
 import core/ast.{
   type Elim, type Head, type Value,
   EApp, Float as FLit, HHole, HVar, Int as ILit, VCtr, VErr, VLam, VLit,
-  VNeut, VPi, VRcd,
+  VNeut, VPi, VRcd, VRcdT,
 }
 import core/state.{type State, State, TypeMismatch, with_err}
 import gleam/int
 import gleam/list
+import gleam/option.{Some}
 import gleam/string
 import syntax/span.{single}
 
@@ -148,6 +149,9 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
 
     // ── Record — unify field by field ────────────────────────
     VRcd(fields1), VRcd(fields2) -> match_records(state, fields1, fields2)
+
+    // ── Record type — unify field by field ───────────────────
+    VRcdT(fields1), VRcdT(fields2) -> match_record_types(state, fields1, fields2)
 
     // ── VErr — unifies with any value (error recovery) ───────
     VErr, _ -> state
@@ -283,6 +287,31 @@ fn match_records(
         False -> add_type_mismatch_error(state, VRcd(fields1), VRcd(fields2))
       }
     _, _ -> add_type_mismatch_error(state, VRcd(fields1), VRcd(fields2))
+  }
+}
+
+/// Unify two record type values field by field.
+fn match_record_types(
+  state: State,
+  fields1: List(#(String, Value, option.Option(Value))),
+  fields2: List(#(String, Value, option.Option(Value))),
+) -> State {
+  case fields1, fields2 {
+    [], [] -> state
+    [#(name1, type1, default1), ..rest1], [#(name2, type2, default2), ..rest2] ->
+      case name1 == name2 {
+        True -> {
+          let s1 = match_values(state, type1, type2)
+          // Unify default values if both are present
+          let s2 = case default1, default2 {
+            Some(d1), Some(d2) -> match_values(s1, d1, d2)
+            _, _ -> s1
+          }
+          match_record_types(s2, rest1, rest2)
+        }
+        False -> add_type_mismatch_error(state, VRcdT(fields1), VRcdT(fields2))
+      }
+    _, _ -> add_type_mismatch_error(state, VRcdT(fields1), VRcdT(fields2))
   }
 }
 

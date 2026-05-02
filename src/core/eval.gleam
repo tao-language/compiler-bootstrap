@@ -1,9 +1,9 @@
-/// Normalization by Evaluation (NBE) — Term → Value
+/// Normalization by Evaluation (NBE) - Term → Value
 import core/ast.{
   type Case, type Pattern, type Term, type Value, Ann, App, Call,
   Case as CoreCase, Ctr, EApp, Err, Float as LitFloat, HHole, HVar, Hole,
   Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT,
-  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VTypeDef, TypeDef, Var, term_to_string,
+  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTypeDef, TypeDef, Var, term_to_string,
 }
 import core/state.{type State, FfiEntry, State, lookup_ffi}
 import syntax/span.{type Span}
@@ -29,18 +29,18 @@ fn term_ctor_to_value(_state: State, ctor: #(String, Term, Term, Span)) -> #(Str
 /// The evaluator recursively converts each term constructor to its
 /// semantic value counterpart:
 ///
-/// - `Var(n)` → `VNeut(HVar(n), [])` — variable becomes neutral
-/// - `Hole(id)` → `VNeut(HHole(id), [])` — hole becomes neutral
-/// - `Lam` → `VLam` — lambda becomes a closure (body is already a Term)
+/// - `Var(n)` → `VNeut(HVar(n), [])` - variable becomes neutral
+/// - `Hole(id)` → `VNeut(HHole(id), [])` - hole becomes neutral
+/// - `Lam` → `VLam` - lambda becomes a closure (body is already a Term)
 /// - `App` → apply argument to evaluated function via `do_app`
-/// - `Pi` → `VPi` — type-level, evaluated domain/codomain
-/// - `Lit` → `VLit` — literal values
-/// - `Ctr` → `VCtr` — constructor wrapping
-/// - `Rcd` → `VRcd` — record with evaluated fields
+/// - `Pi` → `VPi` - type-level, evaluated domain/codomain
+/// - `Lit` → `VLit` - literal values
+/// - `Ctr` → `VCtr` - constructor wrapping
+/// - `Rcd` → `VRcd` - record with evaluated fields
 /// - `Ann` → just evaluate the term (annotation is erased)
 /// - `Match` → evaluate scrutinee, dispatch to matching case body
 /// - `Call` → look up FFI builtin and apply
-/// - `Err` → `VErr` — error term
+/// - `Err` → `VErr` - error term
 ///
 /// The returned `Value` may still contain unresolved holes. The `force`
 /// function from `subst.gleam` can be used to resolve them.
@@ -82,7 +82,7 @@ pub fn evaluate(state: State, term: Term) -> Value {
     }
     Pi(implicits, #(name, domain), codomain, _) -> {
       // Evaluate domain to a value. The codomain references the domain
-      // at type level — no shift needed since Pi doesn't create a runtime
+      // at type level - no shift needed since Pi doesn't create a runtime
       // variable binding.
       let env = list.map(state.vars, fn(v) { v.1.0 })
       let dom = evaluate(state, domain)
@@ -98,11 +98,17 @@ pub fn evaluate(state: State, term: Term) -> Value {
     Rcd(fields, _) ->
       VRcd(list.map(fields, fn(f) { #(f.0, evaluate(state, f.1)) }))
     // Record type: ${field: type = default?, ...}
-    // Evaluates to a neutral value representing the record type
+    // Evaluates to a VRcdT value carrying field types and optional defaults
     RcdT(fields, _) -> {
-      // Build a neutral spine with field names
-      let field_names = list.map(fields, fn(f) { f.0 })
-      VNeut(HVar(0), list.map(field_names, fn(name) { EApp(VCtr(name, VRcd([]))) }))
+      let typed_fields = list.map(fields, fn(f) {
+        let field_type = evaluate(state, f.1)
+        let default_val = case f.2 {
+          Some(d) -> Some(evaluate(state, d))
+          None -> None
+        }
+        #(f.0, field_type, default_val)
+      })
+      VRcdT(typed_fields)
     }
     Ann(term, _, _) -> evaluate(state, term)
     Match(arg, cases, _) -> {
@@ -134,19 +140,19 @@ pub fn evaluate(state: State, term: Term) -> Value {
 }
 
 // ============================================================================
-// APPLICATION — Neutral spine construction and beta reduction
+// APPLICATION - Neutral spine construction and beta reduction
 // ============================================================================
 
 /// Apply an evaluated argument to an evaluated function.
 ///
 /// This is the core of NBE application. It handles:
 ///
-/// 1. **Lambda application** — β-reduction: substitute the argument into
+/// 1. **Lambda application** - β-reduction: substitute the argument into
 ///    the body, then evaluate (force) the result.
-/// 2. **Neutral spine** — if the function is already neutral (variable,
+/// 2. **Neutral spine** - if the function is already neutral (variable,
 ///    hole, or application), extend its spine with the argument.
-/// 3. **Error propagation** — if the function is `VErr`, result is `VErr`.
-/// 4. **Type mismatch** — if the function is a type (VPi, VCtr, etc.)
+/// 3. **Error propagation** - if the function is `VErr`, result is `VErr`.
+/// 4. **Type mismatch** - if the function is a type (VPi, VCtr, etc.)
 ///    rather than a value that accepts arguments, record an error.
 ///
 /// ## Example
@@ -162,11 +168,11 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
   case fun_val {
     // β-reduction: substitute the argument for the lambda parameter, then
     // evaluate the body. The body's indices are already relative to this
-    // lambda — no shift needed.
+    // lambda - no shift needed.
     VLam(_env, _implicits, #(_pname, _param_type), body) -> {
       // The body's Var(0) refers to the lambda parameter at the current scope.
       // Substitute Var(0) with the argument value (converted to a Term).
-      // No shift needed — the body's indices are already relative to this lambda.
+      // No shift needed - the body's indices are already relative to this lambda.
       let substituted = subst_term_var(0, arg_val, body)
       evaluate(state, substituted)
     }
@@ -174,13 +180,13 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     VNeut(head, spine) -> VNeut(head, list.append(spine, [EApp(arg_val)]))
     // Error propagates
     VErr -> VErr
-    // Cannot apply a type/value that isn't a function — return error
-    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) | VTypeDef(name: _, constructors: _) -> VErr
+    // Cannot apply a type/value that isn't a function - return error
+    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) | VRcdT(_) | VTypeDef(name: _, constructors: _) -> VErr
   }
 }
 
 // ============================================================================
-// MATCH — Pattern matching on values
+// MATCH - Pattern matching on values
 // ============================================================================
 
 /// Evaluate a match expression.
@@ -191,7 +197,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
 ///
 /// The `truth_ctr` parameter specifies the constructor name that
 /// represents truth in guards (e.g., `"True"`). A guard passes if it
-/// evaluates to `#<truth_ctr>(...)` — any other value is falsy.
+/// evaluates to `#<truth_ctr>(...)` - any other value is falsy.
 ///
 /// ## Example
 ///
@@ -246,7 +252,7 @@ pub fn is_truth(truth_ctr: String, value: Value) -> Bool {
 }
 
 /// Create a temporary state with pattern-matched bindings for evaluation.
-/// The type field (`VNeut(HHole(0), [])`) is a placeholder — never used
+/// The type field (`VNeut(HHole(0), [])`) is a placeholder - never used
 /// by the evaluator since type checking happens before evaluation.
 fn match_state(bindings: List(#(String, Value)), truth_ctr: String) -> State {
   State(
@@ -269,11 +275,11 @@ fn match_state(bindings: List(#(String, Value)), truth_ctr: String) -> State {
 ///
 /// ## Patterns
 ///
-/// - `PAny(_)` — matches anything, no bindings
-/// - `PVar(name)` — matches anything, binds `name`
-/// - `PCtr(tag, inner_pat)` — matches `VCtr(tag, val)` and recursively matches inner
-/// - `PUnit` — matches `VRcd([])` (empty record)
-/// - `PLit(value)` — matches `VLit(value)` of the same literal
+/// - `PAny(_)` - matches anything, no bindings
+/// - `PVar(name)` - matches anything, binds `name`
+/// - `PCtr(tag, inner_pat)` - matches `VCtr(tag, val)` and recursively matches inner
+/// - `PUnit` - matches `VRcd([])` (empty record)
+/// - `PLit(value)` - matches `VLit(value)` of the same literal
 ///
 /// ## Example
 ///
@@ -459,7 +465,7 @@ pub fn value_to_string(value: Value) -> String {
       case fields {
         [] -> "()"
         _ ->
-          "{"
+          "{" 
           <> list.fold(fields, "", fn(acc, f) {
             case acc {
               "" -> f.0 <> ": " <> value_to_string(f.1)
@@ -468,6 +474,21 @@ pub fn value_to_string(value: Value) -> String {
           })
           <> "}"
       }
+    VRcdT(fields) ->
+      "$" 
+      <> "{" 
+      <> list.fold(fields, "", fn(acc, f) {
+        let field_str = f.0 <> ": " <> value_to_string(f.1)
+        let with_default = case f.2 {
+          Some(d) -> field_str <> " = " <> value_to_string(d)
+          None -> field_str
+        }
+        case acc {
+          "" -> with_default
+          _ -> acc <> ", " <> with_default
+        }
+      })
+      <> "}"
     VErr -> "\"error\""
     VTypeDef(name: _, constructors: _) -> "<type _>"
   }
