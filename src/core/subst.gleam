@@ -26,7 +26,7 @@ import core/ast.{
   type Case, type Elim, type Head, type Literal, type Pattern, type Term,
   type Value, Ann, App, Call, Case, Ctr, EApp, Err, Float as LitFloat, HHole,
   HVar, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit,
-  PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTypeDef, TypeDef, Var,
+  PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var,
   make_neut, shift_opt, shift_term,
 }
 import core/state.{type State, lookup_var}
@@ -330,6 +330,7 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
       )
     }
     VErr -> Err("error", single("", 0, 0))
+    VTyp(level) -> Typ(level, single("", 0, 0))
   }
 }
 
@@ -442,6 +443,7 @@ fn value_string(value: Value) -> String {
     VTypeDef(name: n, constructors: _c) -> {
       "<type " <> n
     }
+    VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
     VErr -> "\"error\""
   }
 }

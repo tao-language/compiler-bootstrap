@@ -136,11 +136,14 @@ fn infer_hole(
   _id: Int,
   _span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
-  // Holes are synthesized to a fresh hole value
-  let fresh_id = state.hole_counter
-  let new_state = state.State(..state, hole_counter: fresh_id + 1)
-  let hole_val = ast.VNeut(ast.HHole(fresh_id), [])
-  #(hole_val, hole_val, new_state)
+  // Holes are synthesized to fresh hole values for both value and type.
+  // Value and type get different fresh IDs so they don't unify trivially.
+  let fresh_id_val = state.hole_counter
+  let fresh_id_type = fresh_id_val + 1
+  let new_state = state.State(..state, hole_counter: fresh_id_type + 1)
+  let hole_val = ast.VNeut(ast.HHole(fresh_id_val), [])
+  let hole_type = ast.VNeut(ast.HHole(fresh_id_type), [])
+  #(hole_val, hole_type, new_state)
 }
 
 fn infer_lit(
@@ -148,27 +151,29 @@ fn infer_lit(
   value: ast.Literal,
   _span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
+  // The VALUE of a literal is the literal itself.
+  // The TYPE of a literal is the type constructor ($Int or $Float).
   let literal_value = case value {
     ast.Int(v) -> ast.VLit(ast.Int(v))
     ast.Float(v) -> ast.VLit(ast.Float(v))
   }
   let literal_type = case value {
-    ast.Int(v) -> ast.VLit(ast.Int(v))
-    ast.Float(v) -> ast.VLit(ast.Float(v))
+    ast.Int(_) -> ast.VLit(ast.Int(0))  // $Int
+    ast.Float(_) -> ast.VLit(ast.Float(0.0))  // $Float
   }
   #(literal_value, literal_type, state)
 }
 
-/// Infer a numeric type reference ($Int, $Float, $I8, etc.).
-/// These are type constructors that can be used in annotations.
+/// Infer a type universe ($Type<n>).
+/// $Type<n> evaluates to VTyp(n), with type VTyp(n+1).
 
 fn infer_typ(
   state: state.State,
   level: Int,
   _span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
-  let term_val = ast.VNeut(ast.HVar(level), [])
-  let type_val = ast.VNeut(ast.HVar(level + 1), [])
+  let term_val = ast.VTyp(level)
+  let type_val = ast.VTyp(level + 1)
   #(term_val, type_val, state)
 }
 
@@ -216,7 +221,8 @@ fn infer_pi(
   let dom_val = evaluate(state, dom_term)
   let codom_val = evaluate(state, codomain)
   let pi_type = ast.VPi([], [], #(dom_name, dom_val), codom_val)
-  #(pi_type, ast.VNeut(ast.HVar(0), []), state)
+  // Pi types are types, so their type is * (VTyp(0))
+  #(pi_type, ast.VTyp(0), state)
 }
 
 fn infer_app(
@@ -344,9 +350,16 @@ fn infer_rcd(
   fields: List(#(String, ast.Term)),
   _span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
-  let #(field_vals, _field_types, new_state) =
+  let #(field_vals, field_types, new_state) =
     infer_fields(state, fields, [], [])
-  #(ast.VRcd(field_vals), ast.VNeut(ast.HVar(0), []), new_state)
+  // Record {x: 1, y: 3.14} has type ${x: $Int, y: $Float}
+  // field_types is List(#(String, Value)) - extract the Value part
+  let rcd_type = ast.VRcdT(
+    list.map2(fields, field_types, fn(f, t) {
+      #(f.0, t.1, None)
+    }),
+  )
+  #(ast.VRcd(field_vals), rcd_type, new_state)
 }
 
 /// Infer a record type: ${name: type, default?, ...}
@@ -357,8 +370,8 @@ fn infer_rcd_type(
 ) -> #(ast.Value, ast.Value, state.State) {
   // Evaluate each field's type annotation and optional default to values
   let #(field_vals, new_state) = infer_rcd_type_fields(state, fields, [], [])
-  // Record type evaluates to VRcdT carrying field types and defaults
-  #(ast.VRcdT(field_vals), ast.VNeut(ast.HVar(0), []), new_state)
+  // Record type ${...} has type $Type<0> (VTyp(0))
+  #(ast.VRcdT(field_vals), ast.VTyp(0), new_state)
 }
 
 /// Recursively infer record type fields with their optional defaults.
@@ -415,9 +428,12 @@ fn infer_ctr(
   arg: ast.Term,
   _span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
-  let arg_val = evaluate(state, arg)
+  // Infer the argument to get both its value and type
+  let #(arg_val, arg_type, state2) = infer(state, arg)
   let ctr_val = ast.VCtr(tag, arg_val)
-  #(ctr_val, ast.VNeut(ast.HVar(0), []), state)
+  // #Color(5) has type #Color($Int)
+  let ctr_type = ast.VCtr(tag, arg_type)
+  #(ctr_val, ctr_type, state2)
 }
 
 fn infer_type_def(
@@ -437,19 +453,8 @@ fn infer_type_def(
     name: name,
     constructors: value_constructors,
   )
-  // The type of a TypeDef is *
-  let type_def_type = ast.VPi(
-    [],
-    [],
-    #("_", ast.VLit(ast.Int(0))),
-    ast.VPi(
-      [],
-      [],
-      #("_", ast.VLit(ast.Int(1))),
-      type_def_val,
-    ),
-  )
-  #(type_def_val, type_def_type, state)
+  // The type of a TypeDef is * (VTyp(0))
+  #(type_def_val, ast.VTyp(0), state)
 }
 
 fn infer_err(

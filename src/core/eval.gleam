@@ -3,7 +3,7 @@ import core/ast.{
   type Case, type Pattern, type Term, type Value, Ann, App, Call,
   Case as CoreCase, Ctr, EApp, Err, Float as LitFloat, HHole, HVar, Hole,
   Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT,
-  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTypeDef, TypeDef, Var, term_to_string,
+  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, term_to_string,
 }
 import core/state.{type State, FfiEntry, State, lookup_ffi}
 import syntax/span.{type Span}
@@ -130,7 +130,7 @@ pub fn evaluate(state: State, term: Term) -> Value {
         Error(_) -> VErr
       }
     }
-    Typ(level, _) -> VNeut(HVar(level), [])
+    Typ(level, _) -> VTyp(level)
     TypeDef(name: n, constructors: c, span: _) -> {
       let value_constructors = list.map(c, fn(ctor) { term_ctor_to_value(state, ctor) })
       VTypeDef(name: n, constructors: value_constructors)
@@ -181,7 +181,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     // Error propagates
     VErr -> VErr
     // Cannot apply a type/value that isn't a function - return error
-    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) | VRcdT(_) | VTypeDef(name: _, constructors: _) -> VErr
+    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) | VRcdT(_) | VTypeDef(name: _, constructors: _) | VTyp(_) -> VErr
   }
 }
 
@@ -350,6 +350,7 @@ pub fn match_pattern(
         VNeut(HVar(_), _) -> Ok(bindings)
         VPi(_, _, _, _) -> Ok(bindings)
         VTypeDef(_, _) -> Ok(bindings)
+        VTyp(_) -> Ok(bindings)
         // Match specific type constructors by name
         VCtr(tag, _) ->
           case tag == type_name {
@@ -491,5 +492,6 @@ pub fn value_to_string(value: Value) -> String {
       <> "}"
     VErr -> "\"error\""
     VTypeDef(name: _, constructors: _) -> "<type _>"
+    VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
   }
 }

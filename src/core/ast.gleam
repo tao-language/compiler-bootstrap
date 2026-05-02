@@ -147,6 +147,7 @@ pub type Value {
   VRcd(fields: List(#(String, Value)))
   VRcdT(fields: List(#(String, Value, Option(Value))))
   VTypeDef(name: String, constructors: List(#(String, Value, Value, Span)))
+  VTyp(level: Int)
   VErr
 }
 
@@ -207,6 +208,7 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
         #(f.0, subst(type_args, f.1), new_default)
       }))
     VTypeDef(name: n, constructors: c) -> VTypeDef(name: n, constructors: c)
+    VTyp(level) -> VTyp(level)
     VErr -> VErr
   }
 }
@@ -701,6 +703,7 @@ pub fn value_to_string(value: Value) -> String {
     VTypeDef(name: n, constructors: _c) -> {
       "<VTypeDef " <> n <> ">"
     }
+    VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
     VErr -> "\"error\""
   }
 }

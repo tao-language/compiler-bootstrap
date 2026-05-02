@@ -350,9 +350,10 @@ pub fn eval_err_becomes_vevr_test() {
 // ============================================================================
 
 pub fn eval_typ_becomes_neutral_test() {
+  // $Type<1> evaluates to VTyp(1)
   let state = initial_state([])
   let value = evaluate(state, Typ(1, single("", 1, 1)))
-  assert value == VNeut(HVar(1), [])
+  assert value == ast.VTyp(1)
 }
 
 // ============================================================================

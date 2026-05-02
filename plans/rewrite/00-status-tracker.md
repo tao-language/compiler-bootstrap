@@ -1,7 +1,9 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-05-02 (Phase 2 complete — 783 tests passing, 0 failures.)
+> **Last updated:** 2026-05-02 (Phase 2 complete — 829 tests passing, 0 failures.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
+>
+> **Recent:** Type inference overhaul — added `VTyp` to Value type, fixed literal types (`$Int`/`$Float`), fixed record type inference (`VRcdT`), fixed constructor type inference (`VCtr(tag, type)`), fixed Pi type to return `*` (`VTyp(0)`), fixed hole inference (separate value/type holes), fixed TypeDef type to `*` (`VTyp(0)`). Added 39 new tests for comprehensive type inference coverage. Updated 13 existing tests.
 
 ## Legend
 
@@ -491,6 +493,8 @@
 
 | Date | Change |
 |------|--------|
+| 2026-05-02 | **Phase 2: Type inference overhaul + 39 new tests.** Added `VTyp(level)` to `Value` type. Fixed `infer_lit` to return `$Int`/`$Float` as types (not literal values). Fixed `infer_hole` to return separate fresh holes for value and type. Fixed `infer_typ` to return `VTyp(level)`. Fixed `infer_pi` to return `VTyp(0)` (type `*`). Fixed `infer_rcd` to return `VRcdT` as type. Fixed `infer_ctr` to return `VCtr(tag, inferred_type)`. Fixed `infer_type_def` to return `VTyp(0)`. Fixed `infer_rcd_type` to return `VTyp(0)`. Fixed PType pattern matching in eval to handle `VTyp`. Added 39 new tests covering: literal types, type universes, variable scoping, hole inference, lambda types, Pi types, annotation types, record types, constructor types, error cases, FFI calls, TypeDef types, and property tests. Updated 13 existing tests. **829 tests passing, 0 failures.** |
+| 2026-05-02 | **Phase 2: Type inference overhaul.** Added `VTyp(level)` to `Value` type. Fixed `infer_lit` to return `$Int`/`$Float` as types (not literal values). Fixed `infer_hole` to return separate fresh holes for value and type. Fixed `infer_typ` to return `VTyp(level)`. Fixed `infer_pi` to return `VTyp(0)` (type `*`). Fixed `infer_rcd` to return `VRcdT` as type. Fixed `infer_ctr` to return `VCtr(tag, inferred_type)`. Fixed `infer_type_def` to return `VTyp(0)`. Fixed `infer_rcd_type` to return `VTyp(0)`. Fixed PType pattern matching in eval to handle `VTyp`. Updated 13 existing tests. **783 tests passing, 0 failures.** |
 | 2026-05-02 | **Phase 2: Record type defaults + VRcdT.** `fill_record_defaults()` in `infer.gleam` fills missing record fields from `VRcdT` defaults during `check()`. Added `VRcdT` value type with optional defaults. Updated all modules (unify, subst, generalize, eval, infer, cli). **783 tests passing, 0 failures.** |
 | 2026-05-02 | **Phase 2: Tracker reorganized.** Consolidated Phase 2 (was split across 2b/2c/2d sub-sections) into unified numbered sections 2.1–2.21. Removed duplicate task IDs, merged related items, updated all status to reflect 783 passing tests. |
 | 2026-05-01 | **Phase 2: Wildcard type support.** `$Int`/`$Float` wildcard matching in `unify.gleam` (match_values) and `eval.gleam` (PType patterns). `$Int` matches any integer literal, `$Float` matches float+int. 15 new tests in unify_test.gleam. **738 tests passing, 0 failures.** |

@@ -26,7 +26,7 @@
 import core/ast.{
   type Head, type Term, type Value, Ann, App, Call, Case, Ctr, EApp, Err, HHole,
   HVar, Hole, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi,
-  VRcd, VRcdT, VTypeDef, TypeDef, Var,
+  VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var,
 }
 import gleam/option.{None, Some}
 import gleam/int
@@ -99,6 +99,7 @@ fn free_holes_from(value: Value, binding: Int) -> List(Int) {
       })
     }
     VTypeDef(name: _, constructors: _) -> []
+    VTyp(_) -> []
     VErr -> []
   }
 }
@@ -254,6 +255,7 @@ fn free_levels_from(value: Value, binding: Int) -> List(Int) {
       })
     }
     VTypeDef(name: _, constructors: _) -> []
+    VTyp(_) -> []
     VErr -> []
   }
 }
@@ -434,6 +436,7 @@ fn subst_holes(value: Value, subst: List(#(Int, Int))) -> Value {
       name: n,
       constructors: c,
     )
+    VTyp(level) -> VTyp(level)
     VErr -> VErr
   }
 }

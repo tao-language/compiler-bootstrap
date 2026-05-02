@@ -18,7 +18,7 @@ import gleam/float
 import gleam/string
 import simplifile
 import syntax/grammar.{type ParseError, ParseError as ParseErrorCtor}
-import core/ast.{type Value, type Head, VLit, VNeut, VCtr, VPi, VLam, VRcd, VRcdT, VTypeDef, VErr, HVar, HHole, Int, Float as AstFloat}
+import core/ast.{type Value, type Head, VLit, VNeut, VCtr, VPi, VLam, VRcd, VRcdT, VTyp, VTypeDef, VErr, HVar, HHole, Int, Float as AstFloat}
 import gleam/option.{Some, None}
 
 /// CLI command types.
@@ -205,6 +205,7 @@ fn format_value(value: Value) -> String {
       <> " }"
     VLam(_env, _implicits, param, _) -> "$fn(" <> param.0 <> ") => <lambda>"
     VTypeDef(name: n, constructors: _) -> "<VTypeDef " <> n <> ">"
+    VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
     VErr -> "<error>"
   }
 }

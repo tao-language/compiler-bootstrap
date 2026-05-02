@@ -19,7 +19,7 @@
 import core/ast.{
   type Elim, type Head, type Value,
   EApp, Float as FLit, HHole, HVar, Int as ILit, VCtr, VErr, VLam, VLit,
-  VNeut, VPi, VRcd, VRcdT,
+  VNeut, VPi, VRcd, VRcdT, VTyp,
 }
 import core/state.{type State, State, TypeMismatch, with_err}
 import gleam/int
@@ -152,6 +152,13 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
 
     // ── Record type — unify field by field ───────────────────
     VRcdT(fields1), VRcdT(fields2) -> match_record_types(state, fields1, fields2)
+
+    // ── VTyp — same universe level unifies ───────────────────
+    VTyp(l1), VTyp(l2) if l1 == l2 -> state
+    VTyp(l1), VTyp(l2) -> add_type_mismatch_error(state, expected, actual)
+
+    // ── VTyp — hole in expected binds to actual ──────────────
+    VNeut(HHole(id), []), VTyp(_) -> bind_hole(state, id, expected)
 
     // ── VErr — unifies with any value (error recovery) ───────
     VErr, _ -> state

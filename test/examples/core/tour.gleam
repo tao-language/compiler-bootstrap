@@ -10,7 +10,7 @@
 /// evaluation result.
 import core/ast.{
   type Term, type Value, EApp, HHole, HVar, Int as LitInt,
-  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, Var,
+  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, Var,
 }
 import core/eval.{evaluate}
 import core/state.{type FfiEntry, FfiEntry, initial_state}
@@ -243,9 +243,10 @@ pub fn t01_introduction_test() {
 }
 
 pub fn t02_type_test() {
+  // $Type evaluates to VTyp(0)
   let result = pipeline(parse_source("$Type"))
   assert case result {
-    VNeut(HVar(0), []) -> True
+    VTyp(0) -> True
     _ -> False
   }
 }
