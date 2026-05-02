@@ -351,19 +351,16 @@ pub fn unify_nested_vctr_test() {
 
 /// Test that `is_wildcard` correctly identifies $Int and $Float.
 pub fn is_wildcard_int_test() {
-  let state = initial_state([])
   let int_type = VCtr("Int", VNeut(HHole(0), []))
   assert is_wildcard(int_type)
 }
 
 pub fn is_wildcard_float_test() {
-  let state = initial_state([])
   let float_type = VCtr("Float", VNeut(HHole(0), []))
   assert is_wildcard(float_type)
 }
 
 pub fn is_wildcard_not_other_ctr_test() {
-  let state = initial_state([])
   let other_type = VCtr("Some", VNeut(HHole(0), []))
   assert case is_wildcard(other_type) {
     False -> True

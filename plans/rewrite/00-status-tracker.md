@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-05-01 (Phase 2 complete — 772 tests passing, 0 failures. New CLI run command in cli/run.gleam with 11 tests. CLI supports: `compiler <file.core>`, `compiler -c 'expr'`, `--help`, `--debug`.)
+> **Last updated:** 2026-05-01 (Phase 2 complete — 772 tests passing, 0 failures. Dead code cleanup: removed ~10 unused variables, debug prints, and compiler warnings. Zero warnings.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 
 ## Legend

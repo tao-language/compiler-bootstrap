@@ -165,14 +165,12 @@ fn infer_app(
   arg: ast.Term,
   span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
-  let _fun_val = fun
-  let #(fun_type, fun_type2, state2) = infer(state, fun)
-  let _fun_type2 = fun_type2
+  let #(fun_type, _, state2) = infer(state, fun)
 
   case fun_type {
     ast.VPi(_env, _implicits, domain, codomain) -> {
       let #(arg_val, _, state3) = check(state2, arg, domain.1)
-      let _arg_bound = arg_val
+      let _ = arg_val
       #(codomain, codomain, state3)
     }
     _other -> {
@@ -219,13 +217,10 @@ fn check_match_cases(
 ) -> #(ast.Value, ast.Value, state.State) {
   case cases {
     [] -> #(ast.VErr, ast.VErr, state)
-    [ast.Case(pattern, guard, body, span), ..rest] -> {
-      let _guard = guard
-      let _span = span
+    [ast.Case(pattern, _guard, body, _span), ..rest] -> {
 
       case match_pattern(pattern, scrutinee_val, []) {
         Ok(bindings) -> {
-          let _bindings = bindings
           let body_state = state.State(
             ..state,
             vars: list.map(bindings, fn(b) { #(b.0, #(b.1, ast.VNeut(ast.HHole(0), []))) }),
@@ -289,9 +284,8 @@ fn infer_rcd(
   fields: List(#(String, ast.Term)),
   _span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
-  let #(field_vals, field_types, new_state) =
+  let #(field_vals, _field_types, new_state) =
     infer_fields(state, fields, [], [])
-  let _field_types = field_types
   #(ast.VRcd(field_vals), ast.VNeut(ast.HVar(0), []), new_state)
 }
 

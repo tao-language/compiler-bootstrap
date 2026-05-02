@@ -129,10 +129,7 @@ pub fn evaluate(state: State, term: Term) -> Value {
       let value_constructors = list.map(c, fn(ctor) { term_ctor_to_value(state, ctor) })
       VTypeDef(name: n, constructors: value_constructors)
     }
-    Err(msg, _) -> {
-      let _ = msg
-      VErr
-    }
+    Err(_, _) -> VErr
   }
 }
 

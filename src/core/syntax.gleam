@@ -326,15 +326,11 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
       parse_lambda(#(rest, 0, env, fn_, errors), span)
     [Token("Op", "$", _), Token("Name", "let", _), ..rest] ->
       parse_let(#(rest, 0, env, fn_, errors), span)
-    [Token("Op", "$", _), Token("Name", "match", _), ..rest] -> {
-      let _ = rest
+    [Token("Op", "$", _), Token("Name", "match", _), ..] ->
       parse_match(#(tokens, pos, env, fn_, errors), span)
-    }
     // Also support plain match (without $)
-    [Token("Name", "match", _), ..rest] -> {
-      let _ = rest
+    [Token("Name", "match", _), ..] ->
       parse_match(#(tokens, pos, env, fn_, errors), span)
-    }
     [Token("Op", "$", _), Token("Name", "fix", _), ..rest] ->
       parse_fix(#(rest, 0, env, fn_, errors), span)
     // Type definition: $type { | #C(args) -> ReturnType } or $type<>(...)
@@ -378,7 +374,6 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
         "#" -> {
           let #(tokens, pos, env, fn_, errors) = p
           let span = current_span(p)
-          let _ = "DEBUG: parse_ctr at pos " <> int.to_string(pos)
           parse_ctr(#(tokens, pos + 1, env, fn_, errors), span)
         }
         "-" -> {
@@ -592,7 +587,6 @@ fn parse_type_def_body_with_body(
         }
         _ -> {
           let #(body, rest) = parse_term(p)
-          let _ = type_def
           #(body, rest)
         }
       }
@@ -604,14 +598,12 @@ fn parse_type_def_body_with_body(
         }
         _ -> {
           let #(body, rest) = parse_term(p)
-          let _ = type_def
           #(body, rest)
         }
       }
     }
     _ -> {
       let #(body, rest) = parse_term(p)
-      let _ = type_def
       #(body, rest)
     }
   }

@@ -203,12 +203,12 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
 }
 
 /// Extract the type of a TypeDef (always `*` — universe 0).
+///
+/// A TypeDef has type * (universe 0), represented as a nested Pi type:
+/// Pi(_, _, _, Pi(_, _, _, VTypeDef(name: "", constructors: constructors)))
 pub fn type_of_type_def(
   constructors: List(#(String, Value, Value, Span)),
 ) -> Value {
-  // A TypeDef has type * (universe 0), represented as Pi(_, _, _, Pi(_, _, _, VTypeDef))
-  // Note: This function only needs the constructors list, not the full TypeDef
-  let _ = constructors
   VPi(
     [],
     [],

@@ -3,7 +3,7 @@
 /// Covers literals, identity, let bindings, match expressions,
 /// constructors, records, and error terms.
 
-import core/ast.{type Value, VLit, Lit, VNeut, VPi, Var, VCtr, VLam, VRcd, VErr, Int as LitInt, Float as LitFloat, HHole}
+import core/ast.{type Value, VLit, Lit, Var, VCtr, VLam, VRcd, VErr, Int as LitInt, Float as LitFloat}
 import core/eval.{evaluate}
 import core/infer.{infer}
 import core/quote.{quote}
