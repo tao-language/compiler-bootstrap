@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-05-02 (Phase 2d: Added VRcdT value type for record types with defaults — 778 tests passing, 0 failures.)
+> **Last updated:** 2026-05-02 (Phase 2d: Record type defaults implemented — 783 tests passing, 0 failures.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 
 ## Legend
@@ -265,9 +265,9 @@
 | 2.10.3 | Update infer_lit: infer specific type from context | 🟡 | | Partial — basic inference works |
 | 2.10.4 | Update unify: `$Int` ↔ any integer type | ✅ | | Implemented in match_values |
 | 2.10.5 | Update unify: `$Float` ↔ any float type | ✅ | | Implemented in match_values |
-| 2.11 | Implement record type defaults: `${x: T, y: T = val}` | 🔴 | tour/01_basics/03_records.core | Not yet implemented |
-| 2.11.1 | Parse record type with defaults | 🔴 | | |
-| 2.11.2 | Infer missing fields from type defaults | 🔴 | | |
+| 2.11 | Implement record type defaults: `${x: T, y: T = val}` | ✅ | tour/01_basics/03_records.core | VRcdT + default filling in check() |
+| 2.11.1 | Parse record type with defaults | ✅ | | RcdT with Option(Term) defaults |
+| 2.11.2 | Infer missing fields from type defaults | ✅ | | fill_record_defaults() in check() |
 | 2.12 | Implement implicit parameter auto-expansion | 🟡 | tour/07_advanced/02_implicit_params.core | Parser supports implicit params, inference partial |
 | 2.12.1 | Synthesize implicit args during inference | 🔴 | | |
 | 2.12.2 | Retry application with synthesized args | 🔴 | | |
@@ -516,7 +516,7 @@
 | Phase 5: Extended + Polish | 3-4 | 18 | 0 | 🔴 Not started | Operator overloading, error codes |
 | **Total** | **26-32** | **188+** | **706+** | **Phase 2 complete** | **No CLI yet** |
 
-**Code metrics:** 13 source files, 6183 total lines, 778 tests passing, 0 failing.
+**Code metrics:** 13 source files, 6183 total lines, 783 tests passing, 0 failing.
 
 ---
 
@@ -806,6 +806,7 @@ Both categories indicate the parser produces slightly different AST structure th
 
 | Date | Change |
 |------|--------|
+| 2026-05-02 | **Phase 2d: Record type defaults implemented.** Added `fill_record_defaults()` to `infer.gleam` which fills in missing record fields with defaults from `VRcdT` expected types during `check()`. When checking `{x: 1}` against `${x: $Int, y: $Int = 0}`, the missing `y` field is filled with default `0`. Added 5 new tests for VRcdT inference and default filling. **783 tests passing, 0 failures.** |
 | 2026-05-02 | **Phase 2d: VRcdT value type for record types with defaults.** Added `VRcdT(fields: List(#(String, Value, Option(Value))))` to `Value` type in `ast.gleam` to represent record type values with optional default values. Updated all exhaustive pattern matches across `unify.gleam`, `subst.gleam`, `generalize.gleam`, `eval.gleam`, `infer.gleam`, `cli/run.gleam`. Updated `infer_rcd_type` to return `VRcdT` instead of `VRcd`, preserving default values from the parsed record type. Updated `eval` to produce `VRcdT` from `RcdT` terms. Added `VRcdT` unification in `unify.gleam` (field-by-field matching). Added `VRcdT` string representation in `value_to_string`. Updated tour test expectations. Added 6 new tests for `VRcdT` construction and behavior. **778 tests passing, 0 failures.** |
 | 2026-05-01 | **Phase 2i: Wildcard type support.** Implemented `$Int`/`$Float` wildcard type matching: (1) `unify.gleam` — added wildcard type matching in `match_values`: `$Int` matches any integer literal, `$Float` matches any float/int literal, mismatch error for `$Int`↔float. Added helper functions `is_wildcard` and `literal_matches_wildcard`. (2) `eval.gleam` — extended `PType` pattern matching to handle wildcard type patterns with specific type tag matching. `$Int` matches `VLit(Int)`, `$Float` matches `VLit(Float)` and `VLit(Int)`, specific types match by tag name. (3) `unify_test.gleam` — added 15 new tests covering `is_wildcard`, wildcard unification, and mismatch cases. **738 tests passing, 0 failures.** |
 | 2026-04-30 | **Phase 2h: Test assertion audit complete.** All 17 tests that silently passed without `assert` now correctly fail. Added span preservation tests (`infer_lit_span_test`, `infer_var_span_test`) and comprehensive error path tests (`infer_var_undefined_error`, `infer_not_a_function_int`, `infer_not_a_function_record`, `infer_not_a_function_constructor`, `infer_var_shadowing`, `infer_var_nesting`, `infer_ffi_call_success`, `infer_ffi_call_undefined`) to infer_test. Added VTypeDef/nested value/round-trip tests to quote_test. Removed empty minimal_test.gleam. **706 passed, 17 failures.** |
