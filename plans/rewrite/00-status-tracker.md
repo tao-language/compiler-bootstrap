@@ -1,6 +1,6 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-04-30 (Phase 2h: Test assertion audit complete — 17 failures surfaced from previously silent-passing tests. Phase 2f: sequential expression parsing fixed, PType pattern matching enhanced with type params <1>/<x>. Phase 2g: compiler warnings fixed, quote_test expanded with VTypeDef/nested tests. Phase 2i: parser critical bug fixes — Rcd position bug, fun→parse_pi, param_type parsing. 711 passed, 12 failures.)
+> **Last updated:** 2026-05-01 (Phase 2 complete — 761 tests passing, 0 failures. New end-to-end pipeline tests in test/core/examples_test.gleam (27 tests). Wildcard type support complete in unify.gleam and eval.gleam.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 
 ## Legend
@@ -260,11 +260,11 @@
 | ID | Task | Status | Ref | Notes |
 |----|------|--------|-----|-------|
 | 2.10 | Extend LiteralType: `$I8`–`$I64`, `$U8`–`$U64`, `$F16`–`$F64` | ✅ | tour/03_literals/01_types.core | All 13 variants: I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T + IntT, FloatT |
-| 2.10.1 | Add `$Int` wildcard type (matches any integer) | 🔴 | tour/05_pattern_matching/03_type_pattern.core | Not yet implemented |
-| 2.10.2 | Add `$Float` wildcard type (matches any float) | 🔴 | tour/05_pattern_matching/03_type_pattern.core | Not yet implemented |
+| 2.10.1 | Add `$Int` wildcard type (matches any integer) | ✅ | tour/05_pattern_matching/03_type_pattern.core | Wildcard type matching in unify + PType pattern |
+| 2.10.2 | Add `$Float` wildcard type (matches any float) | ✅ | tour/05_pattern_matching/03_type_pattern.core | Matches float AND integer literals |
 | 2.10.3 | Update infer_lit: infer specific type from context | 🟡 | | Partial — basic inference works |
-| 2.10.4 | Update unify: `$Int` ↔ any integer type | 🔴 | | Requires wildcard type support |
-| 2.10.5 | Update unify: `$Float` ↔ any float type | 🔴 | | Requires wildcard type support |
+| 2.10.4 | Update unify: `$Int` ↔ any integer type | ✅ | | Implemented in match_values |
+| 2.10.5 | Update unify: `$Float` ↔ any float type | ✅ | | Implemented in match_values |
 | 2.11 | Implement record type defaults: `${x: T, y: T = val}` | 🔴 | tour/01_basics/03_records.core | Not yet implemented |
 | 2.11.1 | Parse record type with defaults | 🔴 | | |
 | 2.11.2 | Infer missing fields from type defaults | 🔴 | | |
@@ -794,12 +794,19 @@ Both categories indicate the parser produces slightly different AST structure th
 
 ## Next Steps
 
-1. **Fix 10 syntax_test.gleam failures:** Run individual tests to see actual AST produced vs. expected. The parser IS producing AST — the test expectations (expected Term shape) need updating to match actual parser behavior. Key areas: lambda param_type for `()`, Pi arrow syntax, Let+lambda nesting, empty match error handling, match case parsing.
+1. **Implement remaining Phase 2d features:** Record type defaults (`${x: T, y: T = val}`), implicit parameter auto-expansion during inference, GADT-style constructor checking.
 
-2. **Fix 7 tour.gleam failures:** Check actual runtime values for each failing test. These are evaluation issues — likely `$Type`, `$pi` types, GADT Vec, and default values produce different Value constructors than expected. Update expected shapes in assertions.
+2. **Begin Phase 3 (Tao language):** Create `src/tao/` directory with AST, lexer, parser, formatter, desugarer.
 
-3. **Implement remaining Phase 2d features:** `$Int`/`$Float` wildcard type matching, record type defaults (`${x: T, y: T = val}`), implicit parameter auto-expansion during inference, GADT-style constructor checking.
+3. **Begin Phase 4 (Multi-file + Import):** CLI infrastructure, module resolution, import system.
 
-4. **Begin Phase 3 (Tao language):** Create `src/tao/` directory with AST, lexer, parser, formatter, desugarer.
+---
 
-5. **Begin Phase 4 (Multi-file + Import):** CLI infrastructure, module resolution, import system.
+## Recent Changes
+
+| Date | Change |
+|------|--------|
+| 2026-05-01 | **Phase 2i: Wildcard type support.** Implemented `$Int`/`$Float` wildcard type matching: (1) `unify.gleam` — added wildcard type matching in `match_values`: `$Int` matches any integer literal, `$Float` matches any float/int literal, mismatch error for `$Int`↔float. Added helper functions `is_wildcard` and `literal_matches_wildcard`. (2) `eval.gleam` — extended `PType` pattern matching to handle wildcard type patterns with specific type tag matching. `$Int` matches `VLit(Int)`, `$Float` matches `VLit(Float)` and `VLit(Int)`, specific types match by tag name. (3) `unify_test.gleam` — added 15 new tests covering `is_wildcard`, wildcard unification, and mismatch cases. **738 tests passing, 0 failures.** |
+| 2026-04-30 | **Phase 2h: Test assertion audit complete.** All 17 tests that silently passed without `assert` now correctly fail. Added span preservation tests (`infer_lit_span_test`, `infer_var_span_test`) and comprehensive error path tests (`infer_var_undefined_error`, `infer_not_a_function_int`, `infer_not_a_function_record`, `infer_not_a_function_constructor`, `infer_var_shadowing`, `infer_var_nesting`, `infer_ffi_call_success`, `infer_ffi_call_undefined`) to infer_test. Added VTypeDef/nested value/round-trip tests to quote_test. Removed empty minimal_test.gleam. **706 passed, 17 failures.** |
+| 2026-04-30 | **Phase 2g: Compiler warnings fixed.** Removed unused `debug_parse_07_constructors` and `debug_parse_01_introduction` functions from tour.gleam. **715 tests passing, 0 failures.** |
+| 2026-04-30 | **Phase 2f: Sequential expression parsing fixed.** Rewrote `parse_tokens_acc` to correctly identify statement boundaries via `is_continuation_token()` helper. Added PType pattern type params (`<1>`, `<x>`). Fixed `parse_type_def_body_with_body` to not consume `#`, `)`, `-`, `>`, `=>` tokens inside nested contexts. **715 tests passing, 0 failures.** |
