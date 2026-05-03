@@ -20,16 +20,17 @@
 
 import core/ast.{
   type Term, type Value,
-  Ann, App, Call, Ctr, Err, Hole, HHole, HVar, Lam, Lit, Pi, Rcd, RcdT, Typ, VTyp,
+  Ann, App, Call, Ctr, Err, EApp, Hole, HHole, HVar, Lam, Lit, Pi, Rcd, RcdT, Typ, VTyp,
   VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, TypeDef, Var,
   Int as LitInt, Float as LitFloat,
 }
 import core/infer.{check, infer}
 import core/state.{FfiEntry, initial_state, State}
+import core/syntax.{parse}
+import syntax/span.{single, type Span}
 import gleam/list
 import gleam/option.{None, Some, type Option}
 import gleeunit
-import syntax/span.{single, type Span}
 import core/eval.{evaluate}
 
 pub fn main() {
@@ -1281,3 +1282,43 @@ pub fn infer_pi_evaluates_to_vpi_test() {
 
 
 
+
+// ============================================================================
+// GADT-STYLE CONSTRUCTOR CHECKING TESTS
+// ============================================================================
+
+/// Test that Option constructor type is correctly inferred.
+/// #Some(42) should have type Option(Int).
+pub fn gadt_option_some_type_test() {
+  // Define Option type: $let Option = $fn(a: $Type) => $type { | #Some(a) -> #Option(a) | #None({}) -> #Option(a) }
+  // Then construct #Some(42)
+  let source = """
+$let Option = $fn(args: ${a: $Type}) => $match args {
+| {a} => $type {
+| #Some(a) -> #Option(a)
+| #None({}) -> #Option(a)
+}
+}
+#Some(42)
+"""
+  let state = initial_state([])
+  let #(term, _) = parse(source)
+  let #(value, type_, _) = infer(state, term)
+  // The type should be Option(something) - not a hole
+  assert case type_ {
+    VCtr("Option", _) -> True
+    _ -> False
+  }
+}
+
+/// Test that simple constructor (not a known TypeDef) falls back to old behavior.
+pub fn gadt_unknown_ctor_fallback_test() {
+  let state = initial_state([])
+  let term = Ctr("Unknown", Lit(LitInt(42), single("test", 0, 0)), single("test", 0, 0))
+  let #(value, type_, _) = infer(state, term)
+  // Should fall back to simple VCtr(tag, arg_type)
+  assert case type_ {
+    VCtr("Unknown", _) -> True
+    _ -> False
+  }
+}
