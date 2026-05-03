@@ -271,10 +271,14 @@ pub fn error_to_string(error: Error) -> String {
     MatchRedundant(_) -> "Redundant match case"
     StepLimitExceeded(steps, _) ->
       "Step limit exceeded (" <> int.to_string(steps) <> " steps)"
-    CtorArgTypeMismatch(..) ->
-      "Constructor argument type mismatch"
-    CtorNotFound(..) ->
-      "Constructor not found"
+    CtorArgTypeMismatch(tag: tag, expected_pattern: expected_pattern, actual_type: actual_type, span: _) ->
+      "Constructor '" <> tag
+      <> "' argument type mismatch: expected "
+      <> ast.value_to_string(expected_pattern)
+      <> ", got "
+      <> ast.value_to_string(actual_type)
+    CtorNotFound(tag: tag, span: _) ->
+      "Constructor '" <> tag <> "' not found"
   }
 }
 
