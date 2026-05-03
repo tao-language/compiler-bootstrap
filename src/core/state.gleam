@@ -217,6 +217,9 @@ pub type Error {
   MatchMissing(patterns: List(String), covered: List(String), span: Span)
   MatchRedundant(span: Span)
   StepLimitExceeded(steps: Int, span: Span)
+  // GADT constructor checking errors
+  CtorArgTypeMismatch(tag: String, expected_pattern: Value, actual_type: Value, span: Span)
+  CtorNotFound(tag: String, span: Span)
 }
 
 /// Span type for error reporting.
@@ -268,6 +271,10 @@ pub fn error_to_string(error: Error) -> String {
     MatchRedundant(_) -> "Redundant match case"
     StepLimitExceeded(steps, _) ->
       "Step limit exceeded (" <> int.to_string(steps) <> " steps)"
+    CtorArgTypeMismatch(..) ->
+      "Constructor argument type mismatch"
+    CtorNotFound(..) ->
+      "Constructor not found"
   }
 }
 

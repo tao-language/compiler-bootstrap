@@ -9,7 +9,7 @@
 import core/eval.{evaluate}
 import core/infer.{infer}
 import core/quote.{quote}
-import core/state.{initial_state, type Error, TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction, CtrUndefined, MatchMissing, MatchRedundant, StepLimitExceeded}
+import core/state.{initial_state, type Error, TypeMismatch, VarUndefined, HoleUnsolved, NotAFunction, CtrUndefined, MatchMissing, MatchRedundant, StepLimitExceeded, CtorArgTypeMismatch, CtorNotFound}
 import core/syntax.{parse}
 import gleam/int
 import gleam/io
@@ -177,6 +177,8 @@ fn format_state_errors(errors: List(Error)) -> List(String) {
         "Missing match cases: " <> string.join(patterns, with: ", ")
       MatchRedundant(span: _) -> "Redundant match case"
       StepLimitExceeded(steps: s, span: _) -> "Step limit exceeded: " <> int.to_string(s)
+      CtorArgTypeMismatch(tag: tag, ..) -> "Constructor '" <> tag <> "' argument type mismatch"
+      CtorNotFound(tag: tag, span: _) -> "Constructor '" <> tag <> "' not found"
     }
   })
 }
