@@ -437,13 +437,13 @@ fn infer_ctr(
   let constructor_info = lookup_constructor(env_values, tag)
 
   case constructor_info {
-    Some(#(self_type_val, result_type_val, _)) -> {
+    Some(#(self_type_val, result_type_val)) -> {
       // Match argument type against self_type pattern
       let bindings = match_type_pattern(self_type_val, arg_type, [])
 
       case bindings {
-        Some(env) -> {
-          // Result_type_val is already evaluated, just use it
+        Some(_) -> {
+          // Pattern matched: result_type_val is already evaluated, just use it
           let ctr_val = ast.VCtr(tag, arg_val)
           #(ctr_val, result_type_val, state1)
         }
@@ -534,12 +534,12 @@ fn unify_infer_and_check(
 /// Look up a constructor tag across all TypeDefs in the env.
 ///
 /// Searches through the env for VTypeDef values, then looks up
-/// the constructor by tag. Returns the self_type value, result_type
-/// value, and the VTypeDef if found.
+/// the constructor by tag. Returns the self_type value and result_type
+/// value if found.
 fn lookup_constructor(
   env: List(Value),
   tag: String,
-) -> Option(#(Value, Value, Value)) {
+) -> Option(#(Value, Value)) {
   case list.find(env, fn(v) {
     case v {
       VTypeDef(_, constructors) ->
@@ -550,20 +550,10 @@ fn lookup_constructor(
     Ok(VTypeDef(_, constructors)) -> {
       case list.find(constructors, fn(c) { c.0 == tag }) {
         Ok(#(_tag, self_type_val, result_type_val, _)) ->
-          Some(#(self_type_val, result_type_val, VTypeDef(name: "", constructors: constructors)))
+          Some(#(self_type_val, result_type_val))
         Error(_) -> None
       }
     }
     _ -> None
   }
-}
-
-/// Evaluate a term with additional bindings in the env.
-///
-/// The bindings are short-lived — used only for this evaluation.
-/// If evaluation fails, returns a hole as best-effort.
-fn evaluate_with_bindings(state: state.State, term: ast.Term, bindings: List(#(String, ast.Value))) -> ast.Value {
-  let new_vars = list.map(bindings, fn(b) { #(b.0, #(b.1, ast.VNeut(ast.HHole(0), []))) })
-  let new_state = state.State(..state, vars: list.append(new_vars, state.vars))
-  evaluate(new_state, term)
 }
