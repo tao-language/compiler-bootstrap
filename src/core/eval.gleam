@@ -524,6 +524,7 @@ pub fn match_type_pattern(
 /// type pattern, the default is used. If the arg provides a different
 /// value than the default, the arg's value takes precedence.
 /// Defaults only apply when the field is *missing* from the arg value.
+/// When a field is missing and has no default, use VErr as a sentinel.
 fn fill_rcdt_defaults(
   rcdt_fields: List(#(String, Value, Option(Value))),
   arg_fields: List(#(String, Value)),
@@ -535,7 +536,7 @@ fn fill_rcdt_defaults(
       Ok(#(_, arg_val)) -> #(name, arg_val)  // Arg provides value
       Error(_) -> case default_val {
         Some(def_val) -> #(name, def_val)  // Use default
-        None -> #(name, VNeut(HHole(999), []))  // No default, use hole
+        None -> #(name, VErr)  // No default, field is missing
       }
     }
   })
