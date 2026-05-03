@@ -11,7 +11,7 @@ import core/subst.{force, subst_term_var}
 import gleam/float
 import gleam/int
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 
 // ============================================================================
 // MAIN EVALUATION
@@ -411,6 +411,154 @@ pub fn lookup_env(name: String, bindings: List(#(String, Value))) -> Value {
   case list.find(bindings, fn(b) { b.0 == name }) {
     Ok(#(_, v)) -> v
     Error(_) -> VNeut(HVar(0), [])
+  }
+}
+
+// ============================================================================
+// TYPE PATTERN MATCHING (GADT-style constructor checking)
+// ============================================================================
+
+/// Match a type pattern (Value) against an argument type (Value).
+///
+/// Returns Option(Env) — Some(env) with bindings if matching succeeds,
+/// None if matching fails (pattern mismatch).
+///
+/// The returned env contains bindings for pattern variables (holes) that
+/// were filled during matching. These bindings are short-lived and used
+/// immediately for evaluating result_type terms.
+///
+/// ## Pattern types handled
+///
+/// - **Holes** (`VNeut(HHole(id), [])`): Bind the hole to the arg type
+/// - **Literal types** (`VCtr("Float", [])`, etc.): Check arg type unifies
+/// - **Constructor types** (`VCtr(tag, arg)`): Look up tag in TypeDefs,
+///   recursively check against variant's result type
+/// - **Record types** (`VRcd([...])`): Check each field recursively
+/// - **Record types with defaults** (`VRcdT([...])`): Fill in missing
+///   fields from defaults before matching
+///
+/// ## Example
+///
+/// ```gleam
+/// // Match Float against Float
+/// let pattern = VCtr("Float", [])
+/// let arg = VCtr("Float", [])
+/// let result = match_type_pattern(pattern, arg, [])
+/// // Some([])
+///
+/// // Match any type against a hole (binds the hole)
+/// let pattern = VNeut(HHole(0), [])
+/// let arg = VCtr("Float", [])
+/// let result = match_type_pattern(pattern, arg, [])
+/// // Some([#("hole_0", VCtr("Float", []))])
+/// ```
+pub fn match_type_pattern(
+  type_pattern: Value,
+  arg_type: Value,
+  bindings: List(#(String, Value)),
+) -> Option(List(#(String, Value))) {
+  case type_pattern, arg_type {
+    // Hole in pattern: bind it to the arg type
+    VNeut(HHole(id), []), _ ->
+      case list.find(bindings, fn(b) { b.0 == "hole_" <> int.to_string(id) }) {
+        Ok(_) -> Some(bindings)  // Already bound
+        Error(_) -> Some([#("hole_" <> int.to_string(id), arg_type), ..bindings])
+      }
+
+    // Literal type: check arg type unifies with this type
+    VCtr(tag, _), _ ->
+      case arg_type {
+        // Same type constructor
+        VCtr(tag2, _) if tag == tag2 -> Some(bindings)
+        // Wildcard: Int matches any integer type
+        VCtr(tag2, _) if tag == "Int" ->
+          case tag2 {
+            "I8" | "I16" | "I32" | "I64" | "U8" | "U16" | "U32" | "U64" ->
+              Some(bindings)
+            "Int" -> Some(bindings)
+            _ -> None
+          }
+        // Wildcard: Float matches any float type (and integer types)
+        VCtr(tag2, _) if tag == "Float" ->
+          case tag2 {
+            "F16" | "F32" | "F64" -> Some(bindings)
+            "Int" | "I8" | "I16" | "I32" | "I64" | "U8" | "U16" | "U32" | "U64" ->
+              Some(bindings)
+            "Float" -> Some(bindings)
+            _ -> None
+          }
+        // Type variable matches any type
+        VNeut(HHole(_), _) | VNeut(HVar(_), _) | VTyp(_) | VPi(_, _, _, _) | VTypeDef(_, _) ->
+          Some(bindings)
+        // Other: no match
+        _ -> None
+      }
+
+    // Record type: check each field recursively
+    VRcd(fields), VRcd(arg_fields) ->
+      match_record_type_fields(fields, arg_fields, bindings)
+
+    // Record type with defaults: fill in missing fields, then match
+    VRcdT(rcdt_fields), VRcd(arg_fields) -> {
+      // Extract just (name, type) pairs from VRcdT fields
+      let rcd_type_fields = list.map(rcdt_fields, fn(f) { #(f.0, f.1) })
+      let filled = fill_rcdt_defaults(rcdt_fields, arg_fields)
+      match_record_type_fields(rcd_type_fields, filled, bindings)
+    }
+
+    // Other types: try to unify (conservative match)
+    _, _ ->
+      case type_pattern {
+        // Type variable matches anything
+        VNeut(HHole(_), _) | VNeut(HVar(_), _) | VTyp(_) | VPi(_, _, _, _) | VTypeDef(_, _) ->
+          Some(bindings)
+        // Error: no match
+        _ -> None
+      }
+  }
+}
+
+/// Fill in missing fields from VRcdT defaults.
+///
+/// If a field is missing from the arg value but has a default in the
+/// type pattern, the default is used. If the arg provides a different
+/// value than the default, the arg's value takes precedence.
+/// Defaults only apply when the field is *missing* from the arg value.
+fn fill_rcdt_defaults(
+  rcdt_fields: List(#(String, Value, Option(Value))),
+  arg_fields: List(#(String, Value)),
+) -> List(#(String, Value)) {
+  let arg_map = list.map(arg_fields, fn(f) { #(f.0, f.1) })
+  list.map(rcdt_fields, fn(f) {
+    let #(name, _type_val, default_val) = f
+    case list.find(arg_map, fn(a) { a.0 == name }) {
+      Ok(#(_, arg_val)) -> #(name, arg_val)  // Arg provides value
+      Error(_) -> case default_val {
+        Some(def_val) -> #(name, def_val)  // Use default
+        None -> #(name, VNeut(HHole(999), []))  // No default, use hole
+      }
+    }
+  })
+}
+
+/// Match record type fields against argument type fields.
+fn match_record_type_fields(
+  fields: List(#(String, Value)),
+  arg_fields: List(#(String, Value)),
+  bindings: List(#(String, Value)),
+) -> Option(List(#(String, Value))) {
+  case fields {
+    [] -> Some(bindings)
+    [first, ..rest] -> {
+      case list.find(arg_fields, fn(r) { r.0 == first.0 }) {
+        Ok(#(_, arg_val)) ->
+          case match_type_pattern(first.1, arg_val, bindings) {
+            Some(new_bindings) -> match_record_type_fields(rest, arg_fields, new_bindings)
+            None -> None
+          }
+        Error(_) -> None  // Field missing in arg type
+      }
+    }
   }
 }
 
