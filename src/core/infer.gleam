@@ -7,7 +7,7 @@
 
 import core/ast.{type Value, type Term, type Case, type Pattern, VTypeDef, VCtr, VNeut, VErr, VPi, VRcd, VRcdT, VTyp, Var, Hole, Lam, App, Lit, Ctr, Match, Ann, Call, Rcd, RcdT, Typ, TypeDef, let_var, error_term, make_neut, make_hole_neut, make_var_neut, shift_term, shift_term_from, shift_opt, subst, type_of_type_def, find_constructor, compute_constructor_type, term_to_string, value_to_string}
 import core/state.{FfiEntry}
-import core/eval.{evaluate, match_pattern}
+import core/eval.{evaluate, match_pattern, match_type_pattern}
 import core/subst.{force, force_levels_to_indices}
 import core/unify.{unify}
 import gleam/int
@@ -426,14 +426,46 @@ fn infer_ctr(
   state: state.State,
   tag: String,
   arg: ast.Term,
-  _span: Span,
+  span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
   // Infer the argument to get both its value and type
-  let #(arg_val, arg_type, state2) = infer(state, arg)
-  let ctr_val = ast.VCtr(tag, arg_val)
-  // #Color(5) has type #Color($Int)
-  let ctr_type = ast.VCtr(tag, arg_type)
-  #(ctr_val, ctr_type, state2)
+  let #(arg_val, arg_type, state1) = infer(state, arg)
+
+  // Look up constructor in env for GADT-style checking
+  // Extract just the Value types from the env
+  let env_values = list.map(state1.vars, fn(v) { v.1.0 })
+  let constructor_info = lookup_constructor(env_values, tag)
+
+  case constructor_info {
+    Some(#(self_type_val, result_type_val, _)) -> {
+      // Match argument type against self_type pattern
+      let bindings = match_type_pattern(self_type_val, arg_type, [])
+
+      case bindings {
+        Some(env) -> {
+          // Result_type_val is already evaluated, just use it
+          let ctr_val = ast.VCtr(tag, arg_val)
+          #(ctr_val, result_type_val, state1)
+        }
+        None -> {
+          // Pattern mismatch: error + best-effort
+          let new_state = state.State(
+            ..state1,
+            errors: [state.CtorArgTypeMismatch(tag, self_type_val, arg_type, span), ..state1.errors],
+          )
+          let ctr_val = ast.VCtr(tag, arg_val)
+          let ctr_type = ast.VNeut(ast.HHole(0), [])
+          #(ctr_val, ctr_type, new_state)
+        }
+      }
+    }
+    None -> {
+      // Not a known constructor: fall back to current behavior
+      let ctr_val = ast.VCtr(tag, arg_val)
+      let ctr_type = ast.VCtr(tag, arg_type)
+      #(ctr_val, ctr_type, state1)
+    }
+  }
 }
 
 fn infer_type_def(
