@@ -5,7 +5,7 @@
 /// thin wrapper that synthesizes the term then unifies its type with
 /// the expected type.
 
-import core/ast
+import core/ast.{type Value, type Term, type Case, type Pattern, VTypeDef, VCtr, VNeut, VErr, VPi, VRcd, VRcdT, VTyp, Var, Hole, Lam, App, Lit, Ctr, Match, Ann, Call, Rcd, RcdT, Typ, TypeDef, let_var, error_term, make_neut, make_hole_neut, make_var_neut, shift_term, shift_term_from, shift_opt, subst, type_of_type_def, find_constructor, compute_constructor_type, term_to_string, value_to_string}
 import core/state.{FfiEntry}
 import core/eval.{evaluate, match_pattern}
 import core/subst.{force, force_levels_to_indices}
@@ -484,4 +484,45 @@ fn unify_infer_and_check(
       #(forced, forced_type, state)
     }
   }
+}
+
+// ============================================================================
+// GADT-STYLE CONSTRUCTOR CHECKING HELPERS
+// ============================================================================
+
+/// Look up a constructor tag across all TypeDefs in the env.
+///
+/// Searches through the env for VTypeDef values, then looks up
+/// the constructor by tag. Returns the self_type value, result_type
+/// value, and the VTypeDef if found.
+fn lookup_constructor(
+  env: List(Value),
+  tag: String,
+) -> Option(#(Value, Value, Value)) {
+  case list.find(env, fn(v) {
+    case v {
+      VTypeDef(_, constructors) ->
+        list.any(constructors, fn(c) { c.0 == tag })
+      _ -> False
+    }
+  }) {
+    Ok(VTypeDef(_, constructors)) -> {
+      case list.find(constructors, fn(c) { c.0 == tag }) {
+        Ok(#(_tag, self_type_val, result_type_val, _)) ->
+          Some(#(self_type_val, result_type_val, VTypeDef(name: "", constructors: constructors)))
+        Error(_) -> None
+      }
+    }
+    _ -> None
+  }
+}
+
+/// Evaluate a term with additional bindings in the env.
+///
+/// The bindings are short-lived — used only for this evaluation.
+/// If evaluation fails, returns a hole as best-effort.
+fn evaluate_with_bindings(state: state.State, term: ast.Term, bindings: List(#(String, ast.Value))) -> ast.Value {
+  let new_vars = list.map(bindings, fn(b) { #(b.0, #(b.1, ast.VNeut(ast.HHole(0), []))) })
+  let new_state = state.State(..state, vars: list.append(new_vars, state.vars))
+  evaluate(new_state, term)
 }
