@@ -442,12 +442,21 @@ fn infer_type_def(
   constructors: List(#(String, ast.Term, ast.Term, Span)),
   _span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
-  // Convert Term-level TypeDef to VTypeDef value
-  // For now, we just wrap constructors in neutral values
+  // Evaluate self_type and result_type terms for each constructor.
+  // The self_type is evaluated to a value representing the pattern that
+  // constructor arguments must match against.
+  // The result_type is evaluated to a value representing the type of the
+  // constructed value.
   let value_constructors = list.map(constructors, fn(c) {
     let tag = c.0
+    let self_type_term = c.1
+    let result_type_term = c.2
     let ctor_span = c.3
-    #(tag, ast.VNeut(ast.HHole(0), []), ast.VNeut(ast.HHole(0), []), ctor_span)
+    // Evaluate self_type to a value
+    let self_type_val = evaluate(state, self_type_term)
+    // Evaluate result_type to a value (may contain holes for computed fields)
+    let result_type_val = evaluate(state, result_type_term)
+    #(tag, self_type_val, result_type_val, ctor_span)
   })
   let type_def_val = ast.VTypeDef(
     name: name,
