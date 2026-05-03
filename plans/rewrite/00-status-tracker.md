@@ -1,9 +1,9 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-05-02 (Phase 2 complete — 829 tests passing, 0 failures.)
+> **Last updated:** 2026-05-02 (Phase 2 — 830 tests passing, 1 failure.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 >
-> **Recent:** Type inference overhaul — added `VTyp` to Value type, fixed literal types (`$Int`/`$Float`), fixed record type inference (`VRcdT`), fixed constructor type inference (`VCtr(tag, type)`), fixed Pi type to return `*` (`VTyp(0)`), fixed hole inference (separate value/type holes), fixed TypeDef type to `*` (`VTyp(0)`). Added 39 new tests for comprehensive type inference coverage. Updated 13 existing tests.
+> **Recent:** GADT-style constructor checking — added `CtorArgTypeMismatch`/`CtorNotFound` error types, implemented `match_type_pattern` for type pattern matching (holes, literal types, constructor types, record types, RcdT defaults), added `lookup_constructor` to search env for VTypeDef values, modified `infer_type_def` to evaluate self_type/result_type terms, modified `infer_ctr` for GADT-style checking (look up constructor, match arg type against self_type pattern, use result_type as constructor's type). Added GADT constructor checking unit tests.
 
 ## Legend
 
@@ -223,13 +223,13 @@
 | 2.19.8 | Implement implicit parameter auto-expansion | 🟡 | tour/07_advanced/02_implicit_params.core | Parser supports it, inference partial |
 | 2.19.9 | Synthesize implicit args during inference | 🔴 | | |
 | 2.19.10 | Retry application with synthesized args | 🔴 | | |
-| 2.19.11 | Implement GADT-style constructor checking | 🔴 | tour/04_type_definitions/03_gadt_vec.core | Not yet implemented |
+| 2.19.11 | Implement GADT-style constructor checking | ✅ | tour/04_type_definitions/03_gadt_vec.core | Self_type/result_type evaluated, constructor lookup, pattern matching, best-effort error handling |
 | 2.19.12 | Infer constructor result types | 🔴 | | |
 | 2.19.13 | Handle computed result types (%u32_add) | 🔴 | | |
 | 2.19.14 | Update exhaustiveness for `$Int` wildcard | 🔴 | tour/05_pattern_matching/10_exhaustiveness.core | Integer types are "infinite" |
 | 2.19.15 | Write tests for numeric types | ✅ | | Covered in syntax_test.gleam and infer_test.gleam |
 | 2.19.16 | Write tests for implicit params | 🟡 | | Partial in infer_test.gleam |
-| 2.19.17 | Write tests for GADT patterns | 🔴 | | |
+| 2.19.17 | Write tests for GADT patterns | ✅ | | Added gadt_option_some_type_test, gadt_unknown_ctor_fallback_test |
 
 ### 2.20: CLI `run` Command
 
@@ -263,7 +263,7 @@
 |----------|------|---------|
 | 1 | Fix test expectation mismatches | 7 tour.gleam failures: Value shapes don't match expected — tests were written during design/spec and need updating to match actual behavior |
 | 2 | Implement implicit param auto-expansion | Parser supports implicit params; inference needs `synthesize_implicit_args` + retry logic |
-| 3 | Implement GADT-style constructor checking | Infer constructor result types, handle computed results via FFI calls |
+| 2 | GADT-style constructor checking | ✅ | Self_type/result_type evaluated, constructor lookup, pattern matching, best-effort error handling |
 | 4 | Update exhaustiveness for `$Int` wildcard | Integer types are "infinite" — need wildcard pattern at end |
 | 5 | Implement CLI `run` command | Full pipeline: parse → type check → evaluate → print |
 
