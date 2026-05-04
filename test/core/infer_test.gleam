@@ -17,21 +17,19 @@
 /// - Check function (infer + unify)
 /// - Span preservation
 /// - Property: evaluate → infer → force round-trip
-
 import core/ast.{
-  type Term, type Value,
-  Ann, App, Call, Ctr, Err, EApp, Hole, HHole, HVar, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, VTyp,
-  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, TypeDef, Var,
-  Int as LitInt, Float as LitFloat,
+  type Term, type Value, Ann, App, Call, Ctr, EApp, Err, Float as LitFloat,
+  HHole, HVar, Hole, Int as LitInt, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, TypeDef,
+  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, Var,
 }
-import core/infer.{check, infer}
-import core/state.{FfiEntry, initial_state, State}
-import core/syntax.{parse}
-import syntax/span.{single, type Span}
-import gleam/list
-import gleam/option.{None, Some, type Option}
-import gleeunit
 import core/eval.{evaluate}
+import core/infer.{check, infer}
+import core/state.{FfiEntry, State, initial_state}
+import core/syntax.{parse}
+import gleam/list
+import gleam/option.{type Option, None, Some}
+import gleeunit
+import syntax/span.{type Span, single}
 
 pub fn main() {
   gleeunit.main()
@@ -159,10 +157,7 @@ pub fn infer_typ_level_one_test() {
 pub fn infer_var_in_scope_test() {
   let x_val: Value = VLit(LitInt(42))
   let x_type: Value = v_int(42)
-  let state = State(
-    ..initial_state([]),
-    vars: [#("x", #(x_val, x_type))],
-  )
+  let state = State(..initial_state([]), vars: [#("x", #(x_val, x_type))])
   let result = infer(state, var(0))
   let #(value, type_, _) = result
   assert value == x_val
@@ -332,13 +327,10 @@ pub fn infer_rcd_empty_test() {
 
 pub fn infer_rcd_single_field_test() {
   // {x: 42} has type ${x: $Int}
-  let result = infer(
-    initial_state([]),
-    rcd([#("x", lit_int(42))]),
-  )
+  let result = infer(initial_state([]), rcd([#("x", lit_int(42))]))
   let #(value, type_, _) = result
   assert case value {
-    VRcd([#("x", VLit(LitInt(42)))] ) -> True
+    VRcd([#("x", VLit(LitInt(42)))]) -> True
     _ -> False
   }
   assert type_ == VRcdT([#("x", v_int(0), None)])
@@ -346,13 +338,11 @@ pub fn infer_rcd_single_field_test() {
 
 pub fn infer_rcd_multiple_fields_test() {
   // {a: 1, b: 2} has type ${a: $Int, b: $Int}
-  let result = infer(
-    initial_state([]),
-    rcd([#("a", lit_int(1)), #("b", lit_int(2))]),
-  )
+  let result =
+    infer(initial_state([]), rcd([#("a", lit_int(1)), #("b", lit_int(2))]))
   let #(value, type_, _) = result
   assert case value {
-    VRcd([#("a", VLit(LitInt(1))), #("b", VLit(LitInt(2)))] ) -> True
+    VRcd([#("a", VLit(LitInt(1))), #("b", VLit(LitInt(2)))]) -> True
     _ -> False
   }
   assert type_ == VRcdT([#("a", v_int(0), None), #("b", v_int(0), None)])
@@ -375,10 +365,7 @@ pub fn infer_ctr_simple_test() {
 
 pub fn infer_ctr_nested_test() {
   let nested = ctr("fst", lit_int(1))
-  let result = infer(
-    initial_state([]),
-    ctr("Pair", nested),
-  )
+  let result = infer(initial_state([]), ctr("Pair", nested))
   let #(value, _, _) = result
   assert case value {
     VCtr("Pair", VCtr("fst", VLit(LitInt(1)))) -> True
@@ -490,10 +477,8 @@ pub fn infer_lit_span_test() {
 }
 
 pub fn infer_var_span_test() {
-  let state = State(
-    ..initial_state([]),
-    vars: [#("x", #(VLit(LitInt(1)), v_int(1)))],
-  )
+  let state =
+    State(..initial_state([]), vars: [#("x", #(VLit(LitInt(1)), v_int(1)))])
   let term = Var(0, single("module.core", 10, 5))
   let result = infer(state, term)
   let #(value, _, _) = result
@@ -547,7 +532,8 @@ pub fn infer_app_non_function_record_test() {
 
 pub fn infer_app_non_function_constructor_test() {
   // Applying a constructor as a function should produce error
-  let result = infer(initial_state([]), app(ctr("Just", lit_int(1)), lit_int(2)))
+  let result =
+    infer(initial_state([]), app(ctr("Just", lit_int(1)), lit_int(2)))
   let #(value, type_, state_) = result
   assert value == VErr
   assert type_ == VErr
@@ -565,13 +551,11 @@ pub fn infer_var_shadowing_test() {
   let inner_type = v_int(2)
   let outer_val = VLit(LitInt(1))
   let outer_type = v_int(1)
-  let state = State(
-    ..initial_state([]),
-    vars: [
+  let state =
+    State(..initial_state([]), vars: [
       #("x", #(inner_val, inner_type)),
       #("x", #(outer_val, outer_type)),
-    ],
-  )
+    ])
   let result = infer(state, var(0))
   let #(value, type_, _) = result
   assert value == inner_val
@@ -584,13 +568,11 @@ pub fn infer_var_outer_binding_test() {
   let inner_type = v_int(2)
   let outer_val = VLit(LitInt(1))
   let outer_type = v_int(1)
-  let state = State(
-    ..initial_state([]),
-    vars: [
+  let state =
+    State(..initial_state([]), vars: [
       #("inner", #(inner_val, inner_type)),
       #("outer", #(outer_val, outer_type)),
-    ],
-  )
+    ])
   let result = infer(state, var(0))
   let #(value, type_, _) = result
   assert value == inner_val
@@ -616,14 +598,12 @@ pub fn infer_lambda_nested_bindings_test() {
 
 pub fn infer_multiple_vars_in_scope_test() {
   // Var(0) = x (head = most recent), Var(1) = y, Var(2) = z
-  let state = State(
-    ..initial_state([]),
-    vars: [
+  let state =
+    State(..initial_state([]), vars: [
       #("x", #(VLit(LitInt(1)), v_int(1))),
       #("y", #(VLit(LitInt(2)), v_int(2))),
       #("z", #(VLit(LitInt(3)), v_int(3))),
-    ],
-  )
+    ])
   let result = infer(state, var(0))
   let #(value, _, _) = result
   assert value == VLit(LitInt(1))
@@ -668,30 +648,36 @@ pub fn infer_call_ffi_not_found_test() {
 
 pub fn infer_rcdt_no_defaults_test() {
   // Record type with no defaults should produce VRcdT with None defaults
-  let rcdt = RcdT([
-    #("x", Var(0, sp()), None),
-    #("y", Var(0, sp()), None),
-  ], sp())
+  let rcdt =
+    RcdT(
+      [
+        #("x", Var(0, sp()), None),
+        #("y", Var(0, sp()), None),
+      ],
+      sp(),
+    )
   let result = infer(initial_state([]), rcdt)
   let #(value, _, _) = result
   assert case value {
-    VRcdT(fields) ->
-      list.length(fields) == 2
+    VRcdT(fields) -> list.length(fields) == 2
     _ -> False
   }
 }
 
 pub fn infer_rcdt_with_defaults_test() {
   // Record type with defaults should produce VRcdT with Some defaults
-  let rcdt = RcdT([
-    #("x", Var(0, sp()), None),
-    #("y", Var(0, sp()), Some(Lit(LitInt(0), sp()))),
-  ], sp())
+  let rcdt =
+    RcdT(
+      [
+        #("x", Var(0, sp()), None),
+        #("y", Var(0, sp()), Some(Lit(LitInt(0), sp()))),
+      ],
+      sp(),
+    )
   let result = infer(initial_state([]), rcdt)
   let #(value, _, _) = result
   assert case value {
-    VRcdT(fields) ->
-      list.length(fields) == 2
+    VRcdT(fields) -> list.length(fields) == 2
     _ -> False
   }
 }
@@ -700,16 +686,16 @@ pub fn check_rcd_fills_defaults_test() {
   // When checking a record against a record type with defaults,
   // missing fields should be filled with defaults
   let rcd = Rcd([#("x", Lit(LitInt(1), sp()))], sp())
-  let rcdt_type = VRcdT([
-    #("x", VNeut(HVar(0), []), None),
-    #("y", VNeut(HVar(0), []), Some(VLit(LitInt(0)))),
-  ])
+  let rcdt_type =
+    VRcdT([
+      #("x", VNeut(HVar(0), []), None),
+      #("y", VNeut(HVar(0), []), Some(VLit(LitInt(0)))),
+    ])
   let result = check(initial_state([]), rcd, rcdt_type)
   let #(value, _, _) = result
   // The record should now have both x and y fields
   assert case value {
-    VRcd(fields) ->
-      list.length(fields) == 2
+    VRcd(fields) -> list.length(fields) == 2
     _ -> False
   }
 }
@@ -718,14 +704,14 @@ pub fn check_rcd_no_defaults_needed_test() {
   // When checking a record against a record type with no defaults,
   // the record should be unchanged
   let rcd = Rcd([#("x", Lit(LitInt(1), sp()))], sp())
-  let rcdt_type = VRcdT([
-    #("x", VNeut(HVar(0), []), None),
-  ])
+  let rcdt_type =
+    VRcdT([
+      #("x", VNeut(HVar(0), []), None),
+    ])
   let result = check(initial_state([]), rcd, rcdt_type)
   let #(value, _, _) = result
   assert case value {
-    VRcd(fields) ->
-      list.length(fields) == 1
+    VRcd(fields) -> list.length(fields) == 1
     _ -> False
   }
 }
@@ -738,8 +724,7 @@ pub fn check_rcd_not_rcdt_no_fill_test() {
   let #(value, _, _) = result
   // The record should still have only one field
   assert case value {
-    VRcd(fields) ->
-      list.length(fields) == 1
+    VRcd(fields) -> list.length(fields) == 1
     _ -> False
   }
 }
@@ -828,10 +813,7 @@ pub fn infer_var_bound_to_int_has_type_int_test() {
   // x bound to 42 with type $Int should return $Int as type
   let x_val: Value = VLit(LitInt(42))
   let x_type: Value = v_int(0)
-  let state = State(
-    ..initial_state([]),
-    vars: [#("x", #(x_val, x_type))],
-  )
+  let state = State(..initial_state([]), vars: [#("x", #(x_val, x_type))])
   let result = infer(state, var(0))
   let #(value, type_, _) = result
   assert value == x_val
@@ -842,10 +824,7 @@ pub fn infer_var_bound_to_type_has_type_type_test() {
   // x bound to $Type (VTyp(0)) with type $Type<1> should return $Type<1> as type
   let x_val: Value = VTyp(0)
   let x_type: Value = VTyp(1)
-  let state = State(
-    ..initial_state([]),
-    vars: [#("x", #(x_val, x_type))],
-  )
+  let state = State(..initial_state([]), vars: [#("x", #(x_val, x_type))])
   let result = infer(state, var(0))
   let #(value, type_, _) = result
   assert value == x_val
@@ -858,10 +837,7 @@ pub fn infer_var_bound_to_lambda_has_pi_type_test() {
   let body_type: Value = v_int(0)
   let x_val: Value = VLam([], [], #("x", param_val), var(0))
   let x_type: Value = VPi([], [], #("x", param_val), body_type)
-  let state = State(
-    ..initial_state([]),
-    vars: [#("x", #(x_val, x_type))],
-  )
+  let state = State(..initial_state([]), vars: [#("x", #(x_val, x_type))])
   let result = infer(state, var(0))
   let #(value, type_, _) = result
   assert value == x_val
@@ -965,7 +941,8 @@ pub fn infer_lambda_nested_type_test() {
   let #(_, type_, _) = result
   assert case type_ {
     VPi(_, _, #(_, param_val), body_type) -> {
-      param_val == v_int(0) && case body_type {
+      param_val == v_int(0)
+      && case body_type {
         VPi(_, _, #(_, inner_param), inner_body_type) -> {
           inner_param == v_int(0) && inner_body_type == v_int(0)
         }
@@ -990,8 +967,10 @@ pub fn infer_pi_simple_type_test() {
 
 pub fn infer_pi_dependent_type_test() {
   // Π(x: $Type) → x has type * (VTyp(0))
-  let domain = lit_int(0)  // $Type
-  let codomain = lit_int(0)  // x (same as domain)
+  let domain = lit_int(0)
+  // $Type
+  let codomain = lit_int(0)
+  // x (same as domain)
   let pi = pi(domain, codomain)
   let result = infer(initial_state([]), pi)
   let #(_, type_, _) = result
@@ -1029,7 +1008,8 @@ pub fn infer_app_not_a_function_record_test() {
 
 pub fn infer_app_not_a_function_ctr_test() {
   // #Just(42) applied to 42 should produce VErr
-  let result = infer(initial_state([]), app(ctr("Just", lit_int(42)), lit_int(42)))
+  let result =
+    infer(initial_state([]), app(ctr("Just", lit_int(42)), lit_int(42)))
   let #(value, _, _) = result
   assert value == VErr
 }
@@ -1065,29 +1045,35 @@ pub fn infer_ann_nested_with_int_type_test() {
 
 pub fn infer_rcd_mixed_types_test() {
   // {x: 1, y: 3.14} has type ${x: $Int, y: $Float}
-  let result = infer(initial_state([]), rcd([
-    #("x", lit_int(1)),
-    #("y", lit_float(3.14)),
-  ]))
+  let result =
+    infer(
+      initial_state([]),
+      rcd([
+        #("x", lit_int(1)),
+        #("y", lit_float(3.14)),
+      ]),
+    )
   let #(_, type_, _) = result
   assert case type_ {
-    VRcdT(fields) ->
-      list.length(fields) == 2
+    VRcdT(fields) -> list.length(fields) == 2
     _ -> False
   }
 }
 
 pub fn infer_rcd_three_fields_test() {
   // {x: 1, y: 2, z: 3.14} has type with 3 fields
-  let result = infer(initial_state([]), rcd([
-    #("x", lit_int(1)),
-    #("y", lit_int(2)),
-    #("z", lit_float(3.14)),
-  ]))
+  let result =
+    infer(
+      initial_state([]),
+      rcd([
+        #("x", lit_int(1)),
+        #("y", lit_int(2)),
+        #("z", lit_float(3.14)),
+      ]),
+    )
   let #(_, type_, _) = result
   assert case type_ {
-    VRcdT(fields) ->
-      list.length(fields) == 3
+    VRcdT(fields) -> list.length(fields) == 3
     _ -> False
   }
 }
@@ -1172,7 +1158,8 @@ pub fn infer_app_record_as_function_error_test() {
 
 pub fn infer_app_ctr_as_function_error_test() {
   // #Just(42) 42 should produce VErr
-  let result = infer(initial_state([]), app(ctr("Just", lit_int(42)), lit_int(42)))
+  let result =
+    infer(initial_state([]), app(ctr("Just", lit_int(42)), lit_int(42)))
   let #(value, _, state) = result
   assert value == VErr
   assert state.errors != []
@@ -1279,10 +1266,6 @@ pub fn infer_pi_evaluates_to_vpi_test() {
   }
 }
 
-
-
-
-
 // ============================================================================
 // GADT-STYLE CONSTRUCTOR CHECKING TESTS
 // ============================================================================
@@ -1290,19 +1273,19 @@ pub fn infer_pi_evaluates_to_vpi_test() {
 /// Test that Option constructor type is correctly inferred.
 /// #Some(42) should have type Option(Int).
 pub fn gadt_option_some_type_test() {
-  // Define Option type: $let Option = $fn(a: $Type) => $type { | #Some(a) -> #Option(a) | #None({}) -> #Option(a) }
+  // Define Option type.
   // Then construct #Some(42)
   // The Option TypeDef should be found via lookup_constructor_from_lam
   // and the result type should be #Option(a) with a solved via unification
-  let source = """
-$let Option = $fn(args: ${a: $Type}) => $match args {
-| {a} => $type {
+  let source = ""
+  "
+$let Option = $type<a: $Type> {
 | #Some(a) -> #Option(a)
 | #None({}) -> #Option(a)
 }
-}
 #Some(42)
-"""
+"
+  ""
   let state = initial_state([])
   let #(term, _) = parse(source)
   let #(value, type_, _) = infer(state, term)
@@ -1317,7 +1300,8 @@ $let Option = $fn(args: ${a: $Type}) => $match args {
 /// Test that simple constructor (not a known TypeDef) falls back to old behavior.
 pub fn gadt_unknown_ctor_fallback_test() {
   let state = initial_state([])
-  let term = Ctr("Unknown", Lit(LitInt(42), single("test", 0, 0)), single("test", 0, 0))
+  let term =
+    Ctr("Unknown", Lit(LitInt(42), single("test", 0, 0)), single("test", 0, 0))
   let #(value, type_, _) = infer(state, term)
   // Should fall back to simple VCtr(tag, arg_type)
   assert case type_ {
@@ -1332,7 +1316,8 @@ pub fn gadt_unknown_ctor_fallback_test() {
 pub fn gadt_fallback_when_type_not_in_env_test() {
   // Create a constructor directly without a TypeDef in env
   let state = initial_state([])
-  let term = Ctr("MyCtor", Lit(LitInt(42), single("test", 0, 0)), single("test", 0, 0))
+  let term =
+    Ctr("MyCtor", Lit(LitInt(42), single("test", 0, 0)), single("test", 0, 0))
   let #(value, type_, _) = infer(state, term)
   // Should fall back to legacy VCtr(tag, arg_type)
   assert case type_ {
