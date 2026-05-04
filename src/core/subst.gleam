@@ -24,9 +24,11 @@
 /// ```
 import core/ast.{
   type Case, type Elim, type Head, type Literal, type Pattern, type Term,
-  type Value, Ann, App, Call, Case, Ctr, EApp, Err, Float as LitFloat, HHole,
+  type Value, type LiteralType,
+  Ann, App, Call, Case, Ctr, EApp, Err, Float as LitFloat, HHole,
   HVar, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit,
-  PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var,
+  PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, VLitT, LitT,
+  IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
   make_neut, shift_opt, shift_term,
 }
 import core/state.{type State, lookup_var}
@@ -218,6 +220,7 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
         span,
       )
     Typ(level, span) -> Typ(level, span)
+    LitT(ltype, span) -> LitT(ltype, span)
     TypeDef(name: name, params: params, constructors: cons, span: span) -> {
       let shift_cons = fn(ctor) {
         case ctor {
@@ -235,6 +238,7 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
         span: span,
       )
     }
+    LitT(ltype, span) -> LitT(ltype, span)
     Err(msg, span) -> Err(msg, span)
   }
 }
@@ -338,6 +342,7 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
     }
     VErr -> Err("error", single("", 0, 0))
     VTyp(level) -> Typ(level, single("", 0, 0))
+    VLitT(ltype) -> LitT(ltype, single("", 0, 0))
   }
 }
 
@@ -451,7 +456,26 @@ fn value_string(value: Value) -> String {
       "<type " <> n
     }
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
+    VLitT(ltype) -> vlitt_string(ltype)
     VErr -> "\"error\""
+  }
+}
+
+fn vlitt_string(type_: LiteralType) -> String {
+  case type_ {
+    IntT -> "$Int"
+    FloatT -> "$Float"
+    I8T -> "$I8"
+    I16T -> "$I16"
+    I32T -> "$I32"
+    I64T -> "$I64"
+    U8T -> "$U8"
+    U16T -> "$U16"
+    U32T -> "$U32"
+    U64T -> "$U64"
+    F16T -> "$F16"
+    F32T -> "$F32"
+    F64T -> "$F64"
   }
 }
 
@@ -581,6 +605,7 @@ fn term_string(term: Term) -> String {
         }
       }) <> " }"
     }
+    LitT(ltype, _) -> vlitt_string(ltype)
     Err(msg, _) -> "\"" <> msg <> "\""
   }
 }

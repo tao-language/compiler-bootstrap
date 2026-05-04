@@ -1,9 +1,12 @@
 /// Normalization by Evaluation (NBE) - Term → Value
 import core/ast.{
-  type Case, type Pattern, type Term, type Value, Ann, App, Call,
+  type Case, type Pattern, type Term, type Value, type LiteralType,
+  Ann, App, Call,
   Case as CoreCase, Ctr, EApp, Err, Float as LitFloat, HHole, HVar, Hole,
   Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT,
-  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, term_to_string,
+  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, term_to_string, VLitT,
+  LitT,
+  IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
 import core/state.{type State, FfiEntry, State, lookup_ffi}
 import syntax/span.{type Span}
@@ -94,11 +97,6 @@ pub fn evaluate(state: State, term: Term) -> Value {
       VPi(env, implicit_env, #(name, dom), codom)
     }
     Lit(value, _) -> VLit(value)
-    Ctr(tag, arg, _) -> VCtr(tag, evaluate(state, arg))
-    Rcd(fields, _) ->
-      VRcd(list.map(fields, fn(f) { #(f.0, evaluate(state, f.1)) }))
-    // Record type: ${field: type = default?, ...}
-    // Evaluates to a VRcdT value carrying field types and optional defaults
     RcdT(fields, _) -> {
       let typed_fields = list.map(fields, fn(f) {
         let field_type = evaluate(state, f.1)
@@ -110,6 +108,10 @@ pub fn evaluate(state: State, term: Term) -> Value {
       })
       VRcdT(typed_fields)
     }
+    LitT(ltype, _) -> VLitT(ltype)
+    Ctr(tag, arg, _) -> VCtr(tag, evaluate(state, arg))
+    Rcd(fields, _) ->
+      VRcd(list.map(fields, fn(f) { #(f.0, evaluate(state, f.1)) }))
     Ann(term, _, _) -> evaluate(state, term)
     Match(arg, cases, _) -> {
       let scrutinee = evaluate(state, arg)
@@ -185,7 +187,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     // Error propagates
     VErr -> VErr
     // Cannot apply a type/value that isn't a function - return error
-    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) | VRcdT(_) | VTypeDef(name: _, params: _, constructors: _) | VTyp(_) -> VErr
+    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) | VRcdT(_) | VTypeDef(name: _, params: _, constructors: _) | VTyp(_) | VLitT(_) -> VErr
   }
 }
 
@@ -331,13 +333,82 @@ pub fn match_pattern(
       }
     }
     PType(type_name, _) -> {
-      // Type patterns match on type-level values and wildcard types.
-      // PType("Int", _) matches any integer literal (wildcard matching).
-      // PType("Float", _) matches any float or integer literal.
+      // Type patterns match on type-level values and literal types.
+      // PType("Int", _) matches $Int, $I8-$I64, $U8-$U64 (wildcard matching).
+      // PType("Float", _) matches $Float, $F16-$F64, and integer types.
       // PType("Type", _) matches any type-level value.
       // PType("I8"), PType("I16"), etc. match their specific type constructor.
       case value {
-        // Wildcard type matching on literal values
+        // VLitT matching (evaluated literal type values)
+        VLitT(t) ->
+          case t {
+            IntT ->
+              case type_name {
+                "Int" | "I8" | "I16" | "I32" | "I64" | "U8" | "U16" | "U32" | "U64" -> Ok(bindings)
+                _ -> Error(Nil)
+              }
+            FloatT ->
+              case type_name {
+                "Float" | "F16" | "F32" | "F64" -> Ok(bindings)
+                _ -> Error(Nil)
+              }
+            I8T ->
+              case type_name {
+                "I8" | "Int" -> Ok(bindings)
+                _ -> Error(Nil)
+              }
+            I16T ->
+              case type_name {
+                "I16" | "Int" -> Ok(bindings)
+                _ -> Error(Nil)
+              }
+            I32T ->
+              case type_name {
+                "I32" | "Int" -> Ok(bindings)
+                _ -> Error(Nil)
+              }
+            I64T ->
+              case type_name {
+                "I64" | "Int" -> Ok(bindings)
+                _ -> Error(Nil)
+              }
+            U8T ->
+              case type_name {
+                "U8" | "Int" -> Ok(bindings)
+                _ -> Error(Nil)
+              }
+            U16T ->
+              case type_name {
+                "U16" | "Int" -> Ok(bindings)
+                _ -> Error(Nil)
+              }
+            U32T ->
+              case type_name {
+                "U32" | "Int" -> Ok(bindings)
+                _ -> Error(Nil)
+              }
+            U64T ->
+              case type_name {
+                "U64" | "Int" -> Ok(bindings)
+                _ -> Error(Nil)
+              }
+            F16T ->
+              case type_name {
+                "F16" | "Float" -> Ok(bindings)
+                _ -> Error(Nil)
+              }
+            F32T ->
+              case type_name {
+                "F32" | "Float" -> Ok(bindings)
+                _ -> Error(Nil)
+              }
+            F64T ->
+              case type_name {
+                "F64" | "Float" -> Ok(bindings)
+                _ -> Error(Nil)
+              }
+          }
+        // Wildcard type matching on literal values (legacy)
         VLit(ast.Int(_)) ->
           case type_name {
             "Int" | "I8" | "I16" | "I32" | "I64" | "U8" | "U16" | "U32" | "U64" ->
@@ -434,9 +505,8 @@ pub fn lookup_env(name: String, bindings: List(#(String, Value))) -> Value {
 /// ## Pattern types handled
 ///
 /// - **Holes** (`VNeut(HHole(id), [])`): Bind the hole to the arg type
-/// - **Literal types** (`VCtr("Float", [])`, etc.): Check arg type unifies
-/// - **Constructor types** (`VCtr(tag, arg)`): Look up tag in TypeDefs,
-///   recursively check against variant's result type
+/// - **Literal types** (`VLitT(IntT)`, `VLitT(FloatT)`, etc.): Check arg type unifies
+/// - **Constructor types** (`VCtr(tag, arg)`): Check arg type matches by tag
 /// - **Record types** (`VRcd([...])`): Check each field recursively
 /// - **Record types with defaults** (`VRcdT([...])`): Fill in missing
 ///   fields from defaults before matching
@@ -444,17 +514,17 @@ pub fn lookup_env(name: String, bindings: List(#(String, Value))) -> Value {
 /// ## Example
 ///
 /// ```gleam
-/// // Match Float against Float
-/// let pattern = VCtr("Float", [])
-/// let arg = VCtr("Float", [])
+/// // Match IntT against IntT
+/// let pattern = VLitT(IntT)
+/// let arg = VLitT(IntT)
 /// let result = match_type_pattern(pattern, arg, [])
 /// // Some([])
 ///
 /// // Match any type against a hole (binds the hole)
 /// let pattern = VNeut(HHole(0), [])
-/// let arg = VCtr("Float", [])
+/// let arg = VLitT(IntT)
 /// let result = match_type_pattern(pattern, arg, [])
-/// // Some([#("hole_0", VCtr("Float", []))])
+/// // Some([#("hole_0", VLitT(IntT))])
 /// ```
 pub fn match_type_pattern(
   type_pattern: Value,
@@ -469,32 +539,42 @@ pub fn match_type_pattern(
         Error(_) -> Some([#("hole_" <> int.to_string(id), arg_type), ..bindings])
       }
 
-    // Literal type: check arg type unifies with this type
-    VCtr(tag, _), _ ->
+    // VLitT literal type: check arg type unifies
+    VLitT(ptag), VLitT(atag) ->
+      case ptag == atag {
+        True -> Some(bindings)
+        False -> None
+      }
+    // Wildcard: $Int matches any integer literal type
+    VLitT(IntT), _ ->
       case arg_type {
-        // Same type constructor
-        VCtr(tag2, _) if tag == tag2 -> Some(bindings)
-        // Wildcard: Int matches any integer type
-        VCtr(tag2, _) if tag == "Int" ->
-          case tag2 {
-            "I8" | "I16" | "I32" | "I64" | "U8" | "U16" | "U32" | "U64" ->
-              Some(bindings)
-            "Int" -> Some(bindings)
-            _ -> None
-          }
-        // Wildcard: Float matches any float type (and integer types)
-        VCtr(tag2, _) if tag == "Float" ->
-          case tag2 {
-            "F16" | "F32" | "F64" -> Some(bindings)
-            "Int" | "I8" | "I16" | "I32" | "I64" | "U8" | "U16" | "U32" | "U64" ->
-              Some(bindings)
-            "Float" -> Some(bindings)
-            _ -> None
-          }
-        // Type variable matches any type
-        VNeut(HHole(_), _) | VNeut(HVar(_), _) | VTyp(_) | VPi(_, _, _, _) | VTypeDef(_, _, _) ->
+        VLitT(IntT) | VLitT(I8T) | VLitT(I16T) | VLitT(I32T) | VLitT(I64T) |
+        VLitT(U8T) | VLitT(U16T) | VLitT(U32T) | VLitT(U64T) -> Some(bindings)
+        _ -> None
+      }
+    // Wildcard: $Float matches any float literal type AND integer literal types
+    VLitT(FloatT), _ ->
+      case arg_type {
+        VLitT(FloatT) | VLitT(F16T) | VLitT(F32T) | VLitT(F64T) |
+        VLitT(IntT) | VLitT(I8T) | VLitT(I16T) | VLitT(I32T) | VLitT(I64T) |
+        VLitT(U8T) | VLitT(U16T) | VLitT(U32T) | VLitT(U64T) -> Some(bindings)
+        _ -> None
+      }
+    // VCtr: same tag check (legacy support)
+    VCtr(tag, _), VCtr(tag2, _) if tag == tag2 -> Some(bindings)
+    // VCtr: $Int wildcard matches integer type constructors
+    VCtr("Int", _), VCtr(tag2, _) ->
+      case tag2 {
+        "I8" | "I16" | "I32" | "I64" | "U8" | "U16" | "U32" | "U64" | "Int" ->
           Some(bindings)
-        // Other: no match
+        _ -> None
+      }
+    // VCtr: $Float wildcard matches float type constructors and integers
+    VCtr("Float", _), VCtr(tag2, _) ->
+      case tag2 {
+        "F16" | "F32" | "F64" | "Int" | "I8" | "I16" | "I32" | "I64" |
+        "U8" | "U16" | "U32" | "U64" | "Float" ->
+          Some(bindings)
         _ -> None
       }
 
@@ -646,5 +726,24 @@ pub fn value_to_string(value: Value) -> String {
     VErr -> "\"error\""
     VTypeDef(name: _, params: _, constructors: _) -> "<type _>"
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
+    VLitT(t) -> vlitt_string(t)
+  }
+}
+
+fn vlitt_string(type_: LiteralType) -> String {
+  case type_ {
+    IntT -> "$Int"
+    FloatT -> "$Float"
+    I8T -> "$I8"
+    I16T -> "$I16"
+    I32T -> "$I32"
+    I64T -> "$I64"
+    U8T -> "$U8"
+    U16T -> "$U16"
+    U32T -> "$U32"
+    U64T -> "$U64"
+    F16T -> "$F16"
+    F32T -> "$F32"
+    F64T -> "$F64"
   }
 }

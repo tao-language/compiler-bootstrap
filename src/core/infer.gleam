@@ -5,7 +5,9 @@
 /// thin wrapper that synthesizes the term then unifies its type with
 /// the expected type.
 
-import core/ast.{type Value, type Term, type Case, type Pattern, VTypeDef, VCtr, VNeut, VErr, VPi, VRcd, VRcdT, VTyp, VLam, Var, Hole, Lam, App, Lit, Ctr, Match, Ann, Call, Rcd, RcdT, Typ, TypeDef, Case as CaseCtor, let_var, error_term, make_neut, make_hole_neut, make_var_neut, shift_term, shift_term_from, shift_opt, subst, type_of_type_def, find_constructor, compute_constructor_type, term_to_string, value_to_string}
+import core/ast.{type Value, type Term, type Case, type Pattern, type LiteralType,
+  VTypeDef, VCtr, VNeut, VErr, VPi, VRcd, VRcdT, VTyp, VLam, Var, Hole, Lam, App, Lit, Ctr, Match, Ann, Call, Rcd, RcdT, Typ, TypeDef, Case as CaseCtor, let_var, error_term, make_neut, make_hole_neut, make_var_neut, shift_term, shift_term_from, shift_opt, subst, type_of_type_def, find_constructor, compute_constructor_type, term_to_string, value_to_string, VLitT, LitT,
+  IntT, FloatT}
 import core/state.{FfiEntry, def_var}
 import core/eval.{evaluate, match_pattern, match_type_pattern}
 import core/subst.{force, force_levels_to_indices}
@@ -37,6 +39,7 @@ pub fn infer(state: state.State, term: ast.Term) -> #(ast.Value, ast.Value, stat
     ast.Ctr(tag, arg, span) -> infer_ctr(state, tag, arg, span)
     ast.TypeDef(name, params, constructors, span) -> infer_type_def(state, name, params, constructors, span)
     ast.Err(message, span) -> infer_err(state, message, span)
+    ast.LitT(t, span) -> infer_litt(state, t, span)
   }
 }
 
@@ -152,14 +155,14 @@ fn infer_lit(
   _span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
   // The VALUE of a literal is the literal itself.
-  // The TYPE of a literal is the type constructor ($Int or $Float).
+  // The TYPE of a literal is the literal type: $Int for integers, $Float for floats.
   let literal_value = case value {
     ast.Int(v) -> ast.VLit(ast.Int(v))
     ast.Float(v) -> ast.VLit(ast.Float(v))
   }
   let literal_type = case value {
-    ast.Int(_) -> ast.VLit(ast.Int(0))  // $Int
-    ast.Float(_) -> ast.VLit(ast.Float(0.0))  // $Float
+    ast.Int(_) -> ast.VLitT(IntT)  // $Int
+    ast.Float(_) -> ast.VLitT(FloatT)  // $Float
   }
   #(literal_value, literal_type, state)
 }
@@ -543,6 +546,18 @@ fn infer_err(
   #(ast.VErr, ast.VErr, state)
 }
 
+/// Infer a literal type annotation ($Int, $Float, $I32, etc.).
+/// The value is the literal type itself (e.g., $Int), and its type is $Type<0>.
+fn infer_litt(
+  state: state.State,
+  type_: ast.LiteralType,
+  _span: Span,
+) -> #(ast.Value, ast.Value, state.State) {
+  let value = ast.VLitT(type_)
+  let type_val = ast.VTyp(0)
+  #(value, type_val, state)
+}
+
 // ============================================================================
 // UNIFICATION HELPER
 // ============================================================================
@@ -725,6 +740,7 @@ fn apply_unify_bindings(
       }))
     ast.VTypeDef(name, params, constructors) -> ast.VTypeDef(name, params, constructors)
     ast.VTyp(level) -> ast.VTyp(level)
+    ast.VLitT(t) -> ast.VLitT(t)
     ast.VErr -> ast.VErr
   }
 }

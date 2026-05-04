@@ -80,6 +80,8 @@ pub type Term {
   Rcd(fields: List(#(String, Term)), span: Span)
   RcdT(fields: List(#(String, Term, Option(Term))), span: Span)
   Typ(level: Int, span: Span)
+  /// Literal type annotations: $Int, $Float, $I32, $F64, etc.
+  LitT(t: LiteralType, span: Span)
   TypeDef(
     name: String,
     params: List(#(String, Term)),
@@ -150,6 +152,8 @@ pub type Value {
   VRcdT(fields: List(#(String, Value, Option(Value))))
   VTypeDef(name: String, params: List(#(String, Value)), constructors: List(#(String, List(String), Value, Value, Span)))
   VTyp(level: Int)
+  /// Evaluated literal type: $Int, $Float, $I32, $F64, etc.
+  VLitT(t: LiteralType)
   VErr
 }
 
@@ -211,6 +215,7 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
       }))
     VTypeDef(name: n, params: p, constructors: c) -> VTypeDef(name: n, params: p, constructors: c)
     VTyp(level) -> VTyp(level)
+    VLitT(ltype) -> VLitT(ltype)
     VErr -> VErr
   }
 }
@@ -390,6 +395,7 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
         span,
       )
     Typ(level, span) -> Typ(level, span)
+    LitT(ltype, span) -> LitT(ltype, span)
     TypeDef(name: n, params: params, constructors: cons, span: s) -> {
       let shift_cons = fn(c) {
         case c {
@@ -558,6 +564,7 @@ pub fn term_to_string(term: Term) -> String {
       })
       <> "}"
     Typ(level, _) -> "%Type(" <> int.to_string(level) <> ")"
+    LitT(ltype, _) -> literal_type_to_string(ltype)
     TypeDef(name: name, params: params, constructors: constructors, span: _span) -> {
       let params_str = case params {
         [] -> ""
@@ -730,9 +737,29 @@ pub fn value_to_string(value: Value) -> String {
       "<VTypeDef " <> n <> ">"
     }
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
+    VLitT(ltype) -> literal_type_to_string(ltype)
     VErr -> "\"error\""
   }
 }
+
+fn literal_type_to_string(type_: LiteralType) -> String {
+  case type_ {
+    IntT -> "$Int"
+    FloatT -> "$Float"
+    I8T -> "$I8"
+    I16T -> "$I16"
+    I32T -> "$I32"
+    I64T -> "$I64"
+    U8T -> "$U8"
+    U16T -> "$U16"
+    U32T -> "$U32"
+    U64T -> "$U64"
+    F16T -> "$F16"
+    F32T -> "$F32"
+    F64T -> "$F64"
+  }
+}
+
 
 fn neut_head_to_string(head: Head) -> String {
   case head {

@@ -15,7 +15,8 @@
 /// - Edge cases (empty input, extra tokens, unicode)
 import core/ast.{
   App, Case as CoreCase, Ctr, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
-  Match, PLit, PUnit, Pi, Rcd, Typ, Var,
+  LitT, Match, PLit, PUnit, Pi, Rcd, Typ, Var,
+  IntT, FloatT, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
 import core/syntax.{parse, parse_tokens}
 import gleam/list
@@ -674,7 +675,7 @@ pub fn parse_lambda_body_is_variable_test() {
     Lam([], #("x", param_type), body, _) -> {
       // Check param type is Int
       let param_ok = case param_type {
-        Ctr("Int", _, _) -> True
+        LitT(IntT, _) -> True
         _ -> False
       }
       // Check body is Var(0)
@@ -696,7 +697,7 @@ pub fn parse_lambda_body_is_application_test() {
     Lam([], #("x", param_type), body, _) -> {
       // Check param type is Int
       let param_ok = case param_type {
-        Ctr("Int", _, _) -> True
+        LitT(IntT, _) -> True
         _ -> False
       }
       // Check body is App(Lit(42))

@@ -18,7 +18,9 @@ import gleam/float
 import gleam/string
 import simplifile
 import syntax/grammar.{type ParseError, ParseError as ParseErrorCtor}
-import core/ast.{type Value, type Head, VLit, VNeut, VCtr, VPi, VLam, VRcd, VRcdT, VTyp, VTypeDef, VErr, HVar, HHole, Int, Float as AstFloat}
+import core/ast.{type Value, type Head, type LiteralType,
+  VLit, VNeut, VCtr, VPi, VLam, VRcd, VRcdT, VTyp, VTypeDef, VErr, HVar, HHole, Int, Float as AstFloat,
+  VLitT, IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T}
 import gleam/option.{Some, None}
 
 /// CLI command types.
@@ -208,7 +210,26 @@ fn format_value(value: Value) -> String {
     VLam(_env, _implicits, param, _) -> "$fn(" <> param.0 <> ") => <lambda>"
     VTypeDef(name: n, params: _, constructors: _) -> "<VTypeDef " <> n <> ">"
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
+    VLitT(t) -> format_litt(t)
     VErr -> "<error>"
+  }
+}
+
+fn format_litt(type_: LiteralType) -> String {
+  case type_ {
+    IntT -> "$Int"
+    FloatT -> "$Float"
+    I8T -> "$I8"
+    I16T -> "$I16"
+    I32T -> "$I32"
+    I64T -> "$I64"
+    U8T -> "$U8"
+    U16T -> "$U16"
+    U32T -> "$U32"
+    U64T -> "$U64"
+    F16T -> "$F16"
+    F32T -> "$F32"
+    F64T -> "$F64"
   }
 }
 

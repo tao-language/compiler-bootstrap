@@ -17,9 +17,10 @@
 /// The type checker calls this function at every place where two types
 /// must agree. All errors accumulate in state; no early returns.
 import core/ast.{
-  type Elim, type Head, type Value,
+  type Elim, type Head, type Value, type LiteralType,
   EApp, Float as FLit, HHole, HVar, Int as ILit, VCtr, VErr, VLam, VLit,
-  VNeut, VPi, VRcd, VRcdT, VTyp,
+  VNeut, VPi, VRcd, VRcdT, VTyp, VLitT,
+  IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
 import core/state.{type State, State, TypeMismatch, with_err}
 import gleam/int
@@ -48,21 +49,32 @@ pub fn unify(state: State, expected: Value, actual: Value) -> State {
   match_values(state, expected, actual)
 }
 
-/// Check if a value is a wildcard type ($Int or $Float).
+/// Check if a value is a wildcard literal type ($Int or $Float).
 pub fn is_wildcard(value: Value) -> Bool {
   case value {
-    VCtr(tag, _) -> tag == "Int" || tag == "Float"
+    VLitT(IntT) | VLitT(FloatT) -> True
     _ -> False
   }
 }
 
-/// Check if a literal matches a wildcard type family.
-/// - "Int" matches integer literals only
-/// - "Float" matches both float and integer literals
-pub fn literal_matches_wildcard(literal: ast.Literal, wildcard: String) -> Bool {
-  case literal {
-    ast.Int(_) -> wildcard == "Int" || wildcard == "Float"
-    ast.Float(_) -> wildcard == "Float"
+/// Check if a literal type matches a wildcard type.
+/// - IntT matches IntT, I8T-I64T, U8T-U64T
+/// - FloatT matches FloatT, F16T-F64T, and also IntT (for integer literals)
+pub fn literal_type_matches_wildcard(wildcard: LiteralType, lit_type: LiteralType) -> Bool {
+  case wildcard {
+    IntT -> {
+      case lit_type {
+        IntT | I8T | I16T | I32T | I64T | U8T | U16T | U32T | U64T -> True
+        _ -> False
+      }
+    }
+    FloatT -> {
+      case lit_type {
+        FloatT | F16T | F32T | F64T | IntT | I8T | I16T | I32T | I64T | U8T | U16T | U32T | U64T -> True
+        _ -> False
+      }
+    }
+    _ -> False
   }
 }
 
@@ -127,18 +139,12 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
           )
       }
 
-    // ── Literal matches wildcard type ($Int / $Float) ────────
-    // Wildcard $Int: matches any integer literal
-    VLit(ILit(_)), VCtr("Int", _) -> state
-    // Wildcard $Float: matches any float literal AND integer literal
-    VLit(FLit(_)), VCtr("Float", _) -> state
-    VLit(ILit(_)), VCtr("Float", _) -> state
-    // Reverse direction
-    VCtr("Int", _), VLit(ILit(_)) -> state
-    VCtr("Float", _), VLit(FLit(_)) -> state
-    VCtr("Float", _), VLit(ILit(_)) -> state
-    // Mismatch: float against $Int
-    VLit(FLit(_)), VCtr("Int", _) -> add_type_mismatch_error(state, expected, actual)
+    // ── VLitT — exact type match ───────────────────────────
+    VLitT(t1), VLitT(t2) ->
+      case t1 == t2 {
+        True -> state
+        False -> add_type_mismatch_error(state, expected, actual)
+      }
 
     // ── Literal — exact value match ────────────────────────
     VLit(lit1), VLit(lit2) ->

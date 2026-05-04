@@ -19,8 +19,9 @@
 /// - Property: evaluate → infer → force round-trip
 import core/ast.{
   type Term, type Value, Ann, App, Call, Ctr, EApp, Err, Float as LitFloat,
-  HHole, HVar, Hole, Int as LitInt, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, TypeDef,
-  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, Var,
+  HHole, HVar, Hole, Int as LitInt, Lam, Lit, LitT, Match, Pi, Rcd, RcdT, Typ, TypeDef,
+  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, Var, VLitT,
+  IntT, FloatT, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
 import core/eval.{evaluate}
 import core/infer.{check, infer}
@@ -49,6 +50,15 @@ fn lit_int(v: Int) -> Term {
 
 fn lit_float(v: Float) -> Term {
   Lit(LitFloat(v), sp())
+}
+
+/// Helper: create a literal type term ($Int)
+fn lit_t_int() -> Term {
+  LitT(IntT, sp())
+}
+
+fn lit_t_float() -> Term {
+  LitT(FloatT, sp())
 }
 
 fn var(i: Int) -> Term {
@@ -91,7 +101,13 @@ fn err() -> Term {
   Err("error", sp())
 }
 
-fn v_int(v: Int) -> Value {
+/// Helper: return the $Int literal type value (VLitT IntT) used in type assertions.
+pub fn v_int(_v: Int) -> Value {
+  VLitT(IntT)
+}
+
+/// Helper: return an integer literal value.
+pub fn lit_val(v: Int) -> Value {
   VLit(LitInt(v))
 }
 
@@ -100,17 +116,17 @@ fn v_int(v: Int) -> Value {
 // ============================================================================
 
 pub fn infer_lit_int_test() {
-  // 42 has value VLit(42) and type $Int (VLit(0))
+  // 42 has value VLit(42) and type $Int (VLitT(IntT))
   let result = infer(initial_state([]), lit_int(42))
   let #(value, type_, _) = result
-  assert value == v_int(42)
+  assert value == lit_val(42)
   assert type_ == v_int(0)
 }
 
 pub fn infer_lit_int_zero_test() {
   let result = infer(initial_state([]), lit_int(0))
   let #(value, type_, _) = result
-  assert value == v_int(0)
+  assert value == lit_val(0)
   assert type_ == v_int(0)
 }
 
@@ -118,7 +134,7 @@ pub fn infer_lit_int_negative_test() {
   // -1 has value VLit(-1) and type $Int (VLit(0))
   let result = infer(initial_state([]), lit_int(-1))
   let #(value, type_, _) = result
-  assert value == v_int(-1)
+  assert value == lit_val(-1)
   assert type_ == v_int(0)
 }
 
@@ -127,7 +143,7 @@ pub fn infer_lit_float_test() {
   let result = infer(initial_state([]), lit_float(3.14))
   let #(value, type_, _) = result
   assert value == VLit(LitFloat(3.14))
-  assert type_ == VLit(LitFloat(0.0))
+  assert type_ == VLitT(FloatT)
 }
 
 // ============================================================================
@@ -220,7 +236,7 @@ pub fn infer_hole_incremental_test() {
 
 pub fn infer_lambda_identity_test() {
   // fn(x: Int) -> x : Π(Int) -> Int
-  let param_type = lit_int(0)
+  let param_type = lit_t_int()
   let body = var(0)
   let lam = lam("x", param_type, body)
   let result = infer(initial_state([]), lam)
@@ -237,7 +253,7 @@ pub fn infer_lambda_identity_test() {
 
 pub fn infer_lambda_constant_test() {
   // fn(x: Int) -> 42 : Π(Int) -> Int
-  let param_type = lit_int(0)
+  let param_type = lit_t_int()
   let body = lit_int(42)
   let lam = lam("x", param_type, body)
   let result = infer(initial_state([]), lam)
@@ -292,24 +308,24 @@ pub fn infer_app_not_a_function_test() {
 pub fn infer_ann_same_type_test() {
   // 42 : Int has type $Int
   let inner = lit_int(42)
-  let type_ = lit_int(0)
+  let type_ = lit_t_int()
   let ann_term = ann(inner, type_)
   let result = infer(initial_state([]), ann_term)
   let #(value, type_ret, _) = result
-  assert value == v_int(42)
+  assert value == lit_val(42)
   assert type_ret == v_int(0)
 }
 
 pub fn infer_ann_nested_test() {
   // (42 : Int) : Int has type $Int
   let inner = lit_int(42)
-  let type_1 = lit_int(0)
+  let type_1 = lit_t_int()
   let inner_ann = ann(inner, type_1)
-  let type_2 = lit_int(0)
+  let type_2 = lit_t_int()
   let outer_ann = ann(inner_ann, type_2)
   let result = infer(initial_state([]), outer_ann)
   let #(value, type_ret, _) = result
-  assert value == v_int(42)
+  assert value == lit_val(42)
   assert type_ret == v_int(0)
 }
 
@@ -394,17 +410,17 @@ pub fn check_lit_int_matches_test() {
   let term_type: Value = v_int(0)
   let result = check(initial_state([]), term, term_type)
   let #(value, type_, _) = result
-  assert value == v_int(42)
+  assert value == lit_val(42)
   assert type_ == v_int(0)
 }
 
 pub fn check_nested_same_type_test() {
   // Check (42 : Int) : Int
-  let inner = ann(lit_int(42), lit_int(0))
+  let inner = ann(lit_int(42), lit_t_int())
   let expected_type: Value = v_int(0)
   let result = check(initial_state([]), inner, expected_type)
   let #(value, type_, _) = result
-  assert value == v_int(42)
+  assert value == lit_val(42)
   assert type_ == v_int(0)
 }
 
@@ -424,7 +440,7 @@ pub fn infer_roundtrip_lit_int_test() {
     VLit(LitInt(42)) -> True
     _ -> False
   }
-  assert value == v_int(42)
+  assert value == lit_val(42)
 }
 
 pub fn infer_roundtrip_lit_float_test() {
@@ -442,7 +458,7 @@ pub fn infer_roundtrip_lit_float_test() {
 
 pub fn infer_roundtrip_lambda_test() {
   // Lambda evaluates to a VLam
-  let lam = lam("x", lit_int(0), var(0))
+  let lam = lam("x", lit_t_int(), var(0))
   let state = initial_state([])
   let evaluated = evaluate(state, lam)
   let result = infer(state, lam)
@@ -582,7 +598,7 @@ pub fn infer_var_outer_binding_test() {
 pub fn infer_lambda_nested_bindings_test() {
   // fn(x: Int) => fn(y: Int) => x — inner lambda body uses outer var(1)
   let inner_body = var(1)
-  let inner_lam = lam("y", lit_int(0), inner_body)
+  let inner_lam = lam("y", lit_t_int(), inner_body)
   let outer_lam = lam("x", lit_int(0), inner_lam)
   let result = infer(initial_state([]), outer_lam)
   let #(value, type_, _) = result
@@ -746,7 +762,7 @@ pub fn infer_lit_float_has_type_float_test() {
   // 3.14 should have type $Float (VLit(Float(0.0)))
   let result = infer(initial_state([]), lit_float(3.14))
   let #(_, type_, _) = result
-  assert type_ == VLit(LitFloat(0.0))
+  assert type_ == VLitT(FloatT)
 }
 
 pub fn check_lit_int_matches_float_type_test() {
@@ -755,7 +771,7 @@ pub fn check_lit_int_matches_float_type_test() {
   let term_type: Value = VLit(LitFloat(0.0))
   let result = check(initial_state([]), term, term_type)
   let #(value, type_, _) = result
-  assert value == v_int(42)
+  assert value == lit_val(42)
   assert type_ == v_int(0)
 }
 
@@ -768,7 +784,7 @@ pub fn check_lit_float_cannot_match_int_type_test() {
   // Best-effort: value is still the literal
   assert value == VLit(LitFloat(3.14))
   // Type is the inferred type (unification records error but returns inferred type)
-  assert type_ == VLit(LitFloat(0.0))
+  assert type_ == VLitT(FloatT)
 }
 
 pub fn check_lit_int_cannot_match_type_type_test() {
@@ -777,7 +793,7 @@ pub fn check_lit_int_cannot_match_type_type_test() {
   let term_type: Value = VTyp(0)
   let result = check(initial_state([]), term, term_type)
   let #(value, _, _) = result
-  assert value == v_int(42)
+  assert value == lit_val(42)
 }
 
 // ── Type Universe Tests ─────────────────────────────────────────────────
@@ -803,7 +819,7 @@ pub fn infer_int_type_has_type_universe_test() {
   // Note: $Int as a type reference is parsed differently, not as a literal 0
   let result = infer(initial_state([]), lit_int(0))
   let #(value, type_, _) = result
-  assert value == v_int(0)
+  assert value == lit_val(0)
   assert type_ == v_int(0)
 }
 
@@ -872,7 +888,7 @@ pub fn infer_hole_incremental_counter_test() {
 
 pub fn infer_lambda_identity_type_test() {
   // λ(x: $Int) => x has type Π($Int) → $Int
-  let param_type = lit_int(0)
+  let param_type = lit_t_int()
   let body = var(0)
   let lam = lam("x", param_type, body)
   let result = infer(initial_state([]), lam)
@@ -887,7 +903,7 @@ pub fn infer_lambda_identity_type_test() {
 
 pub fn infer_lambda_constant_type_test() {
   // λ(x: $Int) => 42 has type Π($Int) → $Int
-  let param_type = lit_int(0)
+  let param_type = lit_t_int()
   let body = lit_int(42)
   let lam = lam("x", param_type, body)
   let result = infer(initial_state([]), lam)
@@ -902,14 +918,14 @@ pub fn infer_lambda_constant_type_test() {
 
 pub fn infer_lambda_returns_float_type_test() {
   // λ(x: $Int) => 3.14 has type Π($Int) → $Float
-  let param_type = lit_int(0)
+  let param_type = lit_t_int()
   let body = lit_float(3.14)
   let lam = lam("x", param_type, body)
   let result = infer(initial_state([]), lam)
   let #(_, type_, _) = result
   assert case type_ {
     VPi(_, _, #(_, param_val), body_type) -> {
-      param_val == v_int(0) && body_type == VLit(LitFloat(0.0))
+      param_val == v_int(0) && body_type == VLitT(FloatT)
     }
     _ -> False
   }
@@ -935,8 +951,8 @@ pub fn infer_lambda_untyped_param_type_test() {
 pub fn infer_lambda_nested_type_test() {
   // λ(x: $Int) => λ(y: $Int) => x has type Π($Int) → Π($Int) → $Int
   let inner_body = var(1)
-  let inner_lam = lam("y", lit_int(0), inner_body)
-  let outer_lam = lam("x", lit_int(0), inner_lam)
+  let inner_lam = lam("y", lit_t_int(), inner_body)
+  let outer_lam = lam("x", lit_t_int(), inner_lam)
   let result = infer(initial_state([]), outer_lam)
   let #(_, type_, _) = result
   assert case type_ {
@@ -1018,7 +1034,7 @@ pub fn infer_app_not_a_function_ctr_test() {
 
 pub fn infer_ann_with_int_type_test() {
   // 42 : $Int has type $Int
-  let ann_term = ann(lit_int(42), lit_int(0))
+  let ann_term = ann(lit_int(42), lit_t_int())
   let result = infer(initial_state([]), ann_term)
   let #(_, type_, _) = result
   assert type_ == v_int(0)
@@ -1026,16 +1042,16 @@ pub fn infer_ann_with_int_type_test() {
 
 pub fn infer_ann_with_float_type_test() {
   // 42 : $Float has type $Float
-  let ann_term = ann(lit_int(42), lit_float(0.0))
+  let ann_term = ann(lit_int(42), lit_t_float())
   let result = infer(initial_state([]), ann_term)
   let #(_, type_, _) = result
-  assert type_ == VLit(LitFloat(0.0))
+  assert type_ == VLitT(FloatT)
 }
 
 pub fn infer_ann_nested_with_int_type_test() {
   // (42 : $Int) : $Int has type $Int
-  let inner = ann(lit_int(42), lit_int(0))
-  let outer = ann(inner, lit_int(0))
+  let inner = ann(lit_int(42), lit_t_int())
+  let outer = ann(inner, lit_t_int())
   let result = infer(initial_state([]), outer)
   let #(_, type_, _) = result
   assert type_ == v_int(0)
@@ -1096,10 +1112,10 @@ pub fn infer_ctr_nested_int_type_test() {
 }
 
 pub fn infer_ctr_float_arg_type_test() {
-  // #Some(3.14) has type #Some($Float)
+  // #Some(3.14) has type #Some($Float) = #Some(VLitT(FloatT))
   let result = infer(initial_state([]), ctr("Some", lit_float(3.14)))
   let #(_, type_, _) = result
-  assert type_ == VCtr("Some", VLit(LitFloat(0.0)))
+  assert type_ == VCtr("Some", VLitT(FloatT))
 }
 
 pub fn infer_ctr_unit_arg_type_test() {
@@ -1188,7 +1204,7 @@ pub fn infer_ann_constructor_type_mismatch_test() {
   let result = infer(initial_state([]), term)
   let #(value, _, _) = result
   // Best-effort: value is still the literal
-  assert value == v_int(42)
+  assert value == lit_val(42)
 }
 
 pub fn infer_match_type_checking_test() {
@@ -1208,7 +1224,7 @@ pub fn infer_call_ffi_returns_int_test() {
     Some(VLit(LitInt(99)))
   }
   let state = initial_state([FfiEntry("get_99", ffi_fn)])
-  let term = Call("get_99", [], [], Some(lit_int(0)), sp())
+  let term = Call("get_99", [], [], Some(lit_t_int()), sp())
   let result = infer(state, term)
   let #(_, type_, _) = result
   assert type_ == v_int(0)
@@ -1232,7 +1248,7 @@ pub fn infer_type_def_has_type_star_test() {
 
 pub fn infer_lambda_evaluates_to_vlam_test() {
   // Lambda evaluates to VLam
-  let param_type = lit_int(0)
+  let param_type = lit_t_int()
   let body = var(0)
   let lam = lam("x", param_type, body)
   let state = initial_state([])

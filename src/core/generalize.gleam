@@ -26,7 +26,7 @@
 import core/ast.{
   type Head, type Term, type Value, Ann, App, Call, Case, Ctr, EApp, Err, HHole,
   HVar, Hole, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi,
-  VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var,
+  VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, VLitT, LitT,
 }
 import gleam/option.{None, Some}
 import gleam/int
@@ -100,6 +100,7 @@ fn free_holes_from(value: Value, binding: Int) -> List(Int) {
     }
     VTypeDef(name: _, params: _, constructors: _) -> []
     VTyp(_) -> []
+    VLitT(_) -> []
     VErr -> []
   }
 }
@@ -191,6 +192,7 @@ fn free_holes_term(term: Term, binding: Int) -> List(Int) {
         list.append(acc2, free_holes_term(c.3, binding))
       })
     }
+    LitT(_, _) -> []
     Err(_, _) -> []
   }
 }
@@ -256,6 +258,7 @@ fn free_levels_from(value: Value, binding: Int) -> List(Int) {
     }
     VTypeDef(name: _, params: _, constructors: _) -> []
     VTyp(_) -> []
+    VLitT(_) -> []
     VErr -> []
   }
 }
@@ -351,6 +354,7 @@ fn free_levels_term(term: Term, binding: Int) -> List(Int) {
         list.append(acc2, free_levels_term(c.3, binding))
       })
     }
+    LitT(_, _) -> []
     Err(_, _) -> []
   }
 }
@@ -438,6 +442,7 @@ fn subst_holes(value: Value, subst: List(#(Int, Int))) -> Value {
       constructors: c,
     )
     VTyp(level) -> VTyp(level)
+    VLitT(ltype) -> VLitT(ltype)
     VErr -> VErr
   }
 }
@@ -527,6 +532,7 @@ fn subst_holes_term(term: Term, subst: List(#(Int, Int))) -> Term {
         span: span,
       )
     }
+    LitT(ltype, span) -> LitT(ltype, span)
     Err(msg, span) -> Err(msg, span)
   }
 }

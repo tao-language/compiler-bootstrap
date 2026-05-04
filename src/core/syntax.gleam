@@ -26,9 +26,11 @@
 ///   - FFI calls: $fn(arg: Type, arg: Type) -> ReturnType
 ///   - Type definitions: $type { | #C(arg) -> ResultType }
 import core/ast.{
-  type Case, type Pattern, type Term, Ann, App, Call, Case as CoreCase, Ctr, Err, TypeDef,
-  Float as LitFloat, Hole, Int as LitInt, Lam, Lit, Match, PAny, PAlias, PCtr, PError, PLit,
+  type Case, type Pattern, type Term, type LiteralType,
+  Ann, App, Call, Case as CoreCase, Ctr, Err, TypeDef,
+  Float as LitFloat, Hole, Int as LitInt, Lam, Lit, LitT, Match, PAny, PAlias, PCtr, PError, PLit,
   PType, PRcd, PUnit, PVar, Pi, Rcd, RcdT, Typ, Var, let_var,
+  IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
 import gleam/float
 import gleam/int
@@ -158,6 +160,7 @@ fn term_span(term: Term) -> Span {
     RcdT(_, span) -> span
     Typ(_, span) -> span
     TypeDef(_, _, _, span) -> span
+    LitT(_, span) -> span
     Err(_, span) -> span
   }
 }
@@ -344,10 +347,24 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
     // Pi type: $pi<a: Type>(a) -> a
     [Token("Op", "$", _), Token("Name", "pi", _), ..rest] ->
       parse_pi(#(rest, 0, env, fn_, errors), span)
-    // Built-in type values: $Type (the type of types), $Int, $Float, etc.
+    // Built-in type values: $Type, $Int, $Float, $I32, etc.
     [Token("Op", "$", _), Token("Name", name, _), ..rest] ->
       case name {
         "Type" -> #(Typ(0, span), #(rest, 0, env, fn_, errors))
+        // Literal types: $Int, $Float, $I32, $I64, $U8-$U64, $F16-$F64
+        "Int" -> #(LitT(t: IntT, span: span), #(rest, 0, env, fn_, errors))
+        "Float" -> #(LitT(t: FloatT, span: span), #(rest, 0, env, fn_, errors))
+        "I8" -> #(LitT(t: I8T, span: span), #(rest, 0, env, fn_, errors))
+        "I16" -> #(LitT(t: I16T, span: span), #(rest, 0, env, fn_, errors))
+        "I32" -> #(LitT(t: I32T, span: span), #(rest, 0, env, fn_, errors))
+        "I64" -> #(LitT(t: I64T, span: span), #(rest, 0, env, fn_, errors))
+        "U8" -> #(LitT(t: U8T, span: span), #(rest, 0, env, fn_, errors))
+        "U16" -> #(LitT(t: U16T, span: span), #(rest, 0, env, fn_, errors))
+        "U32" -> #(LitT(t: U32T, span: span), #(rest, 0, env, fn_, errors))
+        "U64" -> #(LitT(t: U64T, span: span), #(rest, 0, env, fn_, errors))
+        "F16" -> #(LitT(t: F16T, span: span), #(rest, 0, env, fn_, errors))
+        "F32" -> #(LitT(t: F32T, span: span), #(rest, 0, env, fn_, errors))
+        "F64" -> #(LitT(t: F64T, span: span), #(rest, 0, env, fn_, errors))
         _ -> #(Ctr(name, Hole(0, span), span), #(rest, 0, env, fn_, errors))
       }
     // FFI builtin calls: % followed by function name
@@ -1420,6 +1437,7 @@ fn term_to_string(term: Term) -> String {
     RcdT(_, _) -> "rcd_type"
     Typ(_, _) -> "type"
     TypeDef(_, _, _, _) -> "type def"
+    LitT(_, _) -> "lit_type"
     Err(msg, _) -> msg
   }
 }
