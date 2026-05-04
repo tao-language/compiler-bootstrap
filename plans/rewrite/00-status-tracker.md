@@ -1,9 +1,9 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-05-02 (Phase 2 — 832 tests passing, 1 failure.)
+> **Last updated:** 2026-05-02 (Phase 2 — 833 tests passing, 1 failure.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 >
-> **Recent:** Added `@x y z.` binding syntax for constructor-bound variables in TypeDefs. Updated AST to 5-tuple constructor format. Implemented `lookup_constructor_from_lam` for VLam-based TypeDefs. Fixed `$let` binding handling in `infer_app`. GADT checking for VLam-based TypeDefs partially implemented.
+> **Recent:** Simplified TypeDef model — added `params` field directly to TypeDef instead of using VLam/TypeDef combination. Parser now handles `$type<a: $Type, b: $Type> { ... }` syntax. Constructor lookup simplified to direct VTypeDef lookup. GADT unification still needs implementation.
 
 ## Legend
 

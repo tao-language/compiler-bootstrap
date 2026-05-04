@@ -129,26 +129,25 @@ $type {                                       // monomorphic type
 ```
 
 ```gleam
-// Polymorphic type definition
-$let Option = $fn(a: $Type) => $type {
+// Polymorphic type definition with type params
+$let Option = $type<a: $Type> {
 | #Some(a) -> #Option(a)
 | #None({}) -> #Option(a)
 }
 
-// GADT-style type definition (tour: 04_type_definitions/03_gadt_vec.core)
-$let Vec = $fn(args: ${n: $U32, a: $Type}) => $match args {
-| {n, a} => $type {
+// GADT-style type definition with multiple params (tour: 04_type_definitions/03_gadt_vec.core)
+$let Vec = $type<n: $U32, a: $Type> {
   | #Nil({}) -> #Vec({n: 0, a: a})
   | #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %u32_add(m, 1) -> $U32, a: a})
-  }
 }
 ```
 
 Key features:
-- **Monomorphic types**: No type parameters, defined directly
-- **Polymorphic types**: Wrap in `$fn(a: $Type) => $type { ... }`
-- **GADT constraints**: Constructor arguments can be type patterns (`#Expr($Int)`)
-- **Computed results**: Constructor result types can include FFI calls (`%u32_add(m, 1)`)
+- **Monomorphic types**: No type parameters, defined directly with `$type { ... }`
+- **Polymorphic types**: Use `$type<a: $Type, b: $Type> { ... }` syntax
+- **GADT constraints**: Constructor arguments can be type patterns
+- **Computed results**: Constructor result types can include FFI calls
+- **@-bindings**: Constructor-bound variables use `@m` syntax for GADT unification
 
 ### Term (Syntax — De Bruijn Indices)
 
@@ -180,8 +179,8 @@ pub type Term {
   // Source: {x: 1, y: 2}, {} (unit)
   Typ(level: Int, span: Span)         // Type universe $Type<n>
   // Source: $Type, $Type<0>, $Type<1>, $Type<x>
-  TypeDef(name: String, constructors: List(#(String, Term, Term, Span)), span: Span)
-  // Source: $type { | #C(a) -> R }
+  TypeDef(name: String, params: List(#(String, Term)), constructors: List(#(String, List(String), Term, Term, Span)), span: Span)
+  // Source: $type<a: $Type> { | #C(a) -> R }
   Err(message: String, span: Span)
   // Source: $error "my runtime error message"
 }
@@ -204,7 +203,8 @@ pub type Type = Value
 | `{x: 1, y: 2}` | `Rcd([("x", Lit(Int(1))), ("y", Lit(Int(2)))])` |
 | `()` or `{}` | `Rcd([])` | Unit |
 | `$Type<n>` | `Typ(n, span)` |
-| `$type { | #C -> R }` | `TypeDef("name", [("C", self, result)])` |
+| `$type { | #C -> R }` | `TypeDef("name", [], [("C", [], self, result)])` | No params
+| `$type<a: $Type> { | #C(a) -> R }` | `TypeDef("name", [("a", Type)], [("C", [], self, result)])` | With params
 
 ### Value (Semantics — De Bruijn Levels)
 
@@ -219,7 +219,7 @@ pub type Value {
   VLit(value: Literal)                             // Evaluated literal
   VCtr(tag: String, arg: Value)                    // Constructor value
   VRcd(fields: List(#(String, Value)))             // Evaluated record
-  VTypeDef(name: String, constructors: List(#(String, Value, Value, Span)))  // Type definition value
+  VTypeDef(name: String, params: List(#(String, Value)), constructors: List(#(String, List(String), Value, Value, Span)))  // Type definition value
   VErr                                             // Error value
 }
 
