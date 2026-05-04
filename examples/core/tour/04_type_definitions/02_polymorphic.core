@@ -1,6 +1,6 @@
 // Polymorphic (generic) types have type parameters.
 
-$let Option = $fn(a: $Type) => $type {
+$let Option = $type<a: $Type> {
 | #Some(a) -> #Option(a)
 | #None({}) -> #Option(a)
 }

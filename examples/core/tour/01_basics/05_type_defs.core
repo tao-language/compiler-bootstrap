@@ -4,9 +4,9 @@
 // Type definitions have the following syntax:
 // $type<param1: Type1, param2: Type2, ..., paramN: TypeN> {
 // | #Constructor1(argument) -> ReturnType
-// | #Constructor2(argument) -> ReturnType
+// | @binding. #Constructor2(argument) -> ReturnType
 // ...
-// | #ConstructorN(argument) -> ReturnType
+// | @x y z. #ConstructorN(argument) -> ReturnType
 // }
 
 // The type parameters are optional.
@@ -14,6 +14,7 @@
 // If it has parameters, it's a polymorphic (generic) type.
 
 // Constructors consist of a tag starting with #.
+// They can have optional bindings.
 // They always take exactly one argument.
 // You can use records to pass zero or multiple arguments.
 

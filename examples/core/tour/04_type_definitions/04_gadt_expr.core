@@ -1,5 +1,5 @@
 // Here's an example of a type-safe expression using GADTs.
-$let Expr = $fn(a: $Type) => $type {
+$let Expr = $type<a: $Type> {
 | #LitInt($I32) -> #Expr($I32)
 | #LitBool(#Bool({})) -> #Expr(#Bool({}))
 | #Add({x: #Expr($I32), y: #Expr($I32)}) -> #Expr($I32)
