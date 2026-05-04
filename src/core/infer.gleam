@@ -656,7 +656,7 @@ fn lookup_constructor_from_lam(
           case cases {
             [first_case, ..] -> {
               case first_case {
-                CaseCtor(_, _, TypeDef(_, constructors, _), _) -> {
+                ast.Case(_, _, TypeDef(_, constructors, _), _) -> {
                   case list.find(constructors, fn(c) { c.0 == tag }) {
                     Ok(#(tag, bindings, self_type_term, result_type_term, _)) -> {
                       Some(#(bindings, self_type_term, result_type_term))
@@ -680,7 +680,7 @@ fn lookup_constructor_from_lam(
 /// Check if a case body is a TypeDef with the given tag.
 fn case_has_type_def_tag(case_: Case, tag: String) -> Bool {
   case case_ {
-    CaseCtor(_, _, TypeDef(_, constructors, _), _) ->
+    ast.Case(_, _, TypeDef(_, constructors, _), _) ->
       list.any(constructors, fn(c) { c.0 == tag })
     _ -> False
   }

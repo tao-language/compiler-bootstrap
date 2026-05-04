@@ -1,9 +1,9 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-05-02 (Phase 2 — 830 tests passing, 1 failure.)
+> **Last updated:** 2026-05-02 (Phase 2 — 832 tests passing, 1 failure.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 >
-> **Recent:** GADT-style constructor checking — added `CtorArgTypeMismatch`/`CtorNotFound` error types, implemented `match_type_pattern` for type pattern matching (holes, literal types, constructor types, record types, RcdT defaults), added `lookup_constructor` to search env for VTypeDef values, modified `infer_type_def` to evaluate self_type/result_type terms, modified `infer_ctr` for GADT-style checking (look up constructor, match arg type against self_type pattern, use result_type as constructor's type). Added GADT constructor checking unit tests.
+> **Recent:** Added `@x y z.` binding syntax for constructor-bound variables in TypeDefs. Updated AST to 5-tuple constructor format. Implemented `lookup_constructor_from_lam` for VLam-based TypeDefs. Fixed `$let` binding handling in `infer_app`. GADT checking for VLam-based TypeDefs partially implemented.
 
 ## Legend
 
