@@ -1277,15 +1277,13 @@ pub fn gadt_option_some_type_test() {
   // Then construct #Some(42)
   // The Option TypeDef should be found via lookup_constructor_from_lam
   // and the result type should be #Option(a) with a solved via unification
-  let source = ""
-  "
+  let source = "
 $let Option = $type<a: $Type> {
 | #Some(a) -> #Option(a)
 | #None({}) -> #Option(a)
 }
 #Some(42)
 "
-  ""
   let state = initial_state([])
   let #(term, _) = parse(source)
   let #(value, type_, _) = infer(state, term)
