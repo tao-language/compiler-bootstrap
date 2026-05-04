@@ -609,8 +609,9 @@ fn parse_type_def_body_with_body(
   }
 }
 
-// Parse type definition body: { | #C(arg) -> ReturnType }
-fn parse_type_def_body(p: Parser) -> #(List(#(String, Term, Term, Span)), Parser) {
+// Parse type definition body: { | @bindings #C(arg) -> ReturnType }
+// The @bindings are constructor-bound variables solved by unification.
+fn parse_type_def_body(p: Parser) -> #(List(#(String, List(String), Term, Term, Span)), Parser) {
   let #(cases, rest) = parse_type_def_cases(p, [])
   case cases {
     [] -> #(cases, rest)
@@ -619,7 +620,7 @@ fn parse_type_def_body(p: Parser) -> #(List(#(String, Term, Term, Span)), Parser
   }
 }
 
-fn parse_type_def_cases(p: Parser, acc: List(#(String, Term, Term, Span))) -> #(List(#(String, Term, Term, Span)), Parser) {
+fn parse_type_def_cases(p: Parser, acc: List(#(String, List(String), Term, Term, Span))) -> #(List(#(String, List(String), Term, Term, Span)), Parser) {
   let #(tokens, pos, env, fn_, errors) = p
   let p1 = #(tokens, pos, env, fn_, errors)
   let p2 = skip("|", p1)
@@ -628,40 +629,71 @@ fn parse_type_def_cases(p: Parser, acc: List(#(String, Term, Term, Span))) -> #(
     [Token("Punct", "}", _), ..] -> #(list.reverse(acc), p2)
     [Token("Eof", ..), ..] -> #(list.reverse(acc), p2)
     _ -> {
-      // Parse constructor: #Name(pattern) -> ReturnType
+      // Parse optional @bindings: @x y z.
       let p3 = #(tokens2, pos2, env2, fn2, errors2)
-      let #(tag, p4) = expect_name_after_hash(p3)
+      let #(bindings, p4) = parse_type_def_bindings(p3)
+      // Parse constructor: #Name(pattern) -> ReturnType
+      let #(tag, p5) = expect_name_after_hash(p4)
       // Guard: if no constructor name found, we're not at a valid case.
       // Return accumulated cases to avoid infinite loop.
       case tag {
         "" -> #(list.reverse(acc), p3)
         name -> {
-          let p5 = skip("(", p4)
-          let #(pattern, p6) = parse_term(p5)
-          let p7 = skip(")", p6)
-          let p8 = skip("->", p7)
-          let #(ret_type, p9) = parse_term(p8)
-          let span = current_span(p9)
+          let p6 = skip("(", p5)
+          let #(pattern, p7) = parse_term(p6)
+          let p8 = skip(")", p7)
+          let p9 = skip("->", p8)
+          let #(ret_type, p10) = parse_term(p9)
+          let span = current_span(p10)
           // Guard: ensure the parser advanced to avoid infinite recursion.
-          // Check if p9's token list is the same as tokens2 and position advanced.
-          case p9 {
-            #(t9, pos9, _, _, _) ->
-              case t9 == tokens2 && pos9 > pos2 {
+          // Check if p10's token list is the same as tokens2 and position advanced.
+          case p10 {
+            #(t10, pos10, _, _, _) ->
+              case t10 == tokens2 && pos10 > pos2 {
                 True ->
                   parse_type_def_cases(
-                    p9,
-                    [#(name, pattern, ret_type, span), ..acc],
+                    p10,
+                    [#(name, bindings, pattern, ret_type, span), ..acc],
                   )
                 False ->
                   parse_type_def_cases(
-                    p9,
-                    [#(name, pattern, ret_type, span), ..acc],
+                    p10,
+                    [#(name, bindings, pattern, ret_type, span), ..acc],
                   )
               }
           }
         }
       }
     }
+  }
+}
+
+/// Parse optional @bindings: @x y z.
+/// Returns the list of binding names (empty if no @ found).
+fn parse_type_def_bindings(p: Parser) -> #(List(String), Parser) {
+  let #(tokens, pos, env, fn_, errors) = p
+  case list.drop(tokens, pos) {
+    [Token("Op", "@", _), ..rest] -> {
+      let p1 = #(rest, 0, env, fn_, errors)
+      let #(names, p2) = parse_binding_names(p1, [])
+      // Expect . after the names
+      let p3 = skip(".", p2)
+      #(list.reverse(names), p3)
+    }
+    _ -> #([], p)
+  }
+}
+
+/// Parse space-separated binding names until `.` or end.
+fn parse_binding_names(p: Parser, acc: List(String)) -> #(List(String), Parser) {
+  let #(tokens, pos, env, fn_, errors) = p
+  case list.drop(tokens, pos) {
+    [Token("Punct", ".", _), ..] -> #(acc, p)
+    [Token("Name", v, _), ..rest] -> {
+      let p1 = #(rest, 0, env, fn_, errors)
+      parse_binding_names(p1, [v, ..acc])
+    }
+    _ -> #(acc, p)
   }
 }
 

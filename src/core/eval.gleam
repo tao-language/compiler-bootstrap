@@ -18,10 +18,10 @@ import gleam/option.{type Option, None, Some}
 // ============================================================================
 
 /// Convert a Term-level TypeDef constructor to a Value-level constructor.
-/// Just wraps the terms in neutral values for now.
-fn term_ctor_to_value(_state: State, ctor: #(String, Term, Term, Span)) -> #(String, Value, Value, Span) {
-  let #(tag, _, _, span) = ctor
-  #(tag, VNeut(HHole(0), []), VNeut(HHole(0), []), span)
+/// Passes through the bindings field unchanged.
+fn term_ctor_to_value(_state: State, ctor: #(String, List(String), Term, Term, Span)) -> #(String, List(String), Value, Value, Span) {
+  let #(tag, bindings, _, _, span) = ctor
+  #(tag, bindings, VNeut(HHole(0), []), VNeut(HHole(0), []), span)
 }
 
 /// Evaluate a `Term` to a `Value` using Normalization by Evaluation (NBE).

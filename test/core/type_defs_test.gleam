@@ -44,14 +44,14 @@ fn v_lit_int(v: Int) -> Value {
   VLit(LitInt(v))
 }
 
-/// Create a list of #(String, Value, Value, Span) tuples for a TypeDef.
+/// Create a list of #(String, List(String), Value, Value, Span) tuples for a TypeDef.
 fn make_constructors(
   tags: List(String),
   self_type: Value,
   result_template: Value,
-) -> List(#(String, Value, Value, Span)) {
+) -> List(#(String, List(String), Value, Value, Span)) {
   list.map(tags, fn(tag) {
-    #(tag, self_type, result_template, single("test", 0, 0))
+    #(tag, [], self_type, result_template, single("test", 0, 0))
   })
 }
 
@@ -77,8 +77,8 @@ pub fn vtypef_multiple_constructors_test() {
   let vdef = VTypeDef(
     name: "Bool",
     constructors: [
-      #("True", v_neut(0), v_neut(0), single("test", 0, 0)),
-      #("False", v_neut(0), v_neut(0), single("test", 0, 0)),
+      #("True", [], v_neut(0), v_neut(0), single("test", 0, 0)),
+      #("False", [], v_neut(0), v_neut(0), single("test", 0, 0)),
     ],
   )
   assert list.length(vdef.constructors) == 2
@@ -177,11 +177,9 @@ pub fn subst_hhole_test() {
 
 /// Compute type of constructor with param substitution.
 pub fn compute_constructor_type_option_some_test() {
-  let constructors = make_constructors(
-    ["Some"],
-    v_neut(0),
-    VCtr("Option", VNeut(HVar(0), [])),
-  )
+  let constructors = [
+    #("Some", [], v_neut(0), VCtr("Option", VNeut(HVar(0), [])), single("test", 0, 0)),
+  ]
   let result = compute_constructor_type(constructors, [v_lit_int(42)], "Some")
   let expected = VCtr("Option", VNeut(HVar(0), [EApp(v_lit_int(42))]))
   assert case result {

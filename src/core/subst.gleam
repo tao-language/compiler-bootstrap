@@ -220,10 +220,10 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
     TypeDef(name: name, constructors: cons, span: span) -> {
       let shift_cons = fn(ctor) {
         case ctor {
-          #(tag, self_ty, result, c_span) -> {
+          #(tag, bindings, self_ty, result, c_span) -> {
             let new_self = subst_term_from(idx, value, self_ty, from)
             let new_result = subst_term_from(idx, value, result, from)
-            #(tag, new_self, new_result, c_span)
+            #(tag, bindings, new_self, new_result, c_span)
           }
         }
       }
@@ -312,17 +312,18 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
         single("", 0, 0),
       )
     VTypeDef(name: vname, constructors: c) -> {
-      let shift_cons = fn(ctor: #(String, Value, Value, Span)) -> #(String, Term, Term, Span) {
-        let a = case ctor { #(x, _, _, _) -> x }
-        let b = case ctor { #(_, x, _, _) -> x }
-        let result = case ctor { #(_, _, x, _) -> x }
-        let d = case ctor { #(_, _, _, x) -> x }
+      let shift_cons = fn(ctor: #(String, List(String), Value, Value, Span)) -> #(String, List(String), Term, Term, Span) {
+        let a = case ctor { #(x, _, _, _, _) -> x }
+        let bindings = case ctor { #(_, x, _, _, _) -> x }
+        let b = case ctor { #(_, _, x, _, _) -> x }
+        let result = case ctor { #(_, _, _, x, _) -> x }
+        let d = case ctor { #(_, _, _, _, x) -> x }
         let r1: Term = force_levels_to_indices(b, n)
         let r2: Term = force_levels_to_indices(result, n)
-        let r3: #(String, Term, Term, Span) = #(a, r1, r2, d)
+        let r3: #(String, List(String), Term, Term, Span) = #(a, bindings, r1, r2, d)
         r3
       }
-      let typed_constructors: List(#(String, Term, Term, Span)) = list.map(c, shift_cons)
+      let typed_constructors: List(#(String, List(String), Term, Term, Span)) = list.map(c, shift_cons)
       TypeDef(
         name: vname,
         constructors: typed_constructors,
@@ -553,17 +554,18 @@ fn term_string(term: Term) -> String {
     TypeDef(name, constructors, _) -> {
       "type " <> name <> " { "
       <> list.fold(constructors, "", fn(acc, c) {
+        let bind_str = case c.1 {
+          [] -> ""
+          _ -> "@" <> list.fold(c.1, "", fn(a, b) {
+            case a {
+              "" -> b
+              _ -> a <> " " <> b
+            }
+          }) <> ". "
+        }
         case acc {
-          "" -> {
-            case c {
-              #(tag, self_ty, result, _) -> "#" <> tag <> "(" <> term_string(self_ty) <> " -> " <> term_string(result) <> ")"
-            }
-          }
-          _ -> {
-            case c {
-              #(tag, self_ty, result, _) -> acc <> ", #" <> tag <> "(" <> term_string(self_ty) <> " -> " <> term_string(result) <> ")"
-            }
-          }
+          "" -> "#" <> c.0 <> "(" <> bind_str <> term_string(c.2) <> " -> " <> term_string(c.3) <> ")"
+          _ -> acc <> ", #" <> c.0 <> "(" <> bind_str <> term_string(c.2) <> " -> " <> term_string(c.3) <> ")"
         }
       }) <> " }"
     }

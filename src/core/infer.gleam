@@ -5,8 +5,8 @@
 /// thin wrapper that synthesizes the term then unifies its type with
 /// the expected type.
 
-import core/ast.{type Value, type Term, type Case, type Pattern, VTypeDef, VCtr, VNeut, VErr, VPi, VRcd, VRcdT, VTyp, Var, Hole, Lam, App, Lit, Ctr, Match, Ann, Call, Rcd, RcdT, Typ, TypeDef, let_var, error_term, make_neut, make_hole_neut, make_var_neut, shift_term, shift_term_from, shift_opt, subst, type_of_type_def, find_constructor, compute_constructor_type, term_to_string, value_to_string}
-import core/state.{FfiEntry}
+import core/ast.{type Value, type Term, type Case, type Pattern, VTypeDef, VCtr, VNeut, VErr, VPi, VRcd, VRcdT, VTyp, VLam, Var, Hole, Lam, App, Lit, Ctr, Match, Ann, Call, Rcd, RcdT, Typ, TypeDef, Case as CaseCtor, let_var, error_term, make_neut, make_hole_neut, make_var_neut, shift_term, shift_term_from, shift_opt, subst, type_of_type_def, find_constructor, compute_constructor_type, term_to_string, value_to_string}
+import core/state.{FfiEntry, def_var}
 import core/eval.{evaluate, match_pattern, match_type_pattern}
 import core/subst.{force, force_levels_to_indices}
 import core/unify.{unify}
@@ -231,20 +231,40 @@ fn infer_app(
   arg: ast.Term,
   span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
-  let #(fun_type, _, state2) = infer(state, fun)
-
-  case fun_type {
-    ast.VPi(_env, _implicits, domain, codomain) -> {
-      let #(arg_val, _, state3) = check(state2, arg, domain.1)
+  // Check if this is a $let binding: App(Lam(name, _, body), value, span)
+  // If so, evaluate the value and add it to the env before inferring the body.
+  // This ensures TypeDef values (VLam) are available for constructor lookup.
+  case fun {
+    ast.Lam(_implicits, #(param_name, _param_type), body, _lam_span) -> {
+      // Infer the argument to get its value and type
+      let #(arg_val, arg_type, state2) = infer(state, arg)
       let _ = arg_val
-      #(codomain, codomain, state3)
+      // Add the binding to the env: name -> #(arg_value, arg_type)
+      let arg_eval = evaluate(state2, arg)
+      let state_ext = def_var(state2, param_name, arg_eval, arg_type)
+      // Infer the body with the binding in the env
+      let #(body_val, body_type, state_final) = infer(state_ext, body)
+      // The result is the body's value and type
+      #(body_val, body_type, state_final)
     }
-    _other -> {
-      let new_state = state.with_err(
-        state,
-        state.NotAFunction(fun_type, span),
-      )
-      #(ast.VErr, ast.VErr, new_state)
+    _ -> {
+      // Normal function application
+      let #(fun_type, _, state2) = infer(state, fun)
+
+      case fun_type {
+        ast.VPi(_env, _implicits, domain, codomain) -> {
+          let #(arg_val, _, state3) = check(state2, arg, domain.1)
+          let _ = arg_val
+          #(codomain, codomain, state3)
+        }
+        _other -> {
+          let new_state = state.with_err(
+            state,
+            state.NotAFunction(fun_type, span),
+          )
+          #(ast.VErr, ast.VErr, new_state)
+        }
+      }
     }
   }
 }
@@ -437,18 +457,26 @@ fn infer_ctr(
   let constructor_info = lookup_constructor(env_values, tag)
 
   case constructor_info {
-    Some(#(self_type_val, result_type_val)) -> {
-      // Match argument type against self_type pattern
-      let bindings = match_type_pattern(self_type_val, arg_type, [])
+    Some(#(bindings, self_type_term, result_type_term)) -> {
+      // Evaluate self_type and result_type terms in the current env.
+      // Type params (from VLam) become VNeut(HVar(...), []) - free variables.
+      // Constructor-bound vars (@m) are also free variables.
+      let self_type_val = evaluate(state1, self_type_term)
+      let result_type_val = evaluate(state1, result_type_term)
 
-      case bindings {
-        Some(_) -> {
-          // Pattern matched: result_type_val is already evaluated, just use it
+      // Unify argument type against self_type pattern
+      // The self_type may contain VNeut(HVar(...), []) as unification variables
+      let unified = unify_type_pattern(self_type_val, arg_type, [])
+
+      case unified {
+        Some(solved_bindings) -> {
+          // Unification succeeded: substitute solved bindings into result_type
+          let result_with_subst = apply_unify_bindings(solved_bindings, result_type_val)
           let ctr_val = ast.VCtr(tag, arg_val)
-          #(ctr_val, result_type_val, state1)
+          #(ctr_val, result_with_subst, state1)
         }
         None -> {
-          // Pattern mismatch: error + best-effort
+          // Unification failed: error + best-effort
           let new_state = state.State(
             ..state1,
             errors: [state.CtorArgTypeMismatch(tag, self_type_val, arg_type, span), ..state1.errors],
@@ -471,24 +499,27 @@ fn infer_ctr(
 fn infer_type_def(
   state: state.State,
   name: String,
-  constructors: List(#(String, ast.Term, ast.Term, Span)),
+  constructors: List(#(String, List(String), ast.Term, ast.Term, Span)),
   _span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
   // Evaluate self_type and result_type terms for each constructor.
   // The self_type is evaluated to a value representing the pattern that
-  // constructor arguments must match against.
+  // constructor arguments must unify against. Free variables in the
+  // pattern (VNeut(HVar(...), [])) are unification variables to solve for.
+  // The @-bindings (List(String)) tell us which variables are constructor-bound.
   // The result_type is evaluated to a value representing the type of the
-  // constructed value.
+  // constructed value (may still contain holes for constructor-bound vars).
   let value_constructors = list.map(constructors, fn(c) {
     let tag = c.0
-    let self_type_term = c.1
-    let result_type_term = c.2
-    let ctor_span = c.3
-    // Evaluate self_type to a value
+    let bindings = c.1
+    let self_type_term = c.2
+    let result_type_term = c.3
+    let ctor_span = c.4
+    // Evaluate self_type to a value (free vars become VNeut(HVar(...), []))
     let self_type_val = evaluate(state, self_type_term)
     // Evaluate result_type to a value (may contain holes for computed fields)
     let result_type_val = evaluate(state, result_type_term)
-    #(tag, self_type_val, result_type_val, ctor_span)
+    #(tag, bindings, self_type_val, result_type_val, ctor_span)
   })
   let type_def_val = ast.VTypeDef(
     name: name,
@@ -534,12 +565,18 @@ fn unify_infer_and_check(
 /// Look up a constructor tag across all TypeDefs in the env.
 ///
 /// Searches through the env for VTypeDef values, then looks up
-/// the constructor by tag. Returns the self_type value and result_type
-/// value if found.
+/// the constructor by tag. Returns the @-bindings, self_type value,
+/// and result_type value if found.
+/// Look up a constructor by tag, handling both VTypeDef and VLam values.
+///
+/// - VTypeDef: Direct lookup in constructors
+/// - VLam: Extract TypeDef from body, evaluate self_type/result_type with
+///   type params as free variables (VNeut(HVar(...), []))
 fn lookup_constructor(
   env: List(Value),
   tag: String,
-) -> Option(#(Value, Value)) {
+) -> Option(#(List(String), Term, Term)) {
+  // First, try direct VTypeDef lookup
   case list.find(env, fn(v) {
     case v {
       VTypeDef(_, constructors) ->
@@ -549,11 +586,238 @@ fn lookup_constructor(
   }) {
     Ok(VTypeDef(_, constructors)) -> {
       case list.find(constructors, fn(c) { c.0 == tag }) {
-        Ok(#(_tag, self_type_val, result_type_val, _)) ->
-          Some(#(self_type_val, result_type_val))
+        Ok(#(_tag, bindings, self_type_val, result_type_val, _)) -> {
+          // Convert Values to Terms for consistent return type
+          let self_type_term = force_levels_to_indices(self_type_val, 0)
+          let result_type_term = force_levels_to_indices(result_type_val, 0)
+          Some(#(bindings, self_type_term, result_type_term))
+        }
         Error(_) -> None
       }
     }
+    _ -> {
+      // Fallback: try VLam values that contain TypeDef in their body
+      lookup_constructor_from_lam(env, tag)
+    }
+  }
+}
+
+/// Look up a constructor from VLam values in the env.
+///
+/// For each VLam, extracts the TypeDef from the body (which may be
+/// a TypeDef directly or a Match that produces a TypeDef) and returns
+/// self_type/result_type terms with type params as free variables.
+fn lookup_constructor_from_lam(
+  env: List(Value),
+  tag: String,
+) -> Option(#(List(String), Term, Term)) {
+  // Find all VLam values in the env
+  let vlams = list.filter(env, fn(v) {
+    case v {
+      VLam(_, _, _, _) -> True
+      _ -> False
+    }
+  })
+
+  // Try each VLam
+  case list.find(vlams, fn(v) {
+    case v {
+      VLam(_, _, _, body_term) -> {
+        // Check if the body term is a TypeDef or Match with TypeDef
+        case body_term {
+          TypeDef(_, constructors, _) ->
+            list.any(constructors, fn(c) { c.0 == tag })
+          Match(_, cases, _) ->
+            // Check if any case body is a TypeDef with the given tag
+            list.any(cases, fn(case_) {
+              // Extract TypeDef from case body
+              case_has_type_def_tag(case_, tag)
+            })
+          _ -> False
+        }
+      }
+      _ -> False
+    }
+  }) {
+    Ok(VLam(_, _, _param, body_term)) -> {
+      // Extract the TypeDef from the body
+      case body_term {
+        TypeDef(_, constructors, _) -> {
+          case list.find(constructors, fn(c) { c.0 == tag }) {
+            Ok(#(tag, bindings, self_type_term, result_type_term, _)) -> {
+              Some(#(bindings, self_type_term, result_type_term))
+            }
+            Error(_) -> None
+          }
+        }
+        Match(_, cases, _) -> {
+          // Extract TypeDef from the first case body
+          // (TypeDef lambdas typically have a single case)
+          case cases {
+            [first_case, ..] -> {
+              case first_case {
+                CaseCtor(_, _, TypeDef(_, constructors, _), _) -> {
+                  case list.find(constructors, fn(c) { c.0 == tag }) {
+                    Ok(#(tag, bindings, self_type_term, result_type_term, _)) -> {
+                      Some(#(bindings, self_type_term, result_type_term))
+                    }
+                    Error(_) -> None
+                  }
+                }
+                _ -> None
+              }
+            }
+            _ -> None
+          }
+        }
+        _ -> None
+      }
+    }
     _ -> None
+  }
+}
+
+/// Check if a case body is a TypeDef with the given tag.
+fn case_has_type_def_tag(case_: Case, tag: String) -> Bool {
+  case case_ {
+    CaseCtor(_, _, TypeDef(_, constructors, _), _) ->
+      list.any(constructors, fn(c) { c.0 == tag })
+    _ -> False
+  }
+}
+
+/// Unify a type pattern (self_type) against an argument type (arg_type).
+///
+/// Returns Option(List(#(Int, Value))) — Some(bindings) with the solved
+/// unification variables (as De Bruijn levels -> values), None on failure.
+///
+/// The self_type pattern may contain VNeut(HVar(level), []) as unification
+/// variables to solve for. Known values (from lambda-bound variables) are
+/// treated as constants during unification.
+///
+/// ## Unification rules
+///
+/// - **HVar in pattern**: Bind it to the arg type (if not already bound)
+/// - **VCtr**: Check same tag, recursively unify args
+/// - **VRcdT**: Check same fields, recursively unify each field
+/// - **Both are the same constructor literal**: Match
+/// - **Otherwise**: Fail (structural mismatch)
+fn unify_type_pattern(
+  type_pattern: ast.Value,
+  arg_type: ast.Value,
+  acc: List(#(Int, ast.Value)),
+) -> Option(List(#(Int, ast.Value))) {
+  case type_pattern, arg_type {
+    // Unification variable in pattern: bind it to the arg type
+    ast.VNeut(ast.HVar(level), []), _ -> {
+      // Check if already bound
+      case list.find(acc, fn(b) { b.0 == level }) {
+        Ok(#(_, existing_val)) -> {
+          // Already bound: check consistency
+          case unify_type_pattern(existing_val, arg_type, acc) {
+            Some(_) -> Some(acc)
+            None -> None
+          }
+        }
+        Error(_) -> {
+          // Bind the variable
+          Some([#(level, arg_type), ..acc])
+        }
+      }
+    }
+
+    // Both are constructor types: check same tag, unify args
+    ast.VCtr(tag1, arg1), ast.VCtr(tag2, arg2) ->
+      case tag1 == tag2 {
+        True -> unify_type_pattern(arg1, arg2, acc)
+        False -> None
+      }
+
+    // Both are record types: check same fields, unify each
+    ast.VRcdT(fields1), ast.VRcdT(fields2) ->
+      unify_rcdt_fields(fields1, fields2, acc)
+
+    // Both are the same literal type: match
+    ast.VLit(lit1), ast.VLit(lit2) ->
+      case lit1 == lit2 {
+        True -> Some(acc)
+        False -> None
+      }
+
+    // Structural mismatch
+    _, _ -> None
+  }
+}
+
+/// Unify record type fields recursively.
+fn unify_rcdt_fields(
+  fields1: List(#(String, ast.Value, option.Option(ast.Value))),
+  fields2: List(#(String, ast.Value, option.Option(ast.Value))),
+  acc: List(#(Int, ast.Value)),
+) -> Option(List(#(Int, ast.Value))) {
+  case fields1 {
+    [] -> Some(acc)
+    [#(name1, type1, default1), ..rest1] -> {
+      case list.find(fields2, fn(f) { f.0 == name1 }) {
+        Ok(#(_, type2, _)) -> {
+          case unify_type_pattern(type1, type2, acc) {
+            Some(new_acc) -> unify_rcdt_fields(rest1, fields2, new_acc)
+            None -> None
+          }
+        }
+        Error(_) -> None  // Field missing in arg type
+      }
+    }
+  }
+}
+
+/// Apply unification bindings to a result type value.
+///
+/// Substitutes VNeut(HVar(level), spine) with the solved value from bindings.
+/// This is essentially a lookup-based substitution for De Bruijn levels.
+fn apply_unify_bindings(
+  bindings: List(#(Int, ast.Value)),
+  v: ast.Value,
+) -> ast.Value {
+  case v {
+    ast.VNeut(ast.HVar(level, ), spine) -> {
+      case list.find(bindings, fn(b) { b.0 == level }) {
+        Ok(#(_, solved_val)) -> {
+          // Apply the spine to the solved value
+          apply_spine_to_value(solved_val, spine)
+        }
+        Error(_) -> v  // Not bound, leave as-is
+      }
+    }
+    ast.VNeut(ast.HHole(id), spine) -> ast.VNeut(ast.HHole(id), spine)
+    ast.VLam(env, implicits, param, body) ->
+      ast.VLam(env, implicits, param, body)
+    ast.VPi(env, implicits, domain, codomain) ->
+      ast.VPi(env, implicits, domain, codomain)
+    ast.VLit(value) -> ast.VLit(value)
+    ast.VCtr(tag, arg) -> ast.VCtr(tag, apply_unify_bindings(bindings, arg))
+    ast.VRcd(fields) ->
+      ast.VRcd(list.map(fields, fn(f) {
+        #(f.0, apply_unify_bindings(bindings, f.1))
+      }))
+    ast.VRcdT(fields) ->
+      ast.VRcdT(list.map(fields, fn(f) {
+        let new_default = case f.2 {
+          Some(d) -> Some(apply_unify_bindings(bindings, d))
+          None -> None
+        }
+        #(f.0, apply_unify_bindings(bindings, f.1), new_default)
+      }))
+    ast.VTypeDef(name, constructors) -> ast.VTypeDef(name, constructors)
+    ast.VTyp(level) -> ast.VTyp(level)
+    ast.VErr -> ast.VErr
+  }
+}
+
+/// Apply a spine to a value (for substitution).
+fn apply_spine_to_value(v: ast.Value, spine: List(ast.Elim)) -> ast.Value {
+  case spine {
+    [] -> v
+    [ast.EApp(arg), ..rest] -> apply_spine_to_value(v, rest)
   }
 }

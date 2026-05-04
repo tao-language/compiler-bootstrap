@@ -508,16 +508,16 @@ pub fn quote_vtypef_with_constructors_test() {
   let self_type = v_neut(0)
   let result_type = VCtr("Option", VNeut(HVar(0), []))
   let constructors = [
-    #("Some", self_type, result_type, single("test", 1, 1)),
-    #("None", self_type, self_type, single("test", 2, 1)),
+    #("Some", [], self_type, result_type, single("test", 1, 1)),
+    #("None", [], self_type, self_type, single("test", 2, 1)),
   ]
   let value = VTypeDef(name: "Bool", constructors: constructors)
   let term = quote(value)
   assert case term {
     TypeDef(name: "Bool", constructors: cons, span: _) ->
       case cons {
-        [#("Some", _, _, _), #("None", _, _, _)] -> True
-        [#("Some", _, _, _), #("None", _, _, _), ..] -> True
+        [#("Some", _, _, _, _), #("None", _, _, _, _)] -> True
+        [#("Some", _, _, _, _), #("None", _, _, _, _), ..] -> True
         _ -> False
       }
     _ -> False

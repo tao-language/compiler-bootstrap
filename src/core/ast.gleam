@@ -81,7 +81,7 @@ pub type Term {
   Typ(level: Int, span: Span)
   TypeDef(
     name: String,
-    constructors: List(#(String, Term, Term, Span)),
+    constructors: List(#(String, List(String), Term, Term, Span)),
     span: Span,
   )
   Err(message: String, span: Span)
@@ -146,19 +146,19 @@ pub type Value {
   VCtr(tag: String, arg: Value)
   VRcd(fields: List(#(String, Value)))
   VRcdT(fields: List(#(String, Value, Option(Value))))
-  VTypeDef(name: String, constructors: List(#(String, Value, Value, Span)))
+  VTypeDef(name: String, constructors: List(#(String, List(String), Value, Value, Span)))
   VTyp(level: Int)
   VErr
 }
 
 /// Look up a constructor by tag in a TypeDef.
 pub fn find_constructor(
-  constructors: List(#(String, Value, Value, Span)),
+  constructors: List(#(String, List(String), Value, Value, Span)),
   tag: String,
-) -> Option(#(String, Value, Value, Span)) {
-  let match_tag = fn(c: #(String, Value, Value, Span)) {
+) -> Option(#(String, List(String), Value, Value, Span)) {
+  let match_tag = fn(c: #(String, List(String), Value, Value, Span)) {
     case c {
-      #(t, _, _, _) -> t == tag
+      #(t, _, _, _, _) -> t == tag
     }
   }
   case list.find(constructors, match_tag) {
@@ -169,13 +169,13 @@ pub fn find_constructor(
 
 /// Compute the type of a constructor from a TypeDef.
 pub fn compute_constructor_type(
-  constructors: List(#(String, Value, Value, Span)),
+  constructors: List(#(String, List(String), Value, Value, Span)),
   type_args: List(Value),
   tag: String,
 ) -> Option(Value) {
   case find_constructor(constructors, tag) {
     None -> None
-    Some(#(_, _, result, _)) -> Some(subst(type_args, result))
+    Some(#(_, _, _, result, _)) -> Some(subst(type_args, result))
   }
 }
 
@@ -218,7 +218,7 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
 /// A TypeDef has type * (universe 0), represented as a nested Pi type:
 /// Pi(_, _, _, Pi(_, _, _, VTypeDef(name: "", constructors: constructors)))
 pub fn type_of_type_def(
-  constructors: List(#(String, Value, Value, Span)),
+  constructors: List(#(String, List(String), Value, Value, Span)),
 ) -> Value {
   VPi(
     [],
@@ -235,13 +235,14 @@ pub fn type_of_type_def(
 
 /// Create a TypeDef from simple constructor tags (no result types).
 /// Uses HVar(0) placeholders for all result types.
+/// Bindings are empty (no constructor-bound variables).
 pub fn make_type_def(name: String, constructor_tags: List(String)) -> Term {
   let self_type = Var(0, single("", 0, 0))
   let result_type = Var(0, single("", 0, 0))
   TypeDef(
     name: name,
     constructors: list.map(constructor_tags, fn(tag) {
-      #(tag, self_type, result_type, single("", 0, 0))
+      #(tag, [], self_type, result_type, single("", 0, 0))
     }),
     span: single("", 0, 0),
   )
@@ -389,8 +390,9 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
     TypeDef(name: n, constructors: cons, span: s) -> {
       let shift_cons = fn(c) {
         case c {
-          #(tag, self_ty, result, s) -> #(
+          #(tag, bindings, self_ty, result, s) -> #(
             tag,
+            bindings,
             shift_term_from(self_ty, shift, from),
             shift_term_from(result, shift, from),
             s,
@@ -558,23 +560,34 @@ pub fn term_to_string(term: Term) -> String {
       <> name
       <> " { "
       <> list.fold(constructors, "", fn(acc, c) {
+        let bindings_str = case c.1 {
+          [] -> ""
+          _ -> "@" <> list.fold(c.1, "", fn(a, b) {
+            case a {
+              "" -> b
+              _ -> a <> " " <> b
+            }
+          }) <> ". "
+        }
         case acc {
           "" ->
             "#"
             <> c.0
             <> "("
-            <> term_to_string(c.1)
-            <> " -> "
+            <> bindings_str
             <> term_to_string(c.2)
+            <> " -> "
+            <> term_to_string(c.3)
             <> ")"
           _ ->
             acc
             <> ", #"
             <> c.0
             <> "("
-            <> term_to_string(c.1)
-            <> " -> "
+            <> bindings_str
             <> term_to_string(c.2)
+            <> " -> "
+            <> term_to_string(c.3)
             <> ")"
         }
       })
