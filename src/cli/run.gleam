@@ -206,7 +206,7 @@ fn format_value(value: Value) -> String {
       )
       <> " }"
     VLam(_env, _implicits, param, _) -> "$fn(" <> param.0 <> ") => <lambda>"
-    VTypeDef(name: n, constructors: _) -> "<VTypeDef " <> n <> ">"
+    VTypeDef(name: n, params: _, constructors: _) -> "<VTypeDef " <> n <> ">"
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
     VErr -> "<error>"
   }
@@ -228,7 +228,7 @@ fn format_type(type_val: Value) -> String {
       "$pi(" <> domain.0 <> ": " <> format_type(domain.1) <> ") -> " <> format_type(codomain)
     VRcd(_) -> "{}"
     VLam(_, _, _, _) -> "<lambda>"
-    VTypeDef(name: n, constructors: _) -> "<type " <> n <> ">"
+    VTypeDef(name: n, params: _, constructors: _) -> "<type " <> n <> ">"
     VErr -> "<error type>"
     _ -> "<type>"
   }

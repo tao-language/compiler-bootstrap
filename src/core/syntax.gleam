@@ -157,7 +157,7 @@ fn term_span(term: Term) -> Span {
     Rcd(_, span) -> span
     RcdT(_, span) -> span
     Typ(_, span) -> span
-    TypeDef(_, _, span) -> span
+    TypeDef(_, _, _, span) -> span
     Err(_, span) -> span
   }
 }
@@ -535,33 +535,53 @@ fn parse_typed_arg_list_acc(p: Parser, acc: List(#(Term, Term))) -> #(List(#(Ter
 fn parse_type_def(p: Parser, span: Span) -> #(Term, Parser) {
   let #(tokens, pos, env, fn_, errors) = p
   case list.drop(tokens, pos) {
-    // $type<> -> type with explicit empty type params, then { ... }
-    [Token("Op", "<", _), Token("Op", ">", _), ..rest] -> {
-      let p1 = #(rest, 0, env, fn_, errors)
-      let #(rtokens, rpos, renv, rfn_, rerrors) = p1
-      case list.drop(rtokens, rpos) {
-        [Token("Punct", "{", _), ..rest2] -> {
-          let p2 = #(rest2, 0, renv, rfn_, rerrors)
-          let #(td_body, p3) = parse_type_def_body(p2)
-          let p4 = skip("}", p3)
-          let td_span = current_span(p4)
-          let type_def = TypeDef("", td_body, td_span)
-          parse_type_def_body_with_body(p4, type_def)
-        }
-        _ -> #(Typ(0, span), p1)
-      }
+    // $type<params> { ... } -> type with type params
+    [Token("Op", "<", _), ..] -> {
+      let p1 = skip("<", p)
+      let #(params, p2) = parse_type_params(p1)
+      let p3 = skip(">", p2)
+      let #(td_body, p4) = parse_type_def_body(p3)
+      let p5 = skip("}", p4)
+      let td_span = current_span(p5)
+      let type_def = TypeDef("", params, td_body, td_span)
+      parse_type_def_body_with_body(p5, type_def)
     }
-    // $type { ... }
+    // $type { ... } -> type without params
     [Token("Punct", "{", _), ..rest] -> {
       let p1 = #(rest, 0, env, fn_, errors)
       let #(td_body, p2) = parse_type_def_body(p1)
       let p3 = skip("}", p2)
       let td_span = current_span(p3)
-      let type_def = TypeDef("", td_body, td_span)
+      let type_def = TypeDef("", [], td_body, td_span)
       parse_type_def_body_with_body(p3, type_def)
     }
     // $type alone -> universe type
     _ -> #(Typ(0, span), p)
+  }
+}
+
+/// Parse type parameters: a: $Type, b: $Type
+fn parse_type_params(p: Parser) -> #(List(#(String, Term)), Parser) {
+  parse_type_params_acc(p, [])
+}
+
+fn parse_type_params_acc(p: Parser, acc: List(#(String, Term))) -> #(List(#(String, Term)), Parser) {
+  let #(name, p1) = expect_name_opt(p)
+  case name {
+    "" -> #(list.reverse(acc), p)
+    _ -> {
+      let p2 = skip(":", p1)
+      let #(param_type, p3) = parse_term(p2)
+      let p4 = case p3 {
+        #(tokens, pos, _, _, _) ->
+          case list.drop(tokens, pos) {
+            [Token("Punct", ",", _), ..rest] -> #(rest, 0, p3.2, p3.3, p3.4)
+            _ -> p3
+          }
+      }
+      let new_acc = [ #(name, param_type), ..acc ]
+      parse_type_params_acc(p4, new_acc)
+    }
   }
 }
 
@@ -1399,7 +1419,7 @@ fn term_to_string(term: Term) -> String {
     Rcd(_, _) -> "rcd"
     RcdT(_, _) -> "rcd_type"
     Typ(_, _) -> "type"
-    TypeDef(_, _, _) -> "type def"
+    TypeDef(_, _, _, _) -> "type def"
     Err(msg, _) -> msg
   }
 }

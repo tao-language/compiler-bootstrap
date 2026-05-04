@@ -35,7 +35,7 @@ pub fn infer(state: state.State, term: ast.Term) -> #(ast.Value, ast.Value, stat
     ast.Rcd(fields, span) -> infer_rcd(state, fields, span)
     ast.RcdT(fields, span) -> infer_rcd_type(state, fields, span)
     ast.Ctr(tag, arg, span) -> infer_ctr(state, tag, arg, span)
-    ast.TypeDef(name, constructors, span) -> infer_type_def(state, name, constructors, span)
+    ast.TypeDef(name, params, constructors, span) -> infer_type_def(state, name, params, constructors, span)
     ast.Err(message, span) -> infer_err(state, message, span)
   }
 }
@@ -457,12 +457,11 @@ fn infer_ctr(
   let constructor_info = lookup_constructor(env_values, tag)
 
   case constructor_info {
-    Some(#(bindings, self_type_term, result_type_term)) -> {
-      // Evaluate self_type and result_type terms in the current env.
-      // Type params (from VLam) become VNeut(HVar(...), []) - free variables.
+    Some(#(bindings, self_type_val, result_type_val)) -> {
+      // self_type and result_type are already Values.
+      // Type params (from TypeDef params) are referenced by name in the pattern.
       // Constructor-bound vars (@m) are also free variables.
-      let self_type_val = evaluate(state1, self_type_term)
-      let result_type_val = evaluate(state1, result_type_term)
+      // For now, we treat them as-is - the unification will solve for free vars.
 
       // Unify argument type against self_type pattern
       // The self_type may contain VNeut(HVar(...), []) as unification variables
@@ -499,9 +498,15 @@ fn infer_ctr(
 fn infer_type_def(
   state: state.State,
   name: String,
+  params: List(#(String, ast.Term)),
   constructors: List(#(String, List(String), ast.Term, ast.Term, Span)),
   _span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
+  // Evaluate type params to values
+  let value_params = list.map(params, fn(p) {
+    #(p.0, evaluate(state, p.1))
+  })
+  
   // Evaluate self_type and result_type terms for each constructor.
   // The self_type is evaluated to a value representing the pattern that
   // constructor arguments must unify against. Free variables in the
@@ -523,6 +528,7 @@ fn infer_type_def(
   })
   let type_def_val = ast.VTypeDef(
     name: name,
+    params: value_params,
     constructors: value_constructors,
   )
   // The type of a TypeDef is * (VTyp(0))
@@ -567,122 +573,31 @@ fn unify_infer_and_check(
 /// Searches through the env for VTypeDef values, then looks up
 /// the constructor by tag. Returns the @-bindings, self_type value,
 /// and result_type value if found.
-/// Look up a constructor by tag, handling both VTypeDef and VLam values.
-///
-/// - VTypeDef: Direct lookup in constructors
-/// - VLam: Extract TypeDef from body, evaluate self_type/result_type with
-///   type params as free variables (VNeut(HVar(...), []))
 fn lookup_constructor(
   env: List(Value),
   tag: String,
-) -> Option(#(List(String), Term, Term)) {
-  // First, try direct VTypeDef lookup
+) -> Option(#(List(String), Value, Value)) {
+  // Direct VTypeDef lookup
   case list.find(env, fn(v) {
     case v {
-      VTypeDef(_, constructors) ->
+      VTypeDef(_, _, constructors) ->
         list.any(constructors, fn(c) { c.0 == tag })
       _ -> False
     }
   }) {
-    Ok(VTypeDef(_, constructors)) -> {
+    Ok(VTypeDef(_, params, constructors)) -> {
       case list.find(constructors, fn(c) { c.0 == tag }) {
         Ok(#(_tag, bindings, self_type_val, result_type_val, _)) -> {
-          // Convert Values to Terms for consistent return type
-          let self_type_term = force_levels_to_indices(self_type_val, 0)
-          let result_type_term = force_levels_to_indices(result_type_val, 0)
-          Some(#(bindings, self_type_term, result_type_term))
+          // The self_type and result_type values reference type params by name.
+          // We need to evaluate them with the params as free variables.
+          // For now, return the values as-is - they will be handled in infer_ctr.
+          let _ = params
+          Some(#(bindings, self_type_val, result_type_val))
         }
         Error(_) -> None
       }
     }
-    _ -> {
-      // Fallback: try VLam values that contain TypeDef in their body
-      lookup_constructor_from_lam(env, tag)
-    }
-  }
-}
-
-/// Look up a constructor from VLam values in the env.
-///
-/// For each VLam, extracts the TypeDef from the body (which may be
-/// a TypeDef directly or a Match that produces a TypeDef) and returns
-/// self_type/result_type terms with type params as free variables.
-fn lookup_constructor_from_lam(
-  env: List(Value),
-  tag: String,
-) -> Option(#(List(String), Term, Term)) {
-  // Find all VLam values in the env
-  let vlams = list.filter(env, fn(v) {
-    case v {
-      VLam(_, _, _, _) -> True
-      _ -> False
-    }
-  })
-
-  // Try each VLam
-  case list.find(vlams, fn(v) {
-    case v {
-      VLam(_, _, _, body_term) -> {
-        // Check if the body term is a TypeDef or Match with TypeDef
-        case body_term {
-          TypeDef(_, constructors, _) ->
-            list.any(constructors, fn(c) { c.0 == tag })
-          Match(_, cases, _) ->
-            // Check if any case body is a TypeDef with the given tag
-            list.any(cases, fn(case_) {
-              // Extract TypeDef from case body
-              case_has_type_def_tag(case_, tag)
-            })
-          _ -> False
-        }
-      }
-      _ -> False
-    }
-  }) {
-    Ok(VLam(_, _, _param, body_term)) -> {
-      // Extract the TypeDef from the body
-      case body_term {
-        TypeDef(_, constructors, _) -> {
-          case list.find(constructors, fn(c) { c.0 == tag }) {
-            Ok(#(tag, bindings, self_type_term, result_type_term, _)) -> {
-              Some(#(bindings, self_type_term, result_type_term))
-            }
-            Error(_) -> None
-          }
-        }
-        Match(_, cases, _) -> {
-          // Extract TypeDef from the first case body
-          // (TypeDef lambdas typically have a single case)
-          case cases {
-            [first_case, ..] -> {
-              case first_case {
-                ast.Case(_, _, TypeDef(_, constructors, _), _) -> {
-                  case list.find(constructors, fn(c) { c.0 == tag }) {
-                    Ok(#(tag, bindings, self_type_term, result_type_term, _)) -> {
-                      Some(#(bindings, self_type_term, result_type_term))
-                    }
-                    Error(_) -> None
-                  }
-                }
-                _ -> None
-              }
-            }
-            _ -> None
-          }
-        }
-        _ -> None
-      }
-    }
     _ -> None
-  }
-}
-
-/// Check if a case body is a TypeDef with the given tag.
-fn case_has_type_def_tag(case_: Case, tag: String) -> Bool {
-  case case_ {
-    ast.Case(_, _, TypeDef(_, constructors, _), _) ->
-      list.any(constructors, fn(c) { c.0 == tag })
-    _ -> False
   }
 }
 
@@ -808,7 +723,7 @@ fn apply_unify_bindings(
         }
         #(f.0, apply_unify_bindings(bindings, f.1), new_default)
       }))
-    ast.VTypeDef(name, constructors) -> ast.VTypeDef(name, constructors)
+    ast.VTypeDef(name, params, constructors) -> ast.VTypeDef(name, params, constructors)
     ast.VTyp(level) -> ast.VTyp(level)
     ast.VErr -> ast.VErr
   }

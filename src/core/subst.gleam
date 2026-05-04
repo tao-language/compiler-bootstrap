@@ -33,6 +33,7 @@ import core/state.{type State, lookup_var}
 import syntax/span.{type Span, single}
 import gleam/int
 import gleam/list
+import gleam/string
 import gleam/option.{None, Some}
 
 /// Force a value by resolving holes and applying neutral spine elements.
@@ -217,7 +218,7 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
         span,
       )
     Typ(level, span) -> Typ(level, span)
-    TypeDef(name: name, constructors: cons, span: span) -> {
+    TypeDef(name: name, params: params, constructors: cons, span: span) -> {
       let shift_cons = fn(ctor) {
         case ctor {
           #(tag, bindings, self_ty, result, c_span) -> {
@@ -229,6 +230,7 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
       }
       TypeDef(
         name: name,
+        params: params,
         constructors: list.map(cons, shift_cons),
         span: span,
       )
@@ -311,7 +313,10 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
         }),
         single("", 0, 0),
       )
-    VTypeDef(name: vname, constructors: c) -> {
+    VTypeDef(name: vname, params: vparams, constructors: c) -> {
+      let params_terms = list.map(vparams, fn(p) {
+        #(p.0, force_levels_to_indices(p.1, n))
+      })
       let shift_cons = fn(ctor: #(String, List(String), Value, Value, Span)) -> #(String, List(String), Term, Term, Span) {
         let a = case ctor { #(x, _, _, _, _) -> x }
         let bindings = case ctor { #(_, x, _, _, _) -> x }
@@ -326,6 +331,7 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
       let typed_constructors: List(#(String, List(String), Term, Term, Span)) = list.map(c, shift_cons)
       TypeDef(
         name: vname,
+        params: params_terms,
         constructors: typed_constructors,
         span: single("", 0, 0),
       )
@@ -441,7 +447,7 @@ fn value_string(value: Value) -> String {
         }
       })
       <> "}"
-    VTypeDef(name: n, constructors: _c) -> {
+    VTypeDef(name: n, params: _, constructors: _c) -> {
       "<type " <> n
     }
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
@@ -551,8 +557,14 @@ fn term_string(term: Term) -> String {
       )
       <> "}"
     Typ(level, _) -> "%Type(" <> int.to_string(level) <> ")"
-    TypeDef(name, constructors, _) -> {
-      "type " <> name <> " { "
+    TypeDef(name, params, constructors, _) -> {
+      let params_str = case params {
+        [] -> ""
+        _ -> "<" <> string.join(list.map(params, fn(p) {
+          p.0 <> ": " <> term_string(p.1)
+        }), ", ") <> "> "
+      }
+      "type " <> name <> params_str <> " { "
       <> list.fold(constructors, "", fn(acc, c) {
         let bind_str = case c.1 {
           [] -> ""

@@ -98,7 +98,7 @@ fn free_holes_from(value: Value, binding: Int) -> List(Int) {
         }
       })
     }
-    VTypeDef(name: _, constructors: _) -> []
+    VTypeDef(name: _, params: _, constructors: _) -> []
     VTyp(_) -> []
     VErr -> []
   }
@@ -185,7 +185,7 @@ fn free_holes_term(term: Term, binding: Int) -> List(Int) {
       })
     }
     Typ(_, _) -> []
-    TypeDef(_, constructors, _) -> {
+    TypeDef(_, _, constructors, _) -> {
       list.fold(constructors, [], fn(acc, c) {
         let acc2 = list.append(acc, free_holes_term(c.2, binding))
         list.append(acc2, free_holes_term(c.3, binding))
@@ -254,7 +254,7 @@ fn free_levels_from(value: Value, binding: Int) -> List(Int) {
         }
       })
     }
-    VTypeDef(name: _, constructors: _) -> []
+    VTypeDef(name: _, params: _, constructors: _) -> []
     VTyp(_) -> []
     VErr -> []
   }
@@ -345,7 +345,7 @@ fn free_levels_term(term: Term, binding: Int) -> List(Int) {
       })
     }
     Typ(_, _) -> []
-    TypeDef(_, constructors, _) -> {
+    TypeDef(_, _, constructors, _) -> {
       list.fold(constructors, [], fn(acc, c) {
         let acc2 = list.append(acc, free_levels_term(c.2, binding))
         list.append(acc2, free_levels_term(c.3, binding))
@@ -432,8 +432,9 @@ fn subst_holes(value: Value, subst: List(#(Int, Int))) -> Value {
         }
         #(f.0, subst_holes(f.1, subst), new_default)
       }))
-    VTypeDef(name: n, constructors: c) -> VTypeDef(
+    VTypeDef(name: n, params: p, constructors: c) -> VTypeDef(
       name: n,
+      params: p,
       constructors: c,
     )
     VTyp(level) -> VTyp(level)
@@ -509,7 +510,7 @@ fn subst_holes_term(term: Term, subst: List(#(Int, Int))) -> Term {
         span,
       )
     Typ(level, span) -> Typ(level, span)
-    TypeDef(name: name, constructors: constructors, span: span) -> {
+    TypeDef(name: name, params: params, constructors: constructors, span: span) -> {
       let shift_cons = fn(ctor) {
         case ctor {
           #(tag, bindings, self_ty, result, c_span) -> {
@@ -521,6 +522,7 @@ fn subst_holes_term(term: Term, subst: List(#(Int, Int))) -> Term {
       }
       TypeDef(
         name: name,
+        params: params,
         constructors: list.map(constructors, shift_cons),
         span: span,
       )

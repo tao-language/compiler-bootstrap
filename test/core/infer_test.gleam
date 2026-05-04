@@ -20,7 +20,7 @@
 
 import core/ast.{
   type Term, type Value,
-  Ann, App, Call, Ctr, Err, EApp, Hole, HHole, HVar, Lam, Lit, Pi, Rcd, RcdT, Typ, VTyp,
+  Ann, App, Call, Ctr, Err, EApp, Hole, HHole, HVar, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, VTyp,
   VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, TypeDef, Var,
   Int as LitInt, Float as LitFloat,
 }
@@ -1235,7 +1235,7 @@ pub fn infer_type_def_has_type_star_test() {
     #("True", [], Var(0, sp()), Var(0, sp()), sp()),
     #("False", [], Var(0, sp()), Var(0, sp()), sp()),
   ]
-  let td = TypeDef("Bool", constructors, sp())
+  let td = TypeDef("Bool", [], constructors, sp())
   let result = infer(initial_state([]), td)
   let #(_, type_, _) = result
   assert type_ == VTyp(0)
@@ -1355,6 +1355,17 @@ pub fn gadt_direct_ctor_legacy_test() {
   // Should fall back to legacy VCtr(tag, arg_type)
   assert case type_ {
     VCtr("Cons", _) -> True
+    _ -> False
+  }
+}
+
+/// Debug test: check parsed term structure
+pub fn debug_parsed_term_test() {
+  let source = "$fn(args) => $match args { | {a} => a }"
+  let #(term, _) = parse(source)
+  // The term should be a Lam with body being a Match
+  assert case term {
+    Lam(_, _, Match(_, cases, _), _) -> list.length(cases) == 1
     _ -> False
   }
 }

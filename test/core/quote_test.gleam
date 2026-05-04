@@ -491,6 +491,7 @@ fn v_neut(level: Int) -> Value {
 fn v_typef() -> Value {
   VTypeDef(
     name: "Option",
+    params: [],
     constructors: [],
   )
 }
@@ -499,7 +500,7 @@ pub fn quote_vtypef_empty_test() {
   let value = v_typef()
   let term = quote(value)
   assert case term {
-    TypeDef(name: "Option", constructors: [], span: _) -> True
+    TypeDef(name: "Option", params: _, constructors: [], span: _) -> True
     _ -> False
   }
 }
@@ -511,10 +512,10 @@ pub fn quote_vtypef_with_constructors_test() {
     #("Some", [], self_type, result_type, single("test", 1, 1)),
     #("None", [], self_type, self_type, single("test", 2, 1)),
   ]
-  let value = VTypeDef(name: "Bool", constructors: constructors)
+  let value = VTypeDef(name: "Bool", params: [], constructors: constructors)
   let term = quote(value)
   assert case term {
-    TypeDef(name: "Bool", constructors: cons, span: _) ->
+    TypeDef(name: "Bool", params: _, constructors: cons, span: _) ->
       case cons {
         [#("Some", _, _, _, _), #("None", _, _, _, _)] -> True
         [#("Some", _, _, _, _), #("None", _, _, _, _), ..] -> True

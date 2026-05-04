@@ -131,9 +131,13 @@ pub fn evaluate(state: State, term: Term) -> Value {
       }
     }
     Typ(level, _) -> VTyp(level)
-    TypeDef(name: n, constructors: c, span: _) -> {
+    TypeDef(name: n, params: p, constructors: c, span: _) -> {
+      // Evaluate params to values
+      let value_params = list.map(p, fn(param) {
+        #(param.0, evaluate(state, param.1))
+      })
       let value_constructors = list.map(c, fn(ctor) { term_ctor_to_value(state, ctor) })
-      VTypeDef(name: n, constructors: value_constructors)
+      VTypeDef(name: n, params: value_params, constructors: value_constructors)
     }
     Err(_, _) -> VErr
   }
@@ -181,7 +185,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     // Error propagates
     VErr -> VErr
     // Cannot apply a type/value that isn't a function - return error
-    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) | VRcdT(_) | VTypeDef(name: _, constructors: _) | VTyp(_) -> VErr
+    VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) | VRcdT(_) | VTypeDef(name: _, params: _, constructors: _) | VTyp(_) -> VErr
   }
 }
 
@@ -349,7 +353,7 @@ pub fn match_pattern(
         VNeut(HHole(_), _) -> Ok(bindings)
         VNeut(HVar(_), _) -> Ok(bindings)
         VPi(_, _, _, _) -> Ok(bindings)
-        VTypeDef(_, _) -> Ok(bindings)
+        VTypeDef(_, _, _) -> Ok(bindings)
         VTyp(_) -> Ok(bindings)
         // Match specific type constructors by name
         VCtr(tag, _) ->
@@ -488,7 +492,7 @@ pub fn match_type_pattern(
             _ -> None
           }
         // Type variable matches any type
-        VNeut(HHole(_), _) | VNeut(HVar(_), _) | VTyp(_) | VPi(_, _, _, _) | VTypeDef(_, _) ->
+        VNeut(HHole(_), _) | VNeut(HVar(_), _) | VTyp(_) | VPi(_, _, _, _) | VTypeDef(_, _, _) ->
           Some(bindings)
         // Other: no match
         _ -> None
@@ -510,7 +514,7 @@ pub fn match_type_pattern(
     _, _ ->
       case type_pattern {
         // Type variable matches anything
-        VNeut(HHole(_), _) | VNeut(HVar(_), _) | VTyp(_) | VPi(_, _, _, _) | VTypeDef(_, _) ->
+        VNeut(HHole(_), _) | VNeut(HVar(_), _) | VTyp(_) | VPi(_, _, _, _) | VTypeDef(_, _, _) ->
           Some(bindings)
         // Error: no match
         _ -> None
@@ -640,7 +644,7 @@ pub fn value_to_string(value: Value) -> String {
       })
       <> "}"
     VErr -> "\"error\""
-    VTypeDef(name: _, constructors: _) -> "<type _>"
+    VTypeDef(name: _, params: _, constructors: _) -> "<type _>"
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
   }
 }

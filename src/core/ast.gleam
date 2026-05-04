@@ -8,6 +8,7 @@
 import gleam/float
 import gleam/int
 import gleam/list
+import gleam/string
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span, single}
 
@@ -81,6 +82,7 @@ pub type Term {
   Typ(level: Int, span: Span)
   TypeDef(
     name: String,
+    params: List(#(String, Term)),
     constructors: List(#(String, List(String), Term, Term, Span)),
     span: Span,
   )
@@ -146,7 +148,7 @@ pub type Value {
   VCtr(tag: String, arg: Value)
   VRcd(fields: List(#(String, Value)))
   VRcdT(fields: List(#(String, Value, Option(Value))))
-  VTypeDef(name: String, constructors: List(#(String, List(String), Value, Value, Span)))
+  VTypeDef(name: String, params: List(#(String, Value)), constructors: List(#(String, List(String), Value, Value, Span)))
   VTyp(level: Int)
   VErr
 }
@@ -207,7 +209,7 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
         }
         #(f.0, subst(type_args, f.1), new_default)
       }))
-    VTypeDef(name: n, constructors: c) -> VTypeDef(name: n, constructors: c)
+    VTypeDef(name: n, params: p, constructors: c) -> VTypeDef(name: n, params: p, constructors: c)
     VTyp(level) -> VTyp(level)
     VErr -> VErr
   }
@@ -216,7 +218,7 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
 /// Extract the type of a TypeDef (always `*` - universe 0).
 ///
 /// A TypeDef has type * (universe 0), represented as a nested Pi type:
-/// Pi(_, _, _, Pi(_, _, _, VTypeDef(name: "", constructors: constructors)))
+/// Pi(_, _, _, Pi(_, _, _, VTypeDef(name: "", params: [], constructors: constructors)))
 pub fn type_of_type_def(
   constructors: List(#(String, List(String), Value, Value, Span)),
 ) -> Value {
@@ -228,7 +230,7 @@ pub fn type_of_type_def(
       [],
       [],
       #("_", VLit(Int(1))),
-      VTypeDef(name: "", constructors: constructors),
+      VTypeDef(name: "", params: [], constructors: constructors),
     ),
   )
 }
@@ -241,6 +243,7 @@ pub fn make_type_def(name: String, constructor_tags: List(String)) -> Term {
   let result_type = Var(0, single("", 0, 0))
   TypeDef(
     name: name,
+    params: [],
     constructors: list.map(constructor_tags, fn(tag) {
       #(tag, [], self_type, result_type, single("", 0, 0))
     }),
@@ -387,7 +390,7 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
         span,
       )
     Typ(level, span) -> Typ(level, span)
-    TypeDef(name: n, constructors: cons, span: s) -> {
+    TypeDef(name: n, params: params, constructors: cons, span: s) -> {
       let shift_cons = fn(c) {
         case c {
           #(tag, bindings, self_ty, result, s) -> #(
@@ -399,7 +402,7 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
           )
         }
       }
-      TypeDef(name: n, constructors: list.map(cons, shift_cons), span: s)
+      TypeDef(name: n, params: params, constructors: list.map(cons, shift_cons), span: s)
     }
     Err(msg, span) -> Err(msg, span)
   }
@@ -555,9 +558,19 @@ pub fn term_to_string(term: Term) -> String {
       })
       <> "}"
     Typ(level, _) -> "%Type(" <> int.to_string(level) <> ")"
-    TypeDef(name: name, constructors: constructors, span: _span) -> {
+    TypeDef(name: name, params: params, constructors: constructors, span: _span) -> {
+      let params_str = case params {
+        [] -> ""
+        _ -> {
+          let params_strs = list.map(params, fn(p) {
+            p.0 <> ": " <> term_to_string(p.1)
+          })
+          "<" <> string.join(params_strs, ", ") <> "> "
+        }
+      }
       "type "
       <> name
+      <> params_str
       <> " { "
       <> list.fold(constructors, "", fn(acc, c) {
         let bindings_str = case c.1 {
@@ -713,7 +726,7 @@ pub fn value_to_string(value: Value) -> String {
         }
       })
       <> "}"
-    VTypeDef(name: n, constructors: _c) -> {
+    VTypeDef(name: n, params: _, constructors: _c) -> {
       "<VTypeDef " <> n <> ">"
     }
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
