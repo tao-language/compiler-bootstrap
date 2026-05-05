@@ -18,8 +18,8 @@
 /// must agree. All errors accumulate in state; no early returns.
 import core/ast.{
   type Elim, type Head, type Value, type LiteralType,
-  EApp, Float as FLit, HHole, HVar, Int as ILit, VCtr, VErr, VLam, VLit,
-  VNeut, VPi, VRcd, VRcdT, VTyp, VLitT,
+  EApp, HHole, HVar, VCtr, VErr, VLam, VLit,
+  VNeut, VPi, VRcd, VRcdT, VTyp, VLitT, VTypeDef,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
 import core/state.{type State, State, TypeMismatch, with_err}
@@ -71,7 +71,6 @@ pub fn literal_type_matches_wildcard(wildcard: LiteralType, lit_type: LiteralTyp
     FloatT -> {
       case lit_type {
         FloatT | F16T | F32T | F64T | IntT | I8T | I16T | I32T | I64T | U8T | U16T | U32T | U64T -> True
-        _ -> False
       }
     }
     _ -> False
@@ -141,9 +140,41 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
 
     // ── VLitT — exact type match ───────────────────────────
     VLitT(t1), VLitT(t2) ->
+
       case t1 == t2 {
         True -> state
         False -> add_type_mismatch_error(state, expected, actual)
+      }
+    // ── Ctr ↔ TypeDef — check if Ctr name matches TypeDef constructor ─
+    VCtr(tag, arg), VTypeDef(name, params, constructors) ->
+      case list.find(constructors, fn(c) { c.0 == tag }) {
+        Ok(#(_, _, self_type, result_type, _)) -> {
+          // Self type is already a value (holes for type params).
+          // Simply check that arg matches self_type structurally.
+          let s1 = match_values(state, self_type, arg)
+          match_values(s1, result_type, VCtr(tag, arg))
+        }
+        Error(_) ->
+          add_type_mismatch_error(
+            state,
+            VCtr(tag, VNeut(HHole(0), [])),
+            VTypeDef(name, params, constructors),
+          )
+      }
+
+    // ── TypeDef ↔ Ctr — symmetric case ───────────────────────
+    VTypeDef(name, params, constructors), VCtr(tag, arg) ->
+      case list.find(constructors, fn(c) { c.0 == tag }) {
+        Ok(#(_, _, self_type, result_type, _)) -> {
+          let s1 = match_values(state, self_type, arg)
+          match_values(s1, result_type, VCtr(tag, arg))
+        }
+        Error(_) ->
+          add_type_mismatch_error(
+            state,
+            VTypeDef(name, params, constructors),
+            VCtr(tag, VNeut(HHole(0), [])),
+          )
       }
 
     // ── Literal — exact value match ────────────────────────
@@ -161,10 +192,7 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
 
     // ── VTyp — same universe level unifies ───────────────────
     VTyp(l1), VTyp(l2) if l1 == l2 -> state
-    VTyp(l1), VTyp(l2) -> add_type_mismatch_error(state, expected, actual)
-
-    // ── VTyp — hole in expected binds to actual ──────────────
-    VNeut(HHole(id), []), VTyp(_) -> bind_hole(state, id, expected)
+    VTyp(_l1), VTyp(_l2) -> add_type_mismatch_error(state, expected, actual)
 
     // ── VErr — unifies with any value (error recovery) ───────
     VErr, _ -> state

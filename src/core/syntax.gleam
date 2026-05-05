@@ -26,7 +26,7 @@
 ///   - FFI calls: $fn(arg: Type, arg: Type) -> ReturnType
 ///   - Type definitions: $type { | #C(arg) -> ResultType }
 import core/ast.{
-  type Case, type Pattern, type Term, type LiteralType,
+  type Case, type Pattern, type Term,
   Ann, App, Call, Case as CoreCase, Ctr, Err, TypeDef,
   Float as LitFloat, Hole, Int as LitInt, Lam, Lit, LitT, Match, PAny, PAlias, PCtr, PError, PLit,
   PType, PRcd, PUnit, PVar, Pi, Rcd, RcdT, Typ, Var, let_var,

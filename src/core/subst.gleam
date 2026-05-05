@@ -238,7 +238,6 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
         span: span,
       )
     }
-    LitT(ltype, span) -> LitT(ltype, span)
     Err(msg, span) -> Err(msg, span)
   }
 }
