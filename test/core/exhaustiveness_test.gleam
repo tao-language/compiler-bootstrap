@@ -14,9 +14,7 @@ import core/exhaustiveness.{
   is_redundant,
 }
 import core/state.{type State, type Error, MatchMissing, initial_state}
-import gleam/int
 import gleam/list
-import gleam/option.{Some}
 import gleam/string
 import gleeunit
 import syntax/span.{single, type Span}
@@ -424,7 +422,7 @@ pub fn check_exhaustiveness_vdef_missing_always_error_property_test() {
     let state = make_state()
     let typed_constructors = make_vdef_constructors(all_tags)
     let result_state = check_exhaustiveness_vdef(state, typed_constructors, missing_one, sp())
-    list.length(result_state.errors) > 0
+    result_state.errors != []
   })
 
   assert states |> list.all(fn(b) { b }) == True
@@ -447,7 +445,7 @@ pub fn check_exhaustiveness_vdef_remove_any_tag_error_property_test() {
       let state = make_state()
       let typed_constructors = make_vdef_constructors(all_tags)
       let result_state = check_exhaustiveness_vdef(state, typed_constructors, remaining, sp())
-      list.length(result_state.errors) > 0
+      result_state.errors != []
     })
   })
 

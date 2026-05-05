@@ -2049,7 +2049,7 @@ pub fn infer_vlam_application_type_mismatch_test() {
 pub fn infer_vlam_implicit_param_with_annotation_test() {
   let source = "$let identity: $pi<a: $Type>(a) -> a = $fn<a: $Type>(x: a) => x\nidentity(42)"
   let state = initial_state([])
-  let #(value, _, _) = infer(state, parse(source).0)
+  let #(_, _, _) = infer(state, parse(source).0)
   let value = evaluate(state, parse(source).0)
   
   assert case value {
@@ -2062,7 +2062,6 @@ pub fn infer_vlam_implicit_param_with_annotation_test() {
 /// Test: Implicit param with float argument
 pub fn infer_vlam_implicit_param_float_test() {
   let source = "$let identity = $fn<a: $Type>(x: a) => x\nidentity(3.14)"
-  let state = initial_state([])
   let value = evaluate(initial_state([]), parse(source).0)
   
   assert case value {
