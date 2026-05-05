@@ -252,7 +252,7 @@ fn infer_app(
     }
     _ -> {
       // Normal function application
-      let #(fun_type, _, state2) = infer(state, fun)
+      let #(fun_type, _fun_val, state2) = infer(state, fun)
 
       case fun_type {
         ast.VPi(_env, _implicits, domain, codomain) -> {

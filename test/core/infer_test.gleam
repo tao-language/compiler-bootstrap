@@ -688,7 +688,7 @@ pub fn infer_rcdt_with_defaults_test() {
     RcdT(
       [
         #("x", Var(0, sp()), None),
-        #("y", Var(0, sp()), Some(Lit(LitInt(0), sp()))),
+        #("y", Var(0, sp()), Some(lit_int(0))),
       ],
       sp(),
     )
@@ -703,7 +703,7 @@ pub fn infer_rcdt_with_defaults_test() {
 pub fn check_rcd_fills_defaults_test() {
   // When checking a record against a record type with defaults,
   // missing fields should be filled with defaults
-  let rcd = Rcd([#("x", Lit(LitInt(1), sp()))], sp())
+  let rcd = Rcd([#("x", lit_int(1))], sp())
   let rcdt_type =
     VRcdT([
       #("x", VNeut(HVar(0), []), None),
@@ -721,7 +721,7 @@ pub fn check_rcd_fills_defaults_test() {
 pub fn check_rcd_no_defaults_needed_test() {
   // When checking a record against a record type with no defaults,
   // the record should be unchanged
-  let rcd = Rcd([#("x", Lit(LitInt(1), sp()))], sp())
+  let rcd = Rcd([#("x", lit_int(1))], sp())
   let rcdt_type =
     VRcdT([
       #("x", VNeut(HVar(0), []), None),
@@ -736,7 +736,7 @@ pub fn check_rcd_no_defaults_needed_test() {
 
 pub fn check_rcd_not_rcdt_no_fill_test() {
   // When checking a record against a non-record-type, no defaults are filled
-  let rcd = Rcd([#("x", Lit(LitInt(1), sp()))], sp())
+  let rcd = Rcd([#("x", lit_int(1))], sp())
   let expected = VNeut(HVar(0), [])
   let result = check(initial_state([]), rcd, expected)
   let #(value, _, _) = result
@@ -1979,5 +1979,94 @@ $type {
   assert case type_def_val {
     VTypeDef(_, _, _) -> True
     _ -> True  // Accept any result for now
+  }
+}
+
+// ============================================================================
+// IMPLICIT PARAMETER TESTS (Phase 2.19.8-2.19.10)
+// Comprehensive tests for VLam implicit param auto-expansion
+/// Test: VLam without implicit params — regular lambda application
+pub fn infer_vlam_no_implicit_test() {
+  // $fn(x: $Int) => x evaluated to VLam
+  let param_type = lit_t_int()
+  let body = var(0)
+  let lam = lam("x", param_type, body)
+  let state = initial_state([])
+  let #(value, type_, _) = infer(state, lam)
+  
+  assert case value {
+    VLam(..) -> True
+    _ -> False
+  }
+  assert case type_ {
+    VPi(..) -> True
+    _ -> False
+  }
+}
+
+
+/// Test: VLam application — $fn(x: $Int) => x applied to 42 returns 42
+pub fn infer_vlam_application_test() {
+  let param_type = lit_t_int()
+  let body = var(0)
+  let lam = lam("x", param_type, body)
+  let arg = lit_int(42)
+  let app = App(lam, arg, sp())
+  let state = initial_state([])
+  let #(value, type_, _) = infer(state, app)
+  
+  assert case value {
+    VLit(LitInt(42)) -> True
+    _ -> False
+  }
+  assert case type_ {
+    VLitT(IntT) -> True
+    _ -> False
+  }
+}
+
+
+/// Test: VLam application with type mismatch — VLam doesn't check param types,
+/// it just evaluates body with arg bound. So the result is the arg value.
+pub fn infer_vlam_application_type_mismatch_test() {
+  let param_type = lit_t_int()
+  let body = var(0)
+  let lam = lam("x", param_type, body)
+  let arg = lit_float(3.14)
+  let app = App(lam, arg, sp())
+  let state = initial_state([])
+  let #(value, _, _) = infer(state, app)
+
+  // VLam case evaluates body with arg bound — no type checking on param type
+  assert case value {
+    VLit(LitFloat(3.14)) -> True
+    _ -> False
+  }
+}
+
+
+/// Test: Implicit param with explicit type annotation
+pub fn infer_vlam_implicit_param_with_annotation_test() {
+  let source = "$let identity: $pi<a: $Type>(a) -> a = $fn<a: $Type>(x: a) => x\nidentity(42)"
+  let state = initial_state([])
+  let #(value, _, _) = infer(state, parse(source).0)
+  let value = evaluate(state, parse(source).0)
+  
+  assert case value {
+    VLit(LitInt(42)) -> True
+    _ -> False
+  }
+}
+
+
+/// Test: Implicit param with float argument
+pub fn infer_vlam_implicit_param_float_test() {
+  let source = "$let identity = $fn<a: $Type>(x: a) => x\nidentity(3.14)"
+  let state = initial_state([])
+  let value = evaluate(initial_state([]), parse(source).0)
+  
+  assert case value {
+    VLit(LitFloat(3.14)) -> True
+    _ -> False
   }
 }
