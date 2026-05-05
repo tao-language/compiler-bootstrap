@@ -10,4 +10,4 @@ $let uint16: $U16 = 1; // unsigned integer 16 bits
 $let uint32: $U32 = 1; // unsigned integer 32 bits
 $let uint64: $U64 = 1; // unsigned integer 64 bits
 
-0
+int32  // evaluates to 1 of type $I32 — proves the binding worked

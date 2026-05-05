@@ -1,4 +1,4 @@
 // Used to call built-in functions, defined by the compilation target, starting with %.
 // They must be fully type annotated since the implementation is opaque.
 // These can take zero or more typed arguments, and must annotate the return type.
-%i32_add(1: $I32, 2: $I32) -> $I32
+%i32_add(1: $I32, 2: $I32) -> $I32  // returns 3

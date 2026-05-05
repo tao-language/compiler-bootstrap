@@ -7,4 +7,4 @@ $let float64: $F64 = 1.1; // float 64 bits
 // Float types can also accept integer literals, but not the other way around.
 $let float_int_lit: $Float = 42;
 
-0
+float_int_lit  // evaluates to 42.0 — proves float accepts int literals
