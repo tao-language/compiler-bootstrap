@@ -194,7 +194,7 @@ fn file_path_for_name(name: String) -> String {
     "01_default_values" -> "examples/core/tour/07_advanced/01_default_values.core"
     "02_implicit_params" -> "examples/core/tour/07_advanced/02_implicit_params.core"
     _ -> {
-      panic "Unknown tour file name"
+      panic
     }
   }
 }
