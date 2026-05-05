@@ -14,9 +14,9 @@
 /// - Error recovery (strings, unsupported operators)
 /// - Edge cases (empty input, extra tokens, unicode)
 import core/ast.{
-  App, Case as CoreCase, Ctr, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
+  App, Case as CoreCase, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
   LitT, Match, PLit, PUnit, Pi, Rcd, Typ, Var,
-  IntT, FloatT, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
+  IntT,
 }
 import core/syntax.{parse, parse_tokens}
 import gleam/list

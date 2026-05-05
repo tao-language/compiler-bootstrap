@@ -867,7 +867,6 @@ pub fn vrcdt_multiple_fields_test() {
   ])
   assert case v {
     VRcdT(fields) -> list.length(fields) == 2
-    _ -> False
   }
 }
 
@@ -879,7 +878,6 @@ pub fn vrcdt_term_construction_test() {
   assert case t {
     RcdT(fields, _) ->
       list.length(fields) == 2
-    _ -> False
   }
 }
 
