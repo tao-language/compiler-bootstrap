@@ -9,11 +9,14 @@
 import core/ast.{type Value, HHole, make_neut}
 import core/exhaustiveness.{
   check_exhaustiveness,
+  check_exhaustiveness_vdef,
   extract_tags,
   is_redundant,
 }
 import core/state.{type State, type Error, MatchMissing, initial_state}
+import gleam/int
 import gleam/list
+import gleam/option.{Some}
 import gleam/string
 import gleeunit
 import syntax/span.{single, type Span}
@@ -246,4 +249,247 @@ fn make_type_def(tags: List(String)) -> List(#(String, Value, Value, Span)) {
   list.map(tags, fn(tag) {
     #(tag, make_neut(HHole(0)), make_neut(HHole(0)), single("exhaustiveness_test", 0, 0))
   })
+}
+
+// ============================================================================
+// VTypeDef-STYLE EXHAUSTIVENESS CHECKING
+// ============================================================================
+
+/// Create VTypeDef-style constructors with the format:
+/// #(tag, type_params, self_type, result_type, span)
+fn make_vdef_constructors(
+  tags: List(String),
+) -> List(#(String, List(String), Value, Value, Span)) {
+  list.map(tags, fn(tag) {
+    let type_params = case tag {
+      "Some" -> ["a"]
+      "Cons" -> ["m", "a"]
+      _ -> []
+    }
+    #(tag, type_params, make_neut(HHole(0)), make_neut(HHole(0)), sp())
+  })
+}
+
+/// VTypeDef: Option<a> with Some and None constructors.
+/// Full coverage should succeed.
+pub fn check_exhaustiveness_vdef_option_full_test() {
+  let state = make_state()
+  let constructors = make_vdef_constructors(["Some", "None"])
+  let covered = ["Some", "None"]
+  let result_state = check_exhaustiveness_vdef(state, constructors, covered, sp())
+  assert result_state.errors == []
+}
+
+/// VTypeDef: Option<a> with only Some covered — should report None as missing.
+pub fn check_exhaustiveness_vdef_option_partial_test() {
+  let state = make_state()
+  let constructors = make_vdef_constructors(["Some", "None"])
+  let covered = ["Some"]
+  let result_state = check_exhaustiveness_vdef(state, constructors, covered, sp())
+  assert list.length(result_state.errors) == 1
+  let error = first_error(result_state.errors)
+  assert case error {
+    MatchMissing(missing, _, _) if missing == ["None"] -> True
+    _ -> False
+  }
+}
+
+/// VTypeDef: GADT Vec with Nil and Cons constructors.
+/// Full coverage should succeed.
+pub fn check_exhaustiveness_vdef_gadt_vec_full_test() {
+  let state = make_state()
+  let constructors = make_vdef_constructors(["Nil", "Cons"])
+  let covered = ["Nil", "Cons"]
+  let result_state = check_exhaustiveness_vdef(state, constructors, covered, sp())
+  assert result_state.errors == []
+}
+
+/// VTypeDef: GADT Vec with only Nil covered — should report Cons as missing.
+pub fn check_exhaustiveness_vdef_gadt_vec_partial_test() {
+  let state = make_state()
+  let constructors = make_vdef_constructors(["Nil", "Cons"])
+  let covered = ["Nil"]
+  let result_state = check_exhaustiveness_vdef(state, constructors, covered, sp())
+  assert list.length(result_state.errors) == 1
+  let error = first_error(result_state.errors)
+  assert case error {
+    MatchMissing(missing, _, _) -> list.sort(missing, string.compare) == ["Cons"]
+    _ -> False
+  }
+}
+
+/// VTypeDef: Empty type (Void) with no constructors.
+/// Full coverage (empty covered) should succeed.
+pub fn check_exhaustiveness_vdef_void_full_test() {
+  let state = make_state()
+  let constructors = make_vdef_constructors([])
+  let covered = []
+  let result_state = check_exhaustiveness_vdef(state, constructors, covered, sp())
+  assert result_state.errors == []
+}
+
+/// VTypeDef: Empty type (Void) with non-empty covered.
+/// This is unusual but should still succeed (no constructors to check).
+pub fn check_exhaustiveness_vdef_void_covered_test() {
+  let state = make_state()
+  let constructors = make_vdef_constructors([])
+  let covered = ["Some"]
+  let result_state = check_exhaustiveness_vdef(state, constructors, covered, sp())
+  assert result_state.errors == []
+}
+
+/// VTypeDef: Three-way type (Color) with full coverage.
+pub fn check_exhaustiveness_vdef_color_full_test() {
+  let state = make_state()
+  let constructors = make_vdef_constructors(["Red", "Green", "Blue"])
+  let covered = ["Red", "Green", "Blue"]
+  let result_state = check_exhaustiveness_vdef(state, constructors, covered, sp())
+  assert result_state.errors == []
+}
+
+/// VTypeDef: Three-way type (Color) with partial coverage.
+pub fn check_exhaustiveness_vdef_color_partial_test() {
+  let state = make_state()
+  let constructors = make_vdef_constructors(["Red", "Green", "Blue"])
+  let covered = ["Red", "Green"]
+  let result_state = check_exhaustiveness_vdef(state, constructors, covered, sp())
+  assert list.length(result_state.errors) == 1
+  let error = first_error(result_state.errors)
+  assert case error {
+    MatchMissing(missing, _, _) -> list.sort(missing, string.compare) == ["Blue"]
+    _ -> False
+  }
+}
+
+/// VTypeDef: GADT Expr with LitInt, LitBool, Add, IsZero constructors.
+/// Full coverage should succeed.
+pub fn check_exhaustiveness_vdef_gadt_expr_full_test() {
+  let state = make_state()
+  let constructors = make_vdef_constructors(["LitInt", "LitBool", "Add", "IsZero"])
+  let covered = ["LitInt", "LitBool", "Add", "IsZero"]
+  let result_state = check_exhaustiveness_vdef(state, constructors, covered, sp())
+  assert result_state.errors == []
+}
+
+/// VTypeDef: GADT Expr with only LitInt and LitBool covered.
+pub fn check_exhaustiveness_vdef_gadt_expr_partial_test() {
+  let state = make_state()
+  let constructors = make_vdef_constructors(["LitInt", "LitBool", "Add", "IsZero"])
+  let covered = ["LitInt", "LitBool"]
+  let result_state = check_exhaustiveness_vdef(state, constructors, covered, sp())
+  assert list.length(result_state.errors) == 1
+  let error = first_error(result_state.errors)
+  assert case error {
+    MatchMissing(missing, _, _) -> list.sort(missing, string.compare) == ["Add", "IsZero"]
+    _ -> False
+  }
+}
+
+/// VTypeDef: Property test — full coverage always succeeds.
+pub fn check_exhaustiveness_vdef_full_coverage_property_test() {
+  let type_pairs = [
+    #("Bool", ["True", "False"]),
+    #("Option", ["Some", "None"]),
+    #("Nat", ["Z", "S"]),
+    #("Tri", ["Red", "Green", "Blue"]),
+    #("Void", []),
+    #("Vec", ["Nil", "Cons"]),
+    #("Expr", ["LitInt", "LitBool", "Add", "IsZero"]),
+  ]
+
+  let states = list.map(type_pairs, fn(pair) {
+    let constructors = pair.1
+    let full_covered = constructors
+    let state = make_state()
+    let typed_constructors = make_vdef_constructors(constructors)
+    check_exhaustiveness_vdef(state, typed_constructors, full_covered, sp())
+    state.errors == []
+  })
+
+  assert states |> list.all(fn(b) { b }) == True
+}
+
+/// VTypeDef: Property test — missing at least one constructor always reports error.
+pub fn check_exhaustiveness_vdef_missing_always_error_property_test() {
+  let type_pairs = [
+    #("Bool", ["True", "False"]),
+    #("Option", ["Some", "None"]),
+    #("Nat", ["Z", "S"]),
+    #("Tri", ["Red", "Green", "Blue"]),
+  ]
+
+  let states = list.map(type_pairs, fn(pair) {
+    let all_tags = pair.1
+    let missing_one = list.drop(all_tags, 1)  // Remove last tag
+    let state = make_state()
+    let typed_constructors = make_vdef_constructors(all_tags)
+    let result_state = check_exhaustiveness_vdef(state, typed_constructors, missing_one, sp())
+    list.length(result_state.errors) > 0
+  })
+
+  assert states |> list.all(fn(b) { b }) == True
+}
+
+/// VTypeDef: Property test — removing any tag from full coverage results in error.
+pub fn check_exhaustiveness_vdef_remove_any_tag_error_property_test() {
+  let type_pairs = [
+    #("Bool", ["True", "False"]),
+    #("Option", ["Some", "None"]),
+    #("Nat", ["Z", "S"]),
+    #("Tri", ["Red", "Green", "Blue"]),
+  ]
+
+  let states = list.map(type_pairs, fn(pair) {
+    let all_tags = pair.1
+    // For each tag, remove it and check that an error is reported
+    list.any(all_tags, fn(tag) {
+      let remaining = list.filter(all_tags, fn(t) { t != tag })
+      let state = make_state()
+      let typed_constructors = make_vdef_constructors(all_tags)
+      let result_state = check_exhaustiveness_vdef(state, typed_constructors, remaining, sp())
+      list.length(result_state.errors) > 0
+    })
+  })
+
+  assert states |> list.all(fn(b) { b }) == True
+}
+
+/// VTypeDef: Check that the missing tag in the error is correct.
+pub fn check_exhaustiveness_vdef_missing_tag_correct_test() {
+  let state = make_state()
+  let constructors = make_vdef_constructors(["A", "B", "C"])
+  let covered = ["A", "C"]
+  let result_state = check_exhaustiveness_vdef(state, constructors, covered, sp())
+  let error = first_error(result_state.errors)
+  assert case error {
+    MatchMissing(missing, _, _) if missing == ["B"] -> True
+    _ -> False
+  }
+}
+
+/// VTypeDef: Check that multiple missing tags are reported.
+pub fn check_exhaustiveness_vdef_multiple_missing_test() {
+  let state = make_state()
+  let constructors = make_vdef_constructors(["A", "B", "C", "D"])
+  let covered = ["A"]
+  let result_state = check_exhaustiveness_vdef(state, constructors, covered, sp())
+  let error = first_error(result_state.errors)
+  assert case error {
+    MatchMissing(missing, _, _) ->
+      list.sort(missing, string.compare) == ["B", "C", "D"]
+    _ -> False
+  }
+}
+
+/// VTypeDef: Empty covered list reports all tags as missing.
+pub fn check_exhaustiveness_vdef_empty_covered_test() {
+  let state = make_state()
+  let constructors = make_vdef_constructors(["A", "B"])
+  let covered = []
+  let result_state = check_exhaustiveness_vdef(state, constructors, covered, sp())
+  let error = first_error(result_state.errors)
+  assert case error {
+    MatchMissing(missing, _, _) -> list.sort(missing, string.compare) == ["A", "B"]
+    _ -> False
+  }
 }

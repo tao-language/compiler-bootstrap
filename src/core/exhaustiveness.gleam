@@ -24,6 +24,10 @@ import syntax/span.{single, type Span}
 ///
 /// `constructors` is a list of #(tag, ConstructorDef) tuples representing
 /// the constructor definitions to check against.
+///
+/// Supports two formats:
+/// - Legacy: `List(#(String, Value, Value, Span))` — #(tag, _, _, _)
+/// - VTypeDef: `List(#(String, List(String), Value, Value, Span))` — #(tag, _, _, _, _)
 pub fn check_exhaustiveness(
   state: State,
   constructors: List(#(String, Value, Value, Span)),
@@ -35,6 +39,35 @@ pub fn check_exhaustiveness(
       #(tag, _, _, _) -> tag
     }
   })
+
+  check_exhaustiveness_inner(state, all_tags, covered, span)
+}
+
+/// Check exhaustiveness for VTypeDef-style constructors.
+///
+/// VTypeDef constructors have the format: #(tag, type_params, self_type, result_type, span)
+pub fn check_exhaustiveness_vdef(
+  state: State,
+  constructors: List(#(String, List(String), Value, Value, Span)),
+  covered: List(String),
+  span: Span,
+) -> State {
+  let all_tags = list.map(constructors, fn(c) {
+    case c {
+      #(tag, _, _, _, _) -> tag
+    }
+  })
+
+  check_exhaustiveness_inner(state, all_tags, covered, span)
+}
+
+/// Internal helper: check exhaustiveness against a list of tags.
+fn check_exhaustiveness_inner(
+  state: State,
+  all_tags: List(String),
+  covered: List(String),
+  span: Span,
+) -> State {
   let missing =
     list.fold(all_tags, [], fn(acc, tag) {
       case list.contains(covered, tag) {

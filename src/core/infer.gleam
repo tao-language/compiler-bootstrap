@@ -8,6 +8,7 @@
 import core/ast.{type Value,
   VTypeDef,
   IntT, FloatT}
+import core/exhaustiveness.{check_exhaustiveness_vdef}
 import core/state.{FfiEntry, def_var}
 import core/eval.{evaluate, match_pattern}
 import core/subst.{force, force_levels_to_indices}
@@ -287,11 +288,20 @@ fn infer_match(
   state: state.State,
   arg: ast.Term,
   cases: List(ast.Case),
-  _span: Span,
+  span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
   let #(arg_val, arg_type, state2) = infer(state, arg)
   let #(result_val, result_type, final_state) =
     check_match_cases(state2, arg_val, arg_type, cases, [])
+
+  // Check exhaustiveness if the scrutinee type is a TypeDef
+  let final_state = case arg_type {
+    VTypeDef(name: _, params: _, constructors: constructors) -> {
+      let covered_tags = collect_covered_tags(cases, arg_val)
+      check_exhaustiveness_vdef(final_state, constructors, covered_tags, span)
+    }
+    _ -> final_state
+  }
 
   // result_val is already the evaluated body of the matching case
   #(result_val, result_type, final_state)
@@ -326,6 +336,44 @@ fn check_match_cases(
         }
       }
     }
+  }
+}
+
+/// Collect constructor tags covered by patterns in a list of cases.
+///
+/// This is used for exhaustiveness checking — we track which constructor
+/// tags have been matched by at least one pattern.
+fn collect_covered_tags(
+  cases: List(ast.Case),
+  _scrutinee_val: ast.Value,
+) -> List(String) {
+  cases
+  |> list.fold([], fn(acc, c) {
+    let tags = extract_tags_from_pattern(c.pattern)
+    list.append(acc, tags)
+  })
+}
+
+/// Extract constructor tags from a pattern.
+///
+/// Returns a list of tags that this pattern covers. For constructor
+/// patterns (`#Tag(...)`), returns `["Tag"]`. For wildcard patterns
+/// (`_`), returns an empty list (wildcards don't cover specific tags).
+/// For record patterns, returns tags from inner constructor patterns.
+fn extract_tags_from_pattern(pattern: ast.Pattern) -> List(String) {
+  case pattern {
+    ast.PAny(_) -> []
+    ast.PVar(_, _) -> []
+    ast.PAlias(_, inner, _) -> extract_tags_from_pattern(inner)
+    ast.PCtr(tag, _, _) -> [tag]
+    ast.PUnit(_) -> []
+    ast.PLit(_, _) -> []
+    ast.PType(_, _) -> []
+    ast.PRcd(fields, _) ->
+      fields
+      |> list.map(fn(f) { extract_tags_from_pattern(f.1) })
+      |> list.flatten
+    ast.PError(_) -> []
   }
 }
 
