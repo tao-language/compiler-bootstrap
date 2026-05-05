@@ -1,9 +1,9 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-05-05 (Phase 2 — 919 tests passing, 9 pre-existing failures.)
+> **Last updated:** 2026-05-05 (Phase 2 — 925 tests passing, 3 remaining failures.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 >
-> **Recent:** Exhaustiveness checking integrated into type checker (infer_match calls check_exhaustiveness_vdef). Added 16 comprehensive tests for VTypeDef-style exhaustiveness. Tour example tests refactored to read from files (38 files). 919 tests passing, 9 failures (pre-existing tour example failures).
+> **Recent:** Fixed 6 of 9 failing tour tests. Parser now handles $Type<N> syntax. match_pattern handles VRcdT values. fill_record_defaults integrated into infer_app for $let bindings. FFI lookup name matching fixed. 925 tests passing, 3 failures remaining (t04_04_gadt_expr_test, t05_10_exhaustiveness_test, t07_01_default_values_test).
 
 ## Legend
 
@@ -527,6 +527,7 @@
 | 2026-04-26 | **Grammar parse() improved.** Returns descriptive error on parse failure instead of empty errors list. |
 | 2026-04-26 | **Grammar DSL critically fixed.** parse() now returns constructed AST (was returning error_node). Tok pattern matches punctuation by value. |
 | 2026-04-25 | **MAJOR AST REFACTOR.** Core AST updated: Rcd for records/Unit, Ctr(tag, Rcd(args)) for constructors, Typ(level) for universes, Case(pattern, guard, body). |
+| 2026-05-05 | **Test failure fixes (9 → 3).** Fixed 6 of 9 failing tour tests: t01_introduction (wrong expected value), t05_type_defs (missing body expression), t03_01_types_test ($Type<N> parser), t03_03_floats_test (int literal stays Int), t12_builtin_calls_test (FFI name matching), t05_06_rcdt_pattern_test (VRcdT matching). Added fill_record_defaults in infer_app for $let bindings. 925 tests passing, 3 failures remaining. |
 | 2026-04-25 | **Parser rewritten.** All parsing functions updated for new syntax: $fn, $let, $match, #Tag, fun(), {x: y}, $Type, $error, ? |
 | 2026-04-25 | **Parser combinator DSL implemented.** 11 combinators (tok, kw, op, ref, seq, opt, many, choice, sep_by, parens, delimited). 198 parser combinator tests. |
 | 2026-04-24 | Initial tracker created based on revised roadmap |
