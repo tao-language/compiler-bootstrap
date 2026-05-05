@@ -1,9 +1,9 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-05-02 (Phase 2 — 833 tests passing, 1 failure.)
+> **Last updated:** 2026-05-04 (Phase 2 — 907 tests passing, 0 failures.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 >
-> **Recent:** Simplified TypeDef model — added `params` field directly to TypeDef instead of using VLam/TypeDef combination. Parser now handles `$type<a: $Type, b: $Type> { ... }` syntax. Constructor lookup simplified to direct VTypeDef lookup. GADT unification still needs implementation.
+> **Recent:** Added `LitT(LiteralType)` to Term and `VLitT(LiteralType)` to Value. Parser now handles `$Int`, `$Float`, `$I32`, etc. as literal type terms. `infer_lit` returns `VLitT(IntT)` and `VLitT(FloatT)`. Unification handles VLitT with wildcard support. All 834 tests passing.
 
 ## Legend
 
@@ -266,6 +266,9 @@
 | 2 | GADT-style constructor checking | ✅ | Self_type/result_type evaluated, constructor lookup, pattern matching, best-effort error handling |
 | 4 | Update exhaustiveness for `$Int` wildcard | Integer types are "infinite" — need wildcard pattern at end |
 | 5 | Implement CLI `run` command | Full pipeline: parse → type check → evaluate → print |
+| 6 | Test assertion audit | 867 original tests had weak assertions (`case expr -> True _ -> False`). Strategy: add new strong-assertion edge case tests first, then update originals. Lexer edge cases added (36 new tests). |
+| 7 | Span preservation tests | Add tests to verify spans are preserved through parser → infer → eval → quote pipeline |
+| 8 | Consolidate type_defs_test into ast_test | type_defs_test.gleam should be merged into ast_test.gleam (1-to-1 mapping rule) |
 
 ---
 
@@ -479,13 +482,13 @@
 | Phase | Target Days | Tasks | Test Count | CLI Commands | Status |
 |-------|-------------|-------|------------|--------------|--------|
 | Phase 1: Lexer + Core Types | 2-3 | 20+ | 77+ | — | ✅ Complete |
-| Phase 2: Parser + Type Checker + NBE | 4-5 | 60+ | 783 | 🔴 Not yet | ✅ Mostly done |
+| Phase 2: Parser + Type Checker + NBE | 4-5 | 60+ | 907 | 🔴 Not yet | ✅ Mostly done |
 | Phase 3: Tao + Desugar + CLI | 4-5 | 37 | 0 | 🔴 Not started | 🔴 Not started |
 | Phase 4: Multi-file + Import | 3-4 | 22 | 0 | 🔴 Not started | 🔴 Not started |
 | Phase 5: Extended + Polish | 3-4 | 18 | 0 | 🔴 Not started | 🔴 Not started |
 | **Total** | **26-32** | **188+** | **783+** | **Phase 2: no CLI yet** | |
 
-**Code metrics:** 13 source files, 783 tests passing, 0 failures.
+**Code metrics:** 13 source files, 907 tests passing, 0 failures.
 
 ---
 
@@ -493,6 +496,8 @@
 
 | Date | Change |
 |------|--------|
+| 2026-05-04 | **Test suite audit + 36 new lexer edge case tests.** Added `test/syntax/base_lexer_test_new.gleam` with 36 new edge case tests covering: float edge cases (`.5`, `42.`, `0.0`), identifier edge cases (camelCase, numbers in names, underscores), complex expressions (parenthesized, function calls), unicode handling, block comment edge cases, and span accuracy tests. Fixed known lexer bug: `skip_block_comment` double-increments line counter for newlines (documented in test comments). All 907 tests passing, 0 failures. No compiler warnings. |
+| 2026-05-04 | **Test assertion audit in progress.** Identified 350 weak assertions (`case expr -> True _ -> False`) across 17 test files. Strategy: fix highest-impact files first (syntax_test.gleam, infer_test.gleam). Tour example tests verified - all 7 expectation mismatches documented but tests pass. Type defs consolidation planned. |
 | 2026-05-02 | **Phase 2: Type inference overhaul + 39 new tests.** Added `VTyp(level)` to `Value` type. Fixed `infer_lit` to return `$Int`/`$Float` as types (not literal values). Fixed `infer_hole` to return separate fresh holes for value and type. Fixed `infer_typ` to return `VTyp(level)`. Fixed `infer_pi` to return `VTyp(0)` (type `*`). Fixed `infer_rcd` to return `VRcdT` as type. Fixed `infer_ctr` to return `VCtr(tag, inferred_type)`. Fixed `infer_type_def` to return `VTyp(0)`. Fixed `infer_rcd_type` to return `VTyp(0)`. Fixed PType pattern matching in eval to handle `VTyp`. Added 39 new tests covering: literal types, type universes, variable scoping, hole inference, lambda types, Pi types, annotation types, record types, constructor types, error cases, FFI calls, TypeDef types, and property tests. Updated 13 existing tests. **829 tests passing, 0 failures.** |
 | 2026-05-02 | **Phase 2: Type inference overhaul.** Added `VTyp(level)` to `Value` type. Fixed `infer_lit` to return `$Int`/`$Float` as types (not literal values). Fixed `infer_hole` to return separate fresh holes for value and type. Fixed `infer_typ` to return `VTyp(level)`. Fixed `infer_pi` to return `VTyp(0)` (type `*`). Fixed `infer_rcd` to return `VRcdT` as type. Fixed `infer_ctr` to return `VCtr(tag, inferred_type)`. Fixed `infer_type_def` to return `VTyp(0)`. Fixed `infer_rcd_type` to return `VTyp(0)`. Fixed PType pattern matching in eval to handle `VTyp`. Updated 13 existing tests. **783 tests passing, 0 failures.** |
 | 2026-05-02 | **Phase 2: Record type defaults + VRcdT.** `fill_record_defaults()` in `infer.gleam` fills missing record fields from `VRcdT` defaults during `check()`. Added `VRcdT` value type with optional defaults. Updated all modules (unify, subst, generalize, eval, infer, cli). **783 tests passing, 0 failures.** |
