@@ -14,7 +14,7 @@
 /// - Error recovery (strings, unsupported operators)
 /// - Edge cases (empty input, extra tokens, unicode)
 import core/ast.{
-  App, Case as CoreCase, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
+  App, Ann, Case as CoreCase, Call, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
   LitT, Match, PLit, PUnit, Pi, Rcd, Typ, Var,
   IntT,
 }
@@ -736,4 +736,78 @@ pub fn parse_nested_application_test() {
     ) -> True
     _ -> False
   }
+}
+
+// ============================================================================
+// Debugging tests for remaining tour failures
+// ============================================================================
+
+pub fn parse_ffi_call_in_match_body_test() {
+  // Debug: Parse just the FFI call to see if it works standalone
+  let #(term, errors) = parse("%i32_add(1, 2)")
+  assert case term {
+    Call("i32_add", args, _, _, _) -> list.length(args) == 2
+    _ -> False
+  }
+  let _ = errors
+}
+
+pub fn parse_ffi_call_with_var_args_test() {
+  // Debug: Parse FFI call with variable arguments
+  let #(term, errors) = parse("%i32_add(eval(x), eval(y))")
+  assert case term {
+    Call("i32_add", args, _, _, _) -> list.length(args) == 2
+    _ -> False
+  }
+  let _ = errors
+}
+
+pub fn parse_match_body_with_ffi_test() {
+  // Debug: Parse a simple match body with FFI call
+  let source = "$match x {\n| _ => %i32_add(1, 2)\n}"
+  let #(term, errors) = parse(source)
+  let _ = term
+  let _ = errors
+}
+
+pub fn parse_match_with_type_annotation_test() {
+  // Debug: Parse match with type annotation after argument
+  let source = "$match 42 : $Int {\n| _ => 0\n}"
+  let #(term, errors) = parse(source)
+  let _ = term
+  let _ = errors
+}
+
+pub fn parse_let_with_record_default_test() {
+  // Debug: Parse let with record type default
+  let source = "$let p: ${x: $Int, y: $Int = 0} = {x: 1}" 
+  let #(term, errors) = parse(source)
+  let _ = term
+  let _ = errors
+}
+
+pub fn parse_match_with_type_ann_detailed_test() {
+  // Debug: Parse match with type annotation and check the parsed AST
+  let source = "$match 42 : $Int {\n| _ => 0\n}"
+  let #(term, errors) = parse(source)
+  // Check that we got a Match term, not a record or error
+  let term_ok = case term {
+    Match(_, _, _) -> True
+    _ -> False
+  }
+  assert term_ok
+  let _ = errors
+}
+
+pub fn parse_simple_term_with_type_ann_test() {
+  // Debug: Parse a simple term with type annotation
+  let source = "42 : $Int"
+  let #(term, errors) = parse(source)
+  // Check that we got an Ann term
+  let term_ok = case term {
+    Ann(_, _, _) -> True
+    _ -> False
+  }
+  assert term_ok
+  let _ = errors
 }

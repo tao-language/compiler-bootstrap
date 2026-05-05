@@ -1062,12 +1062,20 @@ fn parse_match(p: Parser, span: Span) -> #(Term, Parser) {
   }
   let p2 = skip("match", p1)
   let #(arg, p3) = parse_term(p2)
-  let p4 = skip("{", p3)
-  let p5 = parse_cases(p4)
-  let #(cases, rest) = p5
-  let p6 = skip("}", rest)
+  // Optionally consume : Type annotation after the match argument
+  let p4 = case p3 {
+    #(tokens, pos, env, fn_, errors) ->
+      case list.drop(tokens, pos) {
+        [Token("Punct", ":", _), ..] -> skip(":", p3)
+        _ -> p3
+      }
+  }
+  let p5 = skip("{", p4)
+  let p6 = parse_cases(p5)
+  let #(cases, rest) = p6
+  let p7 = skip("}", rest)
   let final_span = merge(span, case_list_span(cases, span))
-  #(Match(arg, cases, final_span), p6)
+  #(Match(arg, cases, final_span), p7)
 }
 
 fn parse_cases(p: Parser) -> #(List(Case), Parser) {
