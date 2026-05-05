@@ -1116,9 +1116,21 @@ fn parse_cases_acc(p: Parser, acc: List(Case)) -> #(List(Case), Parser) {
                   }
               }
               let p5 = skip("=>", p3)
-              let #(body, rest_errors) = parse_term(p5)
-              let case_term = CoreCase(pattern, guard, body, span)
-              parse_cases_acc(rest_errors, [case_term, ..acc])
+              let #(body, p6) = parse_term(p5)
+              // Optionally consume -> ReturnType annotation (just an annotation, doesn't affect semantics)
+              let p7 = case p6 {
+                #(tokens, pos, env, fn_, errors) ->
+                  case list.drop(tokens, pos) {
+                    [Token("Op", "-", _), Token("Op", ">", _), ..rest] -> {
+                      let p_after = #(rest, pos + 2, env, fn_, errors)
+                      let #(ret_type, p8) = parse_term(p_after)
+                      #(Ann(body, ret_type, current_span(p_after)), p8)
+                    }
+                    _ -> #(body, p6)
+                  }
+              }
+              let case_term = CoreCase(pattern, guard, p7.0, span)
+              parse_cases_acc(p7.1, [case_term, ..acc])
             }
           }
       }
