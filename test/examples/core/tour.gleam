@@ -66,7 +66,8 @@ fn read_tour_file(path: String) -> String {
 
 /// Parse source content and return the term.
 fn parse_source(source: String) -> Term {
-  let #(term, _) = parse(source)
+  let #(term, errors) = parse(source)
+  assert errors == []
   term
 }
 
