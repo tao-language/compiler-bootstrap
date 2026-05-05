@@ -1063,19 +1063,29 @@ fn parse_match(p: Parser, span: Span) -> #(Term, Parser) {
   let p2 = skip("match", p1)
   let #(arg, p3) = parse_term(p2)
   // Optionally consume : Type annotation after the match argument
+  // p3 is a Parser (tuple of 5 elements), check if next token is :
   let p4 = case p3 {
     #(tokens, pos, env, fn_, errors) ->
       case list.drop(tokens, pos) {
-        [Token("Punct", ":", _), ..] -> skip(":", p3)
-        _ -> p3
+        [Token("Punct", ":", _), ..] -> {
+          let p_annot = skip(":", p3)
+          let #(ann_type, p_new) = parse_term(p_annot)
+          #(Ann(arg, ann_type, current_span(p_annot)), p_new)
+        }
+        _ -> #(arg, p3)
       }
   }
-  let p5 = skip("{", p4)
-  let p6 = parse_cases(p5)
-  let #(cases, rest) = p6
-  let p7 = skip("}", rest)
+  // p4 is now #(Term, Parser), extract the parser part
+  let p5 = case p4 {
+    #(_, p_parser) -> p_parser
+    _ -> p3
+  }
+  let p6 = skip("{", p5)
+  let p7 = parse_cases(p6)
+  let #(cases, rest) = p7
+  let p8 = skip("}", rest)
   let final_span = merge(span, case_list_span(cases, span))
-  #(Match(arg, cases, final_span), p7)
+  #(Match(arg, cases, final_span), p8)
 }
 
 fn parse_cases(p: Parser) -> #(List(Case), Parser) {
