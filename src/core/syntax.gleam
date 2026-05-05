@@ -350,7 +350,29 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
     // Built-in type values: $Type, $Int, $Float, $I32, etc.
     [Token("Op", "$", _), Token("Name", name, _), ..rest] ->
       case name {
-        "Type" -> #(Typ(0, span), #(rest, 0, env, fn_, errors))
+        // $Type or $Type<N> where N is an integer literal or variable
+        "Type" -> {
+          // Check for optional <N> parameter and consume it
+          let result = case rest {
+            [Token("Op", "<", _), Token("Integer", v, _), Token("Op", ">", _), ..rest2] -> {
+              let lvl = case int.parse(v) {
+                Ok(n) -> n
+                Error(_) -> 0
+              }
+              #(Typ(lvl, span), #(rest2, 0, env, fn_, errors))
+            }
+            [Token("Op", "<", _), Token("Name", v, _), Token("Op", ">", _), ..rest2] -> {
+              // $Type<x> — type variable
+              let lvl = case int.parse(v) {
+                Ok(n) -> n
+                Error(_) -> 0
+              }
+              #(Typ(lvl, span), #(rest2, 0, env, fn_, errors))
+            }
+            _ -> #(Typ(0, span), #(rest, 0, env, fn_, errors))
+          }
+          result
+        }
         // Literal types: $Int, $Float, $I32, $I64, $U8-$U64, $F16-$F64
         "Int" -> #(LitT(t: IntT, span: span), #(rest, 0, env, fn_, errors))
         "Float" -> #(LitT(t: FloatT, span: span), #(rest, 0, env, fn_, errors))

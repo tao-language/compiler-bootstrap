@@ -239,12 +239,16 @@ fn infer_app(
   // If so, evaluate the value and add it to the env before inferring the body.
   // This ensures TypeDef values (VLam) are available for constructor lookup.
   case fun {
-    ast.Lam(_implicits, #(param_name, _param_type), body, _lam_span) -> {
+    ast.Lam(_implicits, #(param_name, param_type), body, _lam_span) -> {
       // Infer the argument to get its value and type
       let #(arg_val, arg_type, state2) = infer(state, arg)
       let _ = arg_val
-      // Add the binding to the env: name -> #(arg_value, arg_type)
-      let arg_eval = evaluate(state2, arg)
+      // Evaluate the parameter type to get the expected value type
+      let param_val = evaluate(state2, param_type)
+      // Fill in record defaults if checking a record against a record type
+      let filled_arg = fill_record_defaults(arg, param_val)
+      // Evaluate the (possibly filled) argument
+      let arg_eval = evaluate(state2, filled_arg)
       let state_ext = def_var(state2, param_name, arg_eval, arg_type)
       // Infer the body with the binding in the env
       let #(body_val, body_type, state_final) = infer(state_ext, body)

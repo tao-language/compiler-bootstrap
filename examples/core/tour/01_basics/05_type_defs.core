@@ -23,3 +23,5 @@ $type {
 | #True({}) -> #Bool({})
 | #False({}) -> #Bool({})
 }
+
+#True({}) : #Bool({})

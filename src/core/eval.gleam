@@ -444,6 +444,15 @@ pub fn match_pattern(
             Error(_) -> Error(Nil)
           }
         }
+        VRcdT(rcdt_fields) -> {
+          // Match record type pattern against record type value.
+          // Extract just (name, type) pairs from VRcdT fields for matching.
+          let rcd_type_fields = list.map(rcdt_fields, fn(f) { #(f.0, f.1) })
+          case do_match_rcd(fields, rcd_type_fields, bindings) {
+            Ok(result) -> Ok(result)
+            Error(_) -> Error(Nil)
+          }
+        }
         _ -> Error(Nil)
       }
     }
