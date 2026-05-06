@@ -960,3 +960,9 @@ pub fn parse_let_type_def_only_test() {
 // ============================================================================
 
 // Test: What does standalone $type evaluate to?
+
+// ============================================================================
+// Debug: Trace $type evaluation step by step
+// ============================================================================
+
+// What does standalone $type evaluate to?
