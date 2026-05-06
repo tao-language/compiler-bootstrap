@@ -603,11 +603,12 @@ fn parse_type_def(p: Parser, span: Span) -> #(Term, Parser) {
       let p1 = skip("<", p)
       let #(params, p2) = parse_type_params(p1)
       let p3 = skip(">", p2)
-      let #(td_body, p4) = parse_type_def_body(p3)
-      let p5 = skip("}", p4)
-      let td_span = current_span(p5)
+      let p4 = skip("{", p3)
+      let #(td_body, p5) = parse_type_def_body(p4)
+      let p6 = skip("}", p5)
+      let td_span = current_span(p6)
       let type_def = TypeDef("", params, td_body, td_span)
-      parse_type_def_body_with_body(p5, type_def)
+      parse_type_def_body_with_body(p6, type_def)
     }
     // $type { ... } -> type without params
     [Token("Punct", "{", _), ..rest] -> {

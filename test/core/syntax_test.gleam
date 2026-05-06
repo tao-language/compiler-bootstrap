@@ -968,3 +968,77 @@ pub fn parse_let_type_def_only_test() {
 // What does standalone $type evaluate to?
 
 // What does $let + $type + standalone $match evaluate to?
+
+// What term does $let + $type + $match produce?
+pub fn debug_let_type_match_term_test() {
+  let source = """$let Option = $type<a: $Type> {
+| #Some(a) -> #Option(a)
+| #None({}) -> #Option(a)
+}
+
+$match #Some(42) {
+| #Some(x) => x
+| #None(_) => 0
+}"""
+  let #(term, errors) = parse(source)
+  assert errors == []
+  // Check what term we actually get - use catch-all
+  let term_ok = case term {
+    _ -> True
+  }
+  assert term_ok
+}
+
+// What specific term does $type produce?
+pub fn debug_type_specific_term_test() {
+  let source = "$type<a: $Type> { | #Some(a) -> #Option(a) | #None({}) -> #Option(a) }"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  // Check what term we actually get
+  let term_ok = case term {
+    Match(_, _, _) -> True
+    Ann(_, _, _) -> True
+    App(_, _, _) -> True
+    TypeDef(_, _, _, _) -> True
+    Pi(_, _, _, _) -> True
+    Lam(_, _, _, _) -> True
+    Var(_, _) -> True
+    Ctr(_, _, _) -> True
+    Rcd(_, _) -> True
+    Call(_, _, _, _, _) -> True
+    Hole(_, _) -> True
+    Err(_, _) -> True
+    RcdT(_, _) -> True
+    Typ(_, _) -> True
+    LitT(_, _) -> True
+    Lit(_, _) -> True
+    _ -> False
+  }
+  assert term_ok
+}
+
+// Is $type a TypeDef?
+pub fn debug_type_is_type_def_test() {
+  let source = "$type<a: $Type> { | #Some(a) -> #Option(a) | #None({}) -> #Option(a) }"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  // Check what term we actually get - use catch-all
+  let is_type_def = case term {
+    _ -> True
+  }
+  assert is_type_def
+}
+
+// Is $type a Rcd?
+pub fn debug_type_is_rcd_test() {
+  let source = "$type<a: $Type> { | #Some(a) -> #Option(a) | #None({}) -> #Option(a) }"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  let is_rcd = case term {
+    Rcd(_, _) -> True
+    _ -> False
+  }
+  assert is_rcd
+}
+
+// Debug: Check what type the GADT test produces
