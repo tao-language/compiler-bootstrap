@@ -954,3 +954,9 @@ pub fn parse_let_type_def_only_test() {
 // Test 1: Does standalone $match evaluate correctly?
 
 // Debug: Check what $let + $type evaluates to
+
+// ============================================================================
+// Debug: Trace $type evaluation step by step
+// ============================================================================
+
+// Test: What does standalone $type evaluate to?
