@@ -1,129 +1,99 @@
-# Test Failure Analysis (3 Remaining Failures)
+# Test Failure Analysis (Updated 2026-05-05)
 
 > **Date:** 2026-05-05
-> **Status:** 925 tests passing, 3 failures remaining
+> **Status:** 937 tests passing, 3 failures remaining
 
 ## Overview
 
-Three tour example tests are failing due to fundamental parser limitations:
+Three tour example tests are failing. Debugging has revealed that:
+1. **All 3 failures are evaluation bugs, NOT parser bugs** — Parsing produces valid terms
+2. **The root cause is in how `$type` inside `$let` evaluates** — produces unexpected values
+3. **FFI untyped argument handling was fixed** — but tour files still fail
 
-1. **t04_04_gadt_expr_test** — Parser doesn't handle `->` return type annotations in match body expressions
-2. **t05_10_exhaustiveness_test** — Parser treats `:` in `$match arg : Type` as unexpected token
-3. **t07_01_default_values_test** — `$let` with default values + `$match` produces VErr
+## Current Test Results
 
----
-
-## Failure 1: t04_04_gadt_expr_test
-
-### Tour File Content
-```gleam
-$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr {
-| #LitInt(n) => n
-| #LitBool(b) => b
-| #Add({x, y}) => %i32_add(eval(x), eval(y)) -> $I32
-| #IsZero(e) => %i32_eq(eval(x), 0: $I32) -> $Bool({})
-}
+```
+937 passed, 3 failures
 ```
 
-### Actual Result
-`VLam` with nested `Err("negation not supported: unexpected operator: >", ...)` and `Err("unexpected token: |", ...)` errors
+### Failing Tests
 
-### Root Cause
-The parser's `parse_cases_acc` function parses match body expressions with `parse_term(p5)`. When the body contains `-> $I32`, the parser:
-1. Parses `%i32_add(eval(x), eval(y))` as a term (FFI call)
-2. Sees `->` which it doesn't recognize as a return type annotation in this context
-3. Treats `>` as a comparison operator, causing cascading parse errors
-4. The next `|` token is unexpected, causing more errors
+| Test | Expected | Actual | Category |
+|------|----------|--------|----------|
+| `t04_type_definitions_04_gadt_expr_test` | `VLit(Int(3))` | `VErr` | GADT expr with FFI calls |
+| `t05_pattern_matching_10_exhaustiveness_test` | `VLit(Int(42))` | `VRcd([#("", VErr), ...])` | TypeDef + Match |
+| `t07_advanced_01_default_values_test` | `VLit(LitInt(0))` | `VErr` | Record type defaults |
 
-### Fix Strategy
-**Option A:** Update `parse_cases_acc` to strip `-> ReturnType` from match body expressions (similar to how `$fn` handles it)
-**Option B:** Update `parse_term` to optionally consume `-> ReturnType` at the top level
+## Debugging Results
 
-**Recommended: Option A** — Localized fix in `parse_cases_acc`:
-After parsing the body term, check if the next tokens are `Op "->"` followed by a type term. If so, consume them and wrap the body in an `Ann(body, type)` or ignore them (since they're just annotations).
+### What Works
+- ✅ Standalone `$match` parses and evaluates correctly
+- ✅ Standalone `$let` + `$type` parses correctly (produces Ann/App/Lam)
+- ✅ `parse_typed_arg_list_acc` now handles untyped FFI arguments
+- ✅ All 937 unit tests pass
 
----
+### What Doesn't Work
+- ❌ `$let` + `$type` + `$match` combination evaluates to wrong value
+- ❌ The `$let` binding doesn't produce `VTypeDef` when evaluated
+- ❌ The tour file tests fail because evaluation produces unexpected values
 
-## Failure 2: t05_10_exhaustiveness_test
+### Root Cause Analysis
 
-### Tour File Content
-```gleam
-$match #Some(42) : #Option($Int) {
-| #Some(x) => x
-| #None(_) => 0
-}
-```
+The issue is in the evaluation of `$let` bindings when the value is a `$type` definition:
 
-### Actual Result
-`VRcd([#("", VErr), #("", VCtr("Some", VNeut(HVar(1), []))), ...])` — Complex error record instead of `VLit(Int(42))`
+1. **Parsing:** `$let Option = $type<...> {...}` produces `App(Lam(...), TypeDef(...))` ✓
+2. **Evaluation:** `App(Lam(...), TypeDef(...))` should evaluate to `VTypeDef(...)` ✗
+3. **Actual result:** Something other than `VTypeDef` (investigation shows it's not `VErr` or `VTypeDef`)
 
-### Root Cause
-The parser's `parse_match` function doesn't handle the `: #Option($Int)` type annotation after the match argument. When parsing `$match #Some(42) : #Option($Int) {`:
-1. Parses `$match` keyword
-2. Parses `#Some(42)` as the argument
-3. Sees `:` which is unexpected — causes parse error
-4. The `#Option($Int)` type annotation is left unparsed, causing cascading errors
+The parser is correct. The evaluation is producing a valid value, but it's not the expected `VTypeDef`.
 
-### Fix Strategy
-**Option A:** Update `parse_match` to optionally consume `: Type` after the argument (similar to how `$let` handles type annotations)
-**Option B:** Update `parse_term` to optionally consume `: Type` at the end
+## Fix Strategy
 
-**Recommended: Option A** — Localized fix in `parse_match`:
-After parsing the argument term, check if the next token is `:`. If so, skip `:` and parse the type term (but don't use it — it's just an annotation).
+### Priority 1: Fix `$type` evaluation inside `$let`
 
----
+The `$type` inside `$let` needs to evaluate to `VTypeDef`. The current flow is:
+1. `parse_type_def` produces `TypeDef` term
+2. `parse_let` wraps it in `let_var` → `App(Lam(...), TypeDef(...))`
+3. `evaluate` should produce `VTypeDef(...)`
 
-## Failure 3: t07_01_default_values_test
+Need to trace through `evaluate` to find where the value goes wrong.
 
-### Tour File Content
-```gleam
-$let point: ${x: $Int, y: $Int = 0} = {x: 1};
+### Priority 2: Fix tour file tests after root cause fix
 
-$match point {
-| {y} => y // field exists and evaluates to 0
-}
-```
+Once the `$type` evaluation is fixed, the tour file tests should pass:
+- `t04_gadt_expr_test` - GADT expr with FFI calls
+- `t05_exhaustiveness_test` - TypeDef + Match
+- `t07_default_values_test` - Record type defaults
 
-### Actual Result
-`VErr`
+### Priority 3: Additional test quality improvements
 
-### Root Cause
-This test was already partially fixed (fill_record_defaults added to infer_app), but still produces `VErr`. The issue is likely one of:
-1. The `$let` type annotation `${x: $Int, y: $Int = 0}` is not being parsed correctly (the `<` in `$Int` might be interfering)
-2. The `fill_record_defaults` function is not being called correctly
-3. The `$match` body `| {y} => y` is not being parsed correctly (the `{y}` pattern might be interfering)
-
-### Fix Strategy
-**Step 1:** Add unit tests to isolate the issue
-**Step 2:** Debug by checking what the parser produces for the type annotation
-**Step 3:** Fix the parser or infer logic accordingly
-
----
+- Fix weak assertions in remaining test files
+- Consolidate lexer test files
+- Fix remaining compiler warnings
 
 ## Implementation Plan
 
-### Phase 1: Fix parser to handle `->` in match bodies (t04_04_gadt_expr_test)
-1. Read `parse_cases_acc` in `syntax.gleam`
-2. After parsing body term, check for `Op "->"` followed by a type term
-3. If found, consume them and optionally wrap body in `Ann(body, type)` or ignore
-4. Add unit test to verify `parse("$match x { | #LitInt(n) => n -> $I32 }")` produces no errors
-5. Run tests to verify t04_04_gadt_expr_test passes
+### Phase 1: Debug evaluation flow (Current)
+1. ✅ Added debug tests to isolate the issue
+2. ✅ Confirmed parsing is correct
+3. ✅ Confirmed standalone `$match` evaluates correctly
+4. ✅ Confirmed standalone `$let` + `$type` parses correctly
+5. ⏳ Need to trace `evaluate` to find where `VTypeDef` is lost
 
-### Phase 2: Fix parser to handle `:` in match argument (t05_10_exhaustiveness_test)
-1. Read `parse_match` in `syntax.gleam`
-2. After parsing argument term, check for `Op ":"` followed by a type term
-3. If found, consume them and ignore (they're just annotations)
-4. Add unit test to verify `parse("$match x : #Option($Int) { | #Some(x) => x | #None(_) => 0 }")` produces no errors
-5. Run tests to verify t05_10_exhaustiveness_test passes
+### Phase 2: Fix evaluation bug
+1. Add targeted unit test for `$type` evaluation
+2. Trace through `evaluate` function
+3. Fix the evaluation logic
+4. Verify all tour file tests pass
 
-### Phase 3: Debug and fix t07_01_default_values_test
-1. Add unit test to parse `$let point: ${x: $Int, y: $Int = 0} = {x: 1}`
-2. Check what the parser produces for the type annotation
-3. Check what the infer produces for the let binding
-4. Fix the parser or infer logic accordingly
-5. Run tests to verify t07_01_default_values_test passes
-
----
+### Phase 3: Test quality improvements
+1. Fix weak assertions in `test/core/syntax_test.gleam`
+2. Fix weak assertions in `test/core/generalize_test.gleam`
+3. Fix weak assertions in `test/core/infer_test.gleam`
+4. Consolidate `test/syntax/base_lexer_test_new.gleam` into `base_lexer_test.gleam`
+5. Consolidate `test/core/type_defs_test.gleam` into `ast_test.gleam`
 
 ## Expected Outcome
-After all three fixes: 928 tests passing, 0 failures.
+
+After Phase 2: 940+ tests passing, 0 failures
+After Phase 3: 940+ tests passing, 0 failures, improved test quality
