@@ -936,3 +936,9 @@ pub fn parse_let_type_def_only_test() {
 // ============================================================================
 
 // Debug: Parse the exact t05 exhaustiveness tour file content
+
+// ============================================================================
+// Debug: Trace $type evaluation inside $let
+// ============================================================================
+
+// This test checks what value $type inside $let actually evaluates to
