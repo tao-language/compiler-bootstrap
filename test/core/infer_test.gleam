@@ -1947,7 +1947,7 @@ pub fn gadt_multiple_type_params_test() {
   // When a TypeDef has multiple type params, they should be stored.
   let source = "
 $type<a: $Type, b: $Type> {
-| #Pair(a, b) -> #Pair(a, b)
+| #Pair({x: a, y: b}) -> #Pair({x: a, y: b})
 }
 "
   let state = initial_state([])

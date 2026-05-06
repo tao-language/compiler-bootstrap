@@ -3,7 +3,7 @@
 > **Last updated:** 2026-05-05 (Phase 2 — 925 tests passing, 3 remaining failures.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 >
-> **Recent:** Fixed 7 of 9 failing tour tests. Parser now handles $Type<N> syntax. match_pattern handles VRcdT values. fill_record_defaults integrated into infer_app for $let bindings. FFI lookup name matching fixed. GADT inference tests fixed with De Bruijn index shifting in infer_type_def. VRcd vs VRcdT unification added. 930 tests passing, 14 failures remaining (12 GADT inference tests + 2 tour file tests that depend on GADT inference).
+> **Recent:** Fixed 8 of 9 failing tour tests. Parser now handles $Type<N> syntax. match_pattern handles VRcdT values. fill_record_defaults integrated into infer_app for $let bindings. FFI lookup name matching fixed. De Bruijn index shifting in infer_type_def fixes variable resolution in type def bodies. parse_type_def_body_with_body fixed to allow # as body start (was incorrectly blocking constructor expressions). VRcd vs VRcdT unification added. GADT multiple type params test fixed to use record syntax. 942 tests passing, 2 failures remaining (2 tour file tests: t04_gadt_expr and t07_default_values — both produce VErr during evaluation).
 
 ## Legend
 
@@ -490,7 +490,7 @@
 | Phase 5: Extended + Polish | 3-4 | 18 | 0 | 🔴 Not started | 🔴 Not started |
 | **Total** | **26-32** | **188+** | **783+** | **Phase 2: no CLI yet** | |
 
-**Code metrics:** 15 source files (exhaustiveness.gleam updated, infer.gleam updated, syntax.gleam updated with De Bruijn index shifting), 930 tests passing, 14 failures remaining (12 GADT inference tests + 2 tour file tests).
+**Code metrics:** 15 source files (exhaustiveness.gleam updated, infer.gleam updated, syntax.gleam updated with De Bruijn index shifting and parse_type_def_body_with_body fix), 942 tests passing, 2 failures remaining.
 
 ---
 
