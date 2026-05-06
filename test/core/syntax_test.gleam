@@ -946,3 +946,9 @@ pub fn parse_let_type_def_only_test() {
 // Debug: Check what the GADT test produces
 
 // Debug: Check what the tour file t05 parses to
+
+// ============================================================================
+// Debug: Trace $match evaluation step by step
+// ============================================================================
+
+// Test 1: Does standalone $match evaluate correctly?
