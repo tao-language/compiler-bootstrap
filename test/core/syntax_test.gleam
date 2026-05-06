@@ -865,3 +865,17 @@ pub fn evaluate_match_simple_test() {
   }
   assert term_ok
 }
+
+pub fn parse_match_exact_tour_test() {
+  // Debug: Parse the exact tour file content
+  let source = "$match #Some(42) : #Option($Int) { | #Some(x) => x | #None(_) => 0 }"
+  let #(term, errors) = parse(source)
+  // Check what we actually get
+  let term_ok = case term {
+    Match(_, _, _) -> True
+    Ann(_, _, _) -> True
+    _ -> False
+  }
+  assert term_ok
+  let _ = errors
+}
