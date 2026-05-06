@@ -9,7 +9,4 @@ $let Option = $type<a: $Type> {
 // Since we know the match argument is of type #Option, it looks at
 // the `Option` definition, which is a TypeDef containing all the variants.
 // It verifies all variants are covered in the match.
-$match #Some(42) : #Option($Int) {
-| #Some(x) => x
-| #None(_) => 0
-}
+$match #Some(42) : #Option($Int) { | #Some(x) => x | #None(_) => 0 }
