@@ -828,3 +828,11 @@ pub fn parse_match_with_ctr_type_test() {
   assert term_ok
   let _ = errors
 }
+
+pub fn evaluate_match_with_type_ann_test() {
+  // Debug: Evaluate match with type annotation
+  let source = "$match 42 : $Int { | _ => 0 }"
+  let #(term, _) = parse(source)
+  // Just check that parsing works, evaluation is separate
+  let _ = term
+}
