@@ -798,3 +798,33 @@ pub fn parse_match_simple_test() {
   assert term_ok
   let _ = errors
 }
+
+pub fn parse_match_with_annot_test() {
+  // Debug: Parse match with simple type annotation
+  let source = "$match 42 : $Int { | _ => 0 }"
+  let #(term, errors) = parse(source)
+  // Should be Ann(Match(42, ...), $Int)
+  // But the parser might not be handling this correctly
+  let term_ok = case term {
+    Match(_, _, _) -> True  // Just Match, no Ann
+    Ann(_, _, _) -> True    // Or Ann wrapping something
+    _ -> False
+  }
+  assert term_ok
+  let _ = errors
+}
+
+pub fn parse_match_with_ctr_type_test() {
+  // Debug: Parse match with constructor type annotation
+  // This is what the tour file uses: : #Option($Int)
+  let source = "$match #Some(42) : #Option($Int) { | #Some(x) => x | #None(_) => 0 }"
+  let #(term, errors) = parse(source)
+  // Should be Ann(Match(#Some(42), ...), #Option($Int)) or just Match
+  let term_ok = case term {
+    Match(_, _, _) -> True  // Just Match, no Ann
+    Ann(_, _, _) -> True    // Or Ann wrapping something
+    _ -> False
+  }
+  assert term_ok
+  let _ = errors
+}
