@@ -583,16 +583,26 @@ fn infer_type_def(
   // free variable references (like `a` in `#Some(a)`) resolve to the
   // corresponding bound hole. This ensures both self_type and result_type
   // use the same hole for the same type parameter.
+  //
+  // Note: De Bruijn indices in the type def body terms need to be shifted
+  // by -(num_type_params) because the type params are at the front of the
+  // state vars, and parser-level bindings are not present in the state.
+  let num_type_params = list.length(params)
   let value_constructors = list.map(constructors, fn(c) {
     let tag = c.0
     let bindings = c.1
     let self_type_term = c.2
     let result_type_term = c.3
     let ctor_span = c.4
+    // Shift De Bruijn indices by -(num_type_params) to account for type
+    // params being at the front of state vars (parser-level bindings are
+    // not present in the state).
+    let shifted_self = ast.shift_term(self_type_term, -num_type_params)
+    let shifted_result = ast.shift_term(result_type_term, -num_type_params)
     // Evaluate self_type to a value (type params resolve to bound holes)
-    let self_type_val = evaluate(new_state, self_type_term)
+    let self_type_val = evaluate(new_state, shifted_self)
     // Evaluate result_type to a value (type params resolve to same bound holes)
-    let result_type_val = evaluate(new_state, result_type_term)
+    let result_type_val = evaluate(new_state, shifted_result)
     #(tag, bindings, self_type_val, result_type_val, ctor_span)
   })
 
@@ -757,6 +767,10 @@ pub fn unify_type_pattern(
     ast.VRcdT(fields1), ast.VRcdT(fields2) ->
       unify_rcdt_fields(fields1, fields2, acc)
 
+    // VRcd pattern vs VRcdT type: check that each field type matches
+    ast.VRcd(fields1), ast.VRcdT(fields2) ->
+      unify_rcd_vs_rcdt(fields1, fields2, acc)
+
     // Both are the same literal type: match
     ast.VLit(lit1), ast.VLit(lit2) ->
       case lit1 == lit2 {
@@ -782,6 +796,44 @@ fn unify_rcdt_fields(
         Ok(#(_, type2, _)) -> {
           case unify_type_pattern(type1, type2, acc) {
             Some(new_acc) -> unify_rcdt_fields(rest1, fields2, new_acc)
+            None -> None
+          }
+        }
+        Error(_) -> None  // Field missing in arg type
+      }
+    }
+  }
+}
+
+/// Unify a VRcd pattern against a VRcdT type.
+/// Checks that each field value's type matches the corresponding field type.
+fn unify_rcd_vs_rcdt(
+  fields1: List(#(String, ast.Value)),
+  fields2: List(#(String, ast.Value, option.Option(ast.Value))),
+  acc: List(#(Int, ast.Value)),
+) -> Option(List(#(Int, ast.Value))) {
+  case fields1 {
+    [] -> Some(acc)
+    [#(name1, value1), ..rest1] -> {
+      case list.find(fields2, fn(f) { f.0 == name1 }) {
+        Ok(#(_, type2, _)) -> {
+          let field_type = case value1 {
+            ast.VLit(_) -> ast.VTyp(0)
+            ast.VRcd(inner) -> ast.VRcdT(list.map(inner, fn(f) {
+              #(f.0, ast.VTyp(0), None)
+            }))
+            ast.VRcdT(inner) -> ast.VRcdT(inner)
+            ast.VCtr(_, _) -> ast.VTyp(0)
+            ast.VNeut(_, _) -> value1
+            ast.VTypeDef(_, _, _) -> ast.VTyp(0)
+            ast.VTyp(lvl) -> ast.VTyp(lvl + 1)
+            ast.VLitT(_) -> ast.VTyp(0)
+            ast.VErr -> ast.VErr
+            ast.VLam(_, _, _, _) -> ast.VTyp(0)
+            ast.VPi(_, _, _, _) -> ast.VTyp(0)
+          }
+          case unify_type_pattern(field_type, type2, acc) {
+            Some(new_acc) -> unify_rcd_vs_rcdt(rest1, fields2, new_acc)
             None -> None
           }
         }

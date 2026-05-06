@@ -1029,16 +1029,16 @@ pub fn debug_type_is_type_def_test() {
   assert is_type_def
 }
 
-// Is $type a Rcd?
-pub fn debug_type_is_rcd_test() {
+// Is $type a TypeDef?
+pub fn debug_type_is_typedef_test() {
   let source = "$type<a: $Type> { | #Some(a) -> #Option(a) | #None({}) -> #Option(a) }"
   let #(term, errors) = parse(source)
   assert errors == []
-  let is_rcd = case term {
-    Rcd(_, _) -> True
+  let is_typedef = case term {
+    TypeDef(name, _, _, _) -> name == ""
     _ -> False
   }
-  assert is_rcd
+  assert is_typedef
 }
 
 // Debug: Check what type the GADT test produces
