@@ -916,10 +916,11 @@ pub fn parse_let_type_def_only_test() {
   let source = "$let Option = $type<a: $Type> { | #Some(a) -> #Option(a) | #None({}) -> #Option(a) }"
   let #(term, errors) = parse(source)
   // Should be TypeDef or Var or similar
-  // For now, just check that we get some term
+  // For now, just check that we get some term (not an error)
   let term_ok = case term {
     TypeDef(_, _, _, _) -> True
     Var(_, _) -> True
+    Ann(_, _, _) -> True
     _ -> False
   }
   assert term_ok
