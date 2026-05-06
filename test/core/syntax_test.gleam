@@ -833,6 +833,35 @@ pub fn evaluate_match_with_type_ann_test() {
   // Debug: Evaluate match with type annotation
   let source = "$match 42 : $Int { | _ => 0 }"
   let #(term, _) = parse(source)
-  // Just check that parsing works, evaluation is separate
-  let _ = term
+  // Check that we get a Match term, not a record
+  let term_ok = case term {
+    Match(_, _, _) -> True
+    _ -> False
+  }
+  assert term_ok
+}
+
+pub fn parse_match_with_ctr_ann_test() {
+  // Debug: Parse match with constructor type annotation like tour file
+  let source = "$match #Some(42) : #Option($Int) {\n| #Some(x) => x\n| #None(_) => 0\n}"
+  let #(term, _) = parse(source)
+  // Check that we get an Ann(Match(...), ...) or just Match
+  let term_ok = case term {
+    Match(_, _, _) -> True
+    Ann(_, _, _) -> True
+    _ -> False
+  }
+  assert term_ok
+}
+
+pub fn evaluate_match_simple_test() {
+  // Debug: Evaluate a simple match without type annotation
+  let source = "$match 42 { | 42 => 100 | _ => 0 }"
+  let #(term, _) = parse(source)
+  // Just check parsing works
+  let term_ok = case term {
+    Match(_, _, _) -> True
+    _ -> False
+  }
+  assert term_ok
 }
