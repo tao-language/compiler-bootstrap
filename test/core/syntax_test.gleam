@@ -903,10 +903,25 @@ pub fn parse_simple_let_test() {
   let #(term, errors) = parse(source)
   // Should be App(Lam(...), Lit(42)) or similar
   let term_ok = case term {
-            App(_, _, _) -> True
-            Lam(_, _, _, _) -> True
-            _ -> False
-          }
+    App(_, _, _) -> True
+    Lam(_, _, _, _) -> True
+    _ -> False
+  }
+  assert term_ok
+  let _ = errors
+}
+
+pub fn parse_let_type_def_only_test() {
+  // Debug: Parse just the $let with $type (no match)
+  let source = "$let Option = $type<a: $Type> { | #Some(a) -> #Option(a) | #None({}) -> #Option(a) }"
+  let #(term, errors) = parse(source)
+  // Should be TypeDef or Var or similar
+  // For now, just check that we get some term
+  let term_ok = case term {
+    TypeDef(_, _, _, _) -> True
+    Var(_, _) -> True
+    _ -> False
+  }
   assert term_ok
   let _ = errors
 }
