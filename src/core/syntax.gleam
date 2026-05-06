@@ -1179,7 +1179,7 @@ fn parse_let(p: Parser, span: Span) -> #(Term, Parser) {
   let p5 = skip("=", p4)
   let #(value, rest) = parse_term_with_app(p5, span)
   let let_span = merge(span, term_span(value))
-  // Check for semicolon or newline as separator
+  // Check for semicolon as separator (newlines are optional)
   let p6 = case rest {
     #(tokens, pos, _, _, _) ->
       case list.drop(tokens, pos) {
