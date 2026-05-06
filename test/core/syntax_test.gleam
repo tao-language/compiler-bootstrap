@@ -1042,3 +1042,5 @@ pub fn debug_type_is_rcd_test() {
 }
 
 // Debug: Check what type the GADT test produces
+
+// Debug: Check what type the GADT test produces
