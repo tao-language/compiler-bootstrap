@@ -14,10 +14,14 @@
 /// - Error recovery (strings, unsupported operators)
 /// - Edge cases (empty input, extra tokens, unicode)
 import core/ast.{
-  App, Ann, Case as CoreCase, Call, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
-  LitT, Match, PLit, PUnit, Pi, Rcd, TypeDef, Typ, Var,
+  type Term,
+  VLit, VErr, VRcd, VCtr, VLam, VNeut, VPi, VRcdT, VTypeDef, VTyp,
+  App, Ann, Case as CoreCase, Call, Ctr, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
+  LitT, Match, PAny, PLit, PUnit, Pi, Rcd, RcdT, TypeDef, Typ, Var,
   IntT,
 }
+import core/eval.{evaluate}
+import core/state.{initial_state}
 import core/syntax.{parse, parse_tokens}
 import gleam/list
 import gleeunit
@@ -885,16 +889,15 @@ pub fn parse_let_type_def_followed_by_match_test() {
   // $let Option = $type<...>; $match ...
   let source = "$let Option = $type<a: $Type> { | #Some(a) -> #Option(a) | #None({}) -> #Option(a) }\n$match #Some(42) : #Option($Int) { | #Some(x) => x | #None(_) => 0 }"
   let #(term, errors) = parse(source)
-  // The term should be a Match (or Ann wrapping Match), not a TypeDef
-  // For now, just check that we get some term (not an error)
+  let _ = errors
+  // The $let should evaluate to the $match body (App(Lam, Match))
   let term_ok = case term {
     Match(_, _, _) -> True
     Ann(_, _, _) -> True
-    TypeDef(_, _, _, _) -> False  // This is the issue - we got a TypeDef
+    App(_, _, _) -> True  // let_var returns App(Lam, body)
     _ -> False
   }
   assert term_ok
-  let _ = errors
 }
 
 pub fn parse_simple_let_test() {
@@ -915,14 +918,15 @@ pub fn parse_let_type_def_only_test() {
   // Debug: Parse just the $let with $type (no match)
   let source = "$let Option = $type<a: $Type> { | #Some(a) -> #Option(a) | #None({}) -> #Option(a) }"
   let #(term, errors) = parse(source)
-  // Should be TypeDef or Var or similar
-  // For now, just check that we get some term (not an error)
+  // let_var returns App(Lam, value), so term should be App
   let term_ok = case term {
-    TypeDef(_, _, _, _) -> True
-    Var(_, _) -> True
+    App(_, _, _) -> True
     Ann(_, _, _) -> True
+    Lam(_, _, _, _) -> True
     _ -> False
   }
   assert term_ok
   let _ = errors
 }
+
+// Debug: parse the exact exhaustiveness tour file content

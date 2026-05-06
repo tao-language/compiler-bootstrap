@@ -558,11 +558,35 @@ fn parse_typed_arg_list_acc(p: Parser, acc: List(#(Term, Term))) -> #(List(#(Ter
             True -> #(list.reverse(acc), p4)
             False -> {
               let p5 = #(tokens4, pos4, env4, fn4, errors4)
+              // Check if there's a type annotation after the argument
               let p6 = skip(":", p5)
               let #(ttokens, tpos, tenv, tfn_, terrors) = p6
-              let p7 = #(ttokens, tpos, tenv, tfn_, terrors)
-              let #(type_, p8) = parse_term(p7)
-              parse_typed_arg_list_acc(p8, [#(arg, type_), ..acc])
+              case tpos > pos4 {
+                True -> {
+                  // Type annotation present, parse the type
+                  let p7 = #(ttokens, tpos, tenv, tfn_, terrors)
+                  let #(type_, p8) = parse_term(p7)
+                  parse_typed_arg_list_acc(p8, [#(arg, type_), ..acc])
+                }
+                False -> {
+                  // No type annotation - use Hole(0) as default type
+                  // Check if next token is , or ) to continue/stop
+                  case list.drop(p5.0, p5.1) {
+                    [Token("Punct", ",", _), ..] -> {
+                      // Continue with more arguments
+                      parse_typed_arg_list_acc(p5, [#(arg, Hole(0, single("", 0, 0))), ..acc])
+                    }
+                    [Token("Punct", ")", _), ..] -> {
+                      // No more arguments
+                      parse_typed_arg_list_acc(p5, [#(arg, Hole(0, single("", 0, 0))), ..acc])
+                    }
+                    _ -> {
+                      // Unknown token, use Hole as default
+                      parse_typed_arg_list_acc(p5, [#(arg, Hole(0, single("", 0, 0))), ..acc])
+                    }
+                  }
+                }
+              }
             }
           }
       }
@@ -1065,7 +1089,7 @@ fn parse_match(p: Parser, span: Span) -> #(Term, Parser) {
   // Optionally consume : Type annotation after the match argument
   // p3 is a Parser (tuple of 5 elements), check if next token is :
   let p4 = case p3 {
-    #(tokens, pos, env, fn_, errors) ->
+    #(tokens, pos, _, _, _) ->
       case list.drop(tokens, pos) {
         [Token("Punct", ":", _), ..] -> {
           let p_annot = skip(":", p3)
@@ -1076,10 +1100,7 @@ fn parse_match(p: Parser, span: Span) -> #(Term, Parser) {
       }
   }
   // p4 is now #(Term, Parser), extract the parser part
-  let p5 = case p4 {
-    #(_, p_parser) -> p_parser
-    _ -> p3
-  }
+  let #(_, p5) = p4
   let p6 = skip("{", p5)
   let p7 = parse_cases(p6)
   let #(cases, rest) = p7
