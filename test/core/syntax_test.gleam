@@ -15,7 +15,7 @@
 /// - Edge cases (empty input, extra tokens, unicode)
 import core/ast.{
   type Term,
-  VLit, VErr, VRcd, VCtr, VLam, VNeut, VPi, VRcdT, VTypeDef, VTyp,
+  VLit, VErr, VRcd, VCtr, VLam, VNeut, VPi, VRcdT, VTypeDef, VTyp, VLitT,
   App, Ann, Case as CoreCase, Call, Ctr, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
   LitT, Match, PAny, PLit, PUnit, Pi, Rcd, RcdT, TypeDef, Typ, Var,
   IntT,
@@ -930,3 +930,9 @@ pub fn parse_let_type_def_only_test() {
 }
 
 // Debug: parse the exact exhaustiveness tour file content
+
+// ============================================================================
+// Debug tests for tour file failures
+// ============================================================================
+
+// Debug: Parse the exact t05 exhaustiveness tour file content
