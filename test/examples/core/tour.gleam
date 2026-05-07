@@ -277,10 +277,8 @@ pub fn t04_type_definitions_04_gadt_expr_test() {
   // Uses the actual tour file source: $type<a: $Type> { ... }
   // eval(#Add(#LitInt(1), #LitInt(2))) should return 3
   let result = eval_tour("examples/core/tour/04_type_definitions/04_gadt_expr.core")
-  case result {
-    VLit(LitInt(3)) -> True
-    _ -> False
-  }
+  let expected = VLit(LitInt(3))
+  assert result == expected
 }
 
 // ---- 05_pattern_matching ----
@@ -354,10 +352,7 @@ pub fn t07_advanced_01_default_values_test() {
   // Uses the actual tour file source (exactly as written)
   let result = eval_tour("examples/core/tour/07_advanced/01_default_values.core")
   // The match {y} => y returns the y field value (default value 0)
-  case result {
-    VLit(LitInt(0)) -> True
-    _ -> False
-  }
+  assert result == VLit(LitInt(0))
 }
 
 pub fn t07_advanced_02_implicit_params_test() {
