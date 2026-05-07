@@ -527,6 +527,26 @@ pub fn term_to_debruijn(named: NamedTerm) -> Term {
   named_term_to_debruijn(named, [])
 }
 
+/// Collect variable names bound by a pattern.
+/// These variables are added to the env when converting the match body.
+fn collect_pattern_vars(pattern: Pattern) -> List(String) {
+  case pattern {
+    PAny(_) -> []
+    PVar(name, _) -> [name]
+    PCtr(_, inner, _) -> collect_pattern_vars(inner)
+    PUnit(_) -> []
+    PLit(_, _) -> []
+    PAlias(name, inner, _) -> list.append([name], collect_pattern_vars(inner))
+    PType(_, _) -> []
+    PRcd(fields, _) -> {
+      list.fold(fields, [], fn(acc, f) {
+        list.append(acc, collect_pattern_vars(f.1))
+      })
+    }
+    PError(_) -> []
+  }
+}
+
 fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
   case nt {
     NamedVar(name, span) -> {
@@ -618,11 +638,14 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
     NamedMatch(arg, cases, span) -> {
       let arg_debruijn = named_term_to_debruijn(arg, env)
       let cases_debruijn = list.map(cases, fn(c) {
+        // Extract pattern-bound variables and add them to the env
+        let pattern_vars = collect_pattern_vars(c.pattern)
+        let env_with_patterns = list.append(pattern_vars, env)
         let guard_debruijn = case c.guard {
-          Some(g) -> Some(named_term_to_debruijn(g, env))
+          Some(g) -> Some(named_term_to_debruijn(g, env_with_patterns))
           None -> None
         }
-        let body_debruijn = named_term_to_debruijn(c.body, env)
+        let body_debruijn = named_term_to_debruijn(c.body, env_with_patterns)
         Case(c.pattern, guard_debruijn, body_debruijn, c.span)
       })
       Match(arg_debruijn, cases_debruijn, span)
