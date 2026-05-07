@@ -3,7 +3,7 @@
 > **Last updated:** 2026-05-05 (Phase 2 — 925 tests passing, 3 remaining failures.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 >
-> **Recent:** Major refactoring: introduced NamedTerm AST with named variables. Parser now produces NamedTerm (Var(name)) instead of Term (Var(index)). Conversion pass (term_to_debruijn) walks the tree, maintaining a stack of bound variable names, converting NamedVar(name) → Var(index) and desugaring NamedLet into App(Lam(...), value, body). This separates parsing from index calculation, making both simpler and handling variable scoping correctly. 942 tests passing, 2 failures remaining (t04_gadt_expr and t07_default_values — both produce VErr; remaining issue is parser's env vars don't align with evaluator's state.vars for nested $let/$fn bindings).
+> **Recent:** term_to_debruijn now correctly handles pattern-bound variables via collect_pattern_vars. The parser currently produces Term directly (not NamedTerm), so term_to_debruijn is not yet used. 942 tests passing, 2 failures remaining (t04_gadt_expr and t07_default_values — both produce VErr; the parser needs to produce NamedTerm and then call term_to_debruijn to fix remaining issues).
 
 ## Legend
 
