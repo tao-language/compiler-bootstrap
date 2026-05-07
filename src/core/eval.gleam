@@ -115,7 +115,7 @@ pub fn evaluate(state: State, term: Term) -> Value {
     Ann(term, _, _) -> evaluate(state, term)
     Match(arg, cases, _) -> {
       let scrutinee = evaluate(state, arg)
-      do_match(state.truth_ctr, scrutinee, cases, [])
+      do_match(state, state.truth_ctr, scrutinee, cases, [])
     }
     Call(name, args, _typed_args, _return_type, _span) -> {
       // Evaluate all arguments
@@ -175,12 +175,18 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     // β-reduction: substitute the argument for the lambda parameter, then
     // evaluate the body. The body's indices are already relative to this
     // lambda - no shift needed.
-    VLam(_env, _implicits, #(_pname, _param_type), body) -> {
+    VLam(_env, _implicits, #(pname, _param_type), body) -> {
       // The body's Var(0) refers to the lambda parameter at the current scope.
-      // Substitute Var(0) with the argument value (converted to a Term).
-      // No shift needed - the body's indices are already relative to this lambda.
+      // Extend state with the parameter so that Var(0) resolves to arg_val,
+      // and Var(1), Var(2), etc. resolve to outer variables from the
+      // enclosing $let bindings (which are in state.vars).
+      let new_var = #(pname, #(arg_val, VNeut(HHole(0), [])))
+      let extended = state.State(
+        ..state,
+        vars: list.append([new_var], state.vars),
+      )
       let substituted = subst_term_var(0, arg_val, body)
-      evaluate(state, substituted)
+      evaluate(extended, substituted)
     }
     // Extend neutral spine: variable or hole applied to argument
     VNeut(head, spine) -> VNeut(head, list.append(spine, [EApp(arg_val)]))
@@ -217,6 +223,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
 /// // evaluates to the first case body with "v" bound
 /// ```
 fn do_match(
+  state: State,
   truth_ctr: String,
   scrutinee: Value,
   cases: List(Case),
@@ -231,16 +238,16 @@ fn do_match(
           case guard {
             Some(guard_term) -> {
               let guard_val =
-                evaluate(match_state(env_bindings, truth_ctr), guard_term)
+                evaluate(match_state(env_bindings, truth_ctr, state.vars), guard_term)
               case is_truth(truth_ctr, guard_val) {
-                True -> evaluate(match_state(env_bindings, truth_ctr), body)
-                False -> do_match(truth_ctr, scrutinee, rest, bindings)
+                True -> evaluate(match_state(env_bindings, truth_ctr, state.vars), body)
+                False -> do_match(state, truth_ctr, scrutinee, rest, bindings)
               }
             }
-            None -> evaluate(match_state(env_bindings, truth_ctr), body)
+            None -> evaluate(match_state(env_bindings, truth_ctr, state.vars), body)
           }
         }
-        Error(Nil) -> do_match(truth_ctr, scrutinee, rest, bindings)
+        Error(Nil) -> do_match(state, truth_ctr, scrutinee, rest, bindings)
       }
     }
   }
@@ -260,9 +267,15 @@ pub fn is_truth(truth_ctr: String, value: Value) -> Bool {
 /// Create a temporary state with pattern-matched bindings for evaluation.
 /// The type field (`VNeut(HHole(0), [])`) is a placeholder - never used
 /// by the evaluator since type checking happens before evaluation.
-fn match_state(bindings: List(#(String, Value)), truth_ctr: String) -> State {
+fn match_state(
+  bindings: List(#(String, Value)),
+  truth_ctr: String,
+  outer_vars: List(#(String, #(Value, Value))),
+) -> State {
+  // Pattern bindings shadow outer variables, so they come first
+  let pattern_vars = list.map(bindings, fn(b) { #(b.0, #(b.1, VNeut(HHole(0), []))) })
   State(
-    vars: list.map(bindings, fn(b) { #(b.0, #(b.1, VNeut(HHole(0), []))) }),
+    vars: list.append(pattern_vars, outer_vars),
     errors: [],
     ffi: [],
     hole_counter: 0,
