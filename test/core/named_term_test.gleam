@@ -148,4 +148,3 @@ pub fn test_unbound_var_produces_error() {
     Var(0, _) -> True
     _ -> False
   } == True
-}
