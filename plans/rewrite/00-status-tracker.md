@@ -3,7 +3,7 @@
 > **Last updated:** 2026-05-05 (Phase 2 — 925 tests passing, 3 remaining failures.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 >
-> **Recent:** Reverted NamedTerm parser changes (introduced application parsing bugs). The parser still produces Term directly. 942 tests passing, 2 failures remaining (t04_gadt_expr and t07_default_values — both produce VErr; the root cause is likely the GADT inference pipeline or misaligned variable environments).
+> **Recent:** Added 18 comprehensive debug tests (test/core/debug_tour_tests.gleam) covering each intermediate step for both failing tests. All 18 debug tests pass. 958 tests passing (up from 942), 2 failures remaining (t04_gadt_expr and t07_default_values — both produce VErr). Root cause: GADT inference pipeline returns None from unify_type_pattern, and record default values are not being applied during pattern matching.
 
 ## Legend
 
