@@ -91,6 +91,76 @@ pub type Term {
   Err(message: String, span: Span)
 }
 
+// ============================================================================
+// NAMED TERMS (Syntax level - Named variables, before De Bruijn conversion)
+// ============================================================================
+
+/// Named terms - AST produced by the parser with named variables.
+///
+/// Variables use names instead of De Bruijn indices. A separate conversion
+/// pass (term_to_debruijn) converts NamedTerm to Term, calculating
+/// De Bruijn indices and desugaring syntax sugar like $let.
+///
+/// This separates parsing from index calculation, making both simpler.
+pub type NamedTerm {
+  NamedVar(name: String, span: Span)
+  NamedHole(id: Int, span: Span)
+  NamedLam(
+    implicits: List(#(String, NamedTerm)),
+    param: #(String, NamedTerm),
+    body: NamedTerm,
+    span: Span,
+  )
+  NamedApp(fun: NamedTerm, arg: NamedTerm, span: Span)
+  NamedPi(
+    implicits: List(#(String, NamedTerm)),
+    domain: #(String, NamedTerm),
+    codomain: NamedTerm,
+    span: Span,
+  )
+  NamedLit(value: Literal, span: Span)
+  NamedCtr(tag: String, arg: NamedTerm, span: Span)
+  NamedMatch(arg: NamedTerm, cases: List(NamedCase), span: Span)
+  NamedAnn(term: NamedTerm, type_: NamedTerm, span: Span)
+  NamedCall(
+    name: String,
+    args: List(NamedTerm),
+    typed_args: List(#(NamedTerm, NamedTerm)),
+    return_type: Option(NamedTerm),
+    span: Span,
+  )
+  NamedRcd(fields: List(#(String, NamedTerm)), span: Span)
+  NamedRcdT(fields: List(#(String, NamedTerm, Option(NamedTerm))), span: Span)
+  NamedTyp(level: Int, span: Span)
+  NamedLitT(t: LiteralType, span: Span)
+  NamedTypeDef(
+    name: String,
+    params: List(#(String, NamedTerm)),
+    constructors: List(#(String, List(String), NamedTerm, NamedTerm, Span)),
+    span: Span,
+  )
+  NamedErr(message: String, span: Span)
+  /// Syntax sugar: `let name = value; body`
+  /// Desugars to App(Lam([], (name, param_type), body), value)
+  NamedLet(
+    name: String,
+    param_type: NamedTerm,
+    value: NamedTerm,
+    body: NamedTerm,
+    span: Span,
+  )
+}
+
+/// Named case in a match expression.
+pub type NamedCase {
+  NamedCase(
+    pattern: Pattern,  // Patterns already use named variables
+    guard: Option(NamedTerm),
+    body: NamedTerm,
+    span: Span,
+  )
+}
+
 /// A pattern in a match case.
 pub type Pattern {
   PAny(span: Span)
@@ -415,6 +485,22 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
 }
 
 /// Shift an optional term by `shift`, starting from `from`.
+/// Find the index of a value in a list, returning Ok(index) or Error(Nil).
+pub fn list_index_of(list: List(String), value: String) -> Option(Int) {
+  list_index_of_acc(list, value, 0)
+}
+
+fn list_index_of_acc(list: List(String), value: String, acc: Int) -> Option(Int) {
+  case list {
+    [] -> None
+    [first, ..rest] ->
+      case first == value {
+        True -> Some(acc)
+        False -> list_index_of_acc(rest, value, acc + 1)
+      }
+  }
+}
+
 pub fn shift_opt(term: Option(Term), shift: Int, from: Int) -> Option(Term) {
   case term {
     Some(t) -> Some(shift_term_from(t, shift, from))
@@ -423,8 +509,158 @@ pub fn shift_opt(term: Option(Term), shift: Int, from: Int) -> Option(Term) {
 }
 
 // ============================================================================
-// STRING REPRESENTATION (Debug)
+// NAMED TERM → DE BRUIJN TERM CONVERSION
 // ============================================================================
+
+/// Convert a NamedTerm (with named variables) to a Term (with De Bruijn indices).
+///
+/// This pass:
+/// 1. Walks the tree, maintaining a stack of bound variable names
+/// 2. Converts NamedVar(name) → Var(index) by looking up the name on the stack
+/// 3. Desugars NamedLet into App(Lam(...), value, body)
+/// 4. Handles variable shadowing correctly
+///
+/// The environment is a stack of variable names, with the innermost
+/// binder at the head. When we encounter a NamedVar(name), we find
+/// it on the stack and assign the De Bruijn index.
+pub fn term_to_debruijn(named: NamedTerm) -> Term {
+  named_term_to_debruijn(named, [])
+}
+
+fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
+  case nt {
+    NamedVar(name, span) -> {
+      case list_index_of(env, name) {
+        Some(idx) -> Var(idx, span)
+        None -> Err("unbound variable: " <> name, span)
+      }
+    }
+    NamedHole(id, span) -> Hole(id, span)
+    NamedLit(value, span) -> Lit(value, span)
+    NamedTyp(level, span) -> Typ(level, span)
+    NamedLitT(ltype, span) -> LitT(ltype, span)
+    
+    NamedLam(implicits, #(name, param_type), body, span) -> {
+      // Convert implicits and param_type in current env
+      let implicits_debruijn = list.map(implicits, fn(i) {
+        #(i.0, named_term_to_debruijn(i.1, env))
+      })
+      let param_type_debruijn = named_term_to_debruijn(param_type, env)
+      // Push the lambda param onto the env for the body
+      let body_debruijn = named_term_to_debruijn(body, [name, ..env])
+      Lam(implicits_debruijn, #(name, param_type_debruijn), body_debruijn, span)
+    }
+    
+    NamedPi(implicits, #(name, domain), codomain, span) -> {
+      let implicits_debruijn = list.map(implicits, fn(i) {
+        #(i.0, named_term_to_debruijn(i.1, env))
+      })
+      let domain_debruijn = named_term_to_debruijn(domain, env)
+      let codomain_debruijn = named_term_to_debruijn(codomain, [name, ..env])
+      Pi(implicits_debruijn, #(name, domain_debruijn), codomain_debruijn, span)
+    }
+    
+    NamedApp(fun, arg, span) -> {
+      App(
+        named_term_to_debruijn(fun, env),
+        named_term_to_debruijn(arg, env),
+        span
+      )
+    }
+    
+    NamedCtr(tag, arg, span) -> {
+      Ctr(tag, named_term_to_debruijn(arg, env), span)
+    }
+    
+    NamedRcd(fields, span) -> {
+      Rcd(
+        list.map(fields, fn(f) { #(f.0, named_term_to_debruijn(f.1, env)) }),
+        span
+      )
+    }
+    
+    NamedRcdT(fields, span) -> {
+      RcdT(
+        list.map(fields, fn(f) {
+          let default_debruijn = case f.2 {
+            Some(d) -> Some(named_term_to_debruijn(d, env))
+            None -> None
+          }
+          #(f.0, named_term_to_debruijn(f.1, env), default_debruijn)
+        }),
+        span
+      )
+    }
+    
+    NamedAnn(term, type_, span) -> {
+      Ann(
+        named_term_to_debruijn(term, env),
+        named_term_to_debruijn(type_, env),
+        span
+      )
+    }
+    
+    NamedCall(name, args, typed_args, return_type, span) -> {
+      Call(
+        name,
+        list.map(args, fn(a) { named_term_to_debruijn(a, env) }),
+        list.map(typed_args, fn(ta) {
+          #(named_term_to_debruijn(ta.0, env), named_term_to_debruijn(ta.1, env))
+        }),
+        case return_type {
+          Some(t) -> Some(named_term_to_debruijn(t, env))
+          None -> None
+        },
+        span
+      )
+    }
+    
+    NamedMatch(arg, cases, span) -> {
+      let arg_debruijn = named_term_to_debruijn(arg, env)
+      let cases_debruijn = list.map(cases, fn(c) {
+        let guard_debruijn = case c.guard {
+          Some(g) -> Some(named_term_to_debruijn(g, env))
+          None -> None
+        }
+        let body_debruijn = named_term_to_debruijn(c.body, env)
+        Case(c.pattern, guard_debruijn, body_debruijn, c.span)
+      })
+      Match(arg_debruijn, cases_debruijn, span)
+    }
+    
+    NamedTypeDef(name, params, constructors, span) -> {
+      let params_debruijn = list.map(params, fn(p) {
+        #(p.0, named_term_to_debruijn(p.1, env))
+      })
+      let shift_cons = fn(c) {
+        let #(tag, bindings, self_ty, result, s) = c
+        let self_ty_db = named_term_to_debruijn(self_ty, [name, ..env])
+        let result_db = named_term_to_debruijn(result, env)
+        #(tag, bindings, self_ty_db, result_db, s)
+      }
+      TypeDef(
+        name: name,
+        params: params_debruijn,
+        constructors: list.map(constructors, shift_cons),
+        span: span,
+      )
+    }
+    
+    NamedErr(message, span) -> Err(message, span)
+    
+    NamedLet(name, param_type, value, body, span) -> {
+      // Desugar: let name = value; body → App(Lam([], (name, param_type), body), value)
+      let param_type_debruijn = named_term_to_debruijn(param_type, env)
+      let value_debruijn = named_term_to_debruijn(value, env)
+      let body_debruijn = named_term_to_debruijn(body, [name, ..env])
+      App(
+        Lam([], #(name, param_type_debruijn), body_debruijn, span),
+        value_debruijn,
+        span
+      )
+    }
+  }
+}
 
 /// Format a term for debugging / display.
 ///

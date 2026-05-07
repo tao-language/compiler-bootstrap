@@ -26,12 +26,14 @@
 ///   - FFI calls: $fn(arg: Type, arg: Type) -> ReturnType
 ///   - Type definitions: $type { | #C(arg) -> ResultType }
 import core/ast.{
-  type Case, type Pattern, type Term,
+  type Case, type Pattern, type Term, type NamedTerm,
   Ann, App, Call, Case as CoreCase, Ctr, Err, TypeDef,
   Float as LitFloat, Hole, Int as LitInt, Lam, Lit, LitT, Match, PAny, PAlias, PCtr, PError, PLit,
   PType, PRcd, PUnit, PVar, Pi, Rcd, RcdT, Typ, Var, let_var,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
+  NamedVar, NamedLet,
 }
+import core/ast.{term_to_debruijn}
 import gleam/float
 import gleam/int
 import gleam/list
@@ -41,22 +43,29 @@ import syntax/grammar.{type ParseError, ParseError}
 import syntax/span.{type Span, Span, merge, single}
 
 /// Parse a Core source string into a Term.
+///
+/// The parser produces a NamedTerm (with named variables), which is then
+/// converted to a Term (with De Bruijn indices) by `term_to_debruijn`.
+/// This separation makes the parser simpler and handles variable scoping correctly.
 pub fn parse(source: String) -> #(Term, List(ParseError)) {
   let tokens = tokenize(source)
-  parse_tokens(tokens, "")
+  let #(named_term, errors) = parse_tokens(tokens, "")
+  let term = term_to_debruijn(named_term)
+  #(term, errors)
 }
 
-/// Parse tokens into a Core term.
+/// Parse tokens into a NamedTerm (with named variables).
+/// The result is converted to Term (with De Bruijn indices) by the caller.
 pub fn parse_tokens(
   tokens: List(Token),
   filename: String,
-) -> #(Term, List(ParseError)) {
+) -> #(NamedTerm, List(ParseError)) {
   let state = #(tokens, 0, [], filename, [])
   let span = single(filename, 1, 1)
   let #(term, state2) = parse_tokens_acc(state, [])
   let #(tokens2, pos2, _, _, errs) = state2
   case term {
-    Err(msg, _) -> #(Err(msg, span), errs)
+    NamedErr(msg, _) -> #(NamedErr(msg, span), errs)
     t -> {
       let rest = try_peek(tokens2, pos2)
       case rest {
@@ -162,6 +171,28 @@ fn term_span(term: Term) -> Span {
     TypeDef(_, _, _, span) -> span
     LitT(_, span) -> span
     Err(_, span) -> span
+  }
+}
+
+fn named_term_span(term: NamedTerm) -> Span {
+  case term {
+    NamedVar(_, span) -> span
+    NamedHole(_, span) -> span
+    NamedLam(_, _, _, span) -> span
+    NamedApp(_, _, span) -> span
+    NamedPi(_, _, _, span) -> span
+    NamedLit(_, span) -> span
+    NamedCtr(_, _, span) -> span
+    NamedMatch(_, _, span) -> span
+    NamedAnn(_, _, span) -> span
+    NamedCall(_, _, _, _, span) -> span
+    NamedRcd(_, span) -> span
+    NamedRcdT(_, span) -> span
+    NamedTyp(_, span) -> span
+    NamedTypeDef(_, _, _, span) -> span
+    NamedLitT(_, span) -> span
+    NamedErr(_, span) -> span
+    NamedLet(_, _, _, _, span) -> span
   }
 }
 
@@ -899,19 +930,22 @@ fn parse_rcd_type_fields(
   }
 }
 
-fn parse_var(p: Parser, name: String, span: Span) -> #(Term, Parser) {
+fn parse_var(p: Parser, name: String, span: Span) -> #(NamedTerm, Parser) {
   case is_keyword(name) {
     True -> {
-      let e = Err("unexpected keyword: " <> name, span)
+      let e = NamedErr("unexpected keyword: " <> name, span)
       #(e, p)
     }
     False -> {
+      // Just produce a named variable - the conversion pass will calculate
+      // the De Bruijn index. We check if the variable is bound for error
+      // reporting, but we don't calculate the index here.
       let #(tokens, pos, env, fn_, errors) = p
       let depth = list.length(env)
       case lookup_var(env, name, depth) {
-        Ok(index) -> #(Var(index, span), p)
+        Ok(_) -> #(NamedVar(name, span), p)
         Error(_) -> #(
-          Var(depth, span),
+          NamedVar(name, span),
           #(tokens, pos, env, fn_, errors),
         )
       }
@@ -980,7 +1014,12 @@ fn parse_pi(p: Parser, span: Span) -> #(Term, Parser) {
       case list.drop(tokens, pos) {
         [Token("Punct", ")", _), ..] -> {
           let term_span = merge(span, current_span(p4))
-          #(Var(0, term_span), p4)
+          // Use the name if available, otherwise use "_"
+          let var_name = case name {
+            "" -> "_"
+            n -> n
+          }
+          #(NamedVar(var_name, term_span), p4)
         }
         _ -> parse_term(p4)
       }
