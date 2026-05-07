@@ -3,7 +3,7 @@
 > **Last updated:** 2026-05-05 (Phase 2 — 925 tests passing, 3 remaining failures.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 >
-> **Recent:** term_to_debruijn now correctly handles pattern-bound variables via collect_pattern_vars. The parser currently produces Term directly (not NamedTerm), so term_to_debruijn is not yet used. 942 tests passing, 2 failures remaining (t04_gadt_expr and t07_default_values — both produce VErr; the parser needs to produce NamedTerm and then call term_to_debruijn to fix remaining issues).
+> **Recent:** Reverted NamedTerm parser changes (introduced application parsing bugs). The parser still produces Term directly. 942 tests passing, 2 failures remaining (t04_gadt_expr and t07_default_values — both produce VErr; the root cause is likely the GADT inference pipeline or misaligned variable environments).
 
 ## Legend
 
