@@ -219,6 +219,9 @@ The following components remain **unchanged** in the rewrite:
 7. **Systematic error codes** — Every error has a unique code
 8. **Source context in errors** — Full diagnostic with line numbers and pointers
 9. **Golden tests** — Round-trip invariants for every phase
+10. **Module compilation model** — Files desugar to chain of $let bindings returning a record; modules stored as `@path/to/module` in core state env
+11. **Function overloading via type-based pattern matching** — Each overload gets @id suffix, main function dispatches on argument types (see 04-tao-language.md)
+12. **Parallel phase execution** — Each phase processes modules independently and can run in parallel; phases wait for all modules before proceeding
 
 ## Migration Checklist
 

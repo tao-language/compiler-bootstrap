@@ -3,12 +3,11 @@
 ## Design Philosophy
 
 1. **Literal overloading** — Integer and float literals resolve to concrete types during type inference (handled in Core, see 03-core-language.md)
-2. **Function overloading via pattern matching** — Same name with different types resolved by pattern matching on implicit parameters (application argument types)
+2. **Function overloading via type-based pattern matching** — Same name with different types resolved by pattern matching on implicit parameters. Each overload gets a unique `@id` suffix; the main function dispatches based on argument types. See [04-tao-language.md](04-tao-language.md) for full desugaring details.
 3. **FFI calls single targets** — FFI entries call one concrete target function with no overloads (`%i32_add`, `%f32_add`, etc.)
-4. **Operator desugaring** — Operators are just functions with special names and syntax sugar for precedence. Calling them and their overloads is treated just as regular functions.
-5. **No runtime overhead** — All overloading is resolved by NbE at compile time since most types are known at compile time
-6. **No methods** — There are no methods in this language, only functions and operators. Binary functions use `infix` notation, and `|>` pipe is available.
-7. **Dependent types** — Different definitions can return different types, so overloading tests dependent types.
+4. **No runtime overhead** — All overloading is resolved by NbE at compile time since most types are known at compile time. Type inference solves overloaded calls equivalently to comptime evaluation.
+5. **No methods** — There are no methods in this language, only functions and operators. Binary functions use `infix` notation, and `|>` pipe is available.
+6. **Dependent types** — Different definitions can return different types, so overloading tests dependent types. Match branches can have different types depending on the input type (equivalent to dependently typed motives).
 
 ## Literal Overloading
 

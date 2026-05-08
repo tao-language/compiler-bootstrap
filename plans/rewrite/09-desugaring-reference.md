@@ -2,6 +2,30 @@
 
 This document provides a detailed reference for how every Tao high-level feature desugars to Core terms.
 
+## Module-Level Desugaring
+
+A Tao module (file) consists of `List(Stmt)` and desugars into:
+1. A chain of `$let` bindings for imports, let bindings, function defs, type defs
+2. Each definition is a beta reduction `App(Lam, _)`
+3. Final return: a record with all public definitions (not starting with `_`, not imported)
+
+```gleam
+// Module returns: { name1: val1, name2: val2, ... }
+// All $let bindings chain together as App(Lam, _) sequences
+```
+
+## Function Overloading Desugaring
+
+Only fn definitions can have overloads. Each overload gets a unique `@id` suffix. A main dispatch function does type-based pattern matching on the implicit argument types:
+
+- **Local definitions** are matched first (in definition order)
+- **Imported definitions** follow (in import order) as fallback cases
+- **Prelude definitions** are the final fallback
+
+All variants (`func`, `func@1`, `func@2`, etc.) are exposed in the module record. The `@` identifier is not valid in Tao syntax but used internally by the compiler. NbE resolves overloaded calls at type inference time (equivalent to comptime).
+
+See [04-tao-language.md](04-tao-language.md) for full desugaring examples with overload resolution order.
+
 ## General Principles
 
 1. **Everything desugars to Core** — No high-level features survive into type checking

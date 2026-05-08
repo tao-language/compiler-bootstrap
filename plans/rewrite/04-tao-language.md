@@ -5,12 +5,22 @@
 Tao is a **high-level language** that desugars to Core. It provides:
 - Syntactic sugar for Core constructs
 - High-level features (for-loops, while-loops, mutable variables, etc.)
-- Module system with imports
+- Module system with imports and parallel compilation
 - Type declarations with constructors
 - FFI integration
 - Test framework
+- Function overloading via type-based pattern matching
 
-Everything in Tao is **desugared to Core** before type checking. Tao is never type-checked directly — it's always translated to Core first.
+A Tao **module** is a file consisting of `List(Stmt)`. Everything in Tao desugars to Core before type checking.
+
+### Module Desugaring Model
+
+Each module desugars into:
+1. A chain of `$let` bindings (imports, let bindings, function defs, type defs)
+2. Each definition is a beta reduction `App(Lam, _)`
+3. Final return: a record with all public definitions (not starting with `_`, not imported)
+
+Compiled modules are stored in the core state env as `{"@package/module_name": module_term}` where `module_term` evaluates to a record.
 
 ## Directory Structure
 
@@ -320,29 +330,43 @@ The `Stream` type is defined in the Tao stdlib, not in Core:
 type Stream(a) = Cons(head: a, tail: Stream(a)) | Empty
 ```
 
-### Function and Operator Resolution
+### Function Overloading Resolution
 
-**Unified approach:** The desugarer tracks **all definitions** for each function and operator (whether one or multiple). **Every** function/operator call desugars to a pattern match on argument types, regardless of whether there's one definition or many. This simplifies everything — there's only one way to handle functions.
+Only fn definitions can have overloads. Overloaded functions desugar into a **pattern match based on the function input type as an implicit argument**. Each overload gets a unique identifier `function_name@id`, then a main `function_name` does the type-based dispatch.
+
+**Import resolution order for overloads:**
+1. Local definitions (matched first, in definition order)
+2. Imported definitions (in import order) — fallback case
+3. Prelude definitions — final fallback
 
 ```gleam
-// Single definition — still pattern matches (one branch)
-// fn abs(Int) -> Int { ... }
-// → Core: \implicit -> match implicit {
-//       #(I32T) -> %i32_abs
-//     }
+// fn neg(x: Int) -> Int => %int_neg(x)
+// fn neg(a: Float) -> Float => %float_neg(a)
+// import my_math {neg}
 
-// Multiple definitions — pattern matches with multiple branches
-// fn add(Int, Int) -> Int { ... }
-// fn add(Float, Float) -> Float { ... }
-// → Core: \implicit -> match implicit {
-//       #(I32T, I32T) -> %i32_add
-//       #(F64T, F64T) -> %f64_add
-//     }
+// Desugars to:
+$let neg@prelude/math = $match @prelude/math { | {neg: neg} => neg }
+$let math = @my_math
+$let neg@my_math = $match @my_math { | {neg: neg} => neg }
+$let neg@1 = $fn(args: ${x: $Int}) => $match args {
+| ${x: x} => %int_neg(x) -> $Int
+}
+$let neg@2 = $fn(args: ${a: $Float}) => $match args {
+| ${a: a} => %float_neg(a) -> $Float
+}
+// Main dispatch function:
+$let neg = $fn<t: ?>(args: t) => $match t {
+  | ${x: $Int} => neg@1(args)
+  | ${a: $Float} => neg@2(args)
+  | _ => $match neg@my_math(args) { ... }
+}
 ```
 
-FFI entries are single-target — each FFI entry calls one concrete implementation like `%i32_add`, `%f32_add`. The pattern match resolves at compile time via NbE.
+All `neg`, `neg@1`, and `neg@2` are exposed in the final module record, allowing other modules to discover available overloads. Individual overloads like `neg@2` cannot be directly accessed through normal Tao code (`@` is not a valid identifier for the parser), but they're used internally by the compiler.
 
-**Desugarer context:** The Tao desugarer maintains a map `fn_name → List((arg_types, ret_type, body))` for each function/operator. During desugaring, this is turned into a single function value that pattern matches on the implicit argument types and branches to the appropriate FFI call or inline body.
+**Single-definition functions:** Functions with a single definition still define the `@id` variant, but don't need type-based dispatch — they are simply bound directly. They still get an `@1` suffix.
+
+**NbE optimization:** Since types are solved during type inference, function calls on overloaded functions are resolved at the type inference stage (equivalent to comptime). The NbE normalizes the pattern match to the correct branch.
 
 ## Language Configuration
 

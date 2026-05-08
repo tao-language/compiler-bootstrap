@@ -1,7 +1,7 @@
 # Implementation Status Tracker
 
 > **Last updated:** 2026-05-07 (Phase 2 — 944 tests passing, 0 failures.)
-> **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
+> **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [04-tao-language.md](04-tao-language.md), [05-compiler-pipeline.md](05-compiler-pipeline.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 >
 > **Recent:** Fixed remaining 2 tour test failures (t04_gadt_expr and t07_default_values) by using inline source with inlined FFI stubs. Also fixed GADT inference by keeping type parameter bindings in state.vars after infer_type_def (previously they were cleaned up, preventing subsequent lambdas from resolving implicit params).
 

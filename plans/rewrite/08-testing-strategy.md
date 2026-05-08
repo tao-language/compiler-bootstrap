@@ -41,16 +41,20 @@ test/
 ├── tao/
 │   ├── ast_test.gleam         # Tao AST type construction tests
 │   ├── syntax_test.gleam      # Tao parser + formatter tests
-│   ├── desugar_test.gleam     # Desugaring correctness tests
-│   ├── compiler_test.gleam    # Multi-file compilation tests
-│   ├── import_test.gleam      # Module import system tests
+│   ├── desugar_test.gleam     # Desugaring correctness tests (incl. module-level)
+│   ├── compiler_test.gleam    # Multi-file compilation tests (parallel phases)
+│   ├── import_test.gleam      # Module import system tests (@path/to/module refs)
+│   ├── overload_test.gleam    # Function overloading @id desugaring tests
 │   ├── test_api_test.gleam    # Test framework (REPL-style extraction)
 │   ├── examples_test.gleam    # End-to-end example programs
 │   └── golden_test.gleam      # Tao → desugar → compile → format round-trip
 ├── cli/
-│   ├── run_test.gleam         # Run mode tests
-│   ├── check_test.gleam       # Check mode tests
-│   └── test_test.gleam        # Test mode tests (run test statements)
+│   ├── run_test.gleam         # Run mode tests (loads modules, parses & checks expr)
+│   ├── check_test.gleam       # Check mode tests (infer/check ALL modules)
+│   ├── test_test.gleam        # Test mode tests (compile to match exps, report results)
+│   ├── debug_core_test.gleam  # Debug-core: parse core expr, print debug info
+│   ├── debug_expr_test.gleam  # Debug-expr: loads modules, prints full pipeline state
+│   └── debug_test_test.gleam  # Debug-test: compiles test match exps, shows failing only
 └── integration/
     └── e2e_test.gleam         # Full pipeline tests (Tao source → Core value)
 ```

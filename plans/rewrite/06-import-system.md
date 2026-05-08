@@ -2,12 +2,36 @@
 
 ## Design Philosophy
 
-1. **Everything is a let binding** — Imports desugar to `let` bindings
+1. **Everything is a let binding** — Imports desugar to `$let` bindings in core
 2. **No runtime overhead** — Imports are resolved at compile time only
 3. **No circular imports** — Every module is desugared independently, so there are no inter-module dependencies
 4. **Selective and wildcard imports** — Both supported at the syntax level
 5. **Type and constructor imports** — Types and their constructors can be imported separately
 6. **Graceful degradation** — Module-not-found creates empty bindings with error; name-not-found is deferred to type checker
+
+## Module Storage in Core State
+
+Each compiled module gets stored in the core state env under a `@path` key:
+
+```gleam
+// File "prelude/bool.tao" compiles to:
+{"@prelude/bool": <module_term>}  // module_term evaluates to a record
+```
+
+When you import, you're just referencing these stored terms and assuming they exist — the type checker catches anything undefined or wrong types. For example:
+
+```tao
+import prelude/bool as b {xor as x}
+import prelude/option
+```
+
+gets desugared to:
+
+```gleam
+$let b = @prelude/bool      // reference stored module term
+$let x = b.xor              // field access on the record
+$let option = @prelude/option  // another module reference
+```
 
 ## Import Syntax
 

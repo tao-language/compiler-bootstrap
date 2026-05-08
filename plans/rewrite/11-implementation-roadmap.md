@@ -2,16 +2,18 @@
 
 ## Overview
 
-This roadmap breaks the rewrite into **5 phases**, each producing a working increment. The MVP CLI (run/check/test) is delivered in Phase 3. All remaining features are added incrementally.
+This roadmap breaks the rewrite into **5 phases**, each producing a working increment. The MVP CLI (run/check/test/debug-core/debug-expr/debug-test) is delivered in Phase 3. All remaining features are added incrementally.
+
+**Key architectural change:** Since all modules are independent, each phase (parsing, desugaring, type inference) can be done **in parallel** for every module. Phases still wait for all modules to finish before proceeding to the next one.
 
 ## Quick Reference: What's Built When
 
 ```
 Phase 1  → Lexer + Core types         → No runnable code
-Phase 2  → Parser + Type Checker + NBE → `tao run <file>` works
-Phase 3  → Tao + Desugar + Test API   → `tao run`, `tao check`, `tao test` all work
-Phase 4  → Multi-file + Import        → Full compilation
-Phase 5  → Extended Features + Polish → Full design
+Phase 2  → Parser + Type Checker + NBE → `tao run <file>` works (single module)
+Phase 3  → Tao + Desugar + Test API   → Full CLI: run, check, test, debug-core, debug-expr, debug-test
+Phase 4  → Multi-file + Import        → Parallel compilation of all modules
+Phase 5  → Extended Features + Polish → Literal types, operator overloading, error codes
 ```
 
 ## Phase 1: Lexer + Core Types (2-3 days)

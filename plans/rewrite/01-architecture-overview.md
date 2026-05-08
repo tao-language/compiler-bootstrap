@@ -54,7 +54,7 @@ compiler-bootstrap/
 │   │   ├── test_parser.gleam      # Test annotation parsing
 │   │   ├── test_reporter.gleam    # Test output formatting
 │   │   └── test_filter.gleam      # Test name matching
-│   ├── compiler_bootstrap.gleam   # CLI entry point
+│   ├── main.gleam                 # CLI entry point
 │   └── exit_code.gleam            # Exit code management
 ├── test/
 │   ├── syntax/
@@ -318,56 +318,167 @@ pub type Stmt {
 }
 ```
 
-## Pipeline Overview
+## Module Compilation Model
+
+A Tao **module** is a file. It consists of a `List(Stmt)`, where each statement can be an import, a let binding, a function definition, a type definition, or a test.
+
+### Desugaring: Module → Core Term
+
+Imports and definitions get desugared into `$let` bindings in core, which is just syntax sugar for a beta reduction `App(Lam, _)`, so imports and definitions are essentially a sequence of beta reductions chained in order with a final result at the end. A module's return expression is a record with all the public definitions (anything imported is private; definitions starting with `_` are private, otherwise they're public). So a module basically desugars into a large Term consisting of a sequence of definitions and returns a record with all the public definitions.
+
+For example:
+```	ao
+// Tao source: prelude/bool.tao
+import prelude/prelude { True as t, False as f }
+type Bool = #True | #False
+fn xor(a: Bool, b: Bool) -> Bool => match a {
+| #True(_) => match b { | #True(_) => f | #False(_) => t }
+| #False(_) => match b { | #True(_) => t | #False(_) => f }
+}
+```
+
+Desugars to Core:
+```gleam
+$let prelude_prelude = @prelude/prelude  // import desugar
+$let t = prelude_prelude.True
+$let f = prelude_prelude.False
+$let Bool = $type { ... }              // type def
+$let xor = $fn(a: Bool, b: Bool) => match a { ... }  // fn def
+{                                          // module return record
+  Bool: Bool,
+  xor: xor,
+}
+```
+
+### Module Storage in Core State
+
+When a module is compiled, it gets stored in the core state env. For example, the file `"prelude/bool.tao"` gets compiled and stored as `{"@prelude/bool": module_term}`, where the `module_term` evaluates down to a record.
+
+This way, an import is just referencing these and assuming they exist — the type checker will catch anything undefined or wrong types. For example:
+```	ao
+import prelude/bool as b {xor as x}
+import prelude/option
+```
+gets desugared to:
+```gleam
+$let b = @prelude/bool
+$let x = b.xor
+$let option = @prelude/option
+```
+
+### Function Overloading via Type-Based Pattern Matching
+
+Only fn definitions can have overloads. Overloaded functions desugar into a pattern match based on the function input type as an implicit argument. Each overload is defined and expressed in the module as `function_name@id`, where each definition has a unique id, then a main `function_name` is defined doing the type-based pattern matching.
+
+**Import resolution order for overloads:**
+1. Local definitions (matched first, in definition order)
+2. Imported definitions (in import order)
+3. Prelude definitions (fallback case)
+
+For example:
+```tao
+import my_math {neg}  // also contributes to overload
+
+fn neg(x: Int) -> Int => %int_neg(x) -> Int
+fn neg(a: Float) -> Float => %float_neg(a) -> Float
+fn no_overloads() => 42
+```
+
+Desugars to:
+```gleam
+$let neg@prelude/math = $match @prelude/math { | {neg: neg} => neg }
+$let math = @my_math
+$let neg@my_math = $match @my_math { | {neg: neg} => neg }
+$let neg@1 = $fn(args: ${x: $Int}) => $match args {
+| ${x: x} => %int_neg(x) -> $Int
+}
+$let neg@2 = $fn(args: ${a: $Float}) => $match args {
+| ${a: a} => %float_neg(a) -> $Float
+}
+$let no_overloads@1 = $fn(args: ${}) => 42
+// Return module record
+{
+  neg@1: neg@1,
+  neg@2: neg@2,
+  neg: $fn<t: ?>(args: t) => $match t {
+    | ${x: $Int} => neg@1(args)
+    | ${a: $Float} => neg@2(args)
+    | _ => $match neg@my_math(args) { ... }
+  },
+  no_overloads@1: no_overloads@1,
+  no_overloads: no_overloads@1,
+}
+```
+
+When you call `neg({x: 42})`, during type inference it requires an implicit argument, so it adds one like `neg(?, {x: 42})`. The hole gets solved which makes it `neg(${x: $Int}, {x: 42})`, which would pattern match to the first definition. Note that match branches are allowed to be of different types — this is equivalent to dependently typed motives.
+
+All `neg`, `neg@1`, and `neg@2` are exposed in the final module record, allowing other modules to know the available overloads by listing all definitions starting with `function_name@`. Individual overloads like `neg@2` cannot be directly accessed through normal Tao code (since `@` is not a valid identifier for the parser), but they're used internally by the compiler.
+
+### Normalization by Evaluation (NbE) Optimization
+
+The NbE ensures the desugared core code is "optimized" to its minimal form. Since types are solved during type inference, function calls on overloaded functions would be solved at the type inference stage, just like comptime. NbE resolves:
+- Holes filled in
+- Implicit arguments expanded
+- Record default values filled in
+- Comptime resolved
+- Expanded concrete beta reductions
+- Concrete pattern matching resolved
+- Compile-time built-ins solved (constant folding)
+
+## Compiler Pipeline Phases
+
+Since all modules are independent, each phase could be done in parallel for every module. Phases should still wait for all modules in that phase to finish before going to the next one.
 
 ```
-Tao Source
-    │
-    ▼
-┌─────────────┐
-│ Tao Lexer    │ → List(Token)
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│ Tao Parser   │ → Expr + ParseErrors
-│ (grammar DSL)│
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│ Tao Desugar  │ → Term + Errors
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│ Core Parse   │ (for .core.tao files)
-│ (grammar DSL)│ → Term + ParseErrors
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│ Type Checker │ → Type + Errors
-│ (infer/check)│
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│ Evaluator    │ → Value + Errors
-│ (NBE)        │
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│ Quoter       │ → Term (Value back to syntax)
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│ Formatter    │ → String
-│ (grammar DSL)│
-└─────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                     COMPILER PIPELINE                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  PHASE 1: PARSE (parallel per module)                       │
+│    String → Expr/Term + ParseErrors                         │
+│    Store: {@package/module_name: List(Stmt)}                │
+│                                                              │
+│  PHASE 2: DESUGAR (parallel per module)                     │
+│    List(Stmt) → Module Term + Errors                        │
+│    Store: {@package/module_name: module_record_term}        │
+│                                                              │
+│  PHASE 3: TYPE INFERENCE (parallel per module)              │
+│    Module Term → (Value, Type, State)                       │
+│    NbE minimal form + fully resolved types                  │
+│                                                              │
+│  ┌───────────┬──────────────┬───────────┬────────────────┐ │
+│   CLI COMMANDS (run after all phases):                      │
+│              │              │           │                  │
+│    run       │   check      │   test    │ debug-core       │
+│    ─────     │   ─────      │   ────    │ ───────          │
+│    loads all │ loads all    │ loads all │ parse core expr  │
+│    modules,  │ modules,     │ modules,  │ (no prelude)     │
+│    parse &   │ infer/check  │ compile to│ infer/check      │
+│    check     │ ALL modules  │ match exp │ print debug info │
+│    expr,     │              │ ressions, │ (parser state,  │
+│    print res │ print errors │ run tests │ debruijn term,  │
+│    ult       │ to stderr    │ report    │ NbE value/type) │
+│              │              │           │                  │
+│    debug-expr                             debug-test       │
+│    ────────                               ────────          │
+│    loads all, parse expr,             loads all, compile   │
+│    print debug (loaded env names,     test match exps,     │
+│    parser state, AST, desugared       print debug of       │
+│    term, NbE value/type)              failing tests only   │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+### Phase Details
+
+For each file (module) needed, independently do:
+- **tao/syntax**: Load (read + parse) the `package/module_name.tao` file, get a `{@package/module_name: List(Stmt)}` entry for each module, along with accumulating any syntax errors in a core state
+- **tao/desugar**: Desugar `List(Stmt)` into a single core Term. This is a chain of `$let` definitions and maybe some pattern matching, eventually returning a Rcd with all the public definitions (everything not starting with `_` and not being an imported name). This results in a `{@package/module_name: module_record_term}` entry for each module
+- **core/infer**: Do type inference and type checking. Returns a `(value, type, state)` for each module, accumulating any type errors in the state. Value should be the NbE result (holes filled in, implicit arguments expanded, record default values filled in, comptime resolved, expanded concrete beta reductions, concrete pattern matching resolved, solve compile time built-ins, basically constant folding, etc). Value and type must be sound and correct if there aren't any errors; if there are errors they should be a best effort. At this point we have all the modules with their minimal NbE values, with their fully resolved types.
+
+Since all modules are independent, each phase (parsing, desugar, infer) could be done in parallel for every module. Phases should still wait for all modules in that phase to finish before going to the next one.
+
+From here, it would keep going with whatever the CLI command was, but already having fully checked and resolved modules in core. Errors must be reported in stderr; if there are any errors the command will eventually exit with a failure status code. Regardless if there were errors or not, the command should run (run, check, test, etc), this allows for incremental development even if there are errors, but always with explicit messages of any errors or things not going well.
 
 ## Key Design Decisions
 

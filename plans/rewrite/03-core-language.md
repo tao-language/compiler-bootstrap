@@ -311,6 +311,18 @@ pub type Env = List(Value)
 pub type Context = List(#(String, #(Value, Type)))
 ```
 
+### NbE-Driven Optimization
+
+The type inference phase produces NbE-normalized values. This means the "value" returned from `infer()` is already in its minimal form:
+
+```
+Holes filled in → implicit arguments expanded → record defaults filled in →
+comptime resolved → concrete beta reductions expanded → pattern matching resolved →
+compile-time built-ins solved (constant folding)
+```
+
+Since types are fully resolved during type inference, overloaded function calls are resolved at the type inference stage — equivalent to comptime evaluation. The NbE result is both the checked term and its optimized value.
+
 ## Function Signatures
 
 ### infer.gleam — Bidirectional Type Checking

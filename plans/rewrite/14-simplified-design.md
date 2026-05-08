@@ -295,17 +295,28 @@ pub type TestStatement {
 - `Stmt` adds `Test(name, expr, expect, span)` — REPL style `/// > expr ~> result`
 - `BinOp` is desugared in the parser (not in AST)
 
-## Simplified Pipeline
+## Simplified Pipeline (Parallel Phases)
+
+Since all modules are independent, each phase could be done in parallel for every module. Phases still wait for all modules to finish before proceeding.
 
 ```
 ┌─────────────────────────────────────────────────┐
 │              COMPILATION PIPELINE                │
 │                                                  │
-│  1. PARSE    String → Expr + ParseError         │
-│  2. DESUGAR  Expr → Term + DesugarError         │
-│  3. CHECK    Term → Type + TypeError            │
-│  4. EVAL     Term → Value                       │
-│  5. QUOTE    Value → Term (for display)         │
+│  PHASE 1: PARSE (parallel per module)           │
+│    String → Expr/Term + ParseErrors             │
+│    Store: {@package/module_name: List(Stmt)}    │
+│                                                  │
+│  PHASE 2: DESUGAR (parallel per module)         │
+│    List(Stmt) → Module Term                     │
+│    Store: {@package/module_name: record_term}   │
+│                                                  │
+│  PHASE 3: TYPE INFERENCE (parallel per module)  │
+│    Module Term → (Value, Type, State)           │
+│    NbE minimal form                             │
+│                                                  │
+│  CLI COMMANDS: run | check | test               │
+│              debug-core | debug-expr | debug-test│
 │                                                  │
 │  All errors accumulated in State.errors          │
 └─────────────────────────────────────────────────┘

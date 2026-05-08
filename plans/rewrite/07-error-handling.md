@@ -254,6 +254,17 @@ pub fn error_result(partial: a, errors: List(e)) -> Result(a, e) {
 }
 ```
 
+## CLI Error Reporting Behavior
+
+All CLI commands report errors to **stderr**. If there are any errors, the command will eventually exit with a failure status code. However, regardless of whether there were errors or not, the command should still run (run, check, test, etc). This allows for incremental development even if there are errors, but always with explicit messages about anything that went wrong:
+
+- **`run`**: Prints errors to stderr, then prints result to stdout if possible
+- **`check`**: Prints errors to stderr; exits with failure code if any errors exist
+- **`test`**: Prints errors to stderr, then test results (passes/failures/summary) to stdout
+- **`debug-core`**: Prints errors to stderr, debug information to stdout
+- **`debug-expr`**: Prints errors to stderr, debug information to stdout
+- **`debug-test`**: Prints errors to stderr, debug info of failing tests only
+
 ## Testable Error Cases
 
 ### Parse Error Test

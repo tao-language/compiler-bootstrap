@@ -1,34 +1,57 @@
 # Compiler Pipeline Design
 
-## Pipeline Stages
+## Pipeline Stages (Parallel Phases)
+
+Since all modules are independent, each phase could be done in parallel for every module. Phases still wait for all modules to finish before proceeding.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        COMPILER PIPELINE                        │
+│                        COMPILER PIPELINE                         │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  1. PARSE (Tao or Core)                                         │
-│     String → Expr/Term + ParseErrors                           │
+│  PHASE 1: PARSE (parallel per module)                           │
+│    String → Expr/Term + ParseErrors                             │
+│    Store: {@package/module_name: List(Stmt)}                    │
 │                                                                 │
-│  2. DESUGAR (Tao only)                                          │
-│     Expr → Term + DesugarErrors                                │
+│  PHASE 2: DESUGAR (parallel per module)                         │
+│    List(Stmt) → Module Term + Errors                            │
+│    Store: {@package/module_name: module_record_term}            │
 │                                                                 │
-│  3. TYPE CHECK                                                  │
-│     Term → Type + TypeErrors                                   │
+│  PHASE 3: TYPE INFERENCE (parallel per module)                  │
+│    Module Term → (Value, Type, State)                           │
+│    NbE minimal form + fully resolved types                      │
 │                                                                 │
-│  4. EVALUATE                                                    │
-│     Term → Value + EvalErrors                                  │
-│                                                                 │
-│  5. QUOTE                                                       │
-│     Value → Term                                               │
-│                                                                 │
-│  6. FORMAT                                                      │
-│     Term → String                                              │
+│  ┌───────────┬──────────────┬───────────┬────────────────┐     │
+│   CLI COMMANDS:                                                │
+│              │              │           │                  │     │
+│    run       │   check      │   test    │ debug-core       │     │
+│    ─────     │   ─────      │   ────    │ ───────          │     │
+│    loads all │ loads all    │ loads all │ parse core expr  │     │
+│    modules,  │ modules,     │ modules,  │ (no prelude)     │     │
+│    parse &   │ infer/check  │ compile to│ infer/check      │     │
+│    check     │ ALL modules  │ match exp │ print debug info │     │
+│    expr,     │              │ ressions, │ (parser state,   │     │
+│    print res │ print errors │ run tests │ debruijn term,   │     │
+│    ult       │ to stderr    │ report    │ NbE value/type)  │     │
+│              │              │           │                  │     │
+│    debug-expr                             debug-test       │     │
+│    ────────                               ────────          │     │
+│    loads all, parse expr,             loads all, compile   │     │
+│    print debug (loaded env names,     test match exps,     │     │
+│    parser state, AST, desugared      print debug of        │     │
+│    term, NbE value/type)              failing tests only    │     │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Pipeline Functions
+## Phase Details (Per Module)
+
+For each file (module) needed, independently do:
+- **tao/syntax**: Load (read + parse) the `package/module_name.tao` file, get a `{@package/module_name: List(Stmt)}` entry for each module, along with accumulating any syntax errors in a core state
+- **tao/desugar**: Desugar `List(Stmt)` into a single core Term. This is a chain of `$let` definitions and maybe some pattern matching, eventually returning a Rcd with all the public definitions (everything not starting with `_` and not being an imported name). Results in `{@package/module_name: module_record_term}` entry for each module
+- **core/infer**: Do type inference and type checking. Returns `(value, type, state)` for each module, accumulating any type errors in the state. Value should be the NbE result (holes filled in, implicit arguments expanded, record default values filled in, comptime resolved, concrete beta reductions expanded, pattern matching resolved, compile-time built-ins solved). At this point we have all modules with their minimal NbE values and fully resolved types.
+
+From here, it continues with whatever the CLI command was. Errors must be reported in stderr; if there are any errors the command will eventually exit with a failure status code.
 
 ### compiler.gleam — Multi-File Compilation
 
