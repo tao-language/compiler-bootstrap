@@ -606,8 +606,11 @@ fn infer_type_def(
     #(tag, bindings, self_type_val, result_type_val, ctor_span)
   })
 
-  // Clean up type param bindings from the environment
-  let clean_state = state.State(..new_state, vars: state.vars)
+  // Keep type param bindings in vars so subsequent lambdas can reference them
+  // via their implicit parameters (e.g., $fn<a: $Type>(expr: #Expr(a))).
+  // The type params are at positions 0..n in vars; they will be shadowed
+  // by outer let bindings if names collide, but that's correct behavior.
+  let clean_state = new_state
 
   // value_params are the evaluated type parameter values (holes)
   // hole_bindings is in reverse order, so reverse it back
