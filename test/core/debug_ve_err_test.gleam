@@ -259,3 +259,418 @@ pub fn debug_gadt_step17_ffi_test() {
     _ -> False
   }
 }
+
+// Debug: Check what the actual result is for the GADT expr tour file
+pub fn debug_gadt_expr_actual_result_test() {
+  let content = read_file("examples/core/tour/04_type_definitions/04_gadt_expr.core")
+  let #(term, errors) = parse(content)
+  assert errors == []
+  let result = evaluate(initial_state([]), term)
+  assert result == VLit(LitInt(3))
+}
+
+// Debug: Check what the actual result is for the default values tour file
+pub fn debug_default_values_actual_result_test() {
+  let content = read_file("examples/core/tour/07_advanced/01_default_values.core")
+  let #(term, errors) = parse(content)
+  assert errors == []
+  let result = evaluate(initial_state([]), term)
+  assert result == VLit(LitInt(0))
+}
+
+// Debug: Check if parsing succeeds for GADT expr
+pub fn debug_gadt_expr_parse_test() {
+  let content = read_file("examples/core/tour/04_type_definitions/04_gadt_expr.core")
+  let #(term, errors) = parse(content)
+  assert errors == []
+  // If we get here, parsing succeeded
+  True
+}
+
+// Debug: Check if parsing succeeds for default values
+pub fn debug_default_values_parse_test() {
+  let content = read_file("examples/core/tour/07_advanced/01_default_values.core")
+  let #(term, errors) = parse(content)
+  assert errors == []
+  // If we get here, parsing succeeded
+  True
+}
+
+// Debug: Check what happens with a simpler GADT expression
+pub fn debug_simpler_gadt_test() {
+  let source =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr { | #LitInt(n) => n }\n"
+    <> "eval(#LitInt(42))"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  let result = evaluate(initial_state([]), term)
+  assert result == VLit(LitInt(42))
+}
+
+// Debug: Check if a simple let binding works
+pub fn debug_simple_let_test() {
+  let source = "$let x = 1; x"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  let result = evaluate(initial_state([]), term)
+  assert result == VLit(LitInt(1))
+}
+
+// Debug: Check if a simple lambda works
+pub fn debug_simple_lambda_test() {
+  let source = "($fn(x: $Int) => x)(1)"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  let result = evaluate(initial_state([]), term)
+  assert result == VLit(LitInt(1))
+}
+
+
+// Debug: Check if the GADT type definition alone works
+pub fn debug_gadt_type_def_test() {
+  let source =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "Expr"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  let result = evaluate(initial_state([]), term)
+  // Should not be VErr
+  case result {
+    VErr -> False
+    _ -> True
+  }
+}
+
+// Debug: Check if the GADT lambda alone works
+pub fn debug_gadt_lambda_test() {
+  let source =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr { | #LitInt(n) => n }\n"
+    <> "eval"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  let result = evaluate(initial_state([]), term)
+  // Should not be VErr
+  case result {
+    VErr -> False
+    _ -> True
+  }
+}
+
+// Debug: Check if the GADT application works
+pub fn debug_gadt_app_test() {
+  let source =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr { | #LitInt(n) => n }\n"
+    <> "eval(#LitInt(42))"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  let result = evaluate(initial_state([]), term)
+  // This should return VLit(LitInt(42))
+  case result {
+    VErr -> False
+    VLit(LitInt(42)) -> True
+    _ -> False
+  }
+}
+
+// Debug: Check if the same source produces the same result
+pub fn debug_same_source_same_result_test() {
+  let source =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr { | #LitInt(n) => n }\n"
+    <> "eval(#LitInt(42))"
+  
+  let #(term1, errors1) = parse(source)
+  let #(term2, errors2) = parse(source)
+  
+  assert errors1 == []
+  assert errors2 == []
+  
+  let result1 = evaluate(initial_state([]), term1)
+  let result2 = evaluate(initial_state([]), term2)
+  
+  // Check if both results are the same
+  case #(result1, result2) {
+    #(VLit(LitInt(42)), VLit(LitInt(42))) -> True
+    _ -> False
+  }
+}
+
+// Debug: Check if the parsed terms are the same
+pub fn debug_parsed_terms_same_test() {
+  let source =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr { | #LitInt(n) => n }\n"
+    <> "eval(#LitInt(42))"
+  
+  let #(term1, errors1) = parse(source)
+  let #(term2, errors2) = parse(source)
+  
+  assert errors1 == []
+  assert errors2 == []
+  
+  // Check if both terms evaluate to the same result
+  let result1 = evaluate(initial_state([]), term1)
+  let result2 = evaluate(initial_state([]), term2)
+  
+  // Both should be VLit(LitInt(42))
+  case result1 {
+    VLit(LitInt(42)) -> True
+    _ -> False
+  } && case result2 {
+    VLit(LitInt(42)) -> True
+    _ -> False
+  }
+}
+
+
+// Debug: Check if the GADT app test actually passes
+pub fn debug_gadt_app_actual_result_test() {
+  let source =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr { | #LitInt(n) => n }\n"
+    <> "eval(#LitInt(42))"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  let result = evaluate(initial_state([]), term)
+  // Check what the actual result is
+  case result {
+    VLit(LitInt(42)) -> True
+    _ -> False
+  }
+}
+
+// Debug: Check if the parsed terms are the same
+pub fn debug_parsed_terms_identical_test() {
+  let source =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr { | #LitInt(n) => n }\n"
+    <> "eval(#LitInt(42))"
+  
+  let #(term1, errors1) = parse(source)
+  let #(term2, errors2) = parse(source)
+  
+  assert errors1 == []
+  assert errors2 == []
+  
+  // Check if both terms evaluate to VLit(LitInt(42))
+  let result1 = evaluate(initial_state([]), term1)
+  let result2 = evaluate(initial_state([]), term2)
+  
+  // Both should be VLit(LitInt(42))
+  case result1 {
+    VLit(LitInt(42)) -> case result2 {
+      VLit(LitInt(42)) -> True
+      _ -> False
+    }
+    _ -> False
+  }
+}
+
+
+// Debug: Check if the GADT type definition affects the match
+pub fn debug_gadt_type_affects_match_test() {
+  // Without GADT type definition
+  let source1 = "$match #LitInt(42) { | #LitInt(n) => n }"
+  let #(term1, _) = parse(source1)
+  let result1 = evaluate(initial_state([]), term1)
+  
+  // With GADT type definition
+  let source2 =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$match #LitInt(42) { | #LitInt(n) => n }"
+  let #(term2, _) = parse(source2)
+  let result2 = evaluate(initial_state([]), term2)
+  
+  // Both should return VLit(LitInt(42))
+  case result1 {
+    VLit(LitInt(42)) -> case result2 {
+      VLit(LitInt(42)) -> True
+      _ -> False
+    }
+    _ -> False
+  }
+}
+
+// Debug: Check if the lambda with GADT type works
+pub fn debug_gadt_lambda_works_test() {
+  let source =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr { | #LitInt(n) => n }\n"
+    <> "eval"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  let result = evaluate(initial_state([]), term)
+  // Should not be VErr
+  case result {
+    VErr -> False
+    _ -> True
+  }
+}
+
+// Debug: Check if the lambda application works
+pub fn debug_gadt_lambda_app_works_test() {
+  let source =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr { | #LitInt(n) => n }\n"
+    <> "eval(#LitInt(42))"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  let result = evaluate(initial_state([]), term)
+  // This should return VLit(LitInt(42))
+  case result {
+    VLit(LitInt(42)) -> True
+    _ -> False
+  }
+}
+
+// Debug: Check if the parsed terms are the same for both tests
+pub fn debug_same_source_both_tests_test() {
+  let source =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr { | #LitInt(n) => n }\n"
+    <> "eval(#LitInt(42))"
+  
+  let #(term, errors) = parse(source)
+  assert errors == []
+  
+  let result = evaluate(initial_state([]), term)
+  
+  // Check what the actual result is
+  case result {
+    VCtr("LitInt", VLit(LitInt(42))) -> False
+    VLit(LitInt(42)) -> True
+    _ -> False
+  }
+}
+
+// Debug: Check if a simple match with variable binding works
+pub fn debug_simple_match_var_test() {
+  let source = "$match #LitInt(42) { | #LitInt(x) => x }"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  let result = evaluate(initial_state([]), term)
+  // Should return VLit(LitInt(42))
+  case result {
+    VLit(LitInt(42)) -> True
+    _ -> False
+  }
+}
+
+// Debug: Check if a simple lambda with match works
+pub fn debug_simple_lambda_match_test() {
+  let source =
+    "$let f = $fn(x: #LitInt(42)) => $match x { | #LitInt(n) => n }\n"
+    <> "f(#LitInt(42))"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  let result = evaluate(initial_state([]), term)
+  // Should return VLit(LitInt(42))
+  case result {
+    VLit(LitInt(42)) -> True
+    _ -> False
+  }
+}
+
+// Debug: Check if the GADT type definition affects the lambda
+pub fn debug_gadt_type_affects_lambda_test() {
+  // Without GADT type definition
+  let source1 =
+    "$let f = $fn(x: #LitInt(42)) => $match x { | #LitInt(n) => n }\n"
+    <> "f(#LitInt(42))"
+  let #(term1, _) = parse(source1)
+  let result1 = evaluate(initial_state([]), term1)
+  
+  // With GADT type definition
+  let source2 =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let f = $fn(x: #LitInt(42)) => $match x { | #LitInt(n) => n }\n"
+    <> "f(#LitInt(42))"
+  let #(term2, _) = parse(source2)
+  let result2 = evaluate(initial_state([]), term2)
+  
+  // Both should return VLit(LitInt(42))
+  case result1 {
+    VLit(LitInt(42)) -> case result2 {
+      VLit(LitInt(42)) -> True
+      _ -> False
+    }
+    _ -> False
+  }
+}
+
+// Debug: Check if the GADT parameter type affects the lambda
+pub fn debug_gadt_param_type_affects_lambda_test() {
+  // With #LitInt(42) parameter type
+  let source1 =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let f = $fn(x: #LitInt(42)) => $match x { | #LitInt(n) => n }\n"
+    <> "f(#LitInt(42))"
+  let #(term1, _) = parse(source1)
+  let result1 = evaluate(initial_state([]), term1)
+  
+  // With #Expr(a) parameter type
+  let source2 =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let f = $fn<a: $Type>(x: #Expr(a)) => $match x { | #LitInt(n) => n }\n"
+    <> "f(#LitInt(42))"
+  let #(term2, _) = parse(source2)
+  let result2 = evaluate(initial_state([]), term2)
+  
+  // Both should return VLit(LitInt(42))
+  case result1 {
+    VLit(LitInt(42)) -> case result2 {
+      VLit(LitInt(42)) -> True
+      _ -> False
+    }
+    _ -> False
+  }
+}
+
+// Debug: Check if the polymorphic parameter type affects the lambda
+pub fn debug_poly_param_type_affects_lambda_test() {
+  // Without polymorphic parameter type
+  let source1 =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let f = $fn(x: #LitInt(42)) => $match x { | #LitInt(n) => n }\n"
+    <> "f(#LitInt(42))"
+  let #(term1, _) = parse(source1)
+  let result1 = evaluate(initial_state([]), term1)
+  
+  // With polymorphic parameter type
+  let source2 =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let f = $fn<a: $Type>(x: #Expr(a)) => $match x { | #LitInt(n) => n }\n"
+    <> "f(#LitInt(42))"
+  let #(term2, _) = parse(source2)
+  let result2 = evaluate(initial_state([]), term2)
+  
+  // Both should return VLit(LitInt(42))
+  case result1 {
+    VLit(LitInt(42)) -> case result2 {
+      VLit(LitInt(42)) -> True
+      _ -> False
+    }
+    _ -> False
+  }
+}
+
+
+// Debug: Check what the actual result is for the GADT app test
+pub fn debug_gadt_app_actual_result2_test() {
+  let source =
+    "$let Expr = $type<a: $Type> { | #LitInt($I32) -> #Expr($I32) }\n"
+    <> "$let f = $fn<a: $Type>(x: #Expr(a)) => $match x { | #LitInt(n) => n }\n"
+    <> "f(#LitInt(42))"
+  let #(term, errors) = parse(source)
+  assert errors == []
+  let result = evaluate(initial_state([]), term)
+  // Check what the actual result is
+  case result {
+    VCtr("LitInt", VLit(LitInt(42))) -> False
+    VLit(LitInt(42)) -> True
+    _ -> False
+  }
+}
