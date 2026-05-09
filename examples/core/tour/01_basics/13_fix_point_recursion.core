@@ -1,0 +1,13 @@
+// Recursive functions are defined using $fix.
+// The $fix keyword creates a recursive function by taking a lambda
+// that receives the recursive reference as its first parameter.
+
+// This defines a recursive function that computes factorial.
+$let factorial = $fix f. $fn(n: $Int) =>
+  $match n {
+    | 0 => 1
+    | n => %i32_mul(n, f(%i32_sub(n, 1)))
+  }
+
+// Test: factorial of 5 = 120
+factorial(5)
