@@ -1,10 +1,10 @@
 /// Compiler Bootstrap CLI — entry point
 ///
 /// Usage:
-///   gleam run -- module compiler_bootstrap run <file.core>
-///   gleam run -- module compiler_bootstrap run -c 'expression'
-///   gleam run -- module compiler_bootstrap run --help
-///   gleam run -- module compiler_bootstrap check <file.core>
+///   gleam run <file.core>
+///   gleam run -c 'expression'
+///   gleam run --help
+///   gleam run check <file.core>
 
 import cli/run as cli
 import gleam/io
