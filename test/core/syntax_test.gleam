@@ -968,15 +968,7 @@ pub fn parse_let_type_def_only_test() {
 
 // What term does $let + $type + $match produce?
 pub fn debug_let_type_match_term_test() {
-  let source = """$let Option = $type<a: $Type> {
-| #Some(a) -> #Option(a)
-| #None({}) -> #Option(a)
-}
-
-$match #Some(42) {
-| #Some(x) => x
-| #None(_) => 0
-}"""
+  let source = "$let Option = $type<a: $Type> { | #Some(a) -> #Option(a) | #None({}) -> #Option(a) } \n$match #Some(42) { | #Some(x) => x | #None(_) => 0 }"
   let #(term, errors) = parse(source)
   assert errors == []
   // Check what term we actually get - use catch-all
