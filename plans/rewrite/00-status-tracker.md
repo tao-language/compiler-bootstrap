@@ -1,9 +1,11 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-05-07 (Phase 2 — 944 tests passing, 0 failures.)
+> **Last updated:** 2026-05-08 (Phase 2 — 944 tests passing, 0 failures.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [04-tao-language.md](04-tao-language.md), [05-compiler-pipeline.md](05-compiler-pipeline.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 >
 > **Recent:** Fixed remaining 2 tour test failures (t04_gadt_expr and t07_default_values) by using inline source with inlined FFI stubs. Also fixed GADT inference by keeping type parameter bindings in state.vars after infer_type_def (previously they were cleaned up, preventing subsequent lambdas from resolving implicit params).
+>
+> **Code Quality Fixes (2026-05-08):** Cleaned up unused imports in test files, removed unreachable patterns, fixed param name preservation in try_apply, extracted PType matching logic into helper function. Remaining warnings: `Match` import in syntax_test.gleam (compiler quirk — used in case patterns but flagged as unused), unused `source` variable in debug test (multi-line string literal quirk).
 
 ## Legend
 
@@ -263,6 +265,33 @@
 
 | Priority | Item | Details |
 |----------|------|---------|
+| 0 | Consolidate stringification functions | `value_to_string` exists in 4 modules, `term_to_string` in 2. Move all to `core/ast.gleam` and export. |
+| 1 | Fix test expectation mismatches | ✅ RESOLVED — All 907 tests passing, 0 failures. Tour example tests verified. |
+| 2 | Implement implicit param auto-expansion | ✅ DONE — VLam case added to infer_app. VPi path handles implicit params correctly. 15 new tests. |
+| 2 | GADT-style constructor checking | ✅ | Self_type/result_type evaluated, constructor lookup, pattern matching, best-effort error handling |
+| 4 | Update exhaustiveness for `$Int` wildcard | Integer types are "infinite" — need wildcard pattern at end |
+| 5 | Implement CLI `run` command | Full pipeline: parse → type check → evaluate → print |
+| 6 | Test assertion audit | 867 original tests had weak assertions (`case expr -> True _ -> False`). Strategy: add new strong-assertion edge case tests first, then update originals. Lexer edge cases added (36 new tests). |
+| 7 | Span preservation tests | Add tests to verify spans are preserved through parser → infer → eval → quote pipeline |
+| 8 | Consolidate type_defs_test into ast_test | type_defs_test.gleam should be merged into ast_test.gleam (1-to-1 mapping rule) |
+
+### Completed Code Quality Improvements
+
+| Change | Details |
+|--------|----------|
+| Unused imports cleaned | `test/cli/run_test.gleam`, `test/core/named_term_test.gleam`, `test/core/syntax_test.gleam` |
+| Unreachable pattern removed | `debug_type_specific_term_test` — removed `_ -> False` catch-all |
+| Param name fix | `try_apply` in `subst.gleam` now preserves original lambda param name instead of hardcoding `"x"` |
+| PType matching extracted | `ptype_matches` helper in `eval.gleam` replaces 50+ lines of nested case expression |
+
+### Known Remaining Warnings
+
+| File | Warning | Status |
+|------|---------|--------|
+| `test/core/syntax_test.gleam:18` | `Match` imported but flagged unused | Gleam compiler quirk — used in case patterns |
+| `test/core/syntax_test.gleam:970` | Unused literal in debug test | Multi-line string literal quirk |
+
+---
 | 1 | Fix test expectation mismatches | ✅ RESOLVED — All 907 tests passing, 0 failures. Tour example tests verified. |
 | 2 | Implement implicit param auto-expansion | ✅ DONE — VLam case added to infer_app. VPi path handles implicit params correctly. 15 new tests. |
 | 2 | GADT-style constructor checking | ✅ | Self_type/result_type evaluated, constructor lookup, pattern matching, best-effort error handling |
