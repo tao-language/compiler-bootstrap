@@ -61,6 +61,53 @@ pub fn check_exhaustiveness_vdef(
   check_exhaustiveness_inner(state, all_tags, covered, span)
 }
 
+/// Check if a pattern covers all remaining (uncovered) constructor tags.
+///
+/// Returns True if the pattern is a wildcard (PAny, PVar, or PAlias with wildcard)
+/// that would cover all remaining cases. This is used for $Int wildcard
+/// exhaustiveness — since integer types are "infinite", a wildcard pattern
+/// at the end covers all remaining integer constructors.
+pub fn is_wildcard_pattern(pattern: ast.Pattern) -> Bool {
+  case pattern {
+    ast.PAny(_) -> True
+    ast.PVar(_, _) -> True
+    ast.PAlias(_, inner, _) -> is_wildcard_pattern(inner)
+    _ -> False
+  }
+}
+
+/// Check if a pattern covers integer literal types.
+///
+/// Returns True if the pattern would match any integer literal:
+/// - PLit with an Int value
+/// - PAny (wildcard)
+/// - PVar (variable)
+pub fn covers_integer_types(pattern: ast.Pattern) -> Bool {
+  case pattern {
+    ast.PAny(_) -> True
+    ast.PVar(_, _) -> True
+    ast.PLit(ast.Int(_), _) -> True
+    ast.PAlias(_, inner, _) -> covers_integer_types(inner)
+    _ -> False
+  }
+}
+
+/// Check if a pattern covers float literal types.
+///
+/// Returns True if the pattern would match any float literal:
+/// - PLit with a Float value
+/// - PAny (wildcard)
+/// - PVar (variable)
+pub fn covers_float_types(pattern: ast.Pattern) -> Bool {
+  case pattern {
+    ast.PAny(_) -> True
+    ast.PVar(_, _) -> True
+    ast.PLit(ast.Float(_), _) -> True
+    ast.PAlias(_, inner, _) -> covers_float_types(inner)
+    _ -> False
+  }
+}
+
 /// Internal helper: check exhaustiveness against a list of tags.
 fn check_exhaustiveness_inner(
   state: State,

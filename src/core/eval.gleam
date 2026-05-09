@@ -2,7 +2,7 @@
 import core/ast.{
   type Case, type Pattern, type Term, type Value, type LiteralType,
   Ann, App, Call,
-  Case as CoreCase, Ctr, EApp, Err, Float as LitFloat, HHole, HVar, Hole,
+  Case as CoreCase, Ctr, EApp, Err, Fix, Float as LitFloat, HHole, HVar, Hole,
   Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT,
   Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, term_to_string,  literal_type_to_string, VLitT,
   LitT,
@@ -141,6 +141,7 @@ pub fn evaluate(state: State, term: Term) -> Value {
       let value_constructors = list.map(c, fn(ctor) { term_ctor_to_value(state, ctor) })
       VTypeDef(name: n, params: value_params, constructors: value_constructors)
     }
+    Fix(_name, body, _) -> evaluate(state, body)
     Err(_, _) -> VErr
   }
 }

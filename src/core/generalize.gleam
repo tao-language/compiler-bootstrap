@@ -24,7 +24,7 @@
 /// Results are unique and sorted by descending ID (highest hole gets
 /// De Bruijn index 0).
 import core/ast.{
-  type Head, type Term, type Value, Ann, App, Call, Case, Ctr, EApp, Err, HHole,
+  type Head, type Term, type Value, Ann, App, Call, Case, Ctr, EApp, Err, Fix, HHole,
   HVar, Hole, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi,
   VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, VLitT, LitT,
 }
@@ -193,6 +193,7 @@ fn free_holes_term(term: Term, binding: Int) -> List(Int) {
       })
     }
     LitT(_, _) -> []
+    Fix(_, body, _) -> free_holes_term(body, binding)
     Err(_, _) -> []
   }
 }
@@ -355,6 +356,7 @@ fn free_levels_term(term: Term, binding: Int) -> List(Int) {
       })
     }
     LitT(_, _) -> []
+    Fix(_, body, _) -> free_levels_term(body, binding)
     Err(_, _) -> []
   }
 }
@@ -533,6 +535,7 @@ fn subst_holes_term(term: Term, subst: List(#(Int, Int))) -> Term {
       )
     }
     LitT(ltype, span) -> LitT(ltype, span)
+    Fix(name, body, span) -> Fix(name, subst_holes_term(body, subst), span)
     Err(msg, span) -> Err(msg, span)
   }
 }

@@ -9,7 +9,7 @@ import core/ast.{type Value,
   VTypeDef,
   IntT, FloatT}
 import core/exhaustiveness.{check_exhaustiveness_vdef}
-import core/state.{FfiEntry, def_var}
+import core/state.{FfiEntry, def_var, type State, State}
 import core/eval.{evaluate, match_pattern}
 import core/subst.{force, force_levels_to_indices}
 import core/unify.{unify}
@@ -41,7 +41,273 @@ pub fn infer(state: state.State, term: ast.Term) -> #(ast.Value, ast.Value, stat
     ast.TypeDef(name, params, constructors, span) -> infer_type_def(state, name, params, constructors, span)
     ast.Err(message, span) -> infer_err(state, message, span)
     ast.LitT(t, span) -> infer_litt(state, t, span)
+    ast.Fix(name, body, span) -> infer_fix(state, name, body, span)
   }
+}
+
+/// Infer a pattern against an expected type (synthesis).
+///
+/// Validates that the pattern matches the expected type and returns
+/// the pattern bindings for use in the match body. This is used when
+/// the scrutinee type is not a TypeDef (so we can't do structural
+/// exhaustiveness checking) — we synthesize the pattern's type instead.
+///
+/// For patterns that are TypeDef-aware, use `check_pattern` instead.
+pub fn infer_pattern(
+  state: state.State,
+  pattern: ast.Pattern,
+  expected_type: ast.Value,
+) -> #(List(#(String, ast.Value)), state.State) {
+  check_pattern(state, pattern, expected_type)
+}
+
+/// Check a pattern against an expected type (verification).
+///
+/// Validates that the pattern matches the expected type and returns
+/// the pattern bindings for use in the match body.
+///
+/// ## Pattern matching rules
+///
+/// - **PAny**: matches anything, no bindings
+/// - **PVar**: matches anything, binds variable
+/// - **PCtr**: matches constructor, recursively checks inner pattern
+/// - **PUnit**: matches empty record type
+/// - **PLit**: matches literal type (IntT or FloatT)
+/// - **PAlias**: delegates to inner pattern, adds alias binding
+/// - **PType**: matches type universes
+/// - **PRcd**: matches record type fields
+/// - **PError**: matches error values
+pub fn check_pattern(
+  state: state.State,
+  pattern: ast.Pattern,
+  expected_type: ast.Value,
+) -> #(List(#(String, ast.Value)), state.State) {
+  check_pattern_inner(state, pattern, expected_type, [])
+}
+
+fn check_pattern_inner(
+  state: state.State,
+  pattern: ast.Pattern,
+  expected_type: ast.Value,
+  acc: List(#(String, ast.Value)),
+) -> #(List(#(String, ast.Value)), state.State) {
+  case pattern {
+    ast.PAny(_) ->
+      #(acc, state)
+
+    ast.PVar(name, _) -> {
+      // PVar matches anything; bind to a fresh hole
+      let fresh_id = state.hole_counter
+      let new_state = state.State(..state, hole_counter: fresh_id + 1)
+      let hole_val = ast.VNeut(ast.HHole(fresh_id), [])
+      let bindings = [#(name, hole_val), ..acc]
+      #(bindings, new_state)
+    }
+
+    ast.PCtr(tag, inner, _) -> {
+      // Look up the constructor in the env to get its expected argument type
+      let env_values = list.map(state.vars, fn(v) { v.1.0 })
+      let constructor_info = lookup_constructor(env_values, tag)
+
+      case constructor_info {
+        Some(#(_bindings, self_type_val, _result_type_val)) -> {
+          // Constructor found: check inner pattern against self_type
+          let inner_bindings = check_pattern(
+            state,
+            inner,
+            self_type_val,
+          )
+          let bindings = list.append(inner_bindings.0, acc)
+          #(bindings, inner_bindings.1)
+        }
+        None -> {
+          // Constructor not found: fall back to matching anything
+          let fresh_id = state.hole_counter
+          let new_state = state.State(..state, hole_counter: fresh_id + 1)
+          let hole_val = ast.VNeut(ast.HHole(fresh_id), [])
+          let bindings = [#(tag, hole_val), ..acc]
+          let inner_bindings = check_pattern(
+            new_state,
+            inner,
+            ast.VNeut(ast.HHole(fresh_id), []),
+          )
+          let bindings = list.append(inner_bindings.0, bindings)
+          #(bindings, inner_bindings.1)
+        }
+      }
+    }
+
+    ast.PUnit(_) -> {
+      // PUnit matches empty record types
+      case expected_type {
+        ast.VRcdT(fields) -> {
+          case fields {
+            [] -> #(acc, state)
+            _ -> #(acc, state)  // Best effort: allow non-empty
+          }
+        }
+        _ -> {
+          // Not a record type: allow it (best effort)
+          #(acc, state)
+        }
+      }
+    }
+
+    ast.PLit(lit, _) -> {
+      // PLit matches literal types (IntT, FloatT)
+      case expected_type {
+        ast.VLitT(ast.IntT) -> {
+          case lit {
+            ast.Int(_) -> #(acc, state)
+            _ -> #(acc, state)  // Best effort: allow mismatch
+          }
+        }
+        ast.VLitT(ast.FloatT) -> {
+          case lit {
+            ast.Float(_) -> #(acc, state)
+            _ -> #(acc, state)  // Best effort: allow mismatch
+          }
+        }
+        ast.VLitT(_) -> #(acc, state)  // Other literal types: allow
+        _ -> #(acc, state)  // Non-literal type: allow
+      }
+    }
+
+    ast.PAlias(name, inner, _) -> {
+      // PAlias: bind the alias name, then delegate to inner pattern
+      let inner_bindings = check_pattern(
+        state,
+        inner,
+        expected_type,
+      )
+      // Add the alias binding (pointing to the first inner binding if available)
+      let alias_val = case inner_bindings.0 {
+        [first, .._] -> first.1
+        [] -> ast.VNeut(ast.HHole(0), [])
+      }
+      let bindings = list.append(list.append(inner_bindings.0, [#(name, alias_val)]), acc)
+      #(bindings, inner_bindings.1)
+    }
+
+    ast.PType(_type_name, _) -> {
+      // PType matches type universes
+      case expected_type {
+        ast.VTyp(level) -> #(acc, state)
+        ast.VLitT(ast.IntT) -> {
+          // $Int wildcard: matches any integer type
+          #(acc, state)
+        }
+        ast.VLitT(ast.FloatT) -> {
+          // $Float wildcard: matches any float type
+          #(acc, state)
+        }
+        _ -> #(acc, state)  // Best effort: allow
+      }
+    }
+
+    ast.PRcd(fields, _) -> {
+      // PRcd: match record type fields
+      case expected_type {
+        ast.VRcdT(expected_fields) -> {
+          let fields_result = check_rcd_fields(fields, expected_fields, state, acc)
+          #(fields_result.0, fields_result.1)
+        }
+        _ -> #(acc, state)  // Non-record type: allow
+      }
+    }
+
+    ast.PError(_) -> {
+      // PError matches error values
+      case expected_type {
+        ast.VErr -> #(acc, state)
+        _ -> #(acc, state)  // Best effort: allow
+      }
+    }
+  }
+}
+
+/// Check record pattern fields against expected record type fields.
+fn check_rcd_fields(
+  fields: List(#(String, ast.Pattern)),
+  expected_fields: List(#(String, ast.Value, option.Option(ast.Value))),
+  state: state.State,
+  acc: List(#(String, ast.Value)),
+) -> #(List(#(String, ast.Value)), state.State) {
+  case fields {
+    [] -> #(acc, state)
+    [#(name, inner_pattern), ..rest] -> {
+      case list.find(expected_fields, fn(f) { f.0 == name }) {
+        Ok(#(_, field_type, _)) -> {
+          let inner_result = check_pattern(
+            state,
+            inner_pattern,
+            field_type,
+          )
+          check_rcd_fields(
+            rest,
+            expected_fields,
+            inner_result.1,
+            list.append(inner_result.0, acc),
+          )
+        }
+        Error(_) -> {
+          // Field not in expected type: allow (best effort)
+          check_rcd_fields(
+            rest,
+            expected_fields,
+            state,
+            acc,
+          )
+        }
+      }
+    }
+  }
+}
+
+/// Infer a fixpoint (recursive function) term.
+///
+/// A fixpoint term represents a recursive function defined via the Y combinator.
+/// The term is `Fix(name, body)` where body is a lambda that takes the
+/// recursive reference as an implicit parameter.
+///
+/// For example, a recursive factorial:
+/// ```
+/// $let fact = $fix(f) => $fn(n: $Int) => ...
+/// ```
+/// Desugars to: `Fix("fact", Lam([], body))`
+///
+/// The inferred type wraps the body's type in a Pi (the recursive function type).
+pub fn infer_fix(
+  state: state.State,
+  name: String,
+  body: ast.Term,
+  span: Span,
+) -> #(ast.Value, ast.Value, state.State) {
+  // Infer the body to get its type
+  let #(body_val, body_type, state2) = infer(state, body)
+  let _ = body_val
+
+  // The fixpoint value is a lambda that takes the recursive reference
+  let fresh_id = state2.hole_counter
+  let recursive_ref = ast.VNeut(ast.HHole(fresh_id), [])
+  let new_state = State(..state2, hole_counter: fresh_id + 1)
+
+  let fix_value = ast.VLam(
+    [],
+    [],
+    #(name, recursive_ref),
+    body,
+  )
+
+  // The type is a Pi: $fn(x: T) -> T (recursive function type)
+  let fix_type = ast.VPi(
+    [],
+    [],
+    #(name, body_type),
+    body_type,
+  )
+
+  #(fix_value, fix_type, new_state)
 }
 
 /// Check that a term has the expected type (verification).

@@ -14,7 +14,7 @@
 /// - Error recovery (strings, unsupported operators)
 /// - Edge cases (empty input, extra tokens, unicode)
 import core/ast.{
-  App, Ann, Case as CoreCase, Call, Ctr, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
+  App, Ann, Case as CoreCase, Call, Ctr, Err, Float as LitFloat, Fix, Hole, Int as LitInt, Lam, Lit,
   LitT, Match, PLit, PUnit, Pi, Rcd, RcdT, TypeDef, Typ, Var,
   IntT,
 }
@@ -1000,6 +1000,7 @@ pub fn debug_type_specific_term_test() {
     Typ(_, _) -> True
     LitT(_, _) -> True
     Lit(_, _) -> True
+    Fix(_, _, _) -> True
   }
   assert term_ok
 }

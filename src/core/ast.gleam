@@ -88,6 +88,9 @@ pub type Term {
     constructors: List(#(String, List(String), Term, Term, Span)),
     span: Span,
   )
+  /// Fixpoint: recursive function via Y combinator
+  /// $fix(name) => body — desugars to a recursive lambda
+  Fix(name: String, body: Term, span: Span)
   Err(message: String, span: Span)
 }
 
@@ -481,6 +484,7 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
       TypeDef(name: n, params: params, constructors: list.map(cons, shift_cons), span: s)
     }
     Err(msg, span) -> Err(msg, span)
+    Fix(name, body, span) -> Fix(name, shift_term_from(body, shift, from), span)
   }
 }
 
@@ -873,6 +877,8 @@ pub fn term_to_string(term: Term) -> String {
       <> " }"
     }
     Err(msg, _) -> "\"" <> msg <> "\""
+    Fix(name, body, _) ->
+      "$fix(" <> name <> ") => " <> term_to_string(body)
   }
 }
 

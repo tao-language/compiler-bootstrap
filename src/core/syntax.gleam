@@ -27,7 +27,7 @@
 ///   - Type definitions: $type { | #C(arg) -> ResultType }
 import core/ast.{
   type Case, type Pattern, type Term,
-  Ann, App, Call, Case as CoreCase, Ctr, Err, TypeDef,
+  Ann, App, Call, Case as CoreCase, Ctr, Err, Fix, TypeDef,
   Float as LitFloat, Hole, Int as LitInt, Lam, Lit, LitT, Match, PAny, PAlias, PCtr, PError, PLit,
   PType, PRcd, PUnit, PVar, Pi, Rcd, RcdT, Typ, Var, let_var,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
@@ -161,6 +161,7 @@ fn term_span(term: Term) -> Span {
     Typ(_, span) -> span
     TypeDef(_, _, _, span) -> span
     LitT(_, span) -> span
+    Fix(_, _, span) -> span
     Err(_, span) -> span
   }
 }
@@ -1512,6 +1513,7 @@ fn term_to_string(term: Term) -> String {
     Typ(_, _) -> "type"
     TypeDef(_, _, _, _) -> "type def"
     LitT(_, _) -> "lit_type"
+    Fix(_, _, _) -> "fix"
     Err(msg, _) -> msg
   }
 }

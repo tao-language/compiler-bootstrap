@@ -24,7 +24,7 @@
 /// ```
 import core/ast.{
   type Term, type Value, type Elim, type Head,
-  Ann, App, Call, Case, Ctr, EApp, Err, HHole, HVar, Hole, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, LitT, VLitT,
+  Ann, App, Call, Case, Ctr, EApp, Err, Fix, HHole, HVar, Hole, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, LitT, VLitT,
   make_neut, shift_opt, shift_term, value_to_string, term_to_string,
 }
 import core/state.{type State, lookup_var}
@@ -233,6 +233,7 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
       )
     }
     Err(msg, span) -> Err(msg, span)
+    Fix(name, body, span) -> Fix(name, subst_term_from(idx, value, body, from), span)
   }
 }
 
