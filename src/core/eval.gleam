@@ -354,72 +354,9 @@ pub fn match_pattern(
       case value {
         // VLitT matching (evaluated literal type values)
         VLitT(t) ->
-          case t {
-            IntT ->
-              case type_name {
-                "Int" | "I8" | "I16" | "I32" | "I64" | "U8" | "U16" | "U32" | "U64" -> Ok(bindings)
-                _ -> Error(Nil)
-              }
-            FloatT ->
-              case type_name {
-                "Float" | "F16" | "F32" | "F64" -> Ok(bindings)
-                _ -> Error(Nil)
-              }
-            I8T ->
-              case type_name {
-                "I8" | "Int" -> Ok(bindings)
-                _ -> Error(Nil)
-              }
-            I16T ->
-              case type_name {
-                "I16" | "Int" -> Ok(bindings)
-                _ -> Error(Nil)
-              }
-            I32T ->
-              case type_name {
-                "I32" | "Int" -> Ok(bindings)
-                _ -> Error(Nil)
-              }
-            I64T ->
-              case type_name {
-                "I64" | "Int" -> Ok(bindings)
-                _ -> Error(Nil)
-              }
-            U8T ->
-              case type_name {
-                "U8" | "Int" -> Ok(bindings)
-                _ -> Error(Nil)
-              }
-            U16T ->
-              case type_name {
-                "U16" | "Int" -> Ok(bindings)
-                _ -> Error(Nil)
-              }
-            U32T ->
-              case type_name {
-                "U32" | "Int" -> Ok(bindings)
-                _ -> Error(Nil)
-              }
-            U64T ->
-              case type_name {
-                "U64" | "Int" -> Ok(bindings)
-                _ -> Error(Nil)
-              }
-            F16T ->
-              case type_name {
-                "F16" | "Float" -> Ok(bindings)
-                _ -> Error(Nil)
-              }
-            F32T ->
-              case type_name {
-                "F32" | "Float" -> Ok(bindings)
-                _ -> Error(Nil)
-              }
-            F64T ->
-              case type_name {
-                "F64" | "Float" -> Ok(bindings)
-                _ -> Error(Nil)
-              }
+          case ptype_matches(type_name, t) {
+            True -> Ok(bindings)
+            False -> Error(Nil)
           }
         // Wildcard type matching on literal values (legacy)
         VLit(ast.Int(_)) ->
@@ -666,6 +603,35 @@ fn match_record_type_fields(
         Error(_) -> None  // Field missing in arg type
       }
     }
+  }
+}
+
+// ============================================================================
+// TYPE PATTERN MATCHING HELPERS
+// ============================================================================
+
+/// Check if a literal type matches a type pattern name.
+///
+/// PType("Int", _) matches $Int, $I8-$I64, $U8-$U64 (wildcard matching).
+/// PType("Float", _) matches $Float, $F16-$F64.
+/// PType("I8", _) matches $I8 and $Int.
+/// PType("I16", _) matches $I16 and $Int.
+/// etc.
+fn ptype_matches(type_name: String, t: LiteralType) -> Bool {
+  case t {
+    IntT -> list.contains(["Int", "I8", "I16", "I32", "I64", "U8", "U16", "U32", "U64"], type_name)
+    FloatT -> list.contains(["Float", "F16", "F32", "F64"], type_name)
+    I8T -> list.contains(["I8", "Int"], type_name)
+    I16T -> list.contains(["I16", "Int"], type_name)
+    I32T -> list.contains(["I32", "Int"], type_name)
+    I64T -> list.contains(["I64", "Int"], type_name)
+    U8T -> list.contains(["U8", "Int"], type_name)
+    U16T -> list.contains(["U16", "Int"], type_name)
+    U32T -> list.contains(["U32", "Int"], type_name)
+    U64T -> list.contains(["U64", "Int"], type_name)
+    F16T -> list.contains(["F16", "Float"], type_name)
+    F32T -> list.contains(["F32", "Float"], type_name)
+    F64T -> list.contains(["F64", "Float"], type_name)
   }
 }
 

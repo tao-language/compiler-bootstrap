@@ -121,12 +121,11 @@ fn elim_arg_value(elim: Elim) -> Value {
 fn try_apply(value: Value, arg: Value) -> Result(Value, Nil) {
   case value {
     VLam(env, implicits, param, body) -> {
-      let #(_, param_type) = param
       let shifted_body = shift_term(body, 1)
       let substituted = subst_term_var(0, arg, shifted_body)
       // Return the substituted term wrapped in a lambda - evaluation
       // happens when this lambda is applied
-      Ok(VLam(env, implicits, #("x", param_type), substituted))
+      Ok(VLam(env, implicits, param, substituted))
     }
     _ -> Error(Nil)
   }
