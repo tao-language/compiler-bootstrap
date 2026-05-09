@@ -14,9 +14,8 @@
 /// - Error recovery (strings, unsupported operators)
 /// - Edge cases (empty input, extra tokens, unicode)
 import core/ast.{
-  type Term,
   App, Ann, Case as CoreCase, Call, Ctr, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
-  LitT, Match, PAny, PLit, PUnit, Pi, Rcd, RcdT, TypeDef, Typ, Var,
+  LitT, Match, PLit, PUnit, Pi, Rcd, RcdT, TypeDef, Typ, Var,
   IntT,
 }
 import core/syntax.{parse, parse_tokens}
