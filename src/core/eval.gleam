@@ -4,7 +4,7 @@ import core/ast.{
   Ann, App, Call,
   Case as CoreCase, Ctr, EApp, Err, Float as LitFloat, HHole, HVar, Hole,
   Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT,
-  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, term_to_string, VLitT,
+  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, term_to_string,  literal_type_to_string, VLitT,
   LitT,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
@@ -641,15 +641,15 @@ fn ptype_matches(type_name: String, t: LiteralType) -> Bool {
 
 /// Format an evaluation result as a human-readable string.
 /// Debug: print a value as a string for inspection.
-/// Returns "__VErr__" for errors, otherwise delegates to value_to_string.
+/// Returns "__VErr__" for errors, otherwise delegates to eval_value_to_string.
 pub fn debug_value(value: Value) -> String {
   case value {
     VErr -> "__VErr__"
-    _ -> value_to_string(value)
+    _ -> eval_value_to_string(value)
   }
 }
 
-pub fn value_to_string(value: Value) -> String {
+pub fn eval_value_to_string(value: Value) -> String {
   case value {
     VNeut(head, spine) -> {
       let head_str = case head {
@@ -662,7 +662,7 @@ pub fn value_to_string(value: Value) -> String {
           let spine_str =
             list.fold(spine, "", fn(acc, e) {
               let s = case e {
-                EApp(arg) -> "(" <> value_to_string(arg) <> ")"
+                EApp(arg) -> "(" <> eval_value_to_string(arg) <> ")"
               }
               acc <> s
             })
@@ -674,15 +674,15 @@ pub fn value_to_string(value: Value) -> String {
     VPi(_env, _implicits, domain, codomain) ->
       "<>"
       <> "#(_) : "
-      <> value_to_string(domain.1)
+      <> eval_value_to_string(domain.1)
       <> " -> "
-      <> value_to_string(codomain)
+      <> eval_value_to_string(codomain)
     VLit(lit) ->
       case lit {
         LitInt(v) -> int.to_string(v)
         LitFloat(v) -> float.to_string(v)
       }
-    VCtr(tag, arg) -> "#" <> tag <> "(" <> value_to_string(arg) <> ")"
+    VCtr(tag, arg) -> "#" <> tag <> "(" <> eval_value_to_string(arg) <> ")"
     VRcd(fields) ->
       case fields {
         [] -> "()"
@@ -690,8 +690,8 @@ pub fn value_to_string(value: Value) -> String {
           "{" 
           <> list.fold(fields, "", fn(acc, f) {
             case acc {
-              "" -> f.0 <> ": " <> value_to_string(f.1)
-              _ -> acc <> ", " <> f.0 <> ": " <> value_to_string(f.1)
+              "" -> f.0 <> ": " <> eval_value_to_string(f.1)
+              _ -> acc <> ", " <> f.0 <> ": " <> eval_value_to_string(f.1)
             }
           })
           <> "}"
@@ -700,9 +700,9 @@ pub fn value_to_string(value: Value) -> String {
       "$" 
       <> "{" 
       <> list.fold(fields, "", fn(acc, f) {
-        let field_str = f.0 <> ": " <> value_to_string(f.1)
+        let field_str = f.0 <> ": " <> eval_value_to_string(f.1)
         let with_default = case f.2 {
-          Some(d) -> field_str <> " = " <> value_to_string(d)
+          Some(d) -> field_str <> " = " <> eval_value_to_string(d)
           None -> field_str
         }
         case acc {
@@ -714,24 +714,6 @@ pub fn value_to_string(value: Value) -> String {
     VErr -> "\"error\""
     VTypeDef(name: _, params: _, constructors: _) -> "<type _>"
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
-    VLitT(t) -> vlitt_string(t)
-  }
-}
-
-fn vlitt_string(type_: LiteralType) -> String {
-  case type_ {
-    IntT -> "$Int"
-    FloatT -> "$Float"
-    I8T -> "$I8"
-    I16T -> "$I16"
-    I32T -> "$I32"
-    I64T -> "$I64"
-    U8T -> "$U8"
-    U16T -> "$U16"
-    U32T -> "$U32"
-    U64T -> "$U64"
-    F16T -> "$F16"
-    F32T -> "$F32"
-    F64T -> "$F64"
+    VLitT(t) -> literal_type_to_string(t)
   }
 }

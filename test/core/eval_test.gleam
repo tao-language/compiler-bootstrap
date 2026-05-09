@@ -22,7 +22,7 @@ import core/ast.{
   VPi, VRcd, Var,
 }
 import core/eval.{
-  do_app, evaluate, is_truth, lookup_env, match_pattern, value_to_string,
+  do_app, evaluate, is_truth, lookup_env, match_pattern, eval_value_to_string,
 }
 import core/state.{FfiEntry, initial_state, truth_ctr, with_truth_ctr}
 import gleam/option.{type Option, None, Some}
@@ -656,53 +656,53 @@ pub fn lookup_env_empty_bindings_test() {
 // ============================================================================
 
 pub fn value_to_string_lit_int_test() {
-  assert value_to_string(VLit(LitInt(42))) == "42"
+  assert eval_value_to_string(VLit(LitInt(42))) == "42"
 }
 
 pub fn value_to_string_lit_float_test() {
-  let s = value_to_string(VLit(LitFloat(3.14)))
+  let s = eval_value_to_string(VLit(LitFloat(3.14)))
   assert s == "3.14"
 }
 
 pub fn value_to_string_neutral_var_test() {
-  assert value_to_string(VNeut(HVar(5), [])) == "v5"
+  assert eval_value_to_string(VNeut(HVar(5), [])) == "v5"
 }
 
 pub fn value_to_string_neutral_hole_test() {
-  assert value_to_string(VNeut(HHole(42), [])) == "?42"
+  assert eval_value_to_string(VNeut(HHole(42), [])) == "?42"
 }
 
 pub fn value_to_string_neutral_with_spine_test() {
-  let s = value_to_string(VNeut(HVar(0), [EApp(VLit(LitInt(42)))]))
+  let s = eval_value_to_string(VNeut(HVar(0), [EApp(VLit(LitInt(42)))]))
   assert s == "v0(42)"
 }
 
 pub fn value_to_string_vctr_test() {
-  assert value_to_string(VCtr("Some", VLit(LitInt(42)))) == "#Some(42)"
+  assert eval_value_to_string(VCtr("Some", VLit(LitInt(42)))) == "#Some(42)"
 }
 
 pub fn value_to_string_vrcd_test() {
-  assert value_to_string(VRcd([])) == "()"
+  assert eval_value_to_string(VRcd([])) == "()"
 }
 
 pub fn value_to_string_vrcd_with_fields_test() {
   let s =
-    value_to_string(VRcd([#("x", VLit(LitInt(1))), #("y", VLit(LitInt(2)))]))
+    eval_value_to_string(VRcd([#("x", VLit(LitInt(1))), #("y", VLit(LitInt(2)))]))
   assert s == "{x: 1, y: 2}"
 }
 
 pub fn value_to_string_vevr_test() {
-  assert value_to_string(VErr) == "\"error\""
+  assert eval_value_to_string(VErr) == "\"error\""
 }
 
 pub fn value_to_string_vlam_test() {
   let body = Var(0, single("", 1, 1))
-  let s = value_to_string(VLam([], [], #("x", VRcd([])), body))
+  let s = eval_value_to_string(VLam([], [], #("x", VRcd([])), body))
   assert s == "$fn(x) => #0"
 }
 
 pub fn value_to_string_vpi_test() {
-  let s = value_to_string(VPi([], [], #("pi_param", VLit(LitInt(0))), VNeut(HVar(0), [])))
+  let s = eval_value_to_string(VPi([], [], #("pi_param", VLit(LitInt(0))), VNeut(HVar(0), [])))
   assert s == "<>#(_) : 0 -> v0"
 }
 
@@ -857,13 +857,13 @@ pub fn eval_call_evaluates_args_first_test() {
 }
 
 pub fn value_to_string_nested_vctr_test() {
-  let s = value_to_string(VCtr("Outer", VCtr("Inner", VLit(LitInt(1)))))
+  let s = eval_value_to_string(VCtr("Outer", VCtr("Inner", VLit(LitInt(1)))))
   assert s == "#Outer(#Inner(1))"
 }
 
 pub fn value_to_string_neutral_hole_with_spine_test() {
   let s =
-    value_to_string(
+    eval_value_to_string(
       VNeut(HHole(7), [
         EApp(VLit(LitInt(1))),
         EApp(VLit(LitInt(2))),

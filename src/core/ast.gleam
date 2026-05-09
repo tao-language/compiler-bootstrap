@@ -1001,7 +1001,7 @@ pub fn value_to_string(value: Value) -> String {
   }
 }
 
-fn literal_type_to_string(type_: LiteralType) -> String {
+pub fn literal_type_to_string(type_: LiteralType) -> String {
   case type_ {
     IntT -> "$Int"
     FloatT -> "$Float"
