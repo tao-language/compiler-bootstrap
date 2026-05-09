@@ -14,14 +14,10 @@
 /// - Error recovery (strings, unsupported operators)
 /// - Edge cases (empty input, extra tokens, unicode)
 import core/ast.{
-  type Term,
-  VLit, VErr, VRcd, VCtr, VLam, VNeut, VPi, VRcdT, VTypeDef, VTyp, VLitT,
   App, Ann, Case as CoreCase, Call, Ctr, Err, Float as LitFloat, Hole, Int as LitInt, Lam, Lit,
   LitT, Match, PAny, PLit, PUnit, Pi, Rcd, RcdT, TypeDef, Typ, Var,
   IntT,
 }
-import core/eval.{evaluate}
-import core/state.{initial_state}
 import core/syntax.{parse, parse_tokens}
 import gleam/list
 import gleeunit
@@ -1012,7 +1008,6 @@ pub fn debug_type_specific_term_test() {
     Typ(_, _) -> True
     LitT(_, _) -> True
     Lit(_, _) -> True
-    _ -> False
   }
   assert term_ok
 }

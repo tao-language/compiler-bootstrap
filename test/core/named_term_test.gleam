@@ -6,8 +6,7 @@
 /// 3. Handles variable shadowing correctly
 
 import core/ast.{
-  type NamedTerm, type Term,
-  NamedVar, NamedLet, NamedLam, NamedApp, NamedLit,
+  NamedVar, NamedLet, NamedLit, NamedLam,
   App, Lit, Lam, Var, Int as LitInt, term_to_debruijn,
 }
 import gleeunit

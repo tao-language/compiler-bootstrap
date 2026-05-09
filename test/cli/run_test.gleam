@@ -5,7 +5,6 @@
 /// Each test uses `assert` to verify correctness, not just returning True/False.
 
 import cli/run as cli
-import gleam/option.{type Option, None, Some}
 import gleeunit
 
 pub fn main() {
