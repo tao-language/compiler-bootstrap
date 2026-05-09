@@ -1,11 +1,12 @@
 /// CLI Run Command — compile and evaluate Core programs
 ///
 /// Usage:
-///   compiler <filename.core>           # Run a Core file
-///   compiler -c 'expression'           # Run an inline expression
-///   compiler --help                    # Show help
-///   compiler --debug <filename>        # Run with debug output
+///   gleam run <filename.core>           # Run a Core file
+///   gleam run -c 'expression'           # Run an inline expression
+///   gleam run --help                    # Show help
+///   gleam run --debug <filename>        # Run with debug output
 
+import cli/debug_core
 import core/eval.{evaluate}
 import core/infer.{infer}
 import core/quote.{quote}
@@ -27,6 +28,7 @@ import gleam/option.{Some, None}
 pub type Command {
   Run(source: Source, verbose: Bool, debug: Bool)
   Check(source: Source, verbose: Bool, debug: Bool)
+  DebugCore(expression: String)
   Help
 }
 
@@ -50,6 +52,11 @@ pub fn parse_args(args: List(String)) -> Result(Command, String) {
         [] -> Ok(Run(Inline(expr), False, False))
         _ -> Error("Too many arguments after -c expression")
       }
+    ["debug-core", expr, ..rest] ->
+      case rest {
+        [] -> Ok(DebugCore(expr))
+        _ -> Error("Too many arguments for debug-core")
+      }
     [path, ..rest] ->
       case rest {
         [] -> Ok(Run(File(path), False, False))
@@ -68,6 +75,7 @@ pub fn show_help() -> Nil {
   io.println("  compiler -c 'expression'        Run an inline expression")
   io.println("  compiler --help                 Show this help")
   io.println("  compiler --debug <path>         Run with debug output")
+  io.println("  compiler debug-core 'expr'      Debug a Core expression (full pipeline)")
 }
 
 /// Execute a command.
@@ -79,6 +87,7 @@ pub fn run_command(command: Command) -> Nil {
     }
     Run(source, _, _) -> run_source(source)
     Check(source, _, _) -> check_source(source)
+    DebugCore(expr) -> debug_core.run(expr)
   }
 }
 

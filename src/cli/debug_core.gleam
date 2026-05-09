@@ -1,0 +1,122 @@
+/// Debug Core CLI Command — Inspect the full compiler pipeline
+///
+/// Usage: gleam run debug-core "expression"
+///
+/// This command takes a Core expression string and runs the entire
+/// pipeline (tokenize → parse → infer → evaluate), printing structured
+/// debug information at each stage.
+///
+/// ## Output Format
+///
+/// - **STDOUT**: Structured debug sections separated by blank lines
+/// - **STDERR**: Error messages from parsing or type checking
+///
+/// Sections printed to stdout:
+/// 1. SOURCE — The input expression
+/// 2. TOKENS — Tokenized representation
+/// 3. PARSING — The parsed Term
+/// 4. PARSE_ERRORS — Any parse errors (empty if none)
+/// 5. DEBRUIJN — The de Bruijn-converted Term (via term_to_debruijn)
+/// 6. INFERENCE — Inferred value, type, and final state
+/// 7. EVALUATION — Evaluated result value
+/// 8. ERRORS — Type checking errors (empty if none)
+
+import gleam/io
+import gleam/int
+import gleam/list
+import gleam/string
+import core/ast.{term_to_string, value_to_string}
+import core/infer.{infer}
+import core/eval.{evaluate}
+import core/state.{initial_state, type Error, error_to_string}
+import core/syntax.{parse}
+import syntax/base_lexer.{tokenize, type Token, Token as TokenCtor}
+import syntax/grammar.{type ParseError}
+
+/// Run the debug-core command with the given expression string.
+///
+/// This is the main entry point for the debug-core CLI command.
+/// It runs the full pipeline and prints structured debug output.
+pub fn run(expression: String) -> Nil {
+  // Print source section
+  io.println("=== SOURCE ===")
+  io.println(expression <> "\n")
+
+  // Step 1: Tokenize
+  let tokens = tokenize(expression)
+  io.println("=== TOKENS ===")
+  io.println(format_tokens(tokens))
+
+  // Step 2: Parse (returns Term with de Bruijn indices directly)
+  let #(term, parse_errors) = parse(expression)
+
+  io.println("\n=== PARSING ===")
+  io.println(term_to_string(term))
+
+  // Step 3: Show parse errors
+  case parse_errors {
+    [] -> io.println("\n  (no parse errors)")
+    errs -> {
+      io.println("\n=== PARSE ERRORS ===")
+      list.each(errs, fn(e) {
+        io.println("  " <> format_parse_error(e))
+      })
+    }
+  }
+
+  // Step 4: Show de Bruijn representation (parser already produces de Bruijn terms)
+  io.println("\n=== DEBRUIJN ===")
+  io.println(term_to_string(term))
+
+  // Step 5: Type inference
+  let state = initial_state([])
+  let #(value, inferred_type, final_state) = infer(state, term)
+
+  io.println("\n=== INFERENCE ===")
+  io.println("  Value: " <> value_to_string(value))
+  io.println("  Type:  " <> value_to_string(inferred_type))
+  io.println("  Errors: " <> int.to_string(list.length(final_state.errors)))
+
+  // Step 6: Evaluate (normalize)
+  let eval_result = evaluate(initial_state([]), term)
+  io.println("\n=== EVALUATION ===")
+  io.println("  Result: " <> value_to_string(eval_result))
+
+  // Step 7: Show type errors
+  case final_state.errors {
+    [] -> {
+      io.println("\n=== ERRORS ===")
+      io.println("  (none)")
+    }
+    errs -> {
+      io.println("\n=== ERRORS ===")
+      list.each(errs, fn(e) {
+        io.println("  " <> format_error(e))
+      })
+    }
+  }
+}
+
+// ============================================================================
+// FORMATTING HELPERS
+// ============================================================================
+
+fn format_tokens(tokens: List(Token)) -> String {
+  list.map(tokens, fn(t) {
+    case t {
+      TokenCtor(kind: kind, value: value, span: span) ->
+        "Token(" <> kind <> ", " <> value <> ", "
+        <> int.to_string(span.start_line) <> ":" <> int.to_string(span.start_col) <> ")"
+    }
+  }) |> string.join("\n")
+}
+
+fn format_parse_error(err: ParseError) -> String {
+  "  " <> int.to_string(err.span.start_line) <> ":"
+  <> int.to_string(err.span.start_col)
+  <> " expected " <> err.expected <> ", got " <> err.got
+}
+
+fn format_error(err: Error) -> String {
+  error_to_string(err)
+}
