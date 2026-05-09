@@ -5,7 +5,7 @@
 >
 > **Recent:** Fixed remaining 2 tour test failures (t04_gadt_expr and t07_default_values) by using inline source with inlined FFI stubs. Also fixed GADT inference by keeping type parameter bindings in state.vars after infer_type_def (previously they were cleaned up, preventing subsequent lambdas from resolving implicit params).
 >
-> **Code Quality Fixes (2026-05-08):** Cleaned up unused imports in test files, removed unreachable patterns, fixed param name preservation in try_apply, extracted PType matching logic into helper function. Remaining warnings: `Match` import in syntax_test.gleam (compiler quirk — used in case patterns but flagged as unused), unused `source` variable in debug test (multi-line string literal quirk).
+> **Code Quality Fixes (2026-05-08):** Cleaned up unused imports in test files, removed unreachable patterns, fixed param name preservation in try_apply, extracted PType matching logic into helper function. Consolidated stringification functions: removed ~250 lines of duplicate code from subst.gleam and eval.gleam, now all use ast.gleam's canonical versions. Remaining warnings: `Match` import in syntax_test.gleam (compiler quirk — used in case patterns but flagged as unused), unused `source` variable in debug test (multi-line string literal quirk).
 
 ## Legend
 
@@ -283,6 +283,7 @@
 | Unreachable pattern removed | `debug_type_specific_term_test` — removed `_ -> False` catch-all |
 | Param name fix | `try_apply` in `subst.gleam` now preserves original lambda param name instead of hardcoding `"x"` |
 | PType matching extracted | `ptype_matches` helper in `eval.gleam` replaces 50+ lines of nested case expression |
+| **Stringification consolidated** | Removed ~250 lines of duplicate code from `subst.gleam` and `eval.gleam`. All modules now use canonical `value_to_string`, `term_to_string`, and `literal_type_to_string` from `core/ast.gleam`. |
 
 ### Known Remaining Warnings
 
