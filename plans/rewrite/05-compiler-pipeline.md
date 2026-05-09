@@ -1,57 +1,87 @@
 # Compiler Pipeline Design
 
-## Pipeline Stages (Parallel Phases)
+## High-Level Compilation Flow
 
-Since all modules are independent, each phase could be done in parallel for every module. Phases still wait for all modules to finish before proceeding.
+```tao
+// High level overview of compiling a Tao file:
+// main_cli: parse command line arguments (run, check, test, etc) to fine tune the steps to run
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        COMPILER PIPELINE                         │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  PHASE 1: PARSE (parallel per module)                           │
-│    String → Expr/Term + ParseErrors                             │
-│    Store: {@package/module_name: List(Stmt)}                    │
-│                                                                 │
-│  PHASE 2: DESUGAR (parallel per module)                         │
-│    List(Stmt) → Module Term + Errors                            │
-│    Store: {@package/module_name: module_record_term}            │
-│                                                                 │
-│  PHASE 3: TYPE INFERENCE (parallel per module)                  │
-│    Module Term → (Value, Type, State)                           │
-│    NbE minimal form + fully resolved types                      │
-│                                                                 │
-│  ┌───────────┬──────────────┬───────────┬────────────────┐     │
-│   CLI COMMANDS:                                                │
-│              │              │           │                  │     │
-│    run       │   check      │   test    │ debug-core       │     │
-│    ─────     │   ─────      │   ────    │ ───────          │     │
-│    loads all │ loads all    │ loads all │ parse core expr  │     │
-│    modules,  │ modules,     │ modules,  │ (no prelude)     │     │
-│    parse &   │ infer/check  │ compile to│ infer/check      │     │
-│    check     │ ALL modules  │ match exp │ print debug info │     │
-│    expr,     │              │ ressions, │ (parser state,   │     │
-│    print res │ print errors │ run tests │ debruijn term,   │     │
-│    ult       │ to stderr    │ report    │ NbE value/type)  │     │
-│              │              │           │                  │     │
-│    debug-expr                             debug-test       │     │
-│    ────────                               ────────          │     │
-│    loads all, parse expr,             loads all, compile   │     │
-│    print debug (loaded env names,     test match exps,     │     │
-│    parser state, AST, desugared      print debug of        │     │
-│    term, NbE value/type)              failing tests only    │     │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+// For each file (module) needed, independently do:
+// - tao/syntax: Load (read + parse) the package/module_name.tao file,
+//   get a {@package/module_name: List(Stmt)} entry for each module,
+//   along with accumulating any syntax errors in a core state
+// - tao/desugar: Desugar List(Stmt) into a single core Term.
+//   This is a chain of $let definitions and maybe some pattern matching,
+//   eventually returning a Rcd with all the public definitions
+//   (everything not starting with _ and not being an imported name).
+//   This results in a {@package/module_name: module_record_term} entry for each module
+// - core/infer: Do type inference and type checking.
+//   Returns a (value, type, state) for each module,
+//   accumulating any type errors in the state.
+//   Value should be the NbE result (holes filled in, implicit arguments expanded,
+//   record default values filled in, comptime resolved, expanded concrete beta reductions,
+//   concrete pattern matching resolved, solve compile time built-ins,
+//   basically constant folding, etc).
+//   Value and type must be sound and correct if there aren't any errors;
+//   if there are errors they should be a best effort.
+//   At this point we have all the modules with their minimal NbE values,
+//   with their fully resolved types.
+
+// Since all modules are independent, each phase (parsing, desugar, infer) could
+// be done in parallel for every module. Phases should still wait for all modules
+// in that phase to finish before going to the next one.
+
+// From here, it would keep going with whatever the CLI command was,
+// but already having fully checked and resolved modules in core.
+// Errors must be reported in stderr; if there are any errors the command
+// will eventually exit with a failure status code.
+// Regardless if there were errors or not, the command should run
+// (run, check, test, etc), this allows for incremental development even if
+// there are errors, but always with explicit messages of any errors or
+// things not going well (dynamic language developer experience with
+// strong statically checked language guarantees).
 ```
 
-## Phase Details (Per Module)
+## CLI Commands
 
-For each file (module) needed, independently do:
-- **tao/syntax**: Load (read + parse) the `package/module_name.tao` file, get a `{@package/module_name: List(Stmt)}` entry for each module, along with accumulating any syntax errors in a core state
-- **tao/desugar**: Desugar `List(Stmt)` into a single core Term. This is a chain of `$let` definitions and maybe some pattern matching, eventually returning a Rcd with all the public definitions (everything not starting with `_` and not being an imported name). Results in `{@package/module_name: module_record_term}` entry for each module
-- **core/infer**: Do type inference and type checking. Returns `(value, type, state)` for each module, accumulating any type errors in the state. Value should be the NbE result (holes filled in, implicit arguments expanded, record default values filled in, comptime resolved, concrete beta reductions expanded, pattern matching resolved, compile-time built-ins solved). At this point we have all modules with their minimal NbE values and fully resolved types.
+The CLI entry point (`src/cli/run.gleam`) handles file extension detection (`.core` vs `.tao`) and dispatches to the appropriate handler.
 
-From here, it continues with whatever the CLI command was. Errors must be reported in stderr; if there are any errors the command will eventually exit with a failure status code.
+```gleam
+/// CLI command types.
+pub type Command {
+  Run(source: Source, verbose: Bool, debug: Bool)
+  Check(source: Source, verbose: Bool, debug: Bool)
+  Test(source: Source, verbose: Bool, debug: Bool)
+  DebugCore(expression: String)
+  DebugExpr(source: Source)
+  DebugTest(source: Source)
+  Help
+}
+
+/// Where the source comes from.
+pub type Source {
+  File(path: String)
+  Inline(expression: String)
+}
+```
+
+### run
+Loads all project modules into the state env including prelude, parses the expression to run, infer/checks that expression only, prints errors to stderr, prints result to stdout.
+
+### check
+Loads all project modules into the state env including prelude, infer/checks all modules, prints errors to stderr.
+
+### test
+Loads all project modules into the state env including prelude, filters tests to run from project modules (only local project, exclude any external libraries like prelude) as `List(#(name, expr, expected_pattern))`, each test compiles into a `match expr { expected_pattern => Pass(test) | got => Fail(test, got)}`, infer/checks all test match expressions, runs tests, removes duplicate errors, prints errors to stderr, prints test results (passes, failures, summary) to stdout.
+
+### debug-core
+Parses core expression (no prelude or loading any files), infer/checks the term, prints errors to stderr, prints debug information (parser final state, parsed named term, debruijn term, infer NbE value, infer type, infer final state, eval result) to stdout.
+
+### debug-expr
+Loads all project modules into the state env including prelude, parses expression, infer/checks that expression only, prints errors to stderr, prints debug information (loaded env names only, expr parser final state, parsed expr AST, desugared core Term, infer NbE value, infer type, infer final state, eval result) to stdout.
+
+### debug-test
+Loads all project modules into the state env including prelude, filters tests to run from project modules, compiles them to match expressions, infer/checks the tests, prints errors to stderr, prints debug information of failing tests only to stdout.
 
 ### compiler.gleam — Multi-File Compilation
 

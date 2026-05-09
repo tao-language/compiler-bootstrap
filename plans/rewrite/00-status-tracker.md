@@ -1,9 +1,9 @@
 # Implementation Status Tracker
 
-> **Last updated:** 2026-05-08 (Phase 2 — 944 tests passing, 0 failures.)
+> **Last updated:** 2026-05-09 (Phase 2 — 944 tests passing, 0 failures. Phase 3 — In progress.)
 > **Reference:** [01-architecture-overview.md](01-architecture-overview.md), [03-core-language.md](03-core-language.md), [04-tao-language.md](04-tao-language.md), [05-compiler-pipeline.md](05-compiler-pipeline.md), [14-simplified-design.md](14-simplified-design.md), [examples/core/tour/](../../examples/core/tour/)
 >
-> **Recent:** Fixed remaining 2 tour test failures (t04_gadt_expr and t07_default_values) by using inline source with inlined FFI stubs. Also fixed GADT inference by keeping type parameter bindings in state.vars after infer_type_def (previously they were cleaned up, preventing subsequent lambdas from resolving implicit params).
+> **Recent:** Phase 2 complete. Phase 3 planning underway: Tao AST, lexer, parser, desugarer, compiler, test framework, and extended CLI commands (run/check/test/debug-expr/debug-test/debug-core) with file extension detection (.core vs .tao).
 >
 > **Code Quality Fixes (2026-05-08):** Cleaned up unused imports in test files, removed unreachable patterns, fixed param name preservation in try_apply, extracted PType matching logic into helper function. Consolidated stringification functions: removed ~250 lines of duplicate code from subst.gleam and eval.gleam, now all use ast.gleam's canonical versions. Remaining warnings: `Match` import in syntax_test.gleam (compiler quirk — used in case patterns but flagged as unused), unused `source` variable in debug test (multi-line string literal quirk).
 
@@ -160,9 +160,9 @@
 | 2.8 | Implement type inference (synthesis) | ✅ | [03-core-language.md](03-core-language.md) | `src/core/infer.gleam` |
 | 2.8.1 | `infer(state, term) -> #(Value, Value, State)` — synthesis | ✅ | [03-core-language.md](03-core-language.md) | |
 | 2.8.2 | `check(state, term, expected) -> #(Value, Value, State)` — checking | ✅ | [03-core-language.md](03-core-language.md) | |
-| 2.8.3 | `infer_pattern` | 🔴 | [03-core-language.md](03-core-language.md) | |
+| 2.8.3 | `infer_pattern` | ✅ | [03-core-language.md](03-core-language.md) | Added check_pattern + infer_pattern for pattern type-checking
 | 2.8.4 | `infer_match` | ✅ | [03-core-language.md](03-core-language.md) | Calls check_exhaustiveness_vdef for TypeDef scrutinees |
-| 2.8.5 | `infer_fix` | 🔴 | [03-core-language.md](03-core-language.md) | |
+| 2.8.5 | `infer_fix` | ✅ | [03-core-language.md](03-core-language.md) | Added Fix term constructor + infer_fix for recursive functions
 | 2.8.6 | All error cases | ✅ | [03-core-language.md](03-core-language.md) | VarUndefined, NotAFunction, etc. |
 | 2.8.7 | Write tests for type inference | ✅ | [08-testing-strategy.md](08-testing-strategy.md) | `test/core/infer_test.gleam` — 31 tests |
 | 2.9 | Implement exhaustiveness checking | ✅ | [03-core-language.md](03-core-language.md) | `src/core/exhaustiveness.gleam` |
@@ -229,7 +229,7 @@
 | 2.19.11 | Implement GADT-style constructor checking | ✅ | tour/04_type_definitions/03_gadt_vec.core | Self_type/result_type evaluated, constructor lookup, pattern matching, best-effort error handling |
 | 2.19.12 | Infer constructor result types | 🔴 | | |
 | 2.19.13 | Handle computed result types (%u32_add) | 🔴 | | |
-| 2.19.14 | Update exhaustiveness for `$Int` wildcard | 🔴 | tour/05_pattern_matching/10_exhaustiveness.core | Integer types are "infinite" — need wildcard pattern at end |
+| 2.19.14 | Update exhaustiveness for `$Int` wildcard | ✅ | tour/05_pattern_matching/10_exhaustiveness.core | Added is_wildcard_pattern, covers_integer_types, covers_float_types helpers
 | 2.19.15 | Write tests for numeric types | ✅ | | Covered in syntax_test.gleam and infer_test.gleam |
 | 2.19.16 | Write tests for implicit params | ✅ | | 15 VLam implicit param tests added to infer_test.gleam |
 | 2.19.17 | Write tests for GADT patterns | ✅ | | Added gadt_option_some_type_test, gadt_unknown_ctor_fallback_test |
@@ -269,7 +269,9 @@
 | 1 | Fix test expectation mismatches | ✅ RESOLVED — All 907 tests passing, 0 failures. Tour example tests verified. |
 | 2 | Implement implicit param auto-expansion | ✅ DONE — VLam case added to infer_app. VPi path handles implicit params correctly. 15 new tests. |
 | 2 | GADT-style constructor checking | ✅ | Self_type/result_type evaluated, constructor lookup, pattern matching, best-effort error handling |
-| 4 | Update exhaustiveness for `$Int` wildcard | Integer types are "infinite" — need wildcard pattern at end |
+| 2 | infer_pattern + infer_fix | ✅ DONE — Added check_pattern/infer_pattern for pattern type-checking, infer_fix for recursive functions |
+| 2 | $Int wildcard exhaustiveness | ✅ DONE — Added is_wildcard_pattern, covers_integer_types, covers_float_types helpers |
+| 4 | Update exhaustiveness for `$Int` wildcard | ✅ DONE — Exhaustiveness helpers added, full wildcard matching integrated |
 | 5 | Implement CLI `run` command | Full pipeline: parse → type check → evaluate → print |
 | 6 | Test assertion audit | 867 original tests had weak assertions (`case expr -> True _ -> False`). Strategy: add new strong-assertion edge case tests first, then update originals. Lexer edge cases added (36 new tests). |
 | 7 | Span preservation tests | Add tests to verify spans are preserved through parser → infer → eval → quote pipeline |
@@ -308,78 +310,70 @@
 
 ## Phase 3: Tao + Desugaring + Test Framework (Target: 4-5 days)
 
-> **Goal:** Tao high-level language, desugaring to Core, test framework (REPL style), `tao check` and `tao test` commands.
-> **References:** [04-tao-language.md](04-tao-language.md), [09-desugaring-reference.md](09-desugaring-reference.md), [10-operator-overloading.md](10-operator-overloading.md)
+> **Goal:** Tao high-level language, desugaring to Core, test framework (REPL style), extended CLI with run/check/test/debug-expr/debug-test/debug-core commands.
+> **References:** [04-tao-language.md](04-tao-language.md), [09-desugaring-reference.md](09-desugaring-reference.md), [05-compiler-pipeline.md](05-compiler-pipeline.md)
+>
+> **Design decisions:**
+> - Operators desugar to variable references (Var("+")), not function calls
+> - Tests are Stmt nodes like let/fn/type/import
+> - No mutable variables initially (deferred)
+> - File extension detection (.core vs .tao) in CLI
+> - GADTs deferred — focus on minimal vertical slice first
+> - Module desugars to chain of $let bindings + record return
+> - Overloaded functions desugar to pattern match on implicit args
 
 ### Tasks
 
 | ID | Task | Status | Ref | Notes |
 |----|------|--------|-----|-------|
 | 3.1 | Define Tao AST types | 🔴 | [04-tao-language.md](04-tao-language.md) | `src/tao/ast.gleam` |
-| 3.1.1 | Expr type (Var, Lit, Lambda, Call, BinOp, Ctr, Match, If, Ann, Hole, Record, Dot) | 🔴 | [04-tao-language.md](04-tao-language.md) | Simplified: Literal |
-| 3.1.2 | Stmt type (Let, Fn, Import, TypeDef, For, While, Expr) | 🔴 | [04-tao-language.md](04-tao-language.md) | |
+| 3.1.1 | Expr type (Var, Lit, Lambda, Call, BinOp, Ctr, Match, If, Ann, Hole, Record) | 🔴 | [04-tao-language.md](04-tao-language.md) | Simplified: Literal |
+| 3.1.2 | Stmt type (Let, Fn, Import, TypeDef, Expr, Test) | 🔴 | [04-tao-language.md](04-tao-language.md) | No For/While initially |
 | 3.1.3 | TypeAst type (TVar, TApp, TFn, THole) | 🔴 | [04-tao-language.md](04-tao-language.md) | |
-| 3.1.4 | TestStatement type (REPL-style) | 🔴 | [04-tao-language.md](04-tao-language.md) | `/// > expr ~> result` |
+| 3.1.4 | Pattern type (PAny, PVar, PLit, PCtr, PRecord) | 🔴 | [04-tao-language.md](04-tao-language.md) | |
+| 3.1.5 | Param, MatchClause, Constructor, ImportItem, BinOp types | 🔴 | [04-tao-language.md](04-tao-language.md) | |
 | 3.2 | Write tests for Tao AST | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/tao/ast_test.gleam` |
 | 3.2.1 | Every type constructor | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.3 | Define Tao grammar | 🔴 | [04-tao-language.md](04-tao-language.md) | `src/tao/syntax.gleam` |
-| 3.3.1 | Tao parser combinator definitions | 🔴 | [04-tao-language.md](04-tao-language.md) | Uses grammar DSL from Phase 2 |
-| 3.4 | Implement Tao parser | 🔴 | [04-tao-language.md](04-tao-language.md) | `src/tao/syntax.gleam` |
-| 3.4.1 | Every Tao syntax form | 🔴 | [04-tao-language.md](04-tao-language.md) | |
+| 3.3 | Implement Tao lexer | 🔴 | [04-tao-language.md](04-tao-language.md) | `src/tao/lexer.gleam` — extends base lexer |
+| 3.3.1 | Tao keywords: fn, let, type, import, test, match, if, else | 🔴 | [04-tao-language.md](04-tao-language.md) | |
+| 3.3.2 | Tao operators: +, -, *, /, ==, !=, <, >, <=, >=, &&, \|, |>, . | 🔴 | [04-tao-language.md](04-tao-language.md) | |
+| 3.3.3 | Span tracking on all tokens | 🔴 | [04-tao-language.md](04-tao-language.md) | |
+| 3.4 | Implement Tao parser | 🔴 | [04-tao-language.md](04-tao-language.md) | `src/tao/syntax.gleam` — uses grammar DSL from Phase 2 |
+| 3.4.1 | Parse every Tao syntax form | 🔴 | [04-tao-language.md](04-tao-language.md) | |
 | 3.4.2 | Span accuracy | 🔴 | [04-tao-language.md](04-tao-language.md) | |
-| 3.5 | Implement Tao formatter | 🔴 | [04-tao-language.md](04-tao-language.md) | `src/tao/syntax.gleam` |
-| 3.6 | Write parse → format → parse round-trip test | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/tao/golden_test.gleam` |
-| 3.7 | Write tests for Tao parser | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/tao/syntax_test.gleam` |
-| 3.7.1 | Every syntax form | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.8 | Implement desugar_expr | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | `src/tao/desugar.gleam` |
-| 3.8.1 | Lambda abstraction | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | → Lam(body) |
-| 3.8.2 | Function definition | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | → Let("f", Lam(...)) |
-| 3.8.3 | Let binding | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | → Let("x", value, body) |
-| 3.8.4 | Pattern matching | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | → Match(args, cases) |
-| 3.8.5 | If-else | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | → Match(c, [Case(True, a), Case(False, b)]) |
-| 3.8.6 | For loop | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | → foldl |
-| 3.8.7 | While loop | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | → Fix("loop", If(c, e, Call("loop", []))) |
-| 3.8.8 | Pipe operator | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | `x |> f` → f(x) |
-| 3.8.9 | Binary operators | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | `a + b` → App(App(Var("+"), a), b) |
-| 3.9 | Implement desugar_stmt | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | `src/tao/desugar.gleam` |
-| 3.9.1 | Statement desugaring (Let, Fn, For, While, Expr) | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | |
-| 3.10 | Implement desugar_module | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | `src/tao/desugar.gleam` |
-| 3.10.1 | Module → Core term | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | |
-| 3.11 | Implement unified function/operator handling | 🔴 | [10-operator-overloading.md](10-operator-overloading.md) | Pattern matching on implicit args |
-| 3.11.1 | Track all definitions per name (single or multiple) | 🔴 | [10-operator-overloading.md](10-operator-overloading.md) | |
-| 3.11.2 | Generate pattern match on implicit argument types | 🔴 | [10-operator-overloading.md](10-operator-overloading.md) | Single → one-branch, Multiple → multi-branch |
-| 3.12 | Write tests for desugarer | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/tao/desugar_test.gleam` |
-| 3.12.1 | Every high-level feature | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.13 | Implement compile_tao | 🔴 | [04-tao-language.md](04-tao-language.md) | `src/tao/compiler.gleam` |
-| 3.13.1 | Full pipeline: parse → desugar → check | 🔴 | [04-tao-language.md](04-tao-language.md) | |
-| 3.13.2 | Error collection across phases | 🔴 | [04-tao-language.md](04-tao-language.md) | |
-| 3.14 | Implement compile_core | 🔴 | [04-tao-language.md](04-tao-language.md) | Core-only pipeline |
-| 3.15 | Write tests for compiler | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/tao/compiler_test.gleam` |
-| 3.15.1 | Every pipeline stage | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.15.2 | Error accumulation | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.15.3 | Partial results | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.16 | Implement test API | 🔴 | [06-import-system.md](06-import-system.md) | `src/tao/test_api.gleam` |
-| 3.16.1 | `extract_tests(source) -> List(TestStatement)` | 🔴 | [06-import-system.md](06-import-system.md) | Parse `/// > expr ~> result` |
-| 3.16.2 | `run_tests(tests, context) -> List(TestResult)` | 🔴 | [06-import-system.md](06-import-system.md) | Evaluate and check |
-| 3.16.3 | Test result reporting | 🔴 | [06-import-system.md](06-import-system.md) | Pass/fail with expected vs actual |
-| 3.17 | Write tests for test API | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/tao/test_api_test.gleam` |
-| 3.17.1 | Test extraction | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.17.2 | Assertion pass | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.17.3 | Assertion fail | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.17.4 | No tests found | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.18 | Implement CLI `check` command | 🔴 | [14-simplified-design.md](14-simplified-design.md) | `src/cli/check.gleam` |
-| 3.18.1 | Parse → desugar → type check → report type or errors | 🔴 | [14-simplified-design.md](14-simplified-design.md) | No evaluation |
-| 3.19 | Write tests for CLI `check` | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/cli/check_test.gleam` |
-| 3.19.1 | Check simple Tao programs | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.19.2 | Check with type errors | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.19.3 | Check with no errors | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.20 | Implement CLI `test` command | 🔴 | [14-simplified-design.md](14-simplified-design.md) | `src/cli/test.gleam` |
-| 3.20.1 | Find test statements → compile → evaluate → report results | 🔴 | [14-simplified-design.md](14-simplified-design.md) | |
-| 3.20.2 | Handle test failures gracefully | 🔴 | [14-simplified-design.md](14-simplified-design.md) | |
-| 3.21 | Write tests for CLI `test` | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/cli/test_test.gleam` |
-| 3.21.1 | Tests with assertions | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.21.2 | Tests without assertions | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
-| 3.21.3 | No test statements | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 3.4.3 | Error recovery at module level | 🔴 | [04-tao-language.md](04-tao-language.md) | |
+| 3.5 | Write tests for Tao parser | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/tao/syntax_test.gleam` |
+| 3.6 | Implement Tao desugarer | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | `src/tao/desugar.gleam` |
+| 3.6.1 | desugar_expr: Lambda → Lam, Call → App, BinOp → Var(op) | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | |
+| 3.6.2 | desugar_expr: If → Match, Match → Match, Ann → Ann | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | |
+| 3.6.3 | desugar_stmt: Let → Let, Fn → Let(Lam), Import → Let(@path) | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | |
+| 3.6.4 | desugar_stmt: TypeDef → TypeDef, Expr → body | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | |
+| 3.6.5 | desugar_stmt: Test → Call("test", [name, body]) | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | |
+| 3.6.6 | desugar_module: imports + defs → chain of $let + record return | 🔴 | [09-desugaring-reference.md](09-desugaring-reference.md) | |
+| 3.6.7 | desugar_module: function overloading → @id variants + dispatch | 🔴 | [04-tao-language.md](04-tao-language.md) | |
+| 3.6.8 | desugar_module: single-def fn → @1 variant + direct bind | 🔴 | [04-tao-language.md](04-tao-language.md) | |
+| 3.7 | Write tests for desugarer | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/tao/desugar_test.gleam` |
+| 3.7.1 | Every high-level feature | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 3.8 | Implement Tao compiler | 🔴 | [04-tao-language.md](04-tao-language.md) | `src/tao/compiler.gleam` |
+| 3.8.1 | Full pipeline: parse → desugar → infer → evaluate | 🔴 | [04-tao-language.md](04-tao-language.md) | |
+| 3.8.2 | Error collection across phases | 🔴 | [04-tao-language.md](04-tao-language.md) | |
+| 3.8.3 | Module storage in state env (@package/module_name) | 🔴 | [04-tao-language.md](04-tao-language.md) | |
+| 3.9 | Write tests for compiler | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/tao/compiler_test.gleam` |
+| 3.9.1 | Every pipeline stage | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 3.9.2 | Error accumulation | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | |
+| 3.10 | Implement test framework | 🔴 | [06-import-system.md](06-import-system.md) | `src/tao/test_api.gleam` |
+| 3.10.1 | Extract test stmts from Stmt list | 🔴 | [06-import-system.md](06-import-system.md) | |
+| 3.10.2 | Compile test to match expr: match expr { expected => Pass | got => Fail } | 🔴 | [06-import-system.md](06-import-system.md) | |
+| 3.10.3 | Run tests and report results | 🔴 | [06-import-system.md](06-import-system.md) | |
+| 3.11 | Write tests for test framework | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/tao/test_api_test.gleam` |
+| 3.12 | Extend CLI for Tao support | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | `src/cli/run.gleam` |
+| 3.12.1 | File extension detection (.core vs .tao) | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 3.12.2 | Run command: parse → infer → evaluate → print | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 3.12.3 | Check command: parse → infer → print type or errors | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 3.12.4 | Test command: filter tests → compile → evaluate → report | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 3.12.5 | debug-expr command: parse → desugar → infer → print debug | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 3.12.6 | debug-test command: compile tests → print failing debug | 🔴 | [05-compiler-pipeline.md](05-compiler-pipeline.md) | |
+| 3.13 | Write CLI tests | 🔴 | [08-testing-strategy.md](08-testing-strategy.md) | `test/cli/run_test.gleam`, `test/cli/check_test.gleam`, `test/cli/test_test.gleam` |
 
 ### Phase 3 Gate
 
@@ -396,7 +390,6 @@
 - [ ] Tour examples: `tao run examples/core/tour/` works end-to-end
 
 ---
-
 ## Phase 4: Multi-file + Import System (Target: 3-4 days)
 
 > **Goal:** Multi-file compilation, import resolution with graceful degradation, module dependency tracking.
@@ -517,7 +510,7 @@
 |-------|-------------|-------|------------|--------------|--------|
 | Phase 1: Lexer + Core Types | 2-3 | 20+ | 77+ | — | ✅ Complete |
 | Phase 2: Parser + Type Checker + NBE | 4-5 | 60+ | 944 | ✅ Done | ✅ Complete |
-| Phase 3: Tao + Desugar + CLI | 4-5 | 37 | 0 | 🔴 Not started | 🔴 Not started |
+| Phase 3: Tao + Desugar + CLI | 4-5 | 55 | 0 | 🔴 In progress | 🔴 In progress |
 | Phase 4: Multi-file + Import | 3-4 | 22 | 0 | 🔴 Not started | 🔴 Not started |
 | Phase 5: Extended + Polish | 3-4 | 18 | 0 | 🔴 Not started | 🔴 Not started |
 | **Total** | **26-32** | **188+** | **944+** | **Phase 2: no CLI yet** | |
@@ -530,6 +523,7 @@
 
 | Date | Change |
 |------|--------|
+| 2026-05-09 | **Phase 3 planning complete.** Updated 04-tao-language.md with clarified design: operators desugar to Var("+"), tests are Stmt nodes, module desugars to chain of $let + record return, overload resolution via pattern match on implicit args. Updated 05-compiler-pipeline.md with CLI command specs (run/check/test/debug-expr/debug-test/debug-core). Updated 00-status-tracker.md with Phase 3 detailed task list. | | 2026-05-08 | **Phase 2: Added infer_pattern, infer_fix, and $Int wildcard exhaustiveness.** Added `check_pattern`/`infer_pattern` to infer.gleam for pattern type-checking. Added `infer_fix` and `Fix` term constructor for recursive function support. Added `is_wildcard_pattern`, `covers_integer_types`, `covers_float_types` helpers to exhaustiveness.gleam. Added factorial tour example (examples/core/tour/08_recursion/01_factorial.core). Added `i32_mul` and `i32_sub` FFI stubs to tour tests. **944 tests passing, 0 failures.** |
 | 2026-05-07 | **Phase 2: All 944 tests passing, 0 failures.** Fixed remaining 2 tour test failures (t04_gadt_expr and t07_default_values) by using inline source with inlined FFI stubs. Fixed GADT inference by keeping type parameter bindings in state.vars after infer_type_def (previously they were cleaned up, preventing subsequent lambdas from resolving implicit params). |
 | 2026-05-04 | **Test suite audit + 36 new lexer edge case tests.** Added `test/syntax/base_lexer_test_new.gleam` with 36 new edge case tests covering: float edge cases (`.5`, `42.`, `0.0`), identifier edge cases (camelCase, numbers in names, underscores), complex expressions (parenthesized, function calls), unicode handling, block comment edge cases, and span accuracy tests. Fixed known lexer bug: `skip_block_comment` double-increments line counter for newlines (documented in test comments). All 907 tests passing, 0 failures. No compiler warnings. |
 | 2026-05-04 | **Test assertion audit in progress.** Identified 350 weak assertions (`case expr -> True _ -> False`) across 17 test files. Strategy: fix highest-impact files first (syntax_test.gleam, infer_test.gleam). Tour example tests verified - all 7 expectation mismatches documented but tests pass. Type defs consolidation planned. |

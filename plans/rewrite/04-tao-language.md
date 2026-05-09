@@ -229,14 +229,14 @@ pub type Constructor {
 
 ### High-Level Features → Core Terms
 
-All Tao high-level features are desugared to Core terms:
+All Tao high-level features are desugared to Core terms. **Operators desugar to variable references** (e.g., `a + b` → `App(App(Var("+"), a), b)), not function calls. The operator functions are defined within the codebase as regular Core definitions.
 
 | Tao Feature | Desugars To | Core Term |
 |-------------|-------------|-----------|
 | `fn f(x) { e }` | `let f = fn(x) => e` | `Let("f", Lam(("x", e)), body)` |
 | `let x = e` | (same) | `Let("x", e, body)` |
-| `a + b` | `add(a, b)` | `Call("add", [a, b])` |
-| `-x` | `negate(x)` | `Call("negate", [x])` |
+| `a + b` | `Var("+")` (operator var) | `App(App(Var("+"), a), b)` |
+| `-x` | `Var("-")` (unary negation) | `App(Var("-"), x)` |
 | `if cond { a } else { b }` | `match cond { | True -> a | False -> b }` | `Match(cond, [Case(True, a), Case(False, b)])` |
 | `for x in collection { e }` | `foldl(\(acc, x) -> e, init, collection)` | `App(Lam((acc, x), e), init, collection)` |
 | `while cond { e }` | `fix loop -> if cond { e; loop }` | `Fix("loop", If(cond, e, Call("loop", [])))` |
@@ -248,6 +248,63 @@ All Tao high-level features are desugared to Core terms:
 | `mut x = e` | `let x = e` (immutable) | `Let("x", e, body)` (Tao immutability) |
 | `{ e1; e2; e3 }` | `do { e1; e2; e3 }` | `DoBlock([e1, e2, e3], e3)` |
 | `test "name" { e }` | (runtime test) | `Run(comptime e)` |
+
+### Module Desugaring Model
+
+A Tao module (file) consists of `List(Stmt)` and desugars into:
+1. A chain of `$let` bindings for imports, let bindings, function defs, type defs
+2. Each definition is a beta reduction `App(Lam, _)`
+3. Final return: a record with all public definitions (everything not starting with `_`, not being an imported name)
+
+For example:
+```gleam
+// Tao source: prelude/bool.tao
+import prelude/prelude { True as t, False as f }
+type Bool = #True | #False
+fn xor(a: Bool, b: Bool) -> Bool => match a {
+| #True(_) => match b { | #True(_) => f | #False(_) => t }
+| #False(_) => match b { | #True(_) => t | #False(_) => f }
+}
+```
+
+Desugars to Core:
+```gleam
+$let prelude_prelude = @prelude/prelude  // import desugar
+$let t = prelude_prelude.True
+$let f = prelude_prelude.False
+$let Bool = $type { ... }              // type def
+$let xor = $fn(a: Bool, b: Bool) => match a { ... }  // fn def
+{                                          // module return record
+  Bool: Bool,
+  xor: xor,
+}
+```
+
+### Module Storage in Core State
+
+When a module is compiled, it gets stored in the core state env. For example, the file `"prelude/bool.tao"` gets compiled and stored as `{"@prelude/bool": module_term}`, where `module_term` evaluates down to a record.
+
+This way, an import is just referencing these and assuming they exist — the type checker will catch anything undefined or wrong types. For example:
+```gleam
+import prelude/bool as b {xor as x}
+import prelude/option
+```
+gets desugared to:
+```gleam
+$let b = @prelude/bool
+$let x = b.xor
+$let option = @prelude/option
+```
+
+### NbE Optimization
+
+The NbE ensures the desugared core code is "optimized" to its minimal form. Since types are solved during type inference, function calls on overloaded functions would be solved at the type inference stage, just like comptime. NbE resolves:
+- Holes filled in
+- Implicit arguments expanded
+- Record default values filled in
+- Concrete beta reductions
+- Concrete pattern matching resolved
+- Compile-time built-ins solved (constant folding)
 
 ### For-Loop Desugaring (Detailed)
 
@@ -339,34 +396,65 @@ Only fn definitions can have overloads. Overloaded functions desugar into a **pa
 2. Imported definitions (in import order) — fallback case
 3. Prelude definitions — final fallback
 
-```gleam
-// fn neg(x: Int) -> Int => %int_neg(x)
-// fn neg(a: Float) -> Float => %float_neg(a)
-// import my_math {neg}
-
-// Desugars to:
-$let neg@prelude/math = $match @prelude/math { | {neg: neg} => neg }
-$let math = @my_math
-$let neg@my_math = $match @my_math { | {neg: neg} => neg }
-$let neg@1 = $fn(args: ${x: $Int}) => $match args {
-| ${x: x} => %int_neg(x) -> $Int
-}
-$let neg@2 = $fn(args: ${a: $Float}) => $match args {
-| ${a: a} => %float_neg(a) -> $Float
-}
-// Main dispatch function:
-$let neg = $fn<t: ?>(args: t) => $match t {
-  | ${x: $Int} => neg@1(args)
-  | ${a: $Float} => neg@2(args)
-  | _ => $match neg@my_math(args) { ... }
-}
-```
-
-All `neg`, `neg@1`, and `neg@2` are exposed in the final module record, allowing other modules to discover available overloads. Individual overloads like `neg@2` cannot be directly accessed through normal Tao code (`@` is not a valid identifier for the parser), but they're used internally by the compiler.
-
 **Single-definition functions:** Functions with a single definition still define the `@id` variant, but don't need type-based dispatch — they are simply bound directly. They still get an `@1` suffix.
 
 **NbE optimization:** Since types are solved during type inference, function calls on overloaded functions are resolved at the type inference stage (equivalent to comptime). The NbE normalizes the pattern match to the correct branch.
+
+**Example:**
+```gleam
+// assuming prelude defined neg in prelude/math
+import my_math {neg}  // also contributes to overload
+
+fn neg(x: Int) -> Int
+=> %int_neg(x) -> Int
+
+fn neg(a: Float) -> Float
+=> %float_neg(a) -> Float
+
+fn no_overloads() => 42
+```
+
+Desugars to:
+```gleam
+$let neg@prelude/math = $match @prelude/math {
+| {neg: neg} => neg
+}
+// All other prelude definitions
+$let math = @my_math
+$let neg@my_math = $match @my_math {
+| {neg: neg} => neg
+}
+$let neg@1 = $fn(args: ${x: $Int})
+=> $match args {
+| ${x: x} => %int_neg(x) -> $Int
+}
+$let neg@2 = $fn(args: ${a: $Float})
+=> $match args {
+| ${x: x} => %float_neg(a) -> $Float
+}
+$let no_overloads@1 = $fn(args: ${}) => 42
+// Return module record 
+{
+  neg@1: neg@1,
+  neg@2: neg@2,
+  neg: $fn<t: ?>(args: t) => $match t {
+    | ${x: $Int} => neg@1(args)
+    | ${a: $Float} => neg@2(args)
+    | _ => $match neg@my_math(args) {
+      | $error => neg@prelude/math(args)
+      | ok => ok
+    }
+  },
+  no_overloads@1: no_overloads@1,
+  no_overloads: no_overloads@1,
+}
+```
+
+When you call `neg({x: 42})`, during type inference it requires an implicit argument, so it adds one like `neg(?, {x: 42})`. The hole gets solved which makes it `neg(${x: $Int}, {x: 42})`, which would pattern match to the first definition.
+
+Note that match branches are allowed to be of different types — this is equivalent to dependently typed motives, where each branch type can be different depending on the input type.
+
+All `neg`, `neg@1`, and `neg@2` are exposed in the final module record, which allows other modules to know the available overloads by listing all definitions starting with `function_name@`. Individual overloads like `neg@2` cannot be directly accessed through normal Tao code since the `@` is not a valid identifier for the parser, but it's used internally by the compiler, just like `@path/to/module` names when a module is compiled.
 
 ## Language Configuration
 
