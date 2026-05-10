@@ -7,21 +7,27 @@ let filename = "path/to/my/file.txt"
 > }
 "exact match"
 
-// Check if it starts with a specific text.
+// Prefix match: splits the text into a constant start and a variable rest.
+// The prefix must be a specific text literal.
+// Format: "prefix"..binding
 > match filename {
 > | "path/to/"..relative_path => relative_path
 > | other => other
 > }
 "my/file.txt"
 
-// Check if it ends with a specific text.
+// Suffix match: binds the start of the string up until the specified ending.
+// The suffix must be a specific text literal.
+// Format: binding.."suffix"
 > match filename {
 > | directory.."/file.txt" => directory
 > | other => other
 > }
 "path/to/my"
 
-// Check for both a specific prefix and suffix.
+// Sandwich match: extracts the text between a fixed prefix and suffix.
+// There can only be one ..middle.. pattern to avoid ambiguity.
+// Format: "prefix"..binding.."suffix"
 > match filename {
 > | "path/to/my/"..base_name..".txt" => base_name
 > | other => other
