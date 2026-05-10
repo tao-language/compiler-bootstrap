@@ -20,3 +20,9 @@ fn number_name(x: Float) -> Text
 // More digits are ok, as long as they match the pattern.
 > number_name(1.61803) ~> "phi"
 > number_name(1.61899) ~> "phi"
+
+// Less digits are not ok, the value does not completely match the pattern.
+> number_name(1.6) ~> "other"
+
+// If a digit does not match, the pattern won't match either.
+> number_name(3.1416) ~> "other"
