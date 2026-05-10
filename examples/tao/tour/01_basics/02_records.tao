@@ -5,11 +5,11 @@
 > {x: 10, y: 20} ~> {x: 10, y: 20}
 
 // Tests can span multiple lines.
-// A `|` under the `>` signals a line continuation.
+// Lines starting with `>` are still part of the test expression.
 > {
-|   x: 10,
-|   y: 20, // a trailing comma is allowed
-|  }
+>   x: 10,
+>   y: 20, // a trailing comma is allowed
+> }
 {x: 10, y: 20}
 
 // Field order doesn't matter.

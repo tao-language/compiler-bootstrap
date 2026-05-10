@@ -19,6 +19,7 @@ Comments are completely ignored.
 > 2 * 3 ~> 6
 
 // Use let to define new variables, variables are immutable by default.
+// Variable names start with a lowercase letter, usually in snake_case.
 let x = 42
 > x ~> 42
 
@@ -27,6 +28,8 @@ let pi: F64 = 3.14  // F64 stands for a 64 bit floating point number.
 > pi ~> 3.14
 
 // You can compare values too, these return a Bool (True or False).
+// Bool, True, and False are tags, which are just named literals.
+// Tag names start with an uppercase letter, usually in CamelCase.
 > 1 == 1 ~> True
 > 1 != 1 ~> False
 > 1 < 2  ~> True

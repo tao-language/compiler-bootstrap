@@ -1,0 +1,7 @@
+// Since integers are eseentially infinite, there must always
+// be a "catch all" pattern at the end for it to be exhaustive.
+fn is_zero(x: Int) -> Bool
+=> match x {
+| 0 => True
+| _ => False
+}

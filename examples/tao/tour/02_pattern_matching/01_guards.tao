@@ -1,0 +1,9 @@
+// Pattern guards match only if a condition is met.
+fn is_large_number(x: Int) -> Bool
+=> match x {
+| x if x > 100 => True
+| _ => False
+}
+
+> is_large_number(42) ~> False
+> is_large_number(101) ~> True
