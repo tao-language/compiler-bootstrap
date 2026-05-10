@@ -20,7 +20,7 @@ let point = {x: 10, y: 20}
 > point.x ~> 10
 > point.y ~> 20
 
-// Use the spread operator (..) to update a field.
+// Update a field with the spread operator (..)
 > {..point, x: 0} ~> {x: 0, y: 20}
 
 // Note that values are immutable, so the original `point` is unaffected.
