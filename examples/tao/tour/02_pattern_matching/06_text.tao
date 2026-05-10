@@ -1,0 +1,29 @@
+let filename = "path/to/my/file.txt"
+
+// Match over exact text.
+> match filename {
+> | "path/to/my/file.txt" => "exact match"
+> | other => other
+> }
+"exact match"
+
+// Check if it starts with a specific text.
+> match filename {
+> | "path/to/"..relative_path => relative_path
+> | other => other
+> }
+"my/file.txt"
+
+// Check if it ends with a specific text.
+> match filename {
+> | directory.."/file.txt" => directory
+> | other => other
+> }
+"path/to/my"
+
+// Check for both a specific prefix and suffix.
+> match filename {
+> | "path/to/my/"..base_name..".txt" => base_name
+> | other => other
+> }
+"file"
