@@ -1,0 +1,11 @@
+// Option is useful to represent "absence of data".
+// Use Result to give more descriptive errors.
+
+fn safe_divide(numerator: Float, denominator: Float) -> Result(Float, Text)
+=> match denominator {
+| 0.000000 => Error("division by zero")
+| _ => Ok(numerator / denominator)
+}
+
+> safe_divide(1, 2) ~> Ok(0.5)
+> safe_divide(1, 0) ~> Error("division by zero")

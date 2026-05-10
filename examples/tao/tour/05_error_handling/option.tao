@@ -1,0 +1,23 @@
+// There is no null or undefined, instead use the Option type.
+// An Option type can be either a Some(value) or None.
+
+// This allows to handle missing data in a type safe way.
+fn maybe_add(option: Option(Int), x: Int) -> Option(Int)
+=> match option {
+| Some(value) => Some(value + x)
+| None => None
+}
+
+> maybe_add(Some(40), 2) ~> Some(42)
+> maybe_add(None, 2) ~> None
+
+// Function pipelines work well.
+> Some(10)
+>  |> fn(x) => maybe_add(x, 20)  // pipe needs a function with a single argument
+>  |> maybe_add(_, 12)           // fn syntax sugar: _ is where the argument is placed
+Some(42)
+
+> None
+>  |> maybe_add(_, 20)
+>  |> maybe_add(_, 12)
+None

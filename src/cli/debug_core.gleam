@@ -24,11 +24,20 @@
 import gleam/io
 import gleam/int
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/string
-import core/ast.{term_to_string, value_to_string}
+import core/ast.{
+  type Term, type Value,
+  type Case, type Pattern,
+  VErr, VCtr, VRcd, VLit, VLam, VNeut, VPi, VTyp,
+  Lit, Var, App, Lam, Pi, Match, Ann, Call, Rcd, RcdT, Typ, TypeDef,
+  LitT, Ctr, Fix, Err, Hole,
+  Int as LitInt, Float as LitFloat,
+  term_to_string,
+}
 import core/infer.{infer}
-import core/eval.{evaluate}
-import core/state.{initial_state, type Error, error_to_string}
+import core/eval.{evaluate, do_app, eval_value_to_string}
+import core/state.{initial_state, type Error, error_to_string, type FfiEntry, FfiEntry, type State}
 import core/syntax.{parse}
 import syntax/base_lexer.{tokenize, type Token, Token as TokenCtor}
 import syntax/grammar.{type ParseError}
@@ -69,18 +78,18 @@ pub fn run(expression: String) -> Nil {
   io.println(term_to_string(term))
 
   // Step 5: Type inference
-  let state = initial_state([])
+  let state = initial_state(ffi_entries())
   let #(value, inferred_type, final_state) = infer(state, term)
 
   io.println("\n=== INFERENCE ===")
-  io.println("  Value: " <> value_to_string(value))
-  io.println("  Type:  " <> value_to_string(inferred_type))
+  io.println("  Value: " <> eval_value_to_string(value))
+  io.println("  Type:  " <> eval_value_to_string(inferred_type))
   io.println("  Errors: " <> int.to_string(list.length(final_state.errors)))
 
-  // Step 6: Evaluate (normalize)
-  let eval_result = evaluate(initial_state([]), term)
+  // Step 6: Evaluate (normalize) with FFI
+  let eval_result = evaluate(initial_state(ffi_entries()), term)
   io.println("\n=== EVALUATION ===")
-  io.println("  Result: " <> value_to_string(eval_result))
+  io.println("  Result: " <> eval_value_to_string(eval_result))
 
   // Step 7: Show type errors
   case final_state.errors {
@@ -119,4 +128,71 @@ fn format_parse_error(err: ParseError) -> String {
 
 fn format_error(err: Error) -> String {
   error_to_string(err)
+}
+
+// ============================================================================
+// DEBUG EVALUATION TRACING
+// ============================================================================
+
+/// Format a term short for debug output.
+fn term_short(term: Term) -> String {
+  case term {
+    Var(i, _) -> "Var(" <> int.to_string(i) <> ")"
+    App(fun, arg, _) -> "App(" <> term_short(fun) <> ", " <> term_short(arg) <> ")"
+    Lam(_, #(name, _), _, _) -> "Lam(" <> name <> ")"
+    _ -> term_to_string(term)
+  }
+}
+
+/// Recursively evaluate and print each App step.
+fn debug_eval(state: State, term: Term, depth: Int) -> Value {
+  let indent = string.repeat("  ", depth)
+  io.println(indent <> "EVAL: " <> term_short(term))
+  
+  case term {
+    App(fun, arg, _) -> {
+      let fun_val = evaluate(state, fun)
+      io.println(indent <> "  fun => " <> eval_value_to_string(fun_val))
+      let arg_val = evaluate(state, arg)
+      io.println(indent <> "  arg => " <> eval_value_to_string(arg_val))
+      let result = do_app(state, fun_val, arg_val)
+      io.println(indent <> "  => " <> eval_value_to_string(result))
+      result
+    }
+    _ -> evaluate(state, term)
+  }
+}
+
+/// Minimal FFI stubs for debug-core
+fn ffi_entries() -> List(FfiEntry) {
+  [
+    FfiEntry("i32_add", fn(args: List(#(Value, Value))) -> Option(Value) {
+      case args {
+        [#(VLit(LitInt(a)), _), #(VLit(LitInt(b)), _), ..] -> Some(VLit(LitInt(a + b)))
+        _ -> None
+      }
+    }),
+    FfiEntry("i32_sub", fn(args: List(#(Value, Value))) -> Option(Value) {
+      case args {
+        [#(VLit(LitInt(a)), _), #(VLit(LitInt(b)), _), ..] -> Some(VLit(LitInt(a - b)))
+        _ -> None
+      }
+    }),
+    FfiEntry("i32_mul", fn(args: List(#(Value, Value))) -> Option(Value) {
+      case args {
+        [#(VLit(LitInt(a)), _), #(VLit(LitInt(b)), _), ..] -> Some(VLit(LitInt(a * b)))
+        _ -> None
+      }
+    }),
+    FfiEntry("i32_eq", fn(args: List(#(Value, Value))) -> Option(Value) {
+      case args {
+        [#(VLit(LitInt(a)), _), #(VLit(LitInt(b)), _), ..] ->
+          case a == b {
+            True -> Some(VCtr("True", VRcd([])))
+            False -> Some(VCtr("False", VRcd([])))
+          }
+        _ -> None
+      }
+    }),
+  ]
 }

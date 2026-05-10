@@ -1035,7 +1035,7 @@ fn parse_lambda(p: Parser, span: Span) -> #(Term, Parser) {
   let #(param_type, p5) = case p4 {
     #(tokens, pos, _, _, _) ->
       case list.drop(tokens, pos) {
-        [Token("Punct", ")", _), ..] -> #(Rcd([], span), p4) // no annotation
+        [Token("Punct", ")", _), ..] -> #(Hole(-1, span), p4) // uninstantiated hole
         _ -> parse_term(p4)
       }
   }
@@ -1224,15 +1224,63 @@ fn parse_let(p: Parser, span: Span) -> #(Term, Parser) {
   #(let_var(name, param_type, value, body, body_span), rest_final)
 }
 
-// Fix: $fix name = body — desugars to App(Lam(name, _, body), value)
+// Fix: $fix name. body — desugars to App(Lam(name, _, body), value)
+// Uses '.' separator (NOT '=' — that's a parse error).
+// The body is always the value itself (self-application), similar to
+// Y-combinator style. A separate body after ';' is handled by the
+// outer $let, not by $fix.
 fn parse_fix(p: Parser, span: Span) -> #(Term, Parser) {
   let p1 = skip("fix", p)
   let #(name, p2) = expect_name_opt(p1)
-  let p3 = skip("=", p2)
-  let #(body, rest_errors) = parse_term(p3)
+  // Expect '.' separator after the fix variable name.
+  // If '=' is present, emit a syntax error but continue parsing.
+  let p3 = case p2 {
+    #(tokens, pos, env, fn_, errors) ->
+      case list.drop(tokens, pos) {
+        [Token("Punct", ".", _), ..rest] ->
+          #(rest, 0, env, fn_, errors)
+        [Token("Punct", "=", _), Token("Op", ">", _), .._] -> {
+          // '=>' after fix name — definitely wrong, report it
+          let err = ParseError(
+            span: current_span(p2),
+            expected: ".",
+            got: "=>",
+            context: "fix expression",
+          )
+          #(tokens, pos, env, fn_, [err, ..errors])
+        }
+        [Token("Punct", "=", _), .._] -> {
+          // '=' alone — should be '.'
+          let err = ParseError(
+            span: current_span(p2),
+            expected: ".",
+            got: "=",
+            context: "fix expression",
+          )
+          #(tokens, pos, env, fn_, [err, ..errors])
+        }
+        _ -> {
+          let got = case list.drop(tokens, pos) {
+            [Token(k, v, _), ..] -> k <> " '" <> v <> "'"
+            [] -> "end of input"
+          }
+          let err = ParseError(
+            span: current_span(p2),
+            expected: ".",
+            got: got,
+            context: "fix expression",
+          )
+          #(tokens, pos, env, fn_, [err, ..errors])
+        }
+      }
+  }
+  // Parse the value expression (the lambda). The body is the same as
+  // the value (self-referential fixpoint). No separate body parsing —
+  // any trailing expressions are handled by the outer $let.
+  let #(body, rest) = parse_term(p3)
   let final_span = merge(span, term_span(body))
   let param_type = Rcd([], span)
-  #(let_var(name, param_type, body, body, final_span), rest_errors)
+  #(let_var(name, param_type, body, body, final_span), rest)
 }
 
 // If: if cond then body else else_body

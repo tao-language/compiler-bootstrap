@@ -372,7 +372,7 @@ pub fn parse_nested_match_structure_test() {
 // ============================================================================
 
 pub fn parse_simple_fix_test() {
-  let #(term, errors) = parse("$fix x = x")
+  let #(term, errors) = parse("$fix x. x")
   let term_ok = case term {
     App(Lam([], #("x", Rcd(_, _)), _, _), _, _) -> True
     _ -> False
