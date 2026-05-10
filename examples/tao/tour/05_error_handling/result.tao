@@ -1,11 +1,54 @@
 // Option is useful to represent "absence of data".
 // Use Result to give more descriptive errors.
 
-fn safe_divide(numerator: Float, denominator: Float) -> Result(Float, Text)
-=> match denominator {
-| 0.000000 => Error("division by zero")
-| _ => Ok(numerator / denominator)
+// A function can return a Result if it can fail.
+// The error can be of any type with as much information as needed.
+fn try_first(list: List(Int)) -> Result(Int, Text)
+=> match list {
+| [x, ..] => Ok(x)
+| [] => Error("cannot get first from empty list")
 }
 
-> safe_divide(1, 2) ~> Ok(0.5)
-> safe_divide(1, 0) ~> Error("division by zero")
+> try_first([]) ~> Error("cannot get first from empty list")
+> try_first([10, 20, 30]) ~> Ok(10)
+
+// Handle errors in a type safe way.
+fn result_add(result: Result(Int, Text), x: Int) -> Result(Int, Text)
+=> match result {
+| Ok(value) => Ok(value + x)
+| Error(message) => Error(message)
+}
+
+> result_add(Ok(40), 2) ~> Ok(42)
+> result_add(Error("oops"), 2) ~> Error("oops")
+
+// Use `or` to recover from an Error by providing a fallback value.
+> Ok(42) or 0 ~> 42
+> Error("oops") or 0 ~> 0
+
+// Function pipelines work well.
+// There's also a `map<a, b, e>(result: Result(a, e), f: fn(a) -> b) -> Result(b, e)` transform.
+> try_first([10, 20, 30])  // Ok(10)
+>  |> fn(result) => result_add(result, 20)  // pipe needs a function with a single argument
+>  |> result_add(_, 10)                     // fn syntax sugar: _ is where the argument is placed
+>  |> map(_, fn(x) => x + 2)                // map takes a "pure function" transformation
+Ok(42)
+
+> try_first([])  // Error("cannot get first from empty list")
+>  |> result_add(_, 20)
+>  |> result_add(_, 10)
+>  |> map(_, fn(x) => x + 2)
+Error("cannot get first from empty list")
+
+// Use the `with` statement to "unwrap" the value.
+// This is a statement, so it requires a block that returns a Result.
+// If a `with` gets Error, it short circuits and the whole block returns Error.
+// This might lead to easier code in complex error handling.
+fn add_to_first(list: List(Int), x: Int) -> Result(Int, Text) {
+  with value: Int = try_first(list)
+  let result: Int = value + x
+  return Ok(result)
+}
+
+> add_to_first([], 32) ~> Error("cannot get first from empty list")
+> add_to_first([10, 20, 30], 32) ~> Ok(42)

@@ -1,23 +1,53 @@
 // There is no null or undefined, instead use the Option type.
 // An Option type can be either a Some(value) or None.
 
-// This allows to handle missing data in a type safe way.
-fn maybe_add(option: Option(Int), x: Int) -> Option(Int)
+// A function can return an Option when something is not found.
+fn maybe_first(list: List(Int)) -> Option(Int)
+=> match list {
+| [x, ..] => Some(x)
+| [] => None
+}
+
+> maybe_first([]) ~> None
+> maybe_first([10, 20, 30]) ~> Some(10)
+
+// Handle missing data in a type safe way.
+fn option_add(option: Option(Int), x: Int) -> Option(Int)
 => match option {
 | Some(value) => Some(value + x)
 | None => None
 }
 
-> maybe_add(Some(40), 2) ~> Some(42)
-> maybe_add(None, 2) ~> None
+> option_add(Some(40), 2) ~> Some(42)
+> option_add(None, 2) ~> None
+
+// Use `or` to provide a fallback/default value.
+> Some(42) or 0 ~> 42
+> None or 0 ~> 0
 
 // Function pipelines work well.
-> Some(10)
->  |> fn(x) => maybe_add(x, 20)  // pipe needs a function with a single argument
->  |> maybe_add(_, 12)           // fn syntax sugar: _ is where the argument is placed
+// There's also a `map<a, b>(option: Option(a), f: fn(a) -> b) -> Option(b)` transform.
+> maybe_first([10, 20, 30])  // Some(10)
+>  |> fn(option) => option_add(option, 20)  // pipe needs a function with a single argument
+>  |> option_add(_, 10)                     // fn syntax sugar: _ is where the argument is placed
+>  |> map(_, fn(x) => x + 2)                // map takes a "pure function" transformation
 Some(42)
 
-> None
->  |> maybe_add(_, 20)
->  |> maybe_add(_, 12)
+> maybe_first([])  // None
+>  |> option_add(_, 20)
+>  |> option_add(_, 10)
+>  |> map(_, fn(x) => x + 2)
 None
+
+// Use the `with` statement to "unwrap" the value.
+// This is a statement, so it requires a block that returns an Option.
+// If a `with` gets None, it short circuits and the whole block returns None.
+// This might lead to easier code in complex error handling.
+fn add_to_first(list: List(Int), x: Int) -> Option(Int) {
+  with value: Int = maybe_first(list)
+  let result: Int = value + x
+  return Some(result)
+}
+
+> add_to_first([], 32) ~> None
+> add_to_first([10, 20, 30], 32) ~> Some(42)
