@@ -141,7 +141,15 @@ pub fn evaluate(state: State, term: Term) -> Value {
       let value_constructors = list.map(c, fn(ctor) { term_ctor_to_value(state, ctor) })
       VTypeDef(name: n, params: value_params, constructors: value_constructors)
     }
-    Fix(_name, body, _) -> evaluate(state, body)
+    Fix(name, body, _) -> {
+      // $fix f. def evaluates to a VLam that represents the recursive
+      // function. The fix variable `f` has type Hole(-1) (uninstantiated),
+      // allowing type inference to infer its type from usage.
+      // When applied to an argument, beta-reduction substitutes the
+      // argument for `f` (Var(0)) in the body, enabling recursive calls.
+      let param_type = VNeut(HHole(-1), [])
+      VLam([], [], #(name, param_type), body)
+    }
     Err(_, _) -> VErr
   }
 }
@@ -176,17 +184,31 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     // β-reduction: substitute the argument for the lambda parameter, then
     // evaluate the body. The body's indices are already relative to this
     // lambda - no shift needed.
-    VLam(_env, _implicits, #(pname, _param_type), body) -> {
+    VLam(_env, _implicits, #(pname, param_type), body) -> {
+      // Convert int to float when param type is FloatT
+      let converted_arg = case param_type {
+        VLitT(FloatT) -> case arg_val {
+          VLit(LitInt(v)) -> {
+            // Convert int to float by parsing the string representation
+            case float.parse(int.to_string(v) <> ".0") {
+              Ok(f) -> VLit(LitFloat(f))
+              Error(_) -> arg_val
+            }
+          }
+          _ -> arg_val
+        }
+        _ -> arg_val
+      }
       // The body's Var(0) refers to the lambda parameter at the current scope.
       // Extend state with the parameter so that Var(0) resolves to arg_val,
       // and Var(1), Var(2), etc. resolve to outer variables from the
       // enclosing $let bindings (which are in state.vars).
-      let new_var = #(pname, #(arg_val, VNeut(HHole(0), [])))
+      let new_var = #(pname, #(converted_arg, VNeut(HHole(0), [])))
       let extended = state.State(
         ..state,
         vars: list.append([new_var], state.vars),
       )
-      let substituted = subst_term_var(0, arg_val, body)
+      let substituted = subst_term_var(0, converted_arg, body)
       evaluate(extended, substituted)
     }
     // Extend neutral spine: variable or hole applied to argument

@@ -283,23 +283,32 @@ pub fn infer_fix(
   body: ast.Term,
   span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
-  // Infer the body to get its type
-  let #(body_val, body_type, state2) = infer(state, body)
+  // Bind `f` with a fresh hole so references to `f` within the body
+  // can be resolved during inference. The hole acts as a placeholder
+  // that inference will solve into a Pi type.
+  let fresh_id = state.hole_counter
+  let hole_ref = ast.VNeut(ast.HHole(fresh_id), [])
+  let bound_value = ast.VNeut(ast.HVar(0), [])
+  let state_bound = State(..state, hole_counter: fresh_id + 1,
+    vars: [#(name, #(bound_value, hole_ref)), ..state.vars],
+  )
+
+  // Infer the body with `f` bound in the environment.
+  let #(body_val, body_type, state2) = infer(state_bound, body)
   let _ = body_val
 
-  // The fixpoint value is a lambda that takes the recursive reference
-  let fresh_id = state2.hole_counter
-  let recursive_ref = ast.VNeut(ast.HHole(fresh_id), [])
-  let new_state = State(..state2, hole_counter: fresh_id + 1)
+  // Shift body by -1 so `f` (Var(1)) becomes Var(0) relative to the
+  // VLam's parameter. When applied, beta-reduction substitutes the
+  // argument for `f` in the body, enabling recursive calls.
+  let shifted_body = ast.shift_term_from(body, -1, 1)
 
   let fix_value = ast.VLam(
     [],
     [],
-    #(name, recursive_ref),
-    body,
+    #(name, hole_ref),
+    shifted_body,
   )
 
-  // The type is a Pi: $fn(x: T) -> T (recursive function type)
   let fix_type = ast.VPi(
     [],
     [],
@@ -307,7 +316,7 @@ pub fn infer_fix(
     body_type,
   )
 
-  #(fix_value, fix_type, new_state)
+  #(fix_value, fix_type, state2)
 }
 
 /// Check that a term has the expected type (verification).
@@ -523,12 +532,20 @@ fn infer_app(
     }
     _ -> {
       // Normal function application
-      let #(fun_type, _fun_val, state2) = infer(state, fun)
+      let #(fun_val, fun_type, state2) = infer(state, fun)
 
       case fun_type {
         ast.VPi(_env, _implicits, domain, codomain) -> {
           let #(arg_val, _, state3) = check(state2, arg, domain.1)
           let _ = arg_val
+          #(codomain, codomain, state3)
+        }
+        // A VNeut with HHole head represents an unresolved function
+        // (e.g., a fix variable whose type is a hole to be solved).
+        ast.VNeut(ast.HHole(_), []) -> {
+          let fresh_id = state2.hole_counter
+          let codomain = ast.VNeut(ast.HHole(fresh_id), [])
+          let state3 = State(..state2, hole_counter: fresh_id + 1)
           #(codomain, codomain, state3)
         }
         _other -> {

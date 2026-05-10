@@ -1279,8 +1279,7 @@ fn parse_fix(p: Parser, span: Span) -> #(Term, Parser) {
   // any trailing expressions are handled by the outer $let.
   let #(body, rest) = parse_term(p3)
   let final_span = merge(span, term_span(body))
-  let param_type = Rcd([], span)
-  #(let_var(name, param_type, body, body, final_span), rest)
+  #(Fix(name, body, final_span), rest)
 }
 
 // If: if cond then body else else_body
