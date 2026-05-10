@@ -32,3 +32,8 @@ True
 > | {x} as p => p.y  // matches a record containing 'x', but binds the entire original record to `p`.
 > }
 20
+
+// Get the remaining fields using the spread pattern (..)
+> match point {
+> | {x, ..p} => p.y  // 'x' was bound, so `p` only contains 'y'
+> }
