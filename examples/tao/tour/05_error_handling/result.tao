@@ -45,8 +45,8 @@ Error("cannot get first from empty list")
 // If a `with` gets Error, it short circuits and the whole block returns Error.
 // This might lead to easier code in complex error handling.
 fn add_to_first(list: List(Int), x: Int) -> Result(Int, Text) {
-  with value: Int = try_first(list)
-  let result: Int = value + x
+  with value = try_first(list)  // value is Int type
+  let result = value + x        // result is Int type
   return Ok(result)
 }
 
