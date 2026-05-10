@@ -1,0 +1,28 @@
+let list = [10, 20, 30, 40, 50]
+
+// To match the first item, and get a list with the remaining items.
+> match list {
+> | [first, ..remaining] => (first, remaining)  // there's at least one item.
+> | [] => (0, [])                               // if the list is empty.
+> }
+(10, [20, 30, 40, 50])
+
+// Match on other specific list structures.
+> match list {
+> | [1, 2, z] => 0
+> | [first, second, third, ..] => third
+> // Still needed for exhaustiveness checking.
+> | [first, ..remaining] => 0
+> | [] => 0
+> }
+30
+
+// Can match specifically at the beginning and the end.
+// There can only be one spread pattern (..).
+> match list {
+> | [first, ..middle, last] => middle
+> // Still needed for exhaustiveness checking.
+> | [first, ..remaining] => 0
+> | [] => 0
+> }
+[20, 30, 40]
