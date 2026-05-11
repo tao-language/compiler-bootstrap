@@ -1,3 +1,11 @@
+// The usual logical conditions are supported:
+// - Equals:            a == b
+// - Not equals:        a != b
+// - Less than:         a < b
+// - Less or equal:     a <= b
+// - Greater than:      a > b
+// - Greater or equal:  a >= b
+
 // Pattern guards match only if a condition is met.
 fn is_large_number(x: Int) -> Bool
 => match x {
