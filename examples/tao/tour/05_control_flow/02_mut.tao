@@ -8,7 +8,7 @@ fn mut_example() -> Int {
   // Mutate the variable's value, we can reassign it but it must be of the same type.
   mut result = 40
 
-  // There are also shorthands for common operators:
+  // There are also shorthands for common operators like += -= *= /= ^=
   // For example, this is equivalent to: mut result = result + 2
   mut result += 2
 
