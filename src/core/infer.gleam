@@ -189,7 +189,7 @@ fn check_pattern_inner(
       #(bindings, inner_bindings.1)
     }
 
-    ast.PType(_type_name, _) -> {
+    ast.PTyp(_type_name, _) -> {
       // PType matches type universes
       case expected_type {
         ast.VTyp(level) -> #(acc, state)
@@ -213,6 +213,18 @@ fn check_pattern_inner(
           #(fields_result.0, fields_result.1)
         }
         _ -> #(acc, state)  // Non-record type: allow
+      }
+    }
+
+    ast.PLitT(lit_type, _) -> {
+      // PLitT matches literal type values (e.g., $Int, $Float)
+      case expected_type {
+        ast.VLitT(t) ->
+          case t == lit_type {
+            True -> #(acc, state)
+            False -> #(acc, state)  // Best effort: allow mismatch
+          }
+        _ -> #(acc, state)  // Non-literal type: allow
       }
     }
 
@@ -654,7 +666,8 @@ fn extract_tags_from_pattern(pattern: ast.Pattern) -> List(String) {
     ast.PCtr(tag, _, _) -> [tag]
     ast.PUnit(_) -> []
     ast.PLit(_, _) -> []
-    ast.PType(_, _) -> []
+    ast.PLitT(_, _) -> []
+    ast.PTyp(_, _) -> []
     ast.PRcd(fields, _) ->
       fields
       |> list.map(fn(f) { extract_tags_from_pattern(f.1) })

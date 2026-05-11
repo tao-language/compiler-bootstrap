@@ -379,7 +379,7 @@ pub fn term_to_string_application_test() {
       Lit(LitInt(42), single("file.gleam", 1, 3)),
       single("file.gleam", 1, 5),
     )
-  assert term_to_string(t) == "fun(#0: 42)"
+  assert term_to_string(t) == "(#0 42)"
 }
 
 pub fn term_to_string_integer_literal_test() {
@@ -394,12 +394,12 @@ pub fn term_to_string_float_literal_test() {
 
 pub fn term_to_string_unit_test() {
   let t = Rcd([], single("file.gleam", 1, 1))
-  assert term_to_string(t) == "()"
+  assert term_to_string(t) == "{}"
 }
 
 pub fn term_to_string_type_test() {
   let t = Typ(0, single("file.gleam", 1, 1))
-  assert term_to_string(t) == "%Type(0)"
+  assert term_to_string(t) == "$Type<0>"
 }
 
 pub fn term_to_string_error_test() {
@@ -590,7 +590,7 @@ pub fn term_to_string_match_test() {
       [case_expr],
       single("file.gleam", 1, 4),
     )
-  assert term_to_string(match_expr) == "$match #0 {\n  | _ => #0\n}"
+  assert term_to_string(match_expr) == "$match (#0) {\n  | _ => #0\n}"
 }
 
 pub fn term_to_string_let_test() {
@@ -604,7 +604,7 @@ pub fn term_to_string_let_test() {
       value,
       single("file.gleam", 1, 3),
     )
-  assert term_to_string(let_expr) == "fun($fn(x: ()) => #0: 42)"
+  assert term_to_string(let_expr) == "($fn(x: {}) => #0 42)"
 }
 
 pub fn term_to_string_ann_test() {
@@ -622,7 +622,7 @@ pub fn term_to_string_ctr_test() {
   // Ctr without annotated arg should format as just the tag
   let ctr =
     Ctr("Some", Var(0, single("file.gleam", 1, 1)), single("file.gleam", 1, 2))
-  assert term_to_string(ctr) == "#Some"
+  assert term_to_string(ctr) == "#Some(#0)"
 }
 
 pub fn value_to_string_ctr_test() {
@@ -636,7 +636,7 @@ pub fn value_to_string_pi_test() {
   let dom = VNeut(HHole(0), [])
   let codom = VNeut(HVar(0), [])
   let v = VPi([], [], #("pi_param", dom), codom)
-  assert value_to_string(v) == "$fn(pi_param: ?0) -> v0"
+  assert value_to_string(v) == "$pi(pi_param: ?0) -> v0"
 }
 
 // ============================================================================
@@ -659,7 +659,7 @@ pub fn pattern_to_string_var_test() {
       [case_expr],
       single("file.gleam", 1, 4),
     )
-  assert term_to_string(match_expr) == "$match #0 {\n  | x => #0\n}"
+  assert term_to_string(match_expr) == "$match (#0) {\n  | x => #0\n}"
 }
 
 pub fn pattern_to_string_lit_int_test() {
@@ -678,7 +678,7 @@ pub fn pattern_to_string_lit_int_test() {
       [case_expr],
       single("file.gleam", 1, 4),
     )
-  assert term_to_string(match_expr) == "$match 0 {\n  | 0 => #0\n}"
+  assert term_to_string(match_expr) == "$match (0) {\n  | 0 => #0\n}"
 }
 
 pub fn pattern_to_string_lit_float_test() {
@@ -697,7 +697,7 @@ pub fn pattern_to_string_lit_float_test() {
       [case_expr],
       single("file.gleam", 1, 4),
     )
-  assert term_to_string(match_expr) == "$match 1.0 {\n  | 1.0 => #0\n}"
+  assert term_to_string(match_expr) == "$match (1.0) {\n  | 1.0 => #0\n}"
 }
 
 // ============================================================================

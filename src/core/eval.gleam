@@ -3,7 +3,7 @@ import core/ast.{
   type Case, type Pattern, type Term, type Value, type LiteralType,
   Ann, App, Call,
   Case as CoreCase, Ctr, EApp, Err, Fix, Float as LitFloat, HHole, HVar, Hole,
-  Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT,
+  Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PLitT, PUnit, PVar, PAlias, PTyp, PRcd, PError, Pi, Rcd, RcdT,
   Typ, VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, term_to_string,  literal_type_to_string, VLitT,
   LitT,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
@@ -422,42 +422,41 @@ pub fn match_pattern(
         _ -> Error(Nil)
       }
     }
-    PType(type_name, _) -> {
-      // Type patterns match on type-level values and literal types.
-      // PType("Int", _) matches $Int, $I8-$I64, $U8-$U64 (wildcard matching).
-      // PType("Float", _) matches $Float, $F16-$F64, and integer types.
-      // PType("Type", _) matches any type-level value.
-      // PType("I8"), PType("I16"), etc. match their specific type constructor.
+    PLitT(lit_type, _) -> {
+      // PLitT patterns match literal type values (e.g., $Int, $Float)
       case value {
-        // VLitT matching (evaluated literal type values)
         VLitT(t) ->
-          case ptype_matches(type_name, t) {
+          case t == lit_type {
             True -> Ok(bindings)
             False -> Error(Nil)
           }
         // Wildcard type matching on literal values (legacy)
         VLit(ast.Int(_)) ->
-          case type_name {
-            "Int" | "I8" | "I16" | "I32" | "I64" | "U8" | "U16" | "U32" | "U64" ->
-              Ok(bindings)
+          case lit_type {
+            IntT -> Ok(bindings)
             _ -> Error(Nil)
           }
         VLit(ast.Float(_)) ->
-          case type_name {
-            "Float" | "F16" | "F32" | "F64" -> Ok(bindings)
+          case lit_type {
+            FloatT -> Ok(bindings)
             _ -> Error(Nil)
           }
-        // Type-level value matching
-        VNeut(HHole(_), _) -> Ok(bindings)
-        VNeut(HVar(_), _) -> Ok(bindings)
+        _ -> Error(Nil)
+      }
+    }
+    PTyp(universe, _) -> {
+      // PTyp patterns match higher-order type values (e.g., $Type, $Type<1>)
+      case value {
+        VTyp(0) -> Ok(bindings)
+        VTyp(n) if n == universe -> Ok(bindings)
         VPi(_, _, _, _) -> Ok(bindings)
         VTypeDef(_, _, _) -> Ok(bindings)
-        VTyp(_) -> Ok(bindings)
-        // Match specific type constructors by name
+        VNeut(HHole(_), _) -> Ok(bindings)
+        VNeut(HVar(_), _) -> Ok(bindings)
         VCtr(tag, _) ->
-          case tag == type_name {
-            True -> Ok(bindings)
-            False -> Error(Nil)
+          case tag {
+            "Type" -> Ok(bindings)
+            _ -> Error(Nil)
           }
         _ -> Error(Nil)
       }
@@ -689,10 +688,10 @@ fn match_record_type_fields(
 
 /// Check if a literal type matches a type pattern name.
 ///
-/// PType("Int", _) matches $Int, $I8-$I64, $U8-$U64 (wildcard matching).
-/// PType("Float", _) matches $Float, $F16-$F64.
-/// PType("I8", _) matches $I8 and $Int.
-/// PType("I16", _) matches $I16 and $Int.
+/// PTyp("Int", _) matches $Int, $I8-$I64, $U8-$U64 (wildcard matching).
+/// PTyp("Float", _) matches $Float, $F16-$F64.
+/// PTyp("I8", _) matches $I8 and $Int.
+/// PTyp("I16", _) matches $I16 and $Int.
 /// etc.
 fn ptype_matches(type_name: String, t: LiteralType) -> Bool {
   case t {

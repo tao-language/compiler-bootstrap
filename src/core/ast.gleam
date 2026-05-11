@@ -90,7 +90,7 @@ pub type Term {
     span: Span,
   )
   /// Fixpoint: recursive function via Y combinator
-  /// $fix(name) => body — desugars to a recursive lambda
+  /// $fix(name) => body - desugars to a recursive lambda
   Fix(name: String, body: Term, span: Span)
   Err(message: String, span: Span)
 }
@@ -173,6 +173,8 @@ pub type Pattern {
   PCtr(tag: String, pattern: Pattern, span: Span)
   PLit(value: Literal, span: Span)
   PAlias(name: String, pattern: Pattern, span: Span)
+  PUnit(span: Span)
+  PLitT(lit_type: LiteralType, span: Span)
   PTyp(universe: Int, span: Span)
   PRcd(fields: List(#(String, Pattern)), span: Span)
   PError(span: Span)
@@ -228,14 +230,14 @@ pub type Value {
   VTyp(level: Int)
   /// Evaluated literal type: $Int, $Float, $I32, $F64, etc.
   VLitT(t: LiteralType)
-  /// Deferred FFI call — FFI returned None (not concrete enough), carry forward
+  /// Deferred FFI call - FFI returned None (not concrete enough), carry forward
   /// for runtime evaluation.
   VCall(
     name: String,
     args: List(#(Value, Value)),
     return_type: Value,
   )
-  /// Fixpoint value — when applied, unrolls the fix body with the VFix
+  /// Fixpoint value - when applied, unrolls the fix body with the VFix
   /// itself extended into the environment for recursive calls.
   VFix(
     name: String,
@@ -565,6 +567,8 @@ fn collect_pattern_vars(pattern: Pattern) -> List(String) {
         list.append(acc, collect_pattern_vars(f.1))
       })
     }
+    PUnit(_) -> []
+    PLitT(_, _) -> []
     PError(_) -> []
   }
 }
@@ -783,7 +787,7 @@ pub fn term_to_string(term: Term) -> String {
       <> name
       <> "<"
       <> term_to_string(return_type)
-      <> ">("
+      <> ">(" 
       <> list.fold(args, "", fn(acc, ta) {
         let arg_str = term_to_string(ta.0) <> ": " <> term_to_string(ta.1)
         case acc {
@@ -791,6 +795,7 @@ pub fn term_to_string(term: Term) -> String {
           _ -> acc <> ", " <> arg_str
         }
       })
+      <> ")"
     Rcd(fields, _) ->
         "{"
         <> list.fold(fields, "", fn(acc, f) {
@@ -891,6 +896,7 @@ fn pattern_to_string(pat: Pattern) -> String {
     PLit(Int(value), _) -> int.to_string(value)
     PLit(Float(value), _) -> float.to_string(value)
     PAlias(name, inner, _) -> name <> "@" <> pattern_to_string(inner)
+    PLitT(lit_type, _) -> "$" <> literal_type_to_string(lit_type)
     PTyp(universe, _) -> "$Type<" <> int.to_string(universe) <> ">"
     PRcd(fields, _) -> {
       "{"
@@ -902,6 +908,7 @@ fn pattern_to_string(pat: Pattern) -> String {
       })
       <> "}"
     }
+    PUnit(_) -> "()"
     PError(_) -> "$error"
   }
 }

@@ -754,7 +754,7 @@ pub fn parse_ffi_call_in_match_body_test() {
 
 pub fn parse_ffi_call_with_var_args_test() {
   // Debug: Parse FFI call with variable arguments
-  let #(term, errors) = parse("%i32_add<$Int>(eval(x), eval(y))")
+  let #(term, errors) = parse("%i32_add<$Int>(eval x, eval y)")
   assert case term {
     Call("i32_add", args, _, _) -> list.length(args) == 2
     _ -> False

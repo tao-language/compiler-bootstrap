@@ -28,8 +28,8 @@
 import core/ast.{
   type Case, type Pattern, type Term,
   Ann, App, Call, Case as CoreCase, Ctr, Err, Fix, TypeDef,
-  Float as LitFloat, Hole, Int as LitInt, Lam, Lit, LitT, Match, PAny, PAlias, PCtr, PError, PLit,
-  PType, PRcd, PUnit, PVar, Pi, Rcd, RcdT, Typ, Var, let_var,
+  Float as LitFloat, Hole, Int as LitInt, Lam, Lit, LitT, Match, PAny, PAlias, PCtr, PError, PLitT, PLit,
+  PTyp, PRcd, PUnit, PVar, Pi, Rcd, RcdT, Typ, Var, let_var,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
 import gleam/float
@@ -93,7 +93,7 @@ fn is_continuation_token(token: Token) -> Bool {
 
 /// Parse sequential expressions, returning the last expression as the result
 fn parse_tokens_acc(p: Parser, acc: List(Term)) -> #(Term, Parser) {
-  let #(term, p2) = parse_term_with_app(p, single("", 0, 0))
+  let #(term, p2) = parse_app(p, single("", 0, 0))
   let #(tokens2, pos2, _, _, _) = p2
   let rest = try_peek(tokens2, pos2)
   case rest {
@@ -467,30 +467,39 @@ fn parse_term(p: Parser) -> #(Term, Parser) {
   }
 }
 
-/// Parse a term optionally followed by application arguments.
-/// E.g., `fun(arg)` or `(fun)(arg)` are parsed as App(fun, arg).
-fn parse_term_with_app(p: Parser, span: Span) -> #(Term, Parser) {
+/// Parse a term followed by Haskell-style application arguments.
+/// `f x y z` becomes `App(App(App(f, x), y), z)`.
+/// Parenthesized terms like `f (g x)` are also supported.
+/// Stops at keywords (fun, let, match, etc.) and operators (~, :).
+fn parse_app(p: Parser, span: Span) -> #(Term, Parser) {
   let #(term, rest) = parse_term(p)
   parse_app_chain(rest, term, span)
 }
 
-/// Recursively parse application arguments.
+/// Recursively apply arguments to a term (Haskell-style).
 fn parse_app_chain(p: Parser, fun: Term, span: Span) -> #(Term, Parser) {
   let #(tokens, pos, env, fn_, errors) = p
-  case list.drop(tokens, pos) {
-    [Token("Punct", "(", _), ..rest] -> {
-      let p_arg = #(rest, 0, env, fn_, errors)
-      let #(arg, p2) = parse_term(p_arg)
-      let p3 = skip(")", p2)
-      let app_span = merge(span, term_span(arg))
-      let app = App(fun, arg, app_span)
-      parse_app_chain(p3, app, app_span)
+  let rest = list.drop(tokens, pos)
+  case rest {
+    // Keywords stop application
+    [Token("Name", v, _), ..] -> case v {
+      "fun" | "let" | "match" | "fix" | "type" | "hole" | "unit" | "true" | "false" ->
+        #(fun, p)
+      _ -> {
+        // Variable name as application argument
+        let arg_span = current_span(p)
+        let p1 = #(tokens, pos + 1, env, fn_, errors)
+        let #(arg, rest2) = parse_var(p1, v, arg_span)
+        let app_span = merge(span, term_span(arg))
+        let app = App(fun, arg, app_span)
+        parse_app_chain(rest2, app, app_span)
+      }
     }
+    // Match/guard operator continues the chain
     [Token("Op", "~", _), ..rest] -> {
       let p_rhs = #(rest, 0, env, fn_, errors)
       let #(rhs, p2) = parse_pattern(p_rhs)
       let match_span = merge(span, term_span(fun))
-      // Encode `fun ~ rhs` as `$match fun { | rhs => #True | _ => #False }`
       let match_term = Match(
         fun,
         [
@@ -501,6 +510,7 @@ fn parse_app_chain(p: Parser, fun: Term, span: Span) -> #(Term, Parser) {
       )
       parse_app_chain(p2, match_term, match_span)
     }
+    // Annotation operator continues the chain
     [Token("Punct", ":", _), ..rest] -> {
       let p1 = #(rest, 0, env, fn_, errors)
       let #(type_, p2) = parse_term(p1)
@@ -508,7 +518,40 @@ fn parse_app_chain(p: Parser, fun: Term, span: Span) -> #(Term, Parser) {
       let annotated = Ann(fun, type_, ann_span)
       parse_app_chain(p2, annotated, ann_span)
     }
-    _ -> #(fun, p)
+    // Integer literal as application argument
+    [Token("Integer", _, _), ..] -> {
+      let #(int_term, p2) = parse_term(#(tokens, pos, env, fn_, errors))
+      let app_span = merge(span, term_span(int_term))
+      let app = App(fun, int_term, app_span)
+      parse_app_chain(p2, app, app_span)
+    }
+    // Float literal as application argument
+    [Token("Float", _, _), ..] -> {
+      let #(float_term, p2) = parse_term(#(tokens, pos, env, fn_, errors))
+      let app_span = merge(span, term_span(float_term))
+      let app = App(fun, float_term, app_span)
+      parse_app_chain(p2, app, app_span)
+    }
+    // Parenthesized term as application argument
+    [Token("Punct", "(", _), ..] -> {
+      let #(paren_term, p2) = parse_term(#(tokens, pos, env, fn_, errors))
+      let app_span = merge(span, term_span(paren_term))
+      let app = App(fun, paren_term, app_span)
+      parse_app_chain(p2, app, app_span)
+    }
+    // Prefixed tokens - check if it's an FFI call or type prefix
+    [Token("Op", "$", _), ..] ->
+      #(fun, p)
+    [Token("Op", "%", _), ..rest] -> {
+      // FFI call as application argument: f %call<a, b>(arg1, arg2)
+      let #(ffi_call, p2) = parse_term(#(tokens, pos, env, fn_, errors))
+      let app_span = merge(span, term_span(ffi_call))
+      let app = App(fun, ffi_call, app_span)
+      parse_app_chain(p2, app, app_span)
+    }
+    // Anything else stops application
+    _ ->
+      #(fun, p)
   }
 }
 
@@ -525,7 +568,7 @@ fn parse_ffi_call(p: Parser, name: String, _span: Span) -> #(Term, Parser) {
           let p3 = skip(">", p2)
           #(ret_type, p3)
         }
-        _ -> #(Hole(0, single("", 0, 0)), p)
+        _ -> #(Hole(-1, single("", 0, 0)), p)
       }
   }
   let #(ret_type, p1) = p_with_ret
@@ -570,20 +613,20 @@ fn parse_typed_arg_list_acc(p: Parser, acc: List(#(Term, Term))) -> #(List(#(Ter
                   parse_typed_arg_list_acc(p8, [#(arg, type_), ..acc])
                 }
                 False -> {
-                  // No type annotation - use Hole(0) as default type
+                  // No type annotation - use Hole(-1) as default type (uninstantiated)
                   // Check if next token is , or ) to continue/stop
                   case list.drop(p5.0, p5.1) {
                     [Token("Punct", ",", _), ..] -> {
                       // Continue with more arguments
-                      parse_typed_arg_list_acc(p5, [#(arg, Hole(0, single("", 0, 0))), ..acc])
+                      parse_typed_arg_list_acc(p5, [#(arg, Hole(-1, single("", 0, 0))), ..acc])
                     }
                     [Token("Punct", ")", _), ..] -> {
                       // No more arguments
-                      parse_typed_arg_list_acc(p5, [#(arg, Hole(0, single("", 0, 0))), ..acc])
+                      parse_typed_arg_list_acc(p5, [#(arg, Hole(-1, single("", 0, 0))), ..acc])
                     }
                     _ -> {
                       // Unknown token, use Hole as default
-                      parse_typed_arg_list_acc(p5, [#(arg, Hole(0, single("", 0, 0))), ..acc])
+                      parse_typed_arg_list_acc(p5, [#(arg, Hole(-1, single("", 0, 0))), ..acc])
                     }
                   }
                 }
@@ -1046,7 +1089,7 @@ fn parse_lambda(p: Parser, span: Span) -> #(Term, Parser) {
     add_binding(acc, imp.0)
   })
   let p8 = add_binding(p_body, name)
-  let #(body, rest) = parse_term_with_app(p8, merge(span, current_span(p8)))
+  let #(body, rest) = parse_app(p8, merge(span, current_span(p8)))
   let final_span = merge(span, term_span(body))
   #(Lam(implicits, #(name, param_type), body, final_span), rest)
 }
@@ -1200,7 +1243,7 @@ fn parse_let(p: Parser, span: Span) -> #(Term, Parser) {
       }
   }
   let p5 = skip("=", p4)
-  let #(value, rest) = parse_term_with_app(p5, span)
+  let #(value, rest) = parse_app(p5, span)
   let let_span = merge(span, term_span(value))
   // Check for semicolon as separator (newlines are optional)
   let p6 = case rest {
@@ -1217,7 +1260,7 @@ fn parse_let(p: Parser, span: Span) -> #(Term, Parser) {
       case list.drop(tokens, pos) {
         [Token("Eof", ..), ..] -> #(value, p7)
         [] -> #(value, p7)
-        _ -> parse_term_with_app(p7, let_span)
+        _ -> parse_app(p7, let_span)
       }
   }
   let body_span = merge(let_span, term_span(body))
@@ -1416,28 +1459,50 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
     // Error pattern: $error
     [Token("Op", "$", _), Token("Name", "error", _), ..rest] ->
       #(PError(span), #(rest, 0, env, fn_, errors))
-    // Type patterns: $Type, $Int, $Float, etc. (with optional <T> params)
+    // Type patterns: $Type with optional <T> params, or literal types
     [Token("Op", "$", _), Token("Name", name, _), ..rest] -> {
       case name {
-        "Type" | "Int" | "Float" | "I8" | "I16" | "I32" | "I64" |
-        "U8" | "U16" | "U32" | "U64" | "F16" | "F32" | "F64" -> {
+        "Type" -> {
           // Check for optional <T> type parameters
           case rest {
-            [Token("Op", "<", _), Token("Integer", _, _), Token("Op", ">", _), ..] -> {
+            [Token("Op", "<", _), Token("Integer", v, _), Token("Op", ">", _), ..rest2] -> {
               // Has <N> type parameter (e.g., $Type<1>)
-              let p1 = #(rest, 3, env, fn_, errors)
-              #(PType(name, span), p1)
+              let lvl = case int.parse(v) {
+                Ok(n) -> n
+                Error(_) -> 0
+              }
+              let p1 = #(rest2, 0, env, fn_, errors)
+              #(PTyp(lvl, span), p1)
             }
-            [Token("Op", "<", _), Token("Name", _, _), Token("Op", ">", _), ..] -> {
+            [Token("Op", "<", _), Token("Name", v, _), Token("Op", ">", _), ..rest2] -> {
               // Has <x> type parameter (e.g., $Type<x>)
-              let p1 = #(rest, 3, env, fn_, errors)
-              #(PType(name, span), p1)
+              let lvl = case int.parse(v) {
+                Ok(n) -> n
+                Error(_) -> 0
+              }
+              let p1 = #(rest2, 0, env, fn_, errors)
+              #(PTyp(lvl, span), p1)
             }
             _ -> {
               // No type parameter
-              #(PType(name, span), #(rest, 0, env, fn_, errors))
+              #(PTyp(0, span), #(rest, 0, env, fn_, errors))
             }
           }
+        }
+        "Int" -> {
+          let p1 = #(rest, 0, env, fn_, errors)
+          #(PLitT(IntT, span), p1)
+        }
+        "Float" -> {
+          let p1 = #(rest, 0, env, fn_, errors)
+          #(PLitT(FloatT, span), p1)
+        }
+        "I8" | "I16" | "I32" | "I64" |
+        "U8" | "U16" | "U32" | "U64" |
+        "F16" | "F32" | "F64" -> {
+          // These are literal types, match using PLitT
+          let p1 = #(rest, 0, env, fn_, errors)
+          #(PAny(span), p1)
         }
         _ -> {
           let p1 = #(rest, 0, env, fn_, errors)
