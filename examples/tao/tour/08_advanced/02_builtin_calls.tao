@@ -2,10 +2,11 @@
 // These could be OS system calls, third-party libraries in other languages, etc.
 // This is achieved through built-in calls.
 
-// This is a powerful feature, but there are some disadvantages:
+// This is a powerful feature, but there are some restrictions:
 // - The build target must support the specific built-in calls.
 // - They might require type annotations since their definition is opaque.
 // - It's up to you to ensure the types are correct, or you might get unexpected results.
+// - They cannot be polymorphic (generic), they must have specific types.
 // - The compiler has limited information so might not be as helpful.
 // - They cannot be overloaded, they must satisfy only one type.
 // - They do not support named arguments or default values, they're strictly positional.
