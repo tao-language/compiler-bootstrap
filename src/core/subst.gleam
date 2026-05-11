@@ -341,10 +341,12 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
         force_levels_to_indices(return_type, n),
         single("", 0, 0),
       )
-    VFix(_, _, body) -> {
-      // VFix's body is already a Term - just return it
-      // VFix is a runtime value; when converted to Term, use the body
-      body
+    VFix(fix_name, _, fix_body) -> {
+      // Convert VFix to a Fix(term) so substitution preserves the fixpoint
+      // as a term-level construct. This avoids converting VFix→body via
+      // value_to_neut which would cause infinite recursion.
+      // The fix_body is already a Term with correct De Bruijn indices.
+      Fix(fix_name, fix_body, single("", 0, 0))
     }
     VErr -> Err("error", single("", 0, 0))
     VTyp(level) -> Typ(level, single("", 0, 0))

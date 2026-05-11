@@ -213,28 +213,53 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
       let substituted = subst_term_var(0, converted_arg, body)
       evaluate(extended, substituted)
     }
-    // VFix unroll: apply fixpoint by evaluating the fix body with the
-    // VFix itself extended into the environment for recursive calls.
-    // The body is a Lambda. When applied:
-    //   Var(0) → the actual argument (Lambda parameter)
-    //   Var(1) → f (the VFix itself, for recursive calls)
+    // VFix unroll: substitute the argument for Var(0) (Lambda param) and
+    // the VFix for Var(1) (recursive ref), then evaluate.
+    // This follows the rule: Fix(e) → e[Fix(e)/0], shifted through the
+    // Lambda binder so Var(1) in the Match body refers to the Fix.
+    //
+    // Key: value_to_neut converts VFix→Fix(term) in subst.gleam, so
+    // substitution preserves the fixpoint as a term-level construct.
     VFix(fix_name, fix_env, fix_body) -> {
       let body = case fix_body {
         Ann(inner, _, _) -> inner
         _ -> fix_body
       }
       case body {
-        Lam(_implicits, _param, body_term, _) -> {
+        Lam(_implicits, param, body_term, _) -> {
+          // Convert int to float when param type is FloatT
+          let converted_arg = case param.1 {
+            Ann(typ, _, _) -> case typ {
+              LitT(FloatT, _) -> case arg_val {
+                VLit(LitInt(v)) -> {
+                  case float.parse(int.to_string(v) <> ".0") {
+                    Ok(f) -> VLit(LitFloat(f))
+                    Error(_) -> arg_val
+                  }
+                }
+                _ -> arg_val
+              }
+              _ -> arg_val
+            }
+            LitT(FloatT, _) -> case arg_val {
+              VLit(LitInt(v)) -> {
+                case float.parse(int.to_string(v) <> ".0") {
+                  Ok(f) -> VLit(LitFloat(f))
+                  Error(_) -> arg_val
+                }
+              }
+              _ -> arg_val
+            }
+            _ -> arg_val
+          }
+          // Step 1: Substitute the argument for Var(0) in the Lambda's body
+          let body_with_arg = subst_term_var(0, converted_arg, body_term)
+          // Step 2: Substitute the VFix for Var(1) (recursive reference)
+          // value_to_neut converts VFix→Fix(term), preserving the fixpoint
           let self = VFix(fix_name, fix_env, fix_body)
-          // Create bindings: arg at index 0 (Lambda param), self at index 1 (recursive ref)
-          let arg_binding = #("__arg", #(arg_val, VNeut(HHole(0), [])))
-          let self_binding = #("__self", #(self, VNeut(HHole(0), [])))
-          // Prepend fix_env bindings, then arg, then self
-          let env_bindings = list.map(fix_env, fn(v) {
-            #("__fix", #(v, VNeut(HHole(0), [])))
-          })
-          let all_bindings = list.append(list.append(env_bindings, [arg_binding]), [self_binding])
-          evaluate(state.State(..state, vars: list.append(all_bindings, state.vars)), body_term)
+          let body_with_self = subst_term_var(1, self, body_with_arg)
+          // Evaluate the fully substituted body
+          evaluate(state, body_with_self)
         }
         _ -> VErr
       }
