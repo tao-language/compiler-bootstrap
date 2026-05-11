@@ -1,0 +1,22 @@
+// Sometimes you want to call some external functionality.
+// These could be OS system calls, third-party libraries in other languages, etc.
+// This is achieved through built-in calls.
+
+// This is a powerful feature, but there are some disadvantages:
+// - The build target must support the specific built-in calls.
+// - They might require type annotations since their definition is opaque.
+// - It's up to you to ensure the types are correct, or you might get unexpected results.
+// - The compiler has limited information so might not be as helpful.
+// - They cannot be overloaded, they must satisfy only one type.
+// - They do not support named arguments or default values, they're strictly positional.
+// - There might be some serialization overhead on the arguments and return value, depending on the build target.
+// - The syntax is not as ergonomic, but meant to be used sparingly.
+
+// Typically, they're wrapped in a normal function for ergonomics.
+// Built-in calls start with (%).
+fn unix_time() -> I64
+=> %time()  // this one can be inferred to return I64, and takes no arguments
+
+// The types on this one cannot be inferred, so it must be fully type annotated.
+// Looks like: %call_name<ReturnType>(arg1: Type1, arg2: Type2, ...)
+let value = %i32_add<I32>(1: I32, 2: I32)
