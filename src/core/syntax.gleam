@@ -512,31 +512,27 @@ fn parse_app_chain(p: Parser, fun: Term, span: Span) -> #(Term, Parser) {
   }
 }
 
-// FFI call: %name(arg: Type, arg: Type) -> ReturnType
-// The return type is required in the AST but optional in source.
-// When `-> Type` is missing, synthesize a Hole as default.
+// FFI call: %name<ReturnType>(arg: Type, arg: Type)
+// The return type uses angle brackets to avoid ambiguity with Pi types.
 fn parse_ffi_call(p: Parser, name: String, _span: Span) -> #(Term, Parser) {
-  let p1 = skip("(", p)
-  let #(typed_args, p2) = parse_typed_arg_list(p1)
-  let p3 = skip(")", p2)
-  // Check for return type annotation: `-> Type` (optional in source)
-  let p_arrow = skip("->", p3)
-  let #(ret_type, p4) = case p_arrow {
-    #(_, new_pos, env, fn_, errors) -> {
-      let #(tokens, old_pos, _, _, _) = p3
-      case new_pos > old_pos {
-        True -> {
-          // `->` was consumed, parse return type
-          let #(type_, p5) = parse_term(#(tokens, new_pos, env, fn_, errors))
-          #(type_, p5)
+  // Parse optional return type: <ReturnType>
+  let p_with_ret = case p {
+    #(tokens, pos, env, fn_, errors) ->
+      case list.drop(tokens, pos) {
+        [Token("Op", "<", _), ..] -> {
+          let p1 = skip("<", p)
+          let #(ret_type, p2) = parse_term(p1)
+          let p3 = skip(">", p2)
+          #(ret_type, p3)
         }
-        False -> {
-          // No return type — synthesize a Hole as default
-          #(Hole(0, single("", 0, 0)), p3)
-        }
+        _ -> #(Hole(0, single("", 0, 0)), p)
       }
-    }
   }
+  let #(ret_type, p1) = p_with_ret
+  // Parse parenthesized typed arguments
+  let p2 = skip("(", p1)
+  let #(typed_args, p3) = parse_typed_arg_list(p2)
+  let p4 = skip(")", p3)
   let final_span = current_span(p4)
   #(Call(name, typed_args, ret_type, final_span), p4)
 }

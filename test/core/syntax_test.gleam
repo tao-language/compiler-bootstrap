@@ -744,7 +744,7 @@ pub fn parse_nested_application_test() {
 
 pub fn parse_ffi_call_in_match_body_test() {
   // Debug: Parse just the FFI call to see if it works standalone
-  let #(term, errors) = parse("%i32_add(1, 2)")
+  let #(term, errors) = parse("%i32_add<$Int>(1, 2)")
   assert case term {
     Call("i32_add", args, _, _) -> list.length(args) == 2
     _ -> False
@@ -754,7 +754,7 @@ pub fn parse_ffi_call_in_match_body_test() {
 
 pub fn parse_ffi_call_with_var_args_test() {
   // Debug: Parse FFI call with variable arguments
-  let #(term, errors) = parse("%i32_add(eval(x), eval(y)) -> $Int")
+  let #(term, errors) = parse("%i32_add<$Int>(eval(x), eval(y))")
   assert case term {
     Call("i32_add", args, _, _) -> list.length(args) == 2
     _ -> False
@@ -764,7 +764,7 @@ pub fn parse_ffi_call_with_var_args_test() {
 
 pub fn parse_match_body_with_ffi_test() {
   // Debug: Parse a simple match body with FFI call
-  let source = "$match x {\n| _ => %i32_add(1, 2)\n}"
+  let source = "$match x {\n| _ => %i32_add<$Int>(1, 2)\n}"
   let #(term, errors) = parse(source)
   let _ = term
   let _ = errors

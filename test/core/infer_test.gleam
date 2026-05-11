@@ -1416,7 +1416,7 @@ pub fn gadt_vec_nil_type_test() {
   let source = "
 $let Vec = $type<n: $I32, a: $Type> {
 | #Nil({}) -> #Vec({n: 0, a: a})
-| @m. #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %i32_add(m, 1) -> $I32, a: a})
+| @m. #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %i32_add<$I32>(m, 1), a: a})
 }
 #Nil({})
 "
@@ -1435,7 +1435,7 @@ pub fn gadt_vec_cons_type_test() {
   let source = "
 $let Vec = $type<n: $I32, a: $Type> {
 | #Nil({}) -> #Vec({n: 0, a: a})
-| @m. #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %i32_add(m, 1) -> $I32, a: a})
+| @m. #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %i32_add<$I32>(m, 1), a: a})
 }
 #Cons({x: 3.14, xs: #Nil({})})
 "
@@ -1458,7 +1458,7 @@ pub fn gadt_vec_cons_wrong_type_test() {
   let source = "
 $let Vec = $type<n: $I32, a: $Type> {
 | #Nil({}) -> #Vec({n: 0, a: a})
-| @m. #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %i32_add(m, 1) -> $I32, a: a})
+| @m. #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %i32_add<$I32>(m, 1), a: a})
 }
 #Cons({x: 1, xs: #Nil({})})
 "
@@ -1510,7 +1510,7 @@ pub fn gadt_vec_multiple_cons_test() {
   let source = "
 $let Vec = $type<n: $I32, a: $Type> {
 | #Nil({}) -> #Vec({n: 0, a: a})
-| @m. #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %i32_add(m, 1) -> $I32, a: a})
+| @m. #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %i32_add<$I32>(m, 1), a: a})
 }
 #Cons({x: 1, xs: #Cons({x: 2, xs: #Nil({})})})
 "
