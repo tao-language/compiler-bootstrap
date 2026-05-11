@@ -80,7 +80,7 @@ pub type Term {
   )
   Rcd(fields: List(#(String, Term)), span: Span)
   RcdT(fields: List(#(String, Term, Option(Term))), span: Span)
-  Typ(level: Int, span: Span)
+  Typ(universe: Int, span: Span)
   /// Literal type annotations: $Int, $Float, $I32, $F64, etc.
   LitT(t: LiteralType, span: Span)
   TypeDef(
@@ -136,7 +136,7 @@ pub type NamedTerm {
   )
   NamedRcd(fields: List(#(String, NamedTerm)), span: Span)
   NamedRcdT(fields: List(#(String, NamedTerm, Option(NamedTerm))), span: Span)
-  NamedTyp(level: Int, span: Span)
+  NamedTyp(universe: Int, span: Span)
   NamedLitT(t: LiteralType, span: Span)
   NamedTypeDef(
     name: String,
@@ -171,10 +171,9 @@ pub type Pattern {
   PAny(span: Span)
   PVar(name: String, span: Span)
   PCtr(tag: String, pattern: Pattern, span: Span)
-  PUnit(span: Span)
   PLit(value: Literal, span: Span)
   PAlias(name: String, pattern: Pattern, span: Span)
-  PType(type_name: String, span: Span)
+  PTyp(universe: Int, span: Span)
   PRcd(fields: List(#(String, Pattern)), span: Span)
   PError(span: Span)
 }
@@ -487,7 +486,7 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
         }),
         span,
       )
-    Typ(level, span) -> Typ(level, span)
+    Typ(universe, span) -> Typ(universe, span)
     LitT(ltype, span) -> LitT(ltype, span)
     TypeDef(name: n, params: params, constructors: cons, span: s) -> {
       let shift_cons = fn(c) {
@@ -558,10 +557,9 @@ fn collect_pattern_vars(pattern: Pattern) -> List(String) {
     PAny(_) -> []
     PVar(name, _) -> [name]
     PCtr(_, inner, _) -> collect_pattern_vars(inner)
-    PUnit(_) -> []
     PLit(_, _) -> []
     PAlias(name, inner, _) -> list.append([name], collect_pattern_vars(inner))
-    PType(_, _) -> []
+    PTyp(_, _) -> []
     PRcd(fields, _) -> {
       list.fold(fields, [], fn(acc, f) {
         list.append(acc, collect_pattern_vars(f.1))
@@ -581,9 +579,9 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
     }
     NamedHole(id, span) -> Hole(id, span)
     NamedLit(value, span) -> Lit(value, span)
-    NamedTyp(level, span) -> Typ(level, span)
+    NamedTyp(universe, span) -> Typ(universe, span)
     NamedLitT(ltype, span) -> LitT(ltype, span)
-    
+
     NamedLam(implicits, #(name, param_type), body, span) -> {
       // Convert implicits and param_type in current env
       let implicits_debruijn = list.map(implicits, fn(i) {
@@ -594,7 +592,7 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
       let body_debruijn = named_term_to_debruijn(body, [name, ..env])
       Lam(implicits_debruijn, #(name, param_type_debruijn), body_debruijn, span)
     }
-    
+
     NamedPi(implicits, #(name, domain), codomain, span) -> {
       let implicits_debruijn = list.map(implicits, fn(i) {
         #(i.0, named_term_to_debruijn(i.1, env))
@@ -603,7 +601,7 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
       let codomain_debruijn = named_term_to_debruijn(codomain, [name, ..env])
       Pi(implicits_debruijn, #(name, domain_debruijn), codomain_debruijn, span)
     }
-    
+
     NamedApp(fun, arg, span) -> {
       App(
         named_term_to_debruijn(fun, env),
@@ -611,18 +609,18 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
         span
       )
     }
-    
+
     NamedCtr(tag, arg, span) -> {
       Ctr(tag, named_term_to_debruijn(arg, env), span)
     }
-    
+
     NamedRcd(fields, span) -> {
       Rcd(
         list.map(fields, fn(f) { #(f.0, named_term_to_debruijn(f.1, env)) }),
         span
       )
     }
-    
+
     NamedRcdT(fields, span) -> {
       RcdT(
         list.map(fields, fn(f) {
@@ -635,7 +633,7 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
         span
       )
     }
-    
+
     NamedAnn(term, type_, span) -> {
       Ann(
         named_term_to_debruijn(term, env),
@@ -643,7 +641,7 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
         span
       )
     }
-    
+
     NamedCall(name, args, return_type, span) -> {
       Call(
         name,
@@ -654,7 +652,7 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
         span,
       )
     }
-    
+
     NamedMatch(arg, cases, span) -> {
       let arg_debruijn = named_term_to_debruijn(arg, env)
       let cases_debruijn = list.map(cases, fn(c) {
@@ -670,7 +668,7 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
       })
       Match(arg_debruijn, cases_debruijn, span)
     }
-    
+
     NamedTypeDef(name, params, constructors, span) -> {
       let params_debruijn = list.map(params, fn(p) {
         #(p.0, named_term_to_debruijn(p.1, env))
@@ -688,9 +686,9 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
         span: span,
       )
     }
-    
+
     NamedErr(message, span) -> Err(message, span)
-    
+
     NamedLet(name, param_type, value, body, span) -> {
       // Desugar: let name = value; body → App(Lam([], (name, param_type), body), value)
       let param_type_debruijn = named_term_to_debruijn(param_type, env)
@@ -730,8 +728,9 @@ pub fn term_to_string(term: Term) -> String {
           )
           <> ">"
       }
-      "$fn("
+      "$fn"
       <> implicit_str
+      <> "("
       <> name
       <> ": "
       <> term_to_string(param_type)
@@ -739,7 +738,7 @@ pub fn term_to_string(term: Term) -> String {
       <> term_to_string(func_body)
     }
     App(fun, arg, _) ->
-      "fun(" <> term_to_string(fun) <> ": " <> term_to_string(arg) <> ")"
+      "(" <> term_to_string(fun) <> " " <> term_to_string(arg) <> ")"
     Pi(implicits, #(name, domain), codomain, _) -> {
       let implicit_str = case implicits {
         [] -> ""
@@ -757,8 +756,9 @@ pub fn term_to_string(term: Term) -> String {
           )
           <> ">"
       }
-      "$fn("
+      "$pi"
       <> implicit_str
+      <> "("
       <> name
       <> ": "
       <> term_to_string(domain)
@@ -767,23 +767,11 @@ pub fn term_to_string(term: Term) -> String {
     }
     Lit(Int(value), _) -> int.to_string(value)
     Lit(Float(value), _) -> float.to_string(value)
-    Ctr(tag, arg, _) ->
-      case arg {
-        Ann(t, Typ(0, _), _) -> "#" <> tag <> "(" <> term_to_string(t) <> ")"
-        Ann(t, _, _) ->
-          "#"
-          <> tag
-          <> "("
-          <> term_to_string(t)
-          <> ": "
-          <> term_to_string(arg)
-          <> ")"
-        _ -> "#" <> tag
-      }
+    Ctr(tag, arg, _) -> "#" <> tag <> "(" <> term_to_string(arg) <> ")"
     Match(arg, cases, _) ->
-      "$match "
+      "$match ("
       <> term_to_string(arg)
-      <> " {"
+      <> ") {"
       <> list.fold(cases, "", fn(acc, c) {
         acc <> "\n  | " <> case_to_string(c)
       })
@@ -793,7 +781,9 @@ pub fn term_to_string(term: Term) -> String {
     Call(name, args, return_type, _) ->
       "%"
       <> name
-      <> "("
+      <> "<"
+      <> term_to_string(return_type)
+      <> ">("
       <> list.fold(args, "", fn(acc, ta) {
         let arg_str = term_to_string(ta.0) <> ": " <> term_to_string(ta.1)
         case acc {
@@ -801,24 +791,17 @@ pub fn term_to_string(term: Term) -> String {
           _ -> acc <> ", " <> arg_str
         }
       })
-      <> ") -> "
-      <> term_to_string(return_type)
     Rcd(fields, _) ->
-      case fields {
-        [] -> "()"
-        _ ->
-          "{"
-          <> list.fold(fields, "", fn(acc, f) {
-            case acc {
-              "" -> f.0 <> ": " <> term_to_string(f.1)
-              _ -> acc <> ", " <> f.0 <> ": " <> term_to_string(f.1)
-            }
-          })
-          <> "}"
-      }
+        "{"
+        <> list.fold(fields, "", fn(acc, f) {
+          case acc {
+            "" -> f.0 <> ": " <> term_to_string(f.1)
+            _ -> acc <> ", " <> f.0 <> ": " <> term_to_string(f.1)
+          }
+        })
+        <> "}"
     RcdT(fields, _) ->
-      "$"
-      <> "{"
+      "${"
       <> list.fold(fields, "", fn(acc, f) {
         let field_str = f.0 <> ": " <> term_to_string(f.1)
         let field_with_default = case f.2 {
@@ -831,7 +814,7 @@ pub fn term_to_string(term: Term) -> String {
         }
       })
       <> "}"
-    Typ(level, _) -> "%Type(" <> int.to_string(level) <> ")"
+    Typ(universe, _) -> "$Type<" <> int.to_string(universe) <> ">"
     LitT(ltype, _) -> literal_type_to_string(ltype)
     TypeDef(name: name, params: params, constructors: constructors, span: _span) -> {
       let params_str = case params {
@@ -843,7 +826,7 @@ pub fn term_to_string(term: Term) -> String {
           "<" <> string.join(params_strs, ", ") <> "> "
         }
       }
-      "type "
+      "$type "
       <> name
       <> params_str
       <> " { "
@@ -883,7 +866,7 @@ pub fn term_to_string(term: Term) -> String {
     }
     Err(msg, _) -> "\"" <> msg <> "\""
     Fix(name, body, _) ->
-      "$fix(" <> name <> ") => " <> term_to_string(body)
+      "$fix " <> name <> ". " <> term_to_string(body)
   }
 }
 
@@ -904,25 +887,20 @@ fn pattern_to_string(pat: Pattern) -> String {
   case pat {
     PAny(_) -> "_"
     PVar(name, _) -> name
-    PCtr(tag, inner, _) -> tag <> "(" <> pattern_to_string(inner) <> ")"
-    PUnit(_) -> "()"
+    PCtr(tag, inner, _) -> "#" <> tag <> "(" <> pattern_to_string(inner) <> ")"
     PLit(Int(value), _) -> int.to_string(value)
     PLit(Float(value), _) -> float.to_string(value)
     PAlias(name, inner, _) -> name <> "@" <> pattern_to_string(inner)
-    PType(type_name, _) -> "$" <> type_name
+    PTyp(universe, _) -> "$Type<" <> int.to_string(universe) <> ">"
     PRcd(fields, _) -> {
-      case fields {
-        [] -> "{}"
-        _ ->
-          "{"
-          <> list.fold(fields, "", fn(acc, f) {
-            case acc {
-              "" -> f.0 <> ": " <> pattern_to_string(f.1)
-              _ -> acc <> ", " <> f.0 <> ": " <> pattern_to_string(f.1)
-            }
-          })
-          <> "}"
-      }
+      "{"
+      <> list.fold(fields, "", fn(acc, f) {
+        case acc {
+          "" -> f.0 <> ": " <> pattern_to_string(f.1)
+          _ -> acc <> ", " <> f.0 <> ": " <> pattern_to_string(f.1)
+        }
+      })
+      <> "}"
     }
     PError(_) -> "$error"
   }
@@ -949,7 +927,7 @@ pub fn value_to_string(value: Value) -> String {
           })
           <> ">"
       }
-      "$fn(" <> implicit_str <> name <> ") => " <> term_to_string(body)
+      "$fn" <> implicit_str <> "(" <> name <> ") => " <> term_to_string(body)
     }
     VPi(_, implicits, #(name, domain), codomain) -> {
       let implicit_str = case implicits {
@@ -964,8 +942,9 @@ pub fn value_to_string(value: Value) -> String {
           })
           <> ">"
       }
-      "$fn("
+      "$pi"
       <> implicit_str
+      <> "("
       <> name
       <> ": "
       <> value_to_string(domain)
@@ -979,7 +958,7 @@ pub fn value_to_string(value: Value) -> String {
       case fields {
         [] -> "()"
         _ ->
-          "{" 
+          "{"
           <> list.fold(fields, "", fn(acc, f) {
             case acc {
               "" -> f.0 <> ": " <> value_to_string(f.1)
@@ -989,8 +968,8 @@ pub fn value_to_string(value: Value) -> String {
           <> "}"
       }
     VRcdT(fields) ->
-      "$" 
-      <> "{" 
+      "$"
+      <> "{"
       <> list.fold(fields, "", fn(acc, f) {
         let field_str = f.0 <> ": " <> value_to_string(f.1)
         let with_default = case f.2 {
