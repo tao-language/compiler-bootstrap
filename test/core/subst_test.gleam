@@ -654,10 +654,10 @@ pub fn force_shift_term_record_test() {
 pub fn force_shift_term_call_test() {
   // Call args should be shifted
   let t =
-    Call("f", [Var(0, single("t", 1, 1)), Var(1, single("t", 1, 2))], [], None, single("t", 1, 3))
+    Call("f", [#(Var(0, single("t", 1, 1)), Var(1, single("t", 1, 2)))], Var(2, single("t", 1, 3)), single("t", 1, 4))
   let shifted = shift_term(t, 1)
   assert case shifted {
-    Call("f", [Var(1, _), Var(2, _)], [], None, _) -> True
+    Call("f", [#(Var(1, _), Var(2, _))], Var(3, _), _) -> True
     _ -> False
   }
 }

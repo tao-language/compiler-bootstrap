@@ -4,7 +4,7 @@ import core/ast.{
   Ann, App, Call,
   Case as CoreCase, Ctr, EApp, Err, Fix, Float as LitFloat, HHole, HVar, Hole,
   Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PUnit, PVar, PAlias, PType, PRcd, PError, Pi, Rcd, RcdT,
-  Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, term_to_string,  literal_type_to_string, VLitT,
+  Typ, VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, term_to_string,  literal_type_to_string, VLitT,
   LitT,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
@@ -15,6 +15,7 @@ import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/string
 
 // ============================================================================
 // MAIN EVALUATION
@@ -117,19 +118,23 @@ pub fn evaluate(state: State, term: Term) -> Value {
       let scrutinee = evaluate(state, arg)
       do_match(state, state.truth_ctr, scrutinee, cases, [])
     }
-    Call(name, args, _typed_args, _return_type, _span) -> {
-      // Evaluate all arguments
-      let eval_args = list.map(args, fn(a) { evaluate(state, a) })
+    Call(name, args, return_type, _span) -> {
+      // Evaluate each (value_term, type_term) pair
+      let arg_vals = list.map(args, fn(ta) { evaluate(state, ta.0) })
+      let arg_types = list.map(args, fn(ta) { evaluate(state, ta.1) })
+      let arg_pairs = list.map2(arg_vals, arg_types, fn(v, t) { #(v, t) })
+
+      // Evaluate return type
+      let ret_type_val = evaluate(state, return_type)
+
       // Look up FFI entry
       case lookup_ffi(state, name) {
         Ok(FfiEntry(fn_name: _, impl: impl_fn)) ->
-          case
-            impl_fn(list.map(eval_args, fn(v) { #(v, VNeut(HHole(0), [])) }))
-          {
+          case impl_fn(arg_pairs) {
             Some(result) -> result
-            None -> VErr
+            None -> VCall(name, arg_pairs, ret_type_val)
           }
-        Error(_) -> VErr
+        Error(_) -> VCall(name, arg_pairs, ret_type_val)
       }
     }
     Typ(level, _) -> VTyp(level)
@@ -142,13 +147,10 @@ pub fn evaluate(state: State, term: Term) -> Value {
       VTypeDef(name: n, params: value_params, constructors: value_constructors)
     }
     Fix(name, body, _) -> {
-      // $fix f. def evaluates to a VLam that represents the recursive
-      // function. The fix variable `f` has type Hole(-1) (uninstantiated),
-      // allowing type inference to infer its type from usage.
-      // When applied to an argument, beta-reduction substitutes the
-      // argument for `f` (Var(0)) in the body, enabling recursive calls.
-      let param_type = VNeut(HHole(-1), [])
-      VLam([], [], #(name, param_type), body)
+      // $fix f. body evaluates to a VFix value.
+      // When applied, VFix unrolls by evaluating the body with the
+      // fixpoint itself extended into the environment for recursive calls.
+      VFix(name, [], body)
     }
     Err(_, _) -> VErr
   }
@@ -211,11 +213,38 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
       let substituted = subst_term_var(0, converted_arg, body)
       evaluate(extended, substituted)
     }
+    // VFix unroll: apply fixpoint by evaluating the fix body with the
+    // VFix itself extended into the environment for recursive calls.
+    // The body is a Lambda. When applied:
+    //   Var(0) → the actual argument (Lambda parameter)
+    //   Var(1) → f (the VFix itself, for recursive calls)
+    VFix(fix_name, fix_env, fix_body) -> {
+      let body = case fix_body {
+        Ann(inner, _, _) -> inner
+        _ -> fix_body
+      }
+      case body {
+        Lam(_implicits, _param, body_term, _) -> {
+          let self = VFix(fix_name, fix_env, fix_body)
+          // Create bindings: arg at index 0 (Lambda param), self at index 1 (recursive ref)
+          let arg_binding = #("__arg", #(arg_val, VNeut(HHole(0), [])))
+          let self_binding = #("__self", #(self, VNeut(HHole(0), [])))
+          // Prepend fix_env bindings, then arg, then self
+          let env_bindings = list.map(fix_env, fn(v) {
+            #("__fix", #(v, VNeut(HHole(0), [])))
+          })
+          let all_bindings = list.append(list.append(env_bindings, [arg_binding]), [self_binding])
+          evaluate(state.State(..state, vars: list.append(all_bindings, state.vars)), body_term)
+        }
+        _ -> VErr
+      }
+    }
     // Extend neutral spine: variable or hole applied to argument
     VNeut(head, spine) -> VNeut(head, list.append(spine, [EApp(arg_val)]))
     // Error propagates
     VErr -> VErr
     // Cannot apply a type/value that isn't a function - return error
+    VCall(_, _, _) -> VErr
     VPi(_, _, _, _) | VCtr(_, _) | VLit(_) | VRcd(_) | VRcdT(_) | VTypeDef(name: _, params: _, constructors: _) | VTyp(_) | VLitT(_) -> VErr
   }
 }
@@ -734,6 +763,14 @@ pub fn eval_value_to_string(value: Value) -> String {
         }
       })
       <> "}"
+    VCall(name, args, return_type) -> {
+      let arg_strs = list.map(args, fn(a) {
+        eval_value_to_string(a.0) <> ": " <> eval_value_to_string(a.1)
+      })
+      "%" <> name <> "(" <> string.join(arg_strs, ", ") <> ") -> " <> eval_value_to_string(return_type)
+    }
+    VFix(name, _env, body) ->
+      "VFix(" <> name <> " => " <> term_to_string(body) <> ")"
     VErr -> "\"error\""
     VTypeDef(name: _, params: _, constructors: _) -> "<type _>"
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"

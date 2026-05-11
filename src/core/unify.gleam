@@ -18,7 +18,7 @@
 /// must agree. All errors accumulate in state; no early returns.
 import core/ast.{
   type Elim, type Head, type Value, type LiteralType,
-  EApp, HHole, HVar, VCtr, VErr, VLam, VLit,
+  EApp, HHole, HVar, VCtr, VCall, VFix, VErr, VLam, VLit,
   VNeut, VPi, VRcd, VRcdT, VTyp, VLitT, VTypeDef,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
@@ -193,6 +193,22 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
     // ── VTyp — same universe level unifies ───────────────────
     VTyp(l1), VTyp(l2) if l1 == l2 -> state
     VTyp(_l1), VTyp(_l2) -> add_type_mismatch_error(state, expected, actual)
+
+    // ── VCall — deferred FFI call, unifies if name and args match ──
+    VCall(n1, args1, ret1), VCall(n2, args2, ret2) -> {
+      case n1 == n2 && list.length(args1) == list.length(args2) {
+        True -> match_values(state, ret1, ret2)
+        False -> add_type_mismatch_error(state, expected, actual)
+      }
+    }
+
+    // ── VFix — recursive fixpoint, unifies if names match ──
+    VFix(n1, _, _), VFix(n2, _, _) -> {
+      case n1 == n2 {
+        True -> state
+        False -> add_type_mismatch_error(state, expected, actual)
+      }
+    }
 
     // ── VErr — unifies with any value (error recovery) ───────
     VErr, _ -> state

@@ -70,11 +70,12 @@ pub type Term {
   Ctr(tag: String, arg: Term, span: Span)
   Match(arg: Term, cases: List(Case), span: Span)
   Ann(term: Term, type_: Term, span: Span)
+  /// FFI builtin call: `%name(arg1: T1, arg2: T2, ...) -> ReturnType`
+  /// `args` are (value, type) pairs for each argument.
   Call(
     name: String,
-    args: List(Term),
-    typed_args: List(#(Term, Term)),
-    return_type: Option(Term),
+    args: List(#(Term, Term)),
+    return_type: Term,
     span: Span,
   )
   Rcd(fields: List(#(String, Term)), span: Span)
@@ -125,11 +126,12 @@ pub type NamedTerm {
   NamedCtr(tag: String, arg: NamedTerm, span: Span)
   NamedMatch(arg: NamedTerm, cases: List(NamedCase), span: Span)
   NamedAnn(term: NamedTerm, type_: NamedTerm, span: Span)
+  /// FFI builtin call: `%name(arg1: T1, arg2: T2, ...) -> ReturnType`
+  /// `args` are (value, type) pairs for each argument.
   NamedCall(
     name: String,
-    args: List(NamedTerm),
-    typed_args: List(#(NamedTerm, NamedTerm)),
-    return_type: Option(NamedTerm),
+    args: List(#(NamedTerm, NamedTerm)),
+    return_type: NamedTerm,
     span: Span,
   )
   NamedRcd(fields: List(#(String, NamedTerm)), span: Span)
@@ -227,6 +229,20 @@ pub type Value {
   VTyp(level: Int)
   /// Evaluated literal type: $Int, $Float, $I32, $F64, etc.
   VLitT(t: LiteralType)
+  /// Deferred FFI call — FFI returned None (not concrete enough), carry forward
+  /// for runtime evaluation.
+  VCall(
+    name: String,
+    args: List(#(Value, Value)),
+    return_type: Value,
+  )
+  /// Fixpoint value — when applied, unrolls the fix body with the VFix
+  /// itself extended into the environment for recursive calls.
+  VFix(
+    name: String,
+    env: Env,
+    body: Term,
+  )
   VErr
 }
 
@@ -286,6 +302,14 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
         }
         #(f.0, subst(type_args, f.1), new_default)
       }))
+    VCall(name, args, return_type) ->
+      VCall(
+        name,
+        list.map(args, fn(a) { #(subst(type_args, a.0), subst(type_args, a.1)) }),
+        subst(type_args, return_type),
+      )
+    VFix(name, env, body) ->
+      VFix(name, list.map(env, fn(v) { subst(type_args, v) }), body)
     VTypeDef(name: n, params: p, constructors: c) -> VTypeDef(name: n, params: p, constructors: c)
     VTyp(level) -> VTyp(level)
     VLitT(ltype) -> VLitT(ltype)
@@ -435,20 +459,16 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
         shift_term_from(type_, shift, from),
         span,
       )
-    Call(name, args, typed_args, return_type, span) ->
+    Call(name, args, return_type, span) ->
       Call(
         name,
-        list.map(args, fn(a) { shift_term_from(a, shift, from) }),
-        list.map(typed_args, fn(ta) {
+        list.map(args, fn(ta) {
           #(
             shift_term_from(ta.0, shift, from),
             shift_term_from(ta.1, shift, from),
           )
         }),
-        case return_type {
-          Some(t) -> Some(shift_term_from(t, shift, from))
-          None -> None
-        },
+        shift_term_from(return_type, shift, from),
         span,
       )
     Rcd(fields, span) ->
@@ -624,18 +644,14 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
       )
     }
     
-    NamedCall(name, args, typed_args, return_type, span) -> {
+    NamedCall(name, args, return_type, span) -> {
       Call(
         name,
-        list.map(args, fn(a) { named_term_to_debruijn(a, env) }),
-        list.map(typed_args, fn(ta) {
+        list.map(args, fn(ta) {
           #(named_term_to_debruijn(ta.0, env), named_term_to_debruijn(ta.1, env))
         }),
-        case return_type {
-          Some(t) -> Some(named_term_to_debruijn(t, env))
-          None -> None
-        },
-        span
+        named_term_to_debruijn(return_type, env),
+        span,
       )
     }
     
@@ -774,30 +790,19 @@ pub fn term_to_string(term: Term) -> String {
       <> "\n}"
     Ann(term, type_, _) ->
       term_to_string(term) <> " : " <> term_to_string(type_)
-    Call(name, args, typed_args, return_type, _) ->
-      "call("
+    Call(name, args, return_type, _) ->
+      "%"
       <> name
-      <> "["
-      <> list.fold(args, "", fn(acc, a) {
+      <> "("
+      <> list.fold(args, "", fn(acc, ta) {
+        let arg_str = term_to_string(ta.0) <> ": " <> term_to_string(ta.1)
         case acc {
-          "" -> term_to_string(a)
-          _ -> acc <> ", " <> term_to_string(a)
+          "" -> arg_str
+          _ -> acc <> ", " <> arg_str
         }
       })
-      <> "]"
-      <> case typed_args {
-        [] -> ""
-        _ ->
-          " |typed "
-          <> list.fold(typed_args, "", fn(acc, ta) {
-            acc <> term_to_string(ta.0) <> ":" <> term_to_string(ta.1) <> ", "
-          })
-      }
-      <> case return_type {
-        Some(t) -> " -> " <> term_to_string(t)
-        None -> ""
-      }
-      <> "])"
+      <> ") -> "
+      <> term_to_string(return_type)
     Rcd(fields, _) ->
       case fields {
         [] -> "()"
@@ -1003,6 +1008,14 @@ pub fn value_to_string(value: Value) -> String {
     }
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
     VLitT(ltype) -> literal_type_to_string(ltype)
+    VCall(name, args, return_type) -> {
+      let arg_strs = list.map(args, fn(a) {
+        value_to_string(a.0) <> ": " <> value_to_string(a.1)
+      })
+      "VCall(" <> name <> "(" <> string.join(arg_strs, ", ") <> ") -> " <> value_to_string(return_type) <> ")"
+    }
+    VFix(name, _env, body) ->
+      "VFix(" <> name <> " => " <> term_to_string(body) <> ")"
     VErr -> "\"error\""
   }
 }

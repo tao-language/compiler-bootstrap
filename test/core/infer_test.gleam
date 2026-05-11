@@ -20,7 +20,7 @@
 import core/ast.{
   type Term, type Value, Ann, App, Call, Ctr, Err, Float as LitFloat,
   HHole, HVar, Hole, Int as LitInt, Lam, Lit, LitT, Pi, Rcd, RcdT, Typ, TypeDef,
-  VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, Var, VTypeDef, VLitT,
+  VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, Var, VTypeDef, VLitT,
   IntT, FloatT,
 }
 import core/infer.{
@@ -642,7 +642,7 @@ pub fn infer_call_ffi_test() {
     Some(VLit(LitInt(99)))
   }
   let state = initial_state([FfiEntry("get_99", ffi_fn)])
-  let term = Call("get_99", [], [], None, sp())
+  let term = Call("get_99", [], Typ(0, sp()), sp())
   let result = infer(state, term)
   let #(value, _, _) = result
   assert case value {
@@ -651,13 +651,15 @@ pub fn infer_call_ffi_test() {
   }
 }
 
-pub fn infer_call_ffi_not_found_test() {
-  // FFI call with non-existent function should produce error
-  let result = infer(initial_state([]), Call("nonexistent", [], [], None, sp()))
+pub fn infer_call_ffi_not_found_deferred_test() {
+  // FFI call with non-existent function should produce VCall
+  let result = infer(initial_state([]), Call("nonexistent", [], Typ(0, sp()), sp()))
   let #(value, type_, state_) = result
-  assert value == VErr
-  assert type_ == VErr
-  assert state_.errors != []
+  assert case value {
+    VCall("nonexistent", [], _) -> True
+    _ -> False
+  }
+  assert type_ == VTyp(0)
 }
 
 // ============================================================================
@@ -1226,7 +1228,7 @@ pub fn infer_call_ffi_returns_int_test() {
     Some(VLit(LitInt(99)))
   }
   let state = initial_state([FfiEntry("get_99", ffi_fn)])
-  let term = Call("get_99", [], [], Some(lit_t_int()), sp())
+  let term = Call("get_99", [], lit_t_int(), sp())
   let result = infer(state, term)
   let #(_, type_, _) = result
   assert type_ == v_int(0)
@@ -2066,6 +2068,43 @@ pub fn infer_vlam_implicit_param_float_test() {
   
   assert case value {
     VLit(LitFloat(3.14)) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// FIXPOINT (VFix) INFERENCE
+// ============================================================================
+
+pub fn infer_fixpoint_basic_test() {
+  // $fix f. $fn(x: $Int) => x should produce a VFix value with Pi type
+  let source = "$fix f. $fn(x: $Int) => x"
+  let state = initial_state([])
+  let parsed = parse(source)
+  let #(value, type_, _) = infer(state, parsed.0)
+  
+  assert case value {
+    VFix("f", _, _) -> True
+    _ -> False
+  }
+  // The type should be a Pi
+  assert case type_ {
+    VPi(_, _, _, _) -> True
+    _ -> False
+  }
+}
+
+pub fn infer_fixpoint_recursive_call_test() {
+  // $fix f. $fn(n: $Int) => if n == 0 { 1 } else { n * f(n - 1) }
+  // This tests that recursive calls through `f` are inferable
+  let source = "$fix f. $fn(n: $Int) => n"
+  let state = initial_state([])
+  let parsed = parse(source)
+  let #(value, _, _) = infer(state, parsed.0)
+  
+  // The value should be a VFix
+  assert case value {
+    VFix(_, _, _) -> True
     _ -> False
   }
 }

@@ -173,7 +173,9 @@ pub type Term {
   // Source: $match arg { | pattern ? guard => body }
   Ann(term: Term, type_: Term, span: Span)
   // Source: 42 : $I32
-  Call(name: String, args: List(Term), typed_args: List(#(Term, Term)), return_type: Option(Term), span: Span)
+  /// FFI builtin call: `%name(arg1: T1, arg2: T2, ...) -> ReturnType`
+  /// `args` are (value, type) pairs for each argument.
+  Call(name: String, args: List(#(Term, Term)), return_type: Term, span: Span)
   // Source: %i32_add(1: $I32, 2: $I32) -> $I32
   Rcd(fields: List(#(String, Term)), span: Span)
   // Source: {x: 1, y: 2}, {} (unit)
@@ -220,6 +222,9 @@ pub type Value {
   VCtr(tag: String, arg: Value)                    // Constructor value
   VRcd(fields: List(#(String, Value)))             // Evaluated record
   VTypeDef(name: String, params: List(#(String, Value)), constructors: List(#(String, List(String), Value, Value, Span)))  // Type definition value
+  /// Deferred FFI call — FFI returned None (not concrete enough), carry forward
+  /// for runtime evaluation.
+  VCall(name: String, args: List(#(Value, Value)), return_type: Value)  // Deferred FFI call
   VErr                                             // Error value
 }
 

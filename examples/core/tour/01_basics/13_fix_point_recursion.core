@@ -6,7 +6,7 @@
 $let factorial = $fix f. $fn(n: $Int) =>
   $match n {
     | 0 => 1
-    | n => %i32_mul(n, f(%i32_sub(n, 1)))
+    | n => %i32_mul(n, f(%i32_sub(n, 1))) -> $I32
   }
 
 // Test: factorial of 5 = 120

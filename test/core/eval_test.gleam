@@ -17,8 +17,8 @@
 /// - Edge cases (empty match, no match, nested app)
 import core/ast.{
   type Value, Ann, App, Call, Case as CoreCase, Ctr, EApp, Err,
-  Float as LitFloat, HHole, HVar, Hole, Int as LitInt, Lam, Lit, Match, PAny,
-  PCtr as Pctr, PLit, PUnit, PVar, Pi, Rcd, Typ, VCtr, VErr, VLam, VLit, VNeut,
+  Float as LitFloat, HHole, HVar, Hole, Int as LitInt, Fix, Lam, Lit, Match, PAny,
+  PCtr as Pctr, PLit, PUnit, PVar, Pi, Rcd, Typ, VCtr, VCall, VFix, VErr, VLam, VLit, VNeut,
   VPi, VRcd, Var,
 }
 import core/eval.{
@@ -522,25 +522,32 @@ pub fn eval_call_with_ffi_test() {
     }
   }
   let state = initial_state([FfiEntry("double", ffi_fn)])
+  let arg = #(Lit(LitInt(42), single("", 1, 1)), Typ(0, single("", 1, 1)))
   let call =
-    Call("double", [Lit(LitInt(42), single("", 1, 1))], [], None, single("", 1, 1))
+    Call("double", [arg], Typ(0, single("", 1, 1)), single("", 1, 1))
   let value = evaluate(state, call)
   assert value == VLit(LitInt(99))
 }
 
-pub fn eval_call_with_missing_ffi_returns_error_test() {
+pub fn eval_call_with_missing_ffi_deferred_test() {
   let state = initial_state([])
-  let call = Call("nonexistent", [], [], None, single("", 1, 1))
+  let call = Call("nonexistent", [], Typ(0, single("", 1, 1)), single("", 1, 1))
   let value = evaluate(state, call)
-  assert value == VErr
+  assert case value {
+    VCall("nonexistent", [], _) -> True
+    _ -> False
+  }
 }
 
-pub fn eval_call_ffi_returns_none_returns_error_test() {
+pub fn eval_call_ffi_returns_none_deferred_test() {
   let ffi_fn = fn(_args: List(#(Value, Value))) -> Option(Value) { None }
   let state = initial_state([FfiEntry("bad_ffi", ffi_fn)])
-  let call = Call("bad_ffi", [], [], None, single("", 1, 1))
+  let call = Call("bad_ffi", [], Typ(0, single("", 1, 1)), single("", 1, 1))
   let value = evaluate(state, call)
-  assert value == VErr
+  assert case value {
+    VCall("bad_ffi", [], _) -> True
+    _ -> False
+  }
 }
 
 // ============================================================================
@@ -851,7 +858,8 @@ pub fn eval_call_evaluates_args_first_test() {
   }
   // Use a simpler arg - just a literal
   let state = initial_state([FfiEntry("echo", ffi_fn)])
-  let call = Call("echo", [Lit(LitInt(99), single("", 1, 1))], [], None, single("", 1, 1))
+  let arg = #(Lit(LitInt(99), single("", 1, 1)), Typ(0, single("", 1, 1)))
+  let call = Call("echo", [arg], Typ(0, single("", 1, 1)), single("", 1, 1))
   let value = evaluate(state, call)
   assert value == VLit(LitInt(99))
 }
@@ -925,4 +933,19 @@ pub fn truth_ctr_preserved_after_eval_test() {
   let value = evaluate(state, Lit(LitInt(42), single("", 1, 1)))
   // Evaluation doesn't modify the state
   let _ = value
+}
+
+// ============================================================================
+// FIXPOINT (VFix) EVALUATION
+// ============================================================================
+
+pub fn fixpoint_basic_test() {
+  // VFix evaluated directly returns VFix (not a VLam)
+  let state = initial_state([])
+  let fix_term = Fix("f", Lam([], #("x", Typ(0, single("", 1, 1))), Var(0, single("", 1, 1)), single("", 1, 1)), single("", 1, 1))
+  let value = evaluate(state, fix_term)
+  assert case value {
+    VFix("f", _, _) -> True
+    _ -> False
+  }
 }

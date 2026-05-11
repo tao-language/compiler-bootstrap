@@ -20,8 +20,8 @@ import gleam/string
 import simplifile
 import syntax/grammar.{type ParseError, ParseError as ParseErrorCtor}
 import core/ast.{type Value, type Head, type LiteralType,
-  VLit, VNeut, VCtr, VPi, VLam, VRcd, VRcdT, VTyp, VTypeDef, VErr, HVar, HHole, Int, Float as AstFloat,
-  VLitT, IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T}
+  VLit, VNeut, VCtr, VCall, VFix, VPi, VLam, VRcd, VRcdT, VTyp, VTypeDef, VErr, HVar, HHole, Int, Float as AstFloat,
+  VLitT, IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T, term_to_string}
 import gleam/option.{Some, None}
 
 /// CLI command types.
@@ -217,6 +217,12 @@ fn format_value(value: Value) -> String {
       )
       <> " }"
     VLam(_env, _implicits, param, _) -> "$fn(" <> param.0 <> ") => <lambda>"
+    VCall(name, args, return_type) ->
+      "%" <> name <> "(" <> string.join(
+        list.map(args, fn(a) { format_value(a.0) <> ": " <> format_value(a.1) }),
+        with: ", ",
+      ) <> ") -> " <> format_value(return_type)
+    VFix(name, _env, body) -> "VFix(" <> name <> " => " <> term_to_string(body) <> ")"
     VTypeDef(name: n, params: _, constructors: _) -> "<VTypeDef " <> n <> ">"
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
     VLitT(t) -> format_litt(t)

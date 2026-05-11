@@ -155,7 +155,7 @@ fn term_span(term: Term) -> Span {
     Ctr(_, _, span) -> span
     Match(_, _, span) -> span
     Ann(_, _, span) -> span
-    Call(_, _, _, _, span) -> span
+    Call(_, _, _, span) -> span
     Rcd(_, span) -> span
     RcdT(_, span) -> span
     Typ(_, span) -> span
@@ -513,28 +513,32 @@ fn parse_app_chain(p: Parser, fun: Term, span: Span) -> #(Term, Parser) {
 }
 
 // FFI call: %name(arg: Type, arg: Type) -> ReturnType
+// The return type is required in the AST but optional in source.
+// When `-> Type` is missing, synthesize a Hole as default.
 fn parse_ffi_call(p: Parser, name: String, _span: Span) -> #(Term, Parser) {
   let p1 = skip("(", p)
   let #(typed_args, p2) = parse_typed_arg_list(p1)
   let p3 = skip(")", p2)
-  // Check for return type annotation: `-> Type`
+  // Check for return type annotation: `-> Type` (optional in source)
   let p_arrow = skip("->", p3)
-  let #(rt, p4) = case p_arrow {
+  let #(ret_type, p4) = case p_arrow {
     #(_, new_pos, env, fn_, errors) -> {
       let #(tokens, old_pos, _, _, _) = p3
       case new_pos > old_pos {
         True -> {
           // `->` was consumed, parse return type
           let #(type_, p5) = parse_term(#(tokens, new_pos, env, fn_, errors))
-          #(Some(type_), p5)
+          #(type_, p5)
         }
-        False -> #(None, p3)
+        False -> {
+          // No return type — synthesize a Hole as default
+          #(Hole(0, single("", 0, 0)), p3)
+        }
       }
     }
   }
   let final_span = current_span(p4)
-  let arg_list = list.map(typed_args, fn(t) { t.0 })
-  #(Call(name, arg_list, typed_args, rt, final_span), p4)
+  #(Call(name, typed_args, ret_type, final_span), p4)
 }
 
 // Parse a comma-separated list of typed arguments (arg: Type, arg: Type)
@@ -1554,7 +1558,7 @@ fn term_to_string(term: Term) -> String {
     Ctr(_, _, _) -> "ctr"
     Match(_, _, _) -> "match"
     Ann(_, _, _) -> "ann"
-    Call(_, _, _, _, _) -> "call"
+    Call(_, _, _, _) -> "call"
     Rcd(_, _) -> "rcd"
     RcdT(_, _) -> "rcd_type"
     Typ(_, _) -> "type"

@@ -10,8 +10,8 @@ $let Expr = $type<a: $Type> {
 $let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr {
 | #LitInt(n) => n
 | #LitBool(b) => b
-| #Add({x, y}) => %i32_add(eval(x), eval(y))
-| #IsZero(e) => %i32_eq(eval(x), 0: $I32)
+| #Add({x, y}) => %i32_add(eval(x), eval(y)) -> $I32
+| #IsZero(e) => %i32_eq(eval(x), 0: $I32) -> #Bool({})
 }
 
 eval(#Add({x: #LitInt(1), y: #LitInt(2)})) : $I32

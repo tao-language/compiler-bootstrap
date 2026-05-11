@@ -25,7 +25,7 @@
 /// De Bruijn index 0).
 import core/ast.{
   type Head, type Term, type Value, Ann, App, Call, Case, Ctr, EApp, Err, Fix, HHole,
-  HVar, Hole, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi,
+  HVar, Hole, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi,
   VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, VLitT, LitT,
 }
 import gleam/option.{None, Some}
@@ -101,6 +101,19 @@ fn free_holes_from(value: Value, binding: Int) -> List(Int) {
     VTypeDef(name: _, params: _, constructors: _) -> []
     VTyp(_) -> []
     VLitT(_) -> []
+    VFix(_, env, body) -> {
+      let env_holes = list.fold(env, [], fn(acc, v) {
+        list.append(acc, free_holes_from(v, binding))
+      })
+      list.append(env_holes, free_holes_term(body, binding))
+    }
+    VCall(_, args, _) -> {
+      list.fold(args, [], fn(acc, ta) {
+        let val_h = free_holes_from(ta.0, binding)
+        let type_h = free_holes_from(ta.1, binding)
+        list.append(list.append(acc, val_h), type_h)
+      })
+    }
     VErr -> []
   }
 }
@@ -156,20 +169,14 @@ fn free_holes_term(term: Term, binding: Int) -> List(Int) {
       let type_holes = free_holes_term(type_, binding)
       list.append(term_holes, type_holes)
     }
-    Call(_, args, typed_args, return_type, _) -> {
-      let args_holes = list.fold(args, [], fn(acc, a) {
-        list.append(acc, free_holes_term(a, binding))
-      })
-      let typed_holes = list.fold(typed_args, [], fn(acc, ta) {
+    Call(_, args, return_type, _) -> {
+      let arg_holes = list.fold(args, [], fn(acc, ta) {
         let term_h = free_holes_term(ta.0, binding)
         let type_h = free_holes_term(ta.1, binding)
         list.append(list.append(acc, term_h), type_h)
       })
-      let ret_holes = case return_type {
-        Some(t) -> free_holes_term(t, binding)
-        None -> []
-      }
-      list.append(list.append(args_holes, typed_holes), ret_holes)
+      let ret_holes = free_holes_term(return_type, binding)
+      list.append(arg_holes, ret_holes)
     }
     Rcd(fields, _) -> {
       list.fold(fields, [], fn(acc, f) {
@@ -260,6 +267,17 @@ fn free_levels_from(value: Value, binding: Int) -> List(Int) {
     VTypeDef(name: _, params: _, constructors: _) -> []
     VTyp(_) -> []
     VLitT(_) -> []
+    VFix(_, env, body) -> {
+      let env_levels = list.fold(env, [], fn(acc, v) {
+        list.append(acc, free_levels_from(v, binding))
+      })
+      list.append(env_levels, free_levels_term(body, binding))
+    }
+    ast.VCall(_, args, _) -> {
+      list.fold(args, [], fn(acc, ta) {
+        list.append(acc, free_levels_from(ta.0, binding))
+      })
+    }
     VErr -> []
   }
 }
@@ -319,20 +337,14 @@ fn free_levels_term(term: Term, binding: Int) -> List(Int) {
       let type_levels = free_levels_term(type_, binding)
       list.append(term_levels, type_levels)
     }
-    Call(_, args, typed_args, return_type, _) -> {
-      let args_levels = list.fold(args, [], fn(acc, a) {
-        list.append(acc, free_levels_term(a, binding))
-      })
-      let typed_levels = list.fold(typed_args, [], fn(acc, ta) {
+    Call(_, args, return_type, _) -> {
+      let arg_levels = list.fold(args, [], fn(acc, ta) {
         let term_l = free_levels_term(ta.0, binding)
         let type_l = free_levels_term(ta.1, binding)
         list.append(list.append(acc, term_l), type_l)
       })
-      let ret_levels = case return_type {
-        Some(t) -> free_levels_term(t, binding)
-        None -> []
-      }
-      list.append(list.append(args_levels, typed_levels), ret_levels)
+      let ret_levels = free_levels_term(return_type, binding)
+      list.append(arg_levels, ret_levels)
     }
     Rcd(fields, _) -> {
       list.fold(fields, [], fn(acc, f) {
@@ -438,6 +450,16 @@ fn subst_holes(value: Value, subst: List(#(Int, Int))) -> Value {
         }
         #(f.0, subst_holes(f.1, subst), new_default)
       }))
+    VCall(name, args, return_type) ->
+      VCall(
+        name,
+        list.map(args, fn(a) {
+          #(subst_holes(a.0, subst), subst_holes(a.1, subst))
+        }),
+        subst_holes(return_type, subst),
+      )
+    VFix(name, env, body) ->
+      VFix(name, env, subst_holes_term(body, subst))
     VTypeDef(name: n, params: p, constructors: c) -> VTypeDef(
       name: n,
       params: p,
@@ -486,15 +508,13 @@ fn subst_holes_term(term: Term, subst: List(#(Int, Int))) -> Term {
       )
     Ann(term, type_, span) ->
       Ann(subst_holes_term(term, subst), subst_holes_term(type_, subst), span)
-    Call(name, args, typed_args, return_type, span) ->
+    Call(name, args, return_type, span) ->
       Call(
         name,
-        list.map(args, fn(a) { subst_holes_term(a, subst) }),
-        list.map(typed_args, fn(ta) { #(subst_holes_term(ta.0, subst), subst_holes_term(ta.1, subst)) }),
-        case return_type {
-          Some(t) -> Some(subst_holes_term(t, subst))
-          None -> None
-        },
+        list.map(args, fn(ta) {
+          #(subst_holes_term(ta.0, subst), subst_holes_term(ta.1, subst))
+        }),
+        subst_holes_term(return_type, subst),
         span,
       )
     Rcd(fields, span) ->

@@ -374,7 +374,7 @@ pub fn parse_nested_match_structure_test() {
 pub fn parse_simple_fix_test() {
   let #(term, errors) = parse("$fix x. x")
   let term_ok = case term {
-    App(Lam([], #("x", Rcd(_, _)), _, _), _, _) -> True
+    Fix("x", Var(0, _), _) -> True
     _ -> False
   }
   let errors_ok = case errors {
@@ -746,7 +746,7 @@ pub fn parse_ffi_call_in_match_body_test() {
   // Debug: Parse just the FFI call to see if it works standalone
   let #(term, errors) = parse("%i32_add(1, 2)")
   assert case term {
-    Call("i32_add", args, _, _, _) -> list.length(args) == 2
+    Call("i32_add", args, _, _) -> list.length(args) == 2
     _ -> False
   }
   let _ = errors
@@ -754,9 +754,9 @@ pub fn parse_ffi_call_in_match_body_test() {
 
 pub fn parse_ffi_call_with_var_args_test() {
   // Debug: Parse FFI call with variable arguments
-  let #(term, errors) = parse("%i32_add(eval(x), eval(y))")
+  let #(term, errors) = parse("%i32_add(eval(x), eval(y)) -> $Int")
   assert case term {
-    Call("i32_add", args, _, _, _) -> list.length(args) == 2
+    Call("i32_add", args, _, _) -> list.length(args) == 2
     _ -> False
   }
   let _ = errors
@@ -993,7 +993,7 @@ pub fn debug_type_specific_term_test() {
     Var(_, _) -> True
     Ctr(_, _, _) -> True
     Rcd(_, _) -> True
-    Call(_, _, _, _, _) -> True
+    Call(_, _, _, _) -> True
     Hole(_, _) -> True
     Err(_, _) -> True
     RcdT(_, _) -> True

@@ -144,7 +144,9 @@ pub type Term {
   Ctr(tag: String, arg: Term, span: Span)
   Match(arg: Term, cases: List(Case), span: Span)
   Ann(term: Term, type_: Term, span: Span)
-  Call(name: String, args: List(Term), typed_args: List(#(Term, Term)), return_type: Option(Term), span: Span)
+  /// FFI builtin call: `%name(arg1: T1, arg2: T2, ...) -> ReturnType`
+  /// `args` are (value, type) pairs for each argument.
+  Call(name: String, args: List(#(Term, Term)), return_type: Term, span: Span)
   Rcd(fields: List(#(String, Term)), span: Span)
   Typ(level: Int, span: Span)
   TypeDef(name: String, constructors: List(#(String, Term, Term, Span)), span: Span)
@@ -160,6 +162,9 @@ pub type Value {
   VCtr(tag: String, arg: Value)
   VRcd(fields: List(#(String, Value)))
   VTypeDef(name: String, constructors: List(#(String, Value, Value, Span)))
+  /// Deferred FFI call — FFI returned None (not concrete enough), carry forward
+  /// for runtime evaluation.
+  VCall(name: String, args: List(#(Value, Value)), return_type: Value)
   VErr
 }
 ```
@@ -269,9 +274,8 @@ FFI builtins use `%` prefix and support typed arguments with return types:
 
 The Call term carries:
 - `name`: builtin function name
-- `args`: untyped argument terms
-- `typed_args`: paired (term, type) for type checking
-- `return_type`: optional expected return type
+- `args`: list of (value_term, type_term) pairs — both must be fully typed
+- `return_type`: the expected return type term (required, not optional)
 
 ### Tao AST (High-Level)
 

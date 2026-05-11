@@ -34,7 +34,7 @@ pub fn infer(state: state.State, term: ast.Term) -> #(ast.Value, ast.Value, stat
     ast.App(fun, arg, span) -> infer_app(state, fun, arg, span)
     ast.Ann(inner, type_, span) -> infer_ann(state, inner, type_, span)
     ast.Match(arg, cases, span) -> infer_match(state, arg, cases, span)
-    ast.Call(name, args, typed_args, return_type, span) -> infer_call(state, name, args, typed_args, return_type, span)
+    ast.Call(name, args, return_type, span) -> infer_call(state, name, args, return_type, span)
     ast.Rcd(fields, span) -> infer_rcd(state, fields, span)
     ast.RcdT(fields, span) -> infer_rcd_type(state, fields, span)
     ast.Ctr(tag, arg, span) -> infer_ctr(state, tag, arg, span)
@@ -302,10 +302,9 @@ pub fn infer_fix(
   // argument for `f` in the body, enabling recursive calls.
   let shifted_body = ast.shift_term_from(body, -1, 1)
 
-  let fix_value = ast.VLam(
-    [],
-    [],
-    #(name, hole_ref),
+  let fix_value = ast.VFix(
+    name,
+    [bound_value],
     shifted_body,
   )
 
@@ -667,38 +666,37 @@ fn extract_tags_from_pattern(pattern: ast.Pattern) -> List(String) {
 fn infer_call(
   state: state.State,
   name: String,
-  args: List(ast.Term),
-  typed_args: List(#(ast.Term, ast.Term)),
-  return_type: Option(ast.Term),
+  args: List(#(ast.Term, ast.Term)),
+  return_type: ast.Term,
   span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
-  // If typed args are provided, validate them and use the return type if present
-  let validated_args = case typed_args {
-    [] -> args
-    _ -> list.map(typed_args, fn(ta) { ta.0 })
-  }
+  // Evaluate each (value_term, type_term) pair
+  let arg_vals = list.map(args, fn(ta) { evaluate(state, ta.0) })
+  let arg_types = list.map(args, fn(ta) { evaluate(state, ta.1) })
+  let arg_pairs = list.map2(arg_vals, arg_types, fn(v, t) { #(v, t) })
+
+  // Evaluate return type
+  let ret_type_val = evaluate(state, return_type)
+
   case state.lookup_ffi(state, name) {
-    Ok(FfiEntry(_fn_name, impl_fn)) -> {
-      let eval_args = list.map(validated_args, fn(a) { evaluate(state, a) })
-      let arg_types = list.map(eval_args, fn(_v) { ast.VNeut(ast.HHole(0), []) })
-      let arg_pairs = list.map2(eval_args, arg_types, fn(v, t) { #(v, t) })
-      let result = case impl_fn(arg_pairs) {
-        Some(r) -> r
-        None -> ast.VErr
+    Ok(FfiEntry(_fn_name, impl_fn)) ->
+      case impl_fn(arg_pairs) {
+        Some(r) -> #(r, ret_type_val, state)
+        None -> {
+          // FFI couldn't evaluate (not concrete enough) — defer to runtime
+          let vcall = ast.VCall(name, arg_pairs, ret_type_val)
+          #(vcall, ret_type_val, state)
+        }
       }
-      // If return type is specified, check against it
-      let result_type = case return_type {
-        Some(rt) -> evaluate(state, rt)
-        None -> result
-      }
-      #(result, result_type, state)
-    }
     Error(_) -> {
+      // FFI not found — defer to runtime (will fail at runtime if not defined)
+      // Also record the error for diagnostics
       let new_state = state.with_err(
         state,
         state.CtrUndefined(name, span),
       )
-      #(ast.VErr, ast.VErr, new_state)
+      let vcall = ast.VCall(name, arg_pairs, ret_type_val)
+      #(vcall, ret_type_val, new_state)
     }
   }
 }
@@ -1110,6 +1108,7 @@ fn unify_rcd_vs_rcdt(
             }))
             ast.VRcdT(inner) -> ast.VRcdT(inner)
             ast.VCtr(_, _) -> ast.VTyp(0)
+            ast.VCall(_, _, _) -> value1
             ast.VNeut(_, _) -> value1
             ast.VTypeDef(_, _, _) -> ast.VTyp(0)
             ast.VTyp(lvl) -> ast.VTyp(lvl + 1)
@@ -1117,6 +1116,7 @@ fn unify_rcd_vs_rcdt(
             ast.VErr -> ast.VErr
             ast.VLam(_, _, _, _) -> ast.VTyp(0)
             ast.VPi(_, _, _, _) -> ast.VTyp(0)
+            ast.VFix(_, _, _) -> ast.VTyp(0)
           }
           case unify_type_pattern(field_type, type2, acc) {
             Some(new_acc) -> unify_rcd_vs_rcdt(rest1, fields2, new_acc)
@@ -1175,9 +1175,18 @@ pub fn apply_unify_bindings(
         }
         #(f.0, apply_unify_bindings(bindings, f.1), new_default)
       }))
+    ast.VCall(name, args, return_type) ->
+      ast.VCall(
+        name,
+        list.map(args, fn(a) {
+          #(apply_unify_bindings(bindings, a.0), apply_unify_bindings(bindings, a.1))
+        }),
+        apply_unify_bindings(bindings, return_type),
+      )
     ast.VTypeDef(name, params, constructors) -> ast.VTypeDef(name, params, constructors)
     ast.VTyp(level) -> ast.VTyp(level)
     ast.VLitT(t) -> ast.VLitT(t)
+    ast.VFix(name, env, body) -> ast.VFix(name, env, body)
     ast.VErr -> ast.VErr
   }
 }

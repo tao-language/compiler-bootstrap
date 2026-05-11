@@ -24,7 +24,7 @@
 /// ```
 import core/ast.{
   type Term, type Value, type Elim, type Head,
-  Ann, App, Call, Case, Ctr, EApp, Err, Fix, HHole, HVar, Hole, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, VCtr, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, LitT, VLitT,
+  Ann, App, Call, Case, Ctr, EApp, Err, Fix, HHole, HVar, Hole, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, LitT, VLitT,
   make_neut, shift_opt, shift_term, value_to_string, term_to_string,
 }
 import core/state.{type State, lookup_var}
@@ -185,15 +185,13 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
         subst_term_from(idx, value, type_, from),
         span,
       )
-    Call(name, args, typed_args, return_type, span) ->
+    Call(name, args, return_type, span) ->
       Call(
         name,
-        list.map(args, fn(a) { subst_term_from(idx, value, a, from) }),
-        list.map(typed_args, fn(ta) { #(subst_term_from(idx, value, ta.0, from), subst_term_from(idx, value, ta.1, from)) }),
-        case return_type {
-          Some(t) -> Some(subst_term_from(idx, value, t, from))
-          None -> None
-        },
+        list.map(args, fn(ta) {
+          #(subst_term_from(idx, value, ta.0, from), subst_term_from(idx, value, ta.1, from))
+        }),
+        subst_term_from(idx, value, return_type, from),
         span,
       )
     Rcd(fields, span) ->
@@ -333,6 +331,20 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
         constructors: typed_constructors,
         span: single("", 0, 0),
       )
+    }
+    VCall(name, args, return_type) ->
+      Call(
+        name,
+        list.map(args, fn(a) {
+          #(force_levels_to_indices(a.0, n), force_levels_to_indices(a.1, n))
+        }),
+        force_levels_to_indices(return_type, n),
+        single("", 0, 0),
+      )
+    VFix(_, _, body) -> {
+      // VFix's body is already a Term - just return it
+      // VFix is a runtime value; when converted to Term, use the body
+      body
     }
     VErr -> Err("error", single("", 0, 0))
     VTyp(level) -> Typ(level, single("", 0, 0))
