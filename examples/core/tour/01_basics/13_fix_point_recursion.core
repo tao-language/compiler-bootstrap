@@ -4,7 +4,7 @@
 
 // This defines a recursive function that computes factorial.
 $let factorial = $fix f. $fn(n: $Int) =>
-  $match n {
+  $match (n) {
     | 0 => 1
     | n => %i32_mul<$I32>(n, f %i32_sub<$I32>(n, 1))
   }

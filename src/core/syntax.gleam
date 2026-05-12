@@ -94,6 +94,13 @@ pub fn parse_tokens(
   }
 }
 
+/// Check if two spans are on the same line.
+/// Used to determine if tokens are separated by spaces (same line) vs newlines.
+/// span1 is the end of the current term, span2 is the start of the next token.
+fn same_line(span1: Span, span2: Span) -> Bool {
+  span1.end_line == span2.start_line
+}
+
 fn is_continuation_token(token: Token) -> Bool {
   case token {
     Token("Punct", v, _) -> case v {
@@ -658,74 +665,100 @@ fn literal_type_to_string_named(ltype: LiteralType) -> String {
 /// `f x y z` becomes `App(App(App(f, x), y), z)`.
 /// Parenthesized terms like `f (g x)` are also supported.
 /// Stops at keywords (fun, let, match, etc.) and operators (~, :).
+/// Uses the term's own span for same-line checks in parse_app_chain.
 fn parse_app(p: Parser, span: Span) -> #(NamedTerm, Parser) {
   let #(term, rest) = parse_term(p)
-  parse_app_chain(rest, term, span)
+  parse_app_chain(rest, term, term_span_named(term))
 }
 
 /// Recursively apply arguments to a term (Haskell-style).
+/// Applications only continue on the same line (spaces, not newlines).
 fn parse_app_chain(p: Parser, fun: NamedTerm, span: Span) -> #(NamedTerm, Parser) {
   let #(tokens, pos, fn_, errors) = p
   let rest = list.drop(tokens, pos)
+  
+  // Check if next token is on the same line - if not, stop application
   case rest {
-    // Keywords stop application
-    [Token("Name", v, _), ..] -> case v {
-      "fun" | "let" | "match" | "fix" | "type" | "hole" | "unit" | "true" | "false" ->
-        #(fun, p)
-      _ -> {
-        // Variable name as application argument
-        let arg_span = current_span(p)
-        let p1 = #(tokens, pos + 1, fn_, errors)
-        let #(arg, rest2) = parse_var(p1, v, arg_span)
-        let app_span = merge(span, term_span_named(arg))
-        let app = NamedApp(fun, arg, app_span)
-        parse_app_chain(rest2, app, app_span)
-      }
-    }
-    // Match/guard operator continues the chain
-    [Token("Op", "~", _), ..rest] -> {
-      let p_rhs = #(rest, 0, fn_, errors)
-      let #(rhs, p2) = parse_pattern(p_rhs)
-      let match_span = merge(span, term_span_named(fun))
-      let match_term = NamedMatch(
-        fun,
-        [
-          NC(rhs, None, NamedCtr("True", NamedRcd([], match_span), match_span), match_span),
-          NC(PAny(match_span), None, NamedCtr("False", NamedRcd([], match_span), match_span), match_span),
-        ],
-        match_span,
-      )
-      parse_app_chain(p2, match_term, match_span)
-    }
-    // Annotation operator continues the chain
-    [Token("Punct", ":", _), ..rest] -> {
-      let p1 = #(rest, 0, fn_, errors)
-      let #(type_, p2) = parse_term(p1)
-      let ann_span = merge(span, term_span_named(type_))
-      let annotated = NamedApp(fun, NamedAnn(type_, fun, ann_span), ann_span)
-      parse_app_chain(p2, annotated, ann_span)
-    }
+    [] -> #(fun, p)
+    [Token(_, _, next_span), ..] ->
+      case same_line(span, next_span) {
+        False -> #(fun, p)  // Newline separates expressions
+        True -> {
+          case rest {
+            // Keywords stop application
+            [Token("Name", v, _), ..] -> case v {
+              "fun" | "let" | "match" | "fix" | "type" | "hole" | "unit" | "true" | "false" ->
+                #(fun, p)
+              _ -> {
+                // Variable name as application argument
+                let arg_span = current_span(p)
+                let p1 = #(tokens, pos + 1, fn_, errors)
+                let #(arg, rest2) = parse_var(p1, v, arg_span)
+                let app_span = merge(span, term_span_named(arg))
+                let app = NamedApp(fun, arg, app_span)
+                parse_app_chain(rest2, app, app_span)
+              }
+            }
+            // Match/guard operator continues the chain
+            [Token("Op", "~", _), ..rest] -> {
+              let p_rhs = #(rest, 0, fn_, errors)
+              let #(rhs, p2) = parse_pattern(p_rhs)
+              let match_span = merge(span, term_span_named(fun))
+              let match_term = NamedMatch(
+                fun,
+                [
+                  NC(rhs, None, NamedCtr("True", NamedRcd([], match_span), match_span), match_span),
+                  NC(PAny(match_span), None, NamedCtr("False", NamedRcd([], match_span), match_span), match_span),
+                ],
+                match_span,
+              )
+              parse_app_chain(p2, match_term, match_span)
+            }
+            // Annotation operator continues the chain
+            [Token("Punct", ":", _), ..rest] -> {
+              let p1 = #(rest, 0, fn_, errors)
+              let #(type_, p2) = parse_term(p1)
+              let ann_span = merge(span, term_span_named(type_))
+              let annotated = NamedAnn(fun, type_, ann_span)
+              parse_app_chain(p2, annotated, ann_span)
+            }
 
-    // Parenthesized term as application argument
-    [Token("Punct", "(", _), ..] -> {
-      let #(paren_term, p2) = parse_term(#(tokens, pos, fn_, errors))
-      let app_span = merge(span, term_span_named(paren_term))
-      let app = NamedApp(fun, paren_term, app_span)
-      parse_app_chain(p2, app, app_span)
-    }
-    // Prefixed tokens - check if it's an FFI call or type prefix
-    [Token("Op", "$", _), ..] ->
-      #(fun, p)
-    [Token("Op", "%", _), ..rest] -> {
-      // FFI call as application argument: f %call<a, b>(arg1, arg2)
-      let #(ffi_call, p2) = parse_term(#(tokens, pos, fn_, errors))
-      let app_span = merge(span, term_span_named(ffi_call))
-      let app = NamedApp(fun, ffi_call, app_span)
-      parse_app_chain(p2, app, app_span)
-    }
-    // Anything else stops application
-    _ ->
-      #(fun, p)
+            // Parenthesized term as application argument
+            [Token("Punct", "(", _), ..] -> {
+              let #(paren_term, p2) = parse_term(#(tokens, pos, fn_, errors))
+              let app_span = merge(span, term_span_named(paren_term))
+              let app = NamedApp(fun, paren_term, app_span)
+              parse_app_chain(p2, app, app_span)
+            }
+            // Prefixed tokens - check if it's an FFI call or type prefix
+            [Token("Op", "$", _), ..] ->
+              #(fun, p)
+            [Token("Op", "%", _), ..rest] -> {
+              // FFI call as application argument: f %call<a, b>(arg1, arg2)
+              let #(ffi_call, p2) = parse_term(#(tokens, pos, fn_, errors))
+              let app_span = merge(span, term_span_named(ffi_call))
+              let app = NamedApp(fun, ffi_call, app_span)
+              parse_app_chain(p2, app, app_span)
+            }
+            // Integer and float literals as application arguments (same line only)
+            [Token("Integer", _, _), ..] -> {
+              let #(int_term, p2) = parse_term(#(tokens, pos, fn_, errors))
+              let app_span = merge(span, term_span_named(int_term))
+              let app = NamedApp(fun, int_term, app_span)
+              parse_app_chain(p2, app, app_span)
+            }
+            [Token("Float", _, _), ..] -> {
+              let #(float_term, p2) = parse_term(#(tokens, pos, fn_, errors))
+              let app_span = merge(span, term_span_named(float_term))
+              let app = NamedApp(fun, float_term, app_span)
+              parse_app_chain(p2, app, app_span)
+            }
+            // Anything else stops application
+            _ ->
+              #(fun, p)
+          }
+        }
+      }
   }
 }
 
@@ -1250,7 +1283,9 @@ fn parse_implicit_params_acc(p: Parser, acc: List(#(String, NamedTerm))) -> #(Li
   }
 }
 
-// Match: $match arg { | pattern => body } or match arg { | pattern => body }
+// Match: $match (arg) { | pattern => body } or match (arg) { | pattern => body }
+// Parentheses are required around the match argument to avoid ambiguity
+// with record applications (e.g., $match n {..} would look like n applied to a record)
 fn parse_match(p: Parser, span: Span) -> #(NamedTerm, Parser) {
   let p1 = case p {
     #(tokens, pos, _, _) ->
@@ -1260,28 +1295,31 @@ fn parse_match(p: Parser, span: Span) -> #(NamedTerm, Parser) {
       }
   }
   let p2 = skip("match", p1)
-  let #(arg, p3) = parse_term(p2)
+  // Require parentheses around the match argument
+  let p3 = skip("(", p2)
+  let #(arg, p4) = parse_term(p3)
+  let p5 = skip(")", p4)
   // Optionally consume : Type annotation after the match argument
-  // p3 is a Parser (tuple of 3 elements), check if next token is :
-  let p4 = case p3 {
+  // p5 is a Parser (tuple of 3 elements), check if next token is :
+  let p6 = case p5 {
     #(tokens, pos, _, _) ->
       case list.drop(tokens, pos) {
         [Token("Punct", ":", _), ..] -> {
-          let p_annot = skip(":", p3)
+          let p_annot = skip(":", p5)
           let #(ann_type, p_new) = parse_term(p_annot)
           #(NamedAnn(arg, ann_type, current_span(p_annot)), p_new)
         }
-        _ -> #(arg, p3)
+        _ -> #(arg, p5)
       }
   }
-  // p4 is now #(NamedTerm, Parser), extract the parser part
-  let #(_, p5) = p4
-  let p6 = skip("{", p5)
-  let p7 = parse_cases(p6)
-  let #(cases, rest) = p7
-  let p8 = skip("}", rest)
+  // p6 is now #(NamedTerm, Parser), extract the parser part
+  let #(_, p7) = p6
+  let p8 = skip("{", p7)
+  let p9 = parse_cases(p8)
+  let #(cases, rest) = p9
+  let p10 = skip("}", rest)
   let final_span = merge(span, case_list_span_named(cases, span))
-  #(NamedMatch(arg, cases, final_span), p8)
+  #(NamedMatch(arg, cases, final_span), p10)
 }
 
 fn parse_cases(p: Parser) -> #(List(NamedCase), Parser) {

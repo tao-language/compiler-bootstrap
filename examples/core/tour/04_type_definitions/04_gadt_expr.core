@@ -7,7 +7,7 @@ $let Expr = $type<a: $Type> {
 }
 
 // Type-safe evaluator.
-$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match expr {
+$let eval = $fn<a: $Type>(expr: #Expr(a)) => $match (expr) {
 | #LitInt(n) => n
 | #LitBool(b) => b
 | #Add({x, y}) => %i32_add<$I32>(eval x, eval y)

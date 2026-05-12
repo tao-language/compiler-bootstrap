@@ -498,10 +498,11 @@ pub fn parse_whitespace_only_returns_error_test() {
 }
 
 pub fn parse_extra_tokens_returns_last_expression_test() {
-  // Sequential expressions are now supported - returns the last expression
+  // Tokens on the same line form applications, different lines are separate expressions
   let #(term, errors) = parse("42 43")
+  // 42 43 on same line is parsed as application (42 applied to 43)
   assert case term {
-    Lit(LitInt(43), _) -> True
+    App(Lit(LitInt(42), _), Lit(LitInt(43), _), _) -> True
     _ -> False
   }
   assert list.length(errors) >= 0

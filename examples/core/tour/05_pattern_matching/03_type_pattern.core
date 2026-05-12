@@ -1,4 +1,4 @@
-$match $Type {
+$match ($Type) {
 // Type universes
 | $Type => 0    // implicit type universe 0
 | $Type<1> => 1 // explicit type universe 1
