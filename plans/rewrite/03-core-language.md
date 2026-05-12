@@ -162,7 +162,7 @@ pub type Term {
   Lam(implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span)
   // Source: $fn<a: $Type>(x: a) => x  — implicits, param, body
   App(fun: Term, arg: Term, span: Span)
-  // Source: ($fn(x: $Int) => x)(42)
+  // Source: ($fn(x: $Int) => x) 42  — Haskell-style: space-separated, not parenthesized
   Pi(implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span)
   // Source: $pi(x: $Type) -> x  or  $pi<a: $Type>(a) -> a
   Lit(value: Literal, span: Span)     // Literal value (Int or Float)
@@ -173,10 +173,11 @@ pub type Term {
   // Source: $match arg { | pattern ? guard => body }
   Ann(term: Term, type_: Term, span: Span)
   // Source: 42 : $I32
-  /// FFI builtin call: `%name(arg1: T1, arg2: T2, ...) -> ReturnType`
+  /// FFI builtin call: `%name<ReturnType>(arg1: T1, arg2: T2, ...)`
   /// `args` are (value, type) pairs for each argument.
+  /// Return type uses angle brackets to avoid ambiguity with Pi types.
   Call(name: String, args: List(#(Term, Term)), return_type: Term, span: Span)
-  // Source: %i32_add(1: $I32, 2: $I32) -> $I32
+  // Source: %i32_add<$I32>(1: $I32, 2: $I32)
   Rcd(fields: List(#(String, Term)), span: Span)
   // Source: {x: 1, y: 2}, {} (unit)
   Typ(level: Int, span: Span)         // Type universe $Type<n>
@@ -190,6 +191,18 @@ pub type Term {
 /// Type of a Term: either a Value (evaluated) or Err
 pub type Type = Value
 ```
+
+### Application Syntax
+
+Core uses Haskell-style space-separated application to eliminate parser ambiguities:
+
+```
+f x y z        // parses as App(App(App(f, x), y), z)
+f (g x)        // parenthesized arguments also supported
+$fn(x: $Int) => x 42  // lambda applied to argument
+```
+
+This eliminates the ambiguity where `f(x)` could be confused with a Pi type. The parser unambiguously treats `f x` as an application.
 
 ### Source-to-Term Mapping
 
@@ -206,7 +219,10 @@ pub type Type = Value
 | `()` or `{}` | `Rcd([])` | Unit |
 | `$Type<n>` | `Typ(n, span)` |
 | `$type { | #C -> R }` | `TypeDef("name", [], [("C", [], self, result)])` | No params
-| `$type<a: $Type> { | #C(a) -> R }` | `TypeDef("name", [("a", Type)], [("C", [], self, result)])` | With params
+| `$type<a: $Type> { | #C(a) -> R }` | `TypeDef("name", [("a", Type)], [("C", [], self, result)])` | With params |
+| `f x y z` | `App(App(App(f, x), y), z)` | Haskell-style: space-separated application |
+| `f(x)` | `App(f, x)` | Parenthesized args also supported |
+| `%name<ReturnT>(arg1, arg2)` | `Call("name", [(arg1, type1), (arg2, type2)], ReturnT)` | FFI with angle-bracket return type |
 
 ### Value (Semantics — De Bruijn Levels)
 
@@ -268,10 +284,10 @@ pub type Pattern {
   PCtr(tag: String, arg: Pattern, span: Span)  // Constructor: #Some(x)
   PUnit(span: Span)                 // Unit: ()
   PLit(value: Literal, span: Span)  // Literal: 42
+  PLitT(lit_type: LiteralType, span: Span)  // Literal type: $Int, $Float, $I32, etc.
   PAs(pattern: Pattern, name: String, span: Span)  // Alias: x@pattern
-  PType(universe: Option(Int), name: Option(String), span: Span)  // Type: $Type, $Type<1>, $Type<x>
+  PTyp(universe: Int, span: Span)  // Type universe: $Type, $Type<1>, $Type<x>
   PRcd(fields: List(#(String, Pattern)), span: Span)  // Record: {x: 1, y: _}
-  PRcdType(fields: List(#(String, Term, Option(Term))), span: Span)  // Record type: ${x: $Int}
   PErr(span: Span)                  // Error: $error
 }
 

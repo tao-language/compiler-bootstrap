@@ -139,13 +139,14 @@ pub type Term {
   Hole(id: Int, span: Span)
   Lam(implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span)
   App(fun: Term, arg: Term, span: Span)
-  Pi(implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span)
+  // Haskell-style: `f x y z` parses as `App(App(App(f, x), y), z)`
   Lit(value: Literal, span: Span)
   Ctr(tag: String, arg: Term, span: Span)
   Match(arg: Term, cases: List(Case), span: Span)
   Ann(term: Term, type_: Term, span: Span)
-  /// FFI builtin call: `%name(arg1: T1, arg2: T2, ...) -> ReturnType`
+  /// FFI builtin call: `%name<ReturnType>(arg1: T1, arg2: T2, ...)`
   /// `args` are (value, type) pairs for each argument.
+  /// Return type uses angle brackets to avoid ambiguity with Pi types.
   Call(name: String, args: List(#(Term, Term)), return_type: Term, span: Span)
   Rcd(fields: List(#(String, Term)), span: Span)
   Typ(level: Int, span: Span)
@@ -265,17 +266,31 @@ During type inference, implicit parameters are auto-expanded as needed:
 
 ### FFI Call Syntax
 
-FFI builtins use `%` prefix and support typed arguments with return types:
+FFI builtins use `%` prefix with angle-bracket return type to avoid ambiguity with Pi types:
 
 ```
-%i32_add(1: $I32, 2: $I32) -> $I32
-%i32_to_f32(1: $I32) -> $F32
+%i32_add<$I32>(1: $I32, 2: $I32)
+%i32_to_f32<$F32>(1: $I32)
 ```
 
 The Call term carries:
 - `name`: builtin function name
 - `args`: list of (value_term, type_term) pairs — both must be fully typed
 - `return_type`: the expected return type term (required, not optional)
+
+**Note:** Return type uses angle brackets `<ReturnType>` instead of `-> ReturnType` to avoid syntactic ambiguity with Pi types (`$pi<a: $Type>(a) -> a`).
+
+### Application Syntax
+
+Core uses Haskell-style space-separated application:
+
+```
+f x y z        // parses as App(App(App(f, x), y), z)
+f (g x)        // parenthesized arguments also supported
+$fn(x: $Int) => x 42  // lambda applied to argument
+```
+
+This eliminates the parser ambiguity where `f(x)` could be confused with a Pi type. The parser now unambiguously treats `f x` as an application and `$fn(x: $Int) => body` as a lambda.
 
 ### Tao AST (High-Level)
 
