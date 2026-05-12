@@ -20,7 +20,7 @@ import gleam/string
 import simplifile
 import syntax/grammar.{type ParseError, ParseError as ParseErrorCtor}
 import core/ast.{type Value, type Head, type LiteralType,
-  VLit, VNeut, VCtr, VCall, VFix, VPi, VLam, VRcd, VRcdT, VTyp, VTypeDef, VErr, HVar, HHole, Int, Float as AstFloat,
+  VLit, VNeut, VCtr, VCall, VFix, VPi, VLam, VRcd, VRcdT, VTyp, VTypeDef, VErr, HVar, HHole, HFix, Int, Float as AstFloat,
   VLitT, IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T, term_to_string}
 import gleam/option.{Some, None}
 
@@ -252,6 +252,7 @@ fn format_head(head: Head) -> String {
   case head {
     HVar(level) -> "v" <> int.to_string(level)
     HHole(id) -> "?" <> int.to_string(id)
+    HFix(name) -> "$fix " <> name
   }
 }
 

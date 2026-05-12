@@ -11,7 +11,7 @@ import core/ast.{
   Int as LitInt, Lam, Lit, Match, PAny, Pi, Rcd, VCtr, VErr, VLam, VLit, VNeut,
   VPi, VRcd, Var, shift_term,
 }
-import core/state.{def_var, initial_state}
+import core/state.{def_var, initial_state, type State}
 import core/subst.{
   apply_spine, force, force_levels_to_indices, force_to_string,
   levels_to_indices_to_string, subst_term_var,
@@ -102,7 +102,7 @@ pub fn apply_spine_empty_test() {
   let _state =
     def_var(initial_state([]), "test", VLit(LitInt(1)), VLit(LitInt(1)))
   let value = VLit(LitInt(42))
-  let result = apply_spine(value, [])
+  let result = apply_spine(initial_state([]), value, [])
   assert result == VLit(LitInt(42))
 }
 
@@ -110,7 +110,7 @@ pub fn apply_spine_single_element_test() {
   // Single eliminator on a neutral value that can't be applied
   // Application fails → returns neutral with empty spine
   let value = VNeut(HVar(0), [])
-  let result = apply_spine(value, [EApp(VLit(LitInt(1)))])
+  let result = apply_spine(initial_state([]), value, [EApp(VLit(LitInt(1)))])
   // When application fails, the value is returned unchanged
   assert result == VNeut(HVar(0), [])
 }
@@ -121,7 +121,7 @@ pub fn apply_spine_lambda_consumes_one_test() {
   let param_type = VNeut(HHole(0), [])
   let body = Var(0, single("", 0, 0))
   let value = VLam([], [], #("x", param_type), body)
-  let result = apply_spine(value, [EApp(arg)])
+  let result = apply_spine(initial_state([]), value, [EApp(arg)])
   // VLam consumes arg: body Var(0) → shifted to Var(1) → not substituted
   assert case result {
     VLam([], [], #("x", _), Var(1, _)) -> True
@@ -140,7 +140,7 @@ pub fn apply_spine_multiple_elements_test() {
   let body = Var(0, single("", 0, 0))
   let value = VLam([], [], #("x", param_type), body)
   let result =
-    apply_spine(value, [EApp(VLit(LitInt(1))), EApp(VLit(LitInt(2)))])
+    apply_spine(initial_state([]), value, [EApp(VLit(LitInt(1))), EApp(VLit(LitInt(2)))])
   // First arg consumed, second arg can't apply to substituted result
   assert case result {
     VLam(_, _, #(_name, _param_type), _body) -> True
@@ -618,7 +618,7 @@ pub fn force_force_levels_to_indices_nested_lambda_param_test() {
 pub fn force_apply_spine_non_lambda_returns_neutral_test() {
   // Applying spine to non-lambda should return neutral with empty spine
   let value = VLit(LitInt(42))
-  let result = apply_spine(value, [EApp(VLit(LitInt(1)))])
+  let result = apply_spine(initial_state([]), value, [EApp(VLit(LitInt(1)))])
   assert case result {
     VNeut(HVar(0), []) -> True
     _ -> False

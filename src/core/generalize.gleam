@@ -24,7 +24,7 @@
 /// Results are unique and sorted by descending ID (highest hole gets
 /// De Bruijn index 0).
 import core/ast.{
-  type Head, type Term, type Value, Ann, App, Call, Case, Ctr, EApp, Err, Fix, HHole,
+  type Head, type Term, type Value, Ann, App, Call, Case, Ctr, EApp, EMatch, Err, Fix, HHole, HFix,
   HVar, Hole, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi,
   VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, VLitT, LitT,
 }
@@ -62,6 +62,9 @@ fn free_holes_from(value: Value, binding: Int) -> List(Int) {
         list.fold(spine, [], fn(acc, elim) {
           case elim {
             EApp(arg) -> list.append(acc, free_holes_from(arg, binding))
+            EMatch(cases) -> list.append(acc, list.fold(cases, [], fn(acc, c) {
+              list.append(acc, free_holes_from_term(c.body, binding))
+            }))
           }
         })
       list.append(holes, spine_holes)
@@ -118,10 +121,16 @@ fn free_holes_from(value: Value, binding: Int) -> List(Int) {
   }
 }
 
+/// Collect free holes from a term body (used for EMatch cases).
+fn free_holes_from_term(term: Term, binding: Int) -> List(Int) {
+  free_holes_term(term, binding)
+}
+
 fn head_holes(head: Head) -> List(Int) {
   case head {
     HVar(_) -> []
     HHole(id) -> [id]
+    HFix(_) -> []
   }
 }
 
@@ -228,6 +237,9 @@ fn free_levels_from(value: Value, binding: Int) -> List(Int) {
         list.fold(spine, [], fn(acc, elim) {
           case elim {
             EApp(arg) -> list.append(acc, free_levels_from(arg, binding))
+            EMatch(cases) -> list.append(acc, list.fold(cases, [], fn(acc, c) {
+              list.append(acc, free_levels_from_term(c.body, binding))
+            }))
           }
         })
       list.append(levels, spine_levels)
@@ -282,6 +294,11 @@ fn free_levels_from(value: Value, binding: Int) -> List(Int) {
   }
 }
 
+/// Collect free levels from a term body (used for EMatch cases).
+fn free_levels_from_term(term: Term, binding: Int) -> List(Int) {
+  free_levels_term(term, binding)
+}
+
 fn head_level(head: Head, binding: Int) -> List(Int) {
   case head {
     HVar(level) ->
@@ -290,6 +307,7 @@ fn head_level(head: Head, binding: Int) -> List(Int) {
         False -> []
       }
     HHole(_) -> []
+    HFix(_) -> []
   }
 }
 
@@ -430,6 +448,9 @@ fn subst_holes(value: Value, subst: List(#(Int, Int))) -> Value {
         list.map(spine, fn(elim) {
           case elim {
             EApp(arg) -> EApp(subst_values(arg, subst))
+            EMatch(cases) -> EMatch(list.map(cases, fn(c) {
+              Case(pattern: c.pattern, guard: c.guard, body: subst_holes_term(c.body, subst), span: c.span)
+            }))
           }
         })
       VNeut(new_head, new_spine)
@@ -569,6 +590,7 @@ fn subst_head(head: Head, subst: List(#(Int, Int))) -> Head {
       }
     }
     HVar(level) -> HVar(level)
+    HFix(name) -> HFix(name)
   }
 }
 

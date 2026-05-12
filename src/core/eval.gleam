@@ -2,9 +2,9 @@
 import core/ast.{
   type Case, type Pattern, type Term, type Value, type LiteralType,
   Ann, App, Call,
-  Case as CoreCase, Ctr, EApp, Err, Fix, Float as LitFloat, HHole, HVar, Hole,
+  Case as CoreCase, Ctr, EApp, EMatch, Err, Fix, Float as LitFloat, HHole, HFix, HVar, Hole,
   Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PLitT, PUnit, PVar, PAlias, PTyp, PRcd, PError, Pi, Rcd, RcdT,
-  Typ, VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, term_to_string,  literal_type_to_string, VLitT,
+  Typ, VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, term_to_string,  literal_type_to_string, VLitT, pattern_to_string,
   LitT, shift_term_from,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
@@ -116,7 +116,18 @@ pub fn evaluate(state: State, term: Term) -> Value {
     Ann(term, _, _) -> evaluate(state, term)
     Match(arg, cases, _) -> {
       let scrutinee = evaluate(state, arg)
-      do_match(state, state.truth_ctr, scrutinee, cases, [])
+      case scrutinee {
+        VNeut(head, spine) -> {
+          // Scrutinee is neutral - defer the match by appending EMatch to the spine
+          VNeut(head, list.append(spine, [EMatch(cases)]))
+        }
+        VFix(fix_name, _, _) -> {
+          // VFix is a deferred value - defer the match by treating it as neutral
+          // Create a neutral value with HFix head
+          VNeut(HFix(fix_name), [EMatch(cases)])
+        }
+        _ -> do_match(state, state.truth_ctr, scrutinee, cases, [])
+      }
     }
     Call(name, args, return_type, _span) -> {
       // Evaluate each (value_term, type_term) pair
@@ -267,6 +278,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
       }
     }
     // Extend neutral spine: variable or hole applied to argument
+    // The spine is ordered FIFO (first applied first), so append new EApp
     VNeut(head, spine) -> VNeut(head, list.append(spine, [EApp(arg_val)]))
     // Error propagates
     VErr -> VErr
@@ -733,6 +745,7 @@ pub fn eval_value_to_string(value: Value) -> String {
       let head_str = case head {
         HVar(level) -> "v" <> int.to_string(level)
         HHole(id) -> "?" <> int.to_string(id)
+        HFix(name) -> "$fix " <> name
       }
       case spine {
         [] -> head_str
@@ -741,6 +754,9 @@ pub fn eval_value_to_string(value: Value) -> String {
             list.fold(spine, "", fn(acc, e) {
               let s = case e {
                 EApp(arg) -> "(" <> eval_value_to_string(arg) <> ")"
+                EMatch(cases) -> " {" <> list.fold(cases, "", fn(acc, c) {
+                  acc <> " | " <> pattern_to_string(c.pattern) <> " => " <> term_to_string(c.body)
+                }) <> " }"
               }
               acc <> s
             })

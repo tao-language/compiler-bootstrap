@@ -23,15 +23,15 @@
 ///   -> body with arg bound at level 0
 /// ```
 import core/ast.{
-  type Term, type Value, type Elim, type Head,
-  Ann, App, Call, Case, Ctr, EApp, Err, Fix, HHole, HVar, Hole, Lam, Lit, Match, Pi, Rcd, RcdT, Typ, VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, LitT, VLitT,
+  type Term, type Value, type Elim, type Head, type Pattern, type Case,
+  Ann, App, Call, Case as CoreCase, Ctr, EApp, EMatch, Err, Fix, Float as LitFloat, HHole, HFix, HVar, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr, PError, PLit, PLitT, PTyp, PUnit, PVar, PAlias, Pi, PRcd, Rcd, RcdT, Typ, VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, LitT, VLitT,
   make_neut, shift_opt, shift_term, value_to_string, term_to_string,
 }
 import core/state.{type State, lookup_var}
 import syntax/span.{type Span, single}
 import gleam/int
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 
 /// Force a value by resolving holes and applying neutral spine elements.
 ///
@@ -50,7 +50,7 @@ pub fn force(state: State, value: Value) -> Value {
     VNeut(head, spine) -> {
       let resolved = resolve_head(state, head)
       case resolved {
-        Ok(v) -> apply_spine(v, spine)
+        Ok(v) -> apply_spine(state, v, spine)
         Error(_) -> value
       }
     }
@@ -74,6 +74,16 @@ fn resolve_head(state: State, head: Head) -> Result(Value, Nil) {
         Error(_) -> Error(Nil)
       }
     }
+    HFix(name) -> {
+      // HFix represents a VFix - return a VFix value
+      case lookup_var(state, name) {
+        Ok(#(v, _)) -> case v {
+          VFix(f, env, body) -> Ok(VFix(f, env, body))
+          _ -> Error(Nil)
+        }
+        Error(_) -> Error(Nil)
+      }
+    }
   }
 }
 
@@ -91,13 +101,18 @@ fn lookup_level_local(
 
 /// Look up a variable by De Bruijn level from the outermost binding.
 /// Apply a list of eliminators (a neutral spine) to a value.
-pub fn apply_spine(value: Value, spine: List(Elim)) -> Value {
+pub fn apply_spine(state: State, value: Value, spine: List(Elim)) -> Value {
   case spine {
     [] -> value
-    [elim, ..rest] -> {
-      let forced_arg = elim_arg_value(elim)
+    [EMatch(cases), ..rest] -> {
+      // Evaluate the match on the value, then continue with remaining spine
+      let match_result = match_values(state, cases, value)
+      apply_spine(state, match_result, rest)
+    }
+    [EApp(arg), ..rest] -> {
+      let forced_arg = arg
       case try_apply(value, forced_arg) {
-        Ok(new_val) -> apply_spine(new_val, rest)
+        Ok(new_val) -> apply_spine(state, new_val, rest)
         Error(_) -> make_neut(HVar(0))
       }
     }
@@ -105,9 +120,10 @@ pub fn apply_spine(value: Value, spine: List(Elim)) -> Value {
 }
 
 /// Extract the value from an eliminator.
-fn elim_arg_value(elim: Elim) -> Value {
+fn elim_arg_value(elim: Elim) -> Option(Value) {
   case elim {
-    EApp(arg) -> arg
+    EApp(arg) -> Some(arg)
+    EMatch(_) -> None
   }
 }
 
@@ -123,6 +139,116 @@ fn try_apply(value: Value, arg: Value) -> Result(Value, Nil) {
       Ok(VLam(env, implicits, param, substituted))
     }
     _ -> Error(Nil)
+  }
+}
+
+/// Match a list of cases against a value. Returns the evaluated body of the first matching case.
+fn match_values(state: State, cases: List(Case), value: Value) -> Value {
+  case cases {
+    [] -> VErr
+    [CoreCase(pattern, guard, body, _span), ..rest] -> {
+      case match_pattern_on_value(pattern, value, []) {
+        Ok(_bindings) -> {
+          // For now, ignore guards - just evaluate the body
+          // Guards would require full evaluation, which is handled by do_match in eval.gleam
+          evaluate_body(state, body)
+        }
+        Error(Nil) -> match_values(state, rest, value)
+      }
+    }
+  }
+}
+
+/// Evaluate a term body to a value.
+/// This is a minimal evaluation that handles the cases needed for match bodies.
+fn evaluate_body(state: State, body: Term) -> Value {
+  case body {
+    Var(index, _) -> VNeut(HVar(index), [])
+    Hole(id, _) -> VNeut(HHole(id), [])
+    Lit(value, _) -> VLit(value)
+    Lam(implicits, #(name, param_type), body_term, _) -> {
+      let param_val = evaluate_body(state, param_type)
+      let var_vals = list.map(state.vars, fn(v) { v.1.0 })
+      VLam(var_vals, [], #(name, param_val), body_term)
+    }
+    App(fun, arg, _) -> {
+      let fun_val = evaluate_body(state, fun)
+      let arg_val = evaluate_body(state, arg)
+      case try_apply(fun_val, arg_val) {
+        Ok(new_val) -> new_val
+        Error(_) -> make_neut(HVar(0))
+      }
+    }
+    Match(arg, cases, _) -> {
+      let scrutinee = evaluate_body(state, arg)
+      match_values(state, cases, scrutinee)
+    }
+    Ctr(tag, arg, _) -> VCtr(tag, evaluate_body(state, arg))
+    Rcd(fields, _) -> VRcd(list.map(fields, fn(f) { #(f.0, evaluate_body(state, f.1)) }))
+    Ann(term, _, _) -> evaluate_body(state, term)
+    _ -> VErr
+  }
+}
+
+/// Match a pattern against a value, returning bindings for pattern variables.
+fn match_pattern_on_value(pattern: Pattern, value: Value, acc: List(#(String, Value))) -> Result(List(#(String, Value)), Nil) {
+  case pattern {
+    PAny(_) -> Ok(acc)
+    PVar(name, _) -> Ok([#(name, value), ..acc])
+    PLit(LitInt(n), _) -> case value {
+      VLit(LitInt(m)) if n == m -> Ok(acc)
+      _ -> Error(Nil)
+    }
+    PLit(LitFloat(n), _) -> case value {
+      VLit(LitFloat(m)) if n == m -> Ok(acc)
+      _ -> Error(Nil)
+    }
+    PCtr(tag, inner, _) -> case value {
+      VCtr(tag2, arg) if tag == tag2 -> match_pattern_on_value(inner, arg, acc)
+      _ -> Error(Nil)
+    }
+    PAlias(name, inner, _) -> {
+      let inner_bindings = match_pattern_on_value(inner, value, acc)
+      case inner_bindings {
+        Ok(b) -> Ok([#(name, value), ..b])
+        Error(Nil) -> Error(Nil)
+      }
+    }
+    PLitT(lit_type, _) -> case value {
+      VLitT(l) if lit_type == l -> Ok(acc)
+      _ -> Error(Nil)
+    }
+    PTyp(universe, _) -> case value {
+      VTyp(u) if universe == u -> Ok(acc)
+      _ -> Error(Nil)
+    }
+    PUnit(_) -> case value {
+      VRcd([]) -> Ok(acc)
+      _ -> Error(Nil)
+    }
+    PRcd(fields, _) -> case value {
+      VRcd(record_fields) -> match_rcd_pattern(fields, record_fields, acc)
+      _ -> Error(Nil)
+    }
+    PError(_) -> Error(Nil)
+  }
+}
+
+/// Match record fields in a pattern against record fields in a value.
+fn match_rcd_pattern(fields: List(#(String, Pattern)), record_fields: List(#(String, Value)), acc: List(#(String, Value))) -> Result(List(#(String, Value)), Nil) {
+  case fields {
+    [] -> Ok(acc)
+    [#(name, pattern), ..rest] -> {
+      case list.find(record_fields, fn(f) { f.0 == name }) {
+        Ok(#(_, field_val)) -> {
+          case match_pattern_on_value(pattern, field_val, acc) {
+            Ok(new_acc) -> match_rcd_pattern(rest, record_fields, new_acc)
+            Error(Nil) -> Error(Nil)
+          }
+        }
+        Error(_) -> Error(Nil)
+      }
+    }
   }
 }
 
@@ -170,7 +296,7 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
       Match(
         subst_term_from(idx, value, arg, from),
         list.map(cases, fn(c) {
-          Case(
+          CoreCase(
             c.pattern,
             shift_opt(c.guard, from, from),
             subst_term_from(idx, value, c.body, from),
@@ -251,6 +377,7 @@ fn neut_head_to_term(head: Head) -> Term {
   case head {
     HVar(level) -> Var(level, single("", 0, 0))
     HHole(id) -> Hole(id, single("", 0, 0))
+    HFix(name) -> Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
   }
 }
 
@@ -365,11 +492,33 @@ fn neut_head_to_term_with_spine(head: Head, spine: List(Elim), n: Int) -> Term {
       let applied = App(base, arg_term, single("", 0, 0))
       apply_remaining_spine(applied, n, rest)
     }
+    HVar(level), [EMatch(cases), ..rest] -> {
+      let base = Var(abs_index(level, n), single("", 0, 0))
+      let match_term = Match(base, cases, single("", 0, 0))
+      apply_remaining_spine(match_term, n, rest)
+    }
     HHole(id), [EApp(arg), ..rest] -> {
       let base = Hole(id, single("", 0, 0))
       let arg_term = force_levels_to_indices(arg, n)
       let applied = App(base, arg_term, single("", 0, 0))
       apply_remaining_spine(applied, n, rest)
+    }
+    HHole(id), [EMatch(cases), ..rest] -> {
+      let base = Hole(id, single("", 0, 0))
+      let match_term = Match(base, cases, single("", 0, 0))
+      apply_remaining_spine(match_term, n, rest)
+    }
+    HFix(name), [] -> Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
+    HFix(name), [EApp(arg), ..rest] -> {
+      let base = Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
+      let arg_term = force_levels_to_indices(arg, n)
+      let applied = App(base, arg_term, single("", 0, 0))
+      apply_remaining_spine(applied, n, rest)
+    }
+    HFix(name), [EMatch(cases), ..rest] -> {
+      let base = Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
+      let match_term = Match(base, cases, single("", 0, 0))
+      apply_remaining_spine(match_term, n, rest)
     }
   }
 }
@@ -382,6 +531,10 @@ fn apply_remaining_spine(base: Term, n: Int, rest: List(Elim)) -> Term {
       let next_term = force_levels_to_indices(next_arg, n)
       let applied = App(base, next_term, single("", 0, 0))
       apply_remaining_spine(applied, n, rest_rest)
+    }
+    [EMatch(cases), ..rest_rest] -> {
+      let match_term = Match(base, cases, single("", 0, 0))
+      apply_remaining_spine(match_term, n, rest_rest)
     }
   }
 }

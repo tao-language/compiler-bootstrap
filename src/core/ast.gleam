@@ -200,11 +200,13 @@ pub type Case {
 pub type Head {
   HVar(level: Int)
   HHole(id: Int)
+  HFix(name: String)  // Head for VFix neutral values
 }
 
 /// Elimination form applied to a neutral term.
 pub type Elim {
   EApp(arg: Value)
+  EMatch(cases: List(Case))
 }
 
 /// Core values - normalized terms after evaluation.
@@ -296,6 +298,7 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
       }
     }
     VNeut(HHole(id), spine) -> VNeut(HHole(id), spine)
+    VNeut(HFix(name), spine) -> VNeut(HFix(name), spine)
     VLam(_env, _implicits, _param, _body) -> v
     VPi(_env, _implicits, _domain, _codomain) -> v
     VLit(_value) -> v
@@ -905,7 +908,7 @@ fn case_to_string(case_: Case) -> String {
   }
 }
 
-fn pattern_to_string(pat: Pattern) -> String {
+pub fn pattern_to_string(pat: Pattern) -> String {
   case pat {
     PAny(_) -> "_"
     PVar(name, _) -> name
@@ -1046,6 +1049,7 @@ fn neut_head_to_string(head: Head) -> String {
   case head {
     HVar(level) -> "v" <> int.to_string(level)
     HHole(id) -> "?" <> int.to_string(id)
+    HFix(name) -> "$fix " <> name
   }
 }
 
@@ -1055,6 +1059,9 @@ fn neut_to_string(head: Head, spine: List(Elim)) -> String {
     list.fold(spine, "", fn(acc, e) {
       let s = case e {
         EApp(arg) -> "(" <> value_to_string(arg) <> ")"
+        EMatch(cases) -> " {" <> list.fold(cases, "", fn(acc, c) {
+          acc <> " | " <> pattern_to_string(c.pattern) <> " => " <> term_to_string(c.body)
+        }) <> " }"
       }
       acc <> s
     })
