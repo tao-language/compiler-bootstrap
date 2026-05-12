@@ -705,20 +705,7 @@ fn parse_app_chain(p: Parser, fun: NamedTerm, span: Span) -> #(NamedTerm, Parser
       let annotated = NamedApp(fun, NamedAnn(type_, fun, ann_span), ann_span)
       parse_app_chain(p2, annotated, ann_span)
     }
-    // Integer literal as application argument
-    [Token("Integer", _, _), ..] -> {
-      let #(int_term, p2) = parse_term(#(tokens, pos, fn_, errors))
-      let app_span = merge(span, term_span_named(int_term))
-      let app = NamedApp(fun, int_term, app_span)
-      parse_app_chain(p2, app, app_span)
-    }
-    // Float literal as application argument
-    [Token("Float", _, _), ..] -> {
-      let #(float_term, p2) = parse_term(#(tokens, pos, fn_, errors))
-      let app_span = merge(span, term_span_named(float_term))
-      let app = NamedApp(fun, float_term, app_span)
-      parse_app_chain(p2, app, app_span)
-    }
+
     // Parenthesized term as application argument
     [Token("Punct", "(", _), ..] -> {
       let #(paren_term, p2) = parse_term(#(tokens, pos, fn_, errors))
@@ -1175,7 +1162,10 @@ fn parse_pi(p: Parser, span: Span) -> #(NamedTerm, Parser) {
       case list.drop(tokens, pos) {
         [Token("Punct", ")", _), ..] -> {
           let term_span = merge(span, current_span(p4))
-          #(NamedVar("self", term_span), p4)
+          #(case name {
+              "" -> NamedVar("self", term_span)
+              _ -> NamedVar(name, term_span)
+            }, p4)
         }
         _ -> parse_term(p4)
       }
@@ -1383,7 +1373,7 @@ fn parse_let(p: Parser, span: Span) -> #(NamedTerm, Parser) {
       }
   }
   let p5 = skip("=", p4)
-  let #(value, rest) = parse_app(p5, span)
+  let #(value, rest) = parse_term(p5)
   let let_span = merge(span, term_span_named(value))
   // Check for semicolon as separator (newlines are optional)
   let p6 = case rest {

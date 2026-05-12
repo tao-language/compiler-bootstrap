@@ -609,8 +609,10 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
       let implicits_debruijn = list.map(implicits, fn(i) {
         #(i.0, named_term_to_debruijn(i.1, env))
       })
-      let domain_debruijn = named_term_to_debruijn(domain, env)
-      let codomain_debruijn = named_term_to_debruijn(codomain, [name, ..env])
+      // Domain is converted with name in scope (for $pi(a) -> a style)
+      let domain_env = [name, ..env]
+      let domain_debruijn = named_term_to_debruijn(domain, domain_env)
+      let codomain_debruijn = named_term_to_debruijn(codomain, domain_env)
       Pi(implicits_debruijn, #(name, domain_debruijn), codomain_debruijn, span)
     }
 

@@ -75,9 +75,9 @@ pub fn parse_simple_float_test() {
 
 pub fn parse_undefined_variable_produces_var_test() {
   let #(term, _) = parse("x")
-  // Undefined variables are now parsed as Var terms with depth index
+  // Undefined variables are now parsed as Err terms (term_to_debruijn lookup fails)
   assert case term {
-    Var(index, _) if index >= 0 -> True
+    Err("unbound variable: x", _) -> True
     _ -> False
   }
 }
@@ -85,8 +85,9 @@ pub fn parse_undefined_variable_produces_var_test() {
 pub fn parse_underscore_produces_var_test() {
   let #(term, _) = parse("_")
   // Underscore is now parsed as a Var term
+  // But since there's no binding for it, term_to_debruijn returns Err
   assert case term {
-    Var(index, _) if index >= 0 -> True
+    Err("unbound variable: _", _) -> True
     _ -> False
   }
 }
@@ -94,8 +95,9 @@ pub fn parse_underscore_produces_var_test() {
 pub fn parse_underscore_prefixed_produces_var_test() {
   let #(term, _) = parse("_foo")
   // Underscore-prefixed names are now parsed as Var terms
+  // But since there's no binding for it, term_to_debruijn returns Err
   assert case term {
-    Var(index, _) if index >= 0 -> True
+    Err("unbound variable: _foo", _) -> True
     _ -> False
   }
 }
