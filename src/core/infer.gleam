@@ -309,9 +309,8 @@ pub fn infer_fix(
   let #(body_val, body_type, state2) = infer(state_bound, body)
   let _ = body_val
 
-  // Shift body by -1 so `f` (Var(1)) becomes Var(0) relative to the
-  // VLam's parameter. When applied, beta-reduction substitutes the
-  // argument for `f` in the body, enabling recursive calls.
+  // Shift body by -1 so `f` (Var(2) after term_to_debruijn due to pattern
+  // variable shadowing) becomes Var(1) relative to the VLam's parameter.
   let shifted_body = ast.shift_term_from(body, -1, 1)
 
   let fix_value = ast.VFix(

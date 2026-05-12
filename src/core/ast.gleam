@@ -580,6 +580,7 @@ fn collect_pattern_vars(pattern: Pattern) -> List(String) {
   }
 }
 
+
 fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
   case nt {
     NamedVar(name, span) -> {

@@ -148,8 +148,9 @@ pub fn evaluate(state: State, term: Term) -> Value {
     }
     Fix(name, body, _) -> {
       // $fix f. body evaluates to a VFix value.
-      // Shift body by -1 so that the fix variable (at Var(1) after term_to_debruijn)
-      // becomes Var(0) relative to the VLam's parameter. This matches what infer_fix does.
+      // Shift body by -1 so that the fix variable (at Var(2) after term_to_debruijn
+      // due to pattern variable shadowing) becomes Var(1) relative to the VLam's
+      // parameter. This matches what infer_fix does.
       let shifted_body = shift_term_from(body, -1, 1)
       VFix(name, [], shifted_body)
     }
