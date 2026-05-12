@@ -154,6 +154,13 @@ pub type NamedTerm {
     body: NamedTerm,
     span: Span,
   )
+  /// Syntax sugar: `$fix name. body` — desugars to App(Lam(name, _, body), value)
+  /// The body is a lambda that receives the recursive reference as its first parameter.
+  NamedFix(
+    name: String,
+    body: NamedTerm,
+    span: Span,
+  )
 }
 
 /// Named case in a match expression.
@@ -703,6 +710,13 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
         value_debruijn,
         span
       )
+    }
+
+    NamedFix(name, body, span) -> {
+      // Convert fixpoint: $fix name. body → Fix(name, body, span)
+      // Add the fix variable to the environment so it resolves correctly
+      let body_debruijn = named_term_to_debruijn(body, [name, ..env])
+      Fix(name, body_debruijn, span)
     }
   }
 }

@@ -5,7 +5,7 @@ import core/ast.{
   Case as CoreCase, Ctr, EApp, Err, Fix, Float as LitFloat, HHole, HVar, Hole,
   Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PLitT, PUnit, PVar, PAlias, PTyp, PRcd, PError, Pi, Rcd, RcdT,
   Typ, VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, term_to_string,  literal_type_to_string, VLitT,
-  LitT,
+  LitT, shift_term_from,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
 import core/state.{type State, FfiEntry, State, lookup_ffi}
@@ -148,9 +148,10 @@ pub fn evaluate(state: State, term: Term) -> Value {
     }
     Fix(name, body, _) -> {
       // $fix f. body evaluates to a VFix value.
-      // When applied, VFix unrolls by evaluating the body with the
-      // fixpoint itself extended into the environment for recursive calls.
-      VFix(name, [], body)
+      // Shift body by -1 so that the fix variable (at Var(1) after term_to_debruijn)
+      // becomes Var(0) relative to the VLam's parameter. This matches what infer_fix does.
+      let shifted_body = shift_term_from(body, -1, 1)
+      VFix(name, [], shifted_body)
     }
     Err(_, _) -> VErr
   }
