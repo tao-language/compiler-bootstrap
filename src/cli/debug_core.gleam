@@ -46,7 +46,12 @@ import syntax/grammar.{type ParseError}
 ///
 /// This is the main entry point for the debug-core CLI command.
 /// It runs the full pipeline and prints structured debug output.
-pub fn run(expression: String) -> Nil {
+///
+/// Arguments:
+///   - expression: The Core expression to debug
+///   - trace_parser: If True, print detailed parser tracing
+///   - trace_infer: If True, print detailed type inference tracing
+pub fn run(expression: String, trace_parser: Bool, trace_infer: Bool) -> Nil {
   // Print source section
   io.println("=== SOURCE ===")
   io.println(expression <> "\n")
@@ -81,11 +86,6 @@ pub fn run(expression: String) -> Nil {
   let state = initial_state(ffi_entries())
   let #(value, inferred_type, final_state) = infer(state, term)
 
-  io.println("\n=== INFERENCE ===")
-  io.println("  Value: " <> eval_value_to_string(value))
-  io.println("  Type:  " <> eval_value_to_string(inferred_type))
-  io.println("  Errors: " <> int.to_string(list.length(final_state.errors)))
-
   // Step 6: Evaluate (normalize) with FFI
   let eval_result = evaluate(initial_state(ffi_entries()), term)
   io.println("\n=== EVALUATION ===")
@@ -94,16 +94,82 @@ pub fn run(expression: String) -> Nil {
   // Step 7: Show type errors
   case final_state.errors {
     [] -> {
+      io.println("\n=== INFERENCE ===")
+      io.println("  Value: " <> eval_value_to_string(value))
+      io.println("  Type:  " <> eval_value_to_string(inferred_type))
+      io.println("  Errors: " <> int.to_string(list.length(final_state.errors)))
       io.println("\n=== ERRORS ===")
       io.println("  (none)")
     }
     errs -> {
+      io.println("\n=== INFERENCE ===")
+      io.println("  Value: " <> eval_value_to_string(value))
+      io.println("  Type:  " <> eval_value_to_string(inferred_type))
+      io.println("  Errors: " <> int.to_string(list.length(final_state.errors)))
       io.println("\n=== ERRORS ===")
       list.each(errs, fn(e) {
         io.println("  " <> format_error(e))
       })
     }
   }
+
+  // Step 8: Show parser/inference traces if requested
+  case trace_parser {
+    True -> trace_parser_detailed(expression, parse_errors)
+    False -> Nil
+  }
+  case trace_infer {
+    True -> trace_infer_detailed(state, term)
+    False -> Nil
+  }
+}
+
+/// Detailed parser trace showing each token consumed.
+fn trace_parser_detailed(expression: String, parse_errors: List(ParseError)) -> Nil {
+  io.println("\n=== PARSER DETAILED TRACE ===")
+  let tokens = tokenize(expression)
+  io.println("\nToken stream:")
+  let indexed_tokens = list.index_map(tokens, fn(tok, i) {
+    let idx_str = int.to_string(i)
+    let token_str = case tok {
+      TokenCtor(kind: kind, value: value, span: span) ->
+        idx_str <> ": " <> kind <> " '" <> value <> "' (" 
+        <> int.to_string(span.start_line) <> ":" <> int.to_string(span.start_col) <> ")"
+    }
+    token_str
+  })
+  list.each(indexed_tokens, fn(t) { io.println(t) })
+  
+  let #(parsed_term, _) = parse(expression)
+  io.println("\nParse result: " <> term_to_string(parsed_term))
+  case parse_errors {
+    [] -> io.println("Parse status: SUCCESS")
+    errs -> io.println("Parse status: FAILED (" <> int.to_string(list.length(errs)) <> " errors)")
+  }
+  io.println("=== END PARSER TRACE ===")
+}
+
+/// Detailed inference trace showing type inference for each term.
+fn trace_infer_detailed(state: State, term: Term) -> Nil {
+  io.println("\n=== INFERENCE DETAILED TRACE ===")
+  io.println("\nTerm: " <> term_to_string(term))
+  
+  let #(value, inferred_type, final_state) = infer(state, term)
+  io.println("\nInference result:")
+  io.println("  Value: " <> eval_value_to_string(value))
+  io.println("  Type:  " <> eval_value_to_string(inferred_type))
+  io.println("  Errors: " <> int.to_string(list.length(final_state.errors)))
+  
+  case final_state.errors {
+    [] -> io.println("Inference status: SUCCESS")
+    errs -> {
+      io.println("Inference status: FAILED")
+      list.each(errs, fn(e) {
+        io.println("  Error: " <> format_error(e))
+      })
+    }
+  }
+  io.println("=== END INFERENCE TRACE ===")
 }
 
 // ============================================================================

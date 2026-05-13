@@ -29,7 +29,7 @@ import gleam/option.{Some, None}
 pub type Command {
   Run(source: Source, verbose: Bool, debug: Bool)
   Check(source: Source, verbose: Bool, debug: Bool)
-  DebugCore(expression: String)
+  DebugCore(expression: String, trace_parser: Bool, trace_infer: Bool)
   Help
 }
 
@@ -54,9 +54,9 @@ pub fn parse_args(args: List(String)) -> Result(Command, String) {
         _ -> Error("Too many arguments after -c expression")
       }
     ["debug-core", expr, ..rest] ->
-      case rest {
-        [] -> Ok(DebugCore(expr))
-        _ -> Error("Too many arguments for debug-core")
+      case parse_debug_flags(rest, False, False) {
+        Ok(flags) -> Ok(DebugCore(expr, flags.0, flags.1))
+        Error(msg) -> Error(msg)
       }
     [path, ..rest] ->
       case rest {
@@ -77,6 +77,8 @@ pub fn show_help() -> Nil {
   io.println("  compiler --help                 Show this help")
   io.println("  compiler --debug <path>         Run with debug output")
   io.println("  compiler debug-core 'expr'      Debug a Core expression (full pipeline)")
+  io.println("  compiler debug-core 'expr' --trace-parser  Trace parser execution")
+  io.println("  compiler debug-core 'expr' --trace-infer   Trace type inference")
 }
 
 /// Execute a command.
@@ -88,7 +90,25 @@ pub fn run_command(command: Command) -> Nil {
     }
     Run(source, _, _) -> run_source(source)
     Check(source, _, _) -> check_source(source)
-    DebugCore(expr) -> debug_core.run(expr)
+    DebugCore(expr, trace_parser, trace_infer) -> 
+      debug_core.run(expr, trace_parser, trace_infer)
+  }
+}
+
+/// Parse debug flags from remaining arguments.
+fn parse_debug_flags(
+  args: List(String),
+  trace_parser: Bool,
+  trace_infer: Bool,
+) -> Result(#(Bool, Bool), String) {
+  case args {
+    [] -> Ok(#(trace_parser, trace_infer))
+    ["--trace-parser", ..rest] ->
+      parse_debug_flags(rest, True, trace_infer)
+    ["--trace-infer", ..rest] ->
+      parse_debug_flags(rest, trace_parser, True)
+    [flag, .._rest] ->
+      Error("Unknown debug flag: " <> flag)
   }
 }
 
