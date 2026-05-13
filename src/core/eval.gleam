@@ -65,16 +65,16 @@ pub fn evaluate(state: State, term: Term) -> Value {
     Var(index, _) ->
       case list.drop(state.vars, index) {
         [#(_, #(value, _)), ..] -> value
-        _ -> VNeut(HVar(index), [])
+        _ -> force(state, VNeut(HVar(index), []), do_match)
       }
-    Hole(id, _) -> VNeut(HHole(id), [])
+    Hole(id, _) -> force(state, VNeut(HHole(id), []), do_match)
     Lam(implicits, #(name, param_type), body, _span) -> {
       // Evaluate the parameter type term to a value, then force to
       // resolve any holes in it. The body remains as a Term (closure).
-      let param_val = force(state, evaluate(state, param_type))
+      let param_val = force(state, evaluate(state, param_type), do_match)
       let env = list.map(state.vars, fn(v) { v.1.0 })
       let implicit_env = list.map(implicits, fn(i) {
-        let ival = force(state, evaluate(state, i.1))
+        let ival = force(state, evaluate(state, i.1), do_match)
         #(i.0, ival)
       })
       VLam(env, implicit_env, #(name, param_val), body)
@@ -119,12 +119,13 @@ pub fn evaluate(state: State, term: Term) -> Value {
       case scrutinee {
         VNeut(head, spine) -> {
           // Scrutinee is neutral - defer the match by appending EMatch to the spine
-          VNeut(head, list.append(spine, [EMatch(state.vars, cases)]))
+          // force() will resolve the head and apply the spine (including EMatch)
+          force(state, VNeut(head, list.append(spine, [EMatch(state.vars, cases)])), do_match)
         }
         VFix(fix_name, _, _) -> {
           // VFix is a deferred value - defer the match by treating it as neutral
-          // Create a neutral value with HFix head
-          VNeut(HFix(fix_name, state.vars), [EMatch(state.vars, cases)])
+          // force() will resolve the HFix head to VFix, then apply EMatch spine
+          force(state, VNeut(HFix(fix_name, state.vars), [EMatch(state.vars, cases)]), do_match)
         }
         _ -> do_match(state, state.truth_ctr, scrutinee, cases, [])
       }
@@ -320,9 +321,10 @@ fn do_match(
   cases: List(Case),
   bindings: List(#(String, Value)),
 ) -> Value {
-  case scrutinee {
+  // Handle VFix scrutinee by unrolling and recursively matching
+  let scrutinee = case scrutinee {
     VFix(fix_name, fix_env, fix_body) -> {
-      // Unroll VFix to VLam and try matching
+      // Unroll VFix: get the lambda body and evaluate param type
       let body = case fix_body {
         Ann(inner, _, _) -> inner
         _ -> fix_body
@@ -333,12 +335,21 @@ fn do_match(
             Ann(t, _, _) -> evaluate(state, t)
             _ -> evaluate(state, param.1)
           }
+          // Create VLam and match against it
           let lam_val = VLam(fix_env, [], #(param.0, param_val), body_term)
+          // Self-apply: the VFix is a fixed point, so we need to
+          // match the lambda body after substituting the VFix for the recursive ref
           do_match(state, truth_ctr, lam_val, cases, bindings)
         }
         _ -> VErr
       }
     }
+    _ -> scrutinee
+  }
+
+  // If scrutinee is still VFix after unrolling, return VErr (no match)
+  case scrutinee {
+    VFix(_, _, _) -> VErr
     _ -> case cases {
       [] -> VErr
       [CoreCase(pattern, guard, body, _case_span), ..rest] -> {

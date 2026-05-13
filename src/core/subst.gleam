@@ -45,12 +45,26 @@ import gleam/option.{type Option, None, Some}
 ///    if not.
 ///
 /// Holes without bindings are reported as errors and replaced with `VErr`.
-pub fn force(state: State, value: Value) -> Value {
+/// Force a value to its weak-head normal form.
+///
+/// For `VNeut` values, resolves the head and applies all spine eliminators.
+/// The `do_match_fn` callback is used for `EMatch` eliminators.
+pub fn force(
+  state: State,
+  value: Value,
+  do_match_fn: fn(
+    State,
+    String,
+    Value,
+    List(ast.Case),
+    List(#(String, Value)),
+  ) -> Value,
+) -> Value {
   case value {
     VNeut(head, spine) -> {
       let resolved = resolve_head(state, head)
       case resolved {
-        Ok(v) -> apply_spine(state, v, spine)
+        Ok(v) -> apply_spine(state, v, spine, do_match_fn)
         Error(_) -> value
       }
     }
@@ -101,18 +115,29 @@ fn lookup_level_local(
 
 /// Look up a variable by De Bruijn level from the outermost binding.
 /// Apply a list of eliminators (a neutral spine) to a value.
-pub fn apply_spine(state: State, value: Value, spine: List(Elim)) -> Value {
+pub fn apply_spine(
+  state: State,
+  value: Value,
+  spine: List(Elim),
+  do_match_fn: fn(
+    State,
+    String,
+    Value,
+    List(ast.Case),
+    List(#(String, Value)),
+  ) -> Value,
+) -> Value {
   case spine {
     [] -> value
     [EMatch(_env, cases), ..rest] -> {
-      // Evaluate the match on the value, then continue with remaining spine
-      let match_result = match_values(state, cases, value)
-      apply_spine(state, match_result, rest)
+      // Use the do_match callback to properly resolve VFix and evaluate bodies
+      let match_result = do_match_fn(state, "", value, cases, [])
+      apply_spine(state, match_result, rest, do_match_fn)
     }
     [EApp(arg), ..rest] -> {
       let forced_arg = arg
       case try_apply(value, forced_arg) {
-        Ok(new_val) -> apply_spine(state, new_val, rest)
+        Ok(new_val) -> apply_spine(state, new_val, rest, do_match_fn)
         Error(_) -> make_neut(HVar(0))
       }
     }

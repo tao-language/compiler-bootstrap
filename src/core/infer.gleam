@@ -950,8 +950,8 @@ fn unify_infer_and_check(
     ast.VErr, _ | _, ast.VErr -> #(ast.VErr, ast.VErr, state)
     _, _ -> {
       let state = unify(state, expected_type, inferred_type)
-      let forced = force(state, value)
-      let forced_type = force(state, inferred_type)
+      let forced = force(state, value, dummy_do_match)
+      let forced_type = force(state, inferred_type, dummy_do_match)
       #(forced, forced_type, state)
     }
   }
@@ -1212,5 +1212,17 @@ fn apply_spine_to_value(v: ast.Value, spine: List(ast.Elim)) -> ast.Value {
     [ast.EApp(_arg), ..rest] -> apply_spine_to_value(v, rest)
     [ast.EMatch(_env, _cases), ..rest] -> apply_spine_to_value(v, rest)
   }
+}
+
+/// Dummy do_match for force() calls in type-level operations.
+/// Never called in practice since type-level values don't have EMatch eliminators.
+fn dummy_do_match(
+  _state: state.State,
+  _truth_ctr: String,
+  _scrutinee: ast.Value,
+  _cases: List(ast.Case),
+  _bindings: List(#(String, ast.Value)),
+) -> ast.Value {
+  ast.VErr
 }
 

@@ -10,6 +10,7 @@ import core/ast.{
   Ann, App, Call, Case, Ctr, EApp, Err, Float as LitFloat, HHole, HVar, Hole,
   Int as LitInt, Lam, Lit, Match, PAny, Pi, Rcd, VCtr, VErr, VLam, VLit, VNeut,
   VPi, VRcd, Var, shift_term,
+  type Value, type Case,
 }
 import core/state.{def_var, initial_state, type State}
 import core/subst.{
@@ -20,6 +21,17 @@ import gleam/option.{None}
 import gleeunit
 import gleeunit/should
 import syntax/span.{single}
+
+// Dummy do_match for force() calls in tests
+fn dummy_do_match(
+  _state: State,
+  _truth_ctr: String,
+  _scrutinee: Value,
+  _cases: List(Case),
+  _bindings: List(#(String, Value)),
+) -> Value {
+  VErr
+}
 
 pub fn main() {
   gleeunit.main()
@@ -33,7 +45,7 @@ pub fn force_non_neutral_returns_value_test() {
   // Non-neutral values are returned unchanged
   let state = initial_state([])
   let value = VLit(LitInt(42))
-  let result = force(state, value)
+  let result = force(state, value, dummy_do_match)
   assert result == VLit(LitInt(42))
 }
 
@@ -41,7 +53,7 @@ pub fn force_empty_spine_returns_value_test() {
   // Neutral with empty spine is returned unchanged (no hole to resolve)
   let state = initial_state([])
   let value = VNeut(HVar(0), [])
-  let result = force(state, value)
+  let result = force(state, value, dummy_do_match)
   assert result == VNeut(HVar(0), [])
 }
 
@@ -50,7 +62,7 @@ pub fn force_hole_resolved_test() {
   let hole_val = VCtr("Just", VLit(LitInt(1)))
   let state = def_var(initial_state([]), "hole0", hole_val, hole_val)
   let value = VNeut(HHole(0), [])
-  let result = force(state, value)
+  let result = force(state, value, dummy_do_match)
   assert result == VCtr("Just", VLit(LitInt(1)))
 }
 
@@ -59,7 +71,7 @@ pub fn force_hole_with_name_binding_test() {
   let bound_val = VLit(LitFloat(3.14))
   let state = def_var(initial_state([]), "hole5", bound_val, bound_val)
   let value = VNeut(HHole(5), [])
-  let result = force(state, value)
+  let result = force(state, value, dummy_do_match)
   assert result == VLit(LitFloat(3.14))
 }
 
@@ -67,7 +79,7 @@ pub fn force_unresolved_hole_returns_unchanged_test() {
   // A hole with no binding is returned unchanged
   let state = initial_state([])
   let value = VNeut(HHole(99), [])
-  let result = force(state, value)
+  let result = force(state, value, dummy_do_match)
   assert result == VNeut(HHole(99), [])
 }
 
@@ -79,7 +91,7 @@ pub fn force_neutral_with_spine_not_applicable_test() {
   // Neutral with spine that can't be applied stays neutral
   let state = initial_state([])
   let value = VNeut(HVar(0), [EApp(VLit(LitInt(1)))])
-  let result = force(state, value)
+  let result = force(state, value, dummy_do_match)
   // HVar(0) looks up in empty state — fails, so value is returned unchanged
   assert result == VNeut(HVar(0), [EApp(VLit(LitInt(1)))])
 }
@@ -88,7 +100,7 @@ pub fn force_neutral_head_preserved_test() {
   // Neutral head that isn't a hole should be preserved
   let state = initial_state([])
   let value = VNeut(HVar(5), [EApp(VLit(LitInt(1)))])
-  let result = force(state, value)
+  let result = force(state, value, dummy_do_match)
   // HVar(5) can't be found in empty state — returns unchanged
   assert result == VNeut(HVar(5), [EApp(VLit(LitInt(1)))])
 }
@@ -102,7 +114,7 @@ pub fn apply_spine_empty_test() {
   let _state =
     def_var(initial_state([]), "test", VLit(LitInt(1)), VLit(LitInt(1)))
   let value = VLit(LitInt(42))
-  let result = apply_spine(initial_state([]), value, [])
+  let result = apply_spine(initial_state([]), value, [], dummy_do_match)
   assert result == VLit(LitInt(42))
 }
 
@@ -110,7 +122,7 @@ pub fn apply_spine_single_element_test() {
   // Single eliminator on a neutral value that can't be applied
   // Application fails → returns neutral with empty spine
   let value = VNeut(HVar(0), [])
-  let result = apply_spine(initial_state([]), value, [EApp(VLit(LitInt(1)))])
+  let result = apply_spine(initial_state([]), value, [EApp(VLit(LitInt(1)))], dummy_do_match)
   // When application fails, the value is returned unchanged
   assert result == VNeut(HVar(0), [])
 }
@@ -121,7 +133,7 @@ pub fn apply_spine_lambda_consumes_one_test() {
   let param_type = VNeut(HHole(0), [])
   let body = Var(0, single("", 0, 0))
   let value = VLam([], [], #("x", param_type), body)
-  let result = apply_spine(initial_state([]), value, [EApp(arg)])
+  let result = apply_spine(initial_state([]), value, [EApp(arg)], dummy_do_match)
   // VLam consumes arg: body Var(0) → shifted to Var(1) → not substituted
   assert case result {
     VLam([], [], #("x", _), Var(1, _)) -> True
@@ -140,7 +152,7 @@ pub fn apply_spine_multiple_elements_test() {
   let body = Var(0, single("", 0, 0))
   let value = VLam([], [], #("x", param_type), body)
   let result =
-    apply_spine(initial_state([]), value, [EApp(VLit(LitInt(1))), EApp(VLit(LitInt(2)))])
+    apply_spine(initial_state([]), value, [EApp(VLit(LitInt(1))), EApp(VLit(LitInt(2)))], dummy_do_match)
   // First arg consumed, second arg can't apply to substituted result
   assert case result {
     VLam(_, _, #(_name, _param_type), _body) -> True
@@ -618,7 +630,7 @@ pub fn force_force_levels_to_indices_nested_lambda_param_test() {
 pub fn force_apply_spine_non_lambda_returns_neutral_test() {
   // Applying spine to non-lambda should return neutral with empty spine
   let value = VLit(LitInt(42))
-  let result = apply_spine(initial_state([]), value, [EApp(VLit(LitInt(1)))])
+  let result = apply_spine(initial_state([]), value, [EApp(VLit(LitInt(1)))], dummy_do_match)
   assert case result {
     VNeut(HVar(0), []) -> True
     _ -> False
