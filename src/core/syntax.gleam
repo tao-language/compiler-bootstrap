@@ -1106,7 +1106,7 @@ fn parse_ctr(p: Parser, span: Span) -> #(NamedTerm, Parser) {
 }
 
 /// Parse comma-separated constructor arguments inside #Name(...).
-/// Returns a NamedRcd containing all arguments.
+/// Returns a single argument directly, or a NamedRcd if there are multiple args.
 fn parse_ctr_args(p: Parser) -> #(NamedTerm, Parser) {
   let #(tokens, pos, fn_, errors) = p
   let span = current_span(p)
@@ -1115,26 +1115,21 @@ fn parse_ctr_args(p: Parser) -> #(NamedTerm, Parser) {
       #(NamedRcd([], span), p)
     _ -> {
       let #(first, p1) = parse_term(p)
-      parse_ctr_args_acc(first, p1, [#("", first)])
+      // Check if next token is ',' (multiple args) or ')' (single arg)
+      let #(tokens1, pos1, fn1, errors1) = p1
+      case list.drop(tokens1, pos1) {
+        [Token("Punct", ",", _), ..rest] -> {
+          // Multiple arguments - wrap in NamedRcd
+          let p2 = #(rest, 0, fn1, errors1)
+          let #(next, p3) = parse_term(p2)
+          let final_span = merge(span, term_span_named(next))
+          #(NamedRcd([#("", first), #("", next)], final_span), p3)
+        }
+        _ ->
+          // Single argument - return directly (don't wrap in NamedRcd)
+          #(first, p1)
+      }
     }
-  }
-}
-
-/// Accumulate comma-separated constructor arguments.
-/// acc is an accumulator list of field tuples.
-fn parse_ctr_args_acc(arg: NamedTerm, p: Parser, acc: List(#(String, NamedTerm))) -> #(NamedTerm, Parser) {
-  let #(tokens, pos, fn_, errors) = p
-  let span = current_span(p)
-  case list.drop(tokens, pos) {
-    [Token("Punct", ")", _), ..] ->
-      #(NamedRcd(list.reverse(acc), span), p)
-    [Token("Punct", ",", _), ..rest] -> {
-      let p1 = #(rest, 0, fn_, errors)
-      let #(next, p2) = parse_term(p1)
-      parse_ctr_args_acc(next, p2, [#("", next), ..acc])
-    }
-    _ ->
-      #(NamedRcd(list.reverse(acc), span), p)
   }
 }
 
