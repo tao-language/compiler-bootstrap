@@ -219,6 +219,8 @@ pub fn result_ast_returns_ast_on_errors_test() {
       expected: "Name",
       got: "EOF",
       context: "at start",
+      rule: "",
+      surrounding: [],
     )
   let result: ParseResult(Int) = ParseResult(ast: 42, errors: [err])
   assert result_ast(0, result) == 42
@@ -236,6 +238,8 @@ pub fn result_errors_returns_errors_list_test() {
       expected: "Name",
       got: "EOF",
       context: "test",
+      rule: "",
+      surrounding: [],
     )
   let result: ParseResult(String) = ParseResult(ast: "hello", errors: [err])
   let errors = result_errors("fallback", result)
@@ -253,9 +257,11 @@ pub fn error_to_string_single_line_test() {
       expected: "Name",
       got: "Eof",
       context: "in expression",
+      rule: "",
+      surrounding: [],
     )
   let formatted = error_to_string(err)
-  assert formatted == "in test.tao line 1, col 5: Name (found: Eof)"
+  assert formatted == "in test.tao line 1, col 5: Name (found: Eof) in in expression"
 }
 
 pub fn error_to_string_multi_line_test() {
@@ -265,9 +271,11 @@ pub fn error_to_string_multi_line_test() {
       expected: "Keyword",
       got: "Integer",
       context: "at module level",
+      rule: "",
+      surrounding: [],
     )
   let formatted = error_to_string(err)
-  assert formatted == "in test.tao line 2, col 1: Keyword (found: Integer)"
+  assert formatted == "in test.tao line 2, col 1: Keyword (found: Integer) in at module level"
 }
 
 pub fn error_to_string_empty_context_test() {
@@ -277,6 +285,8 @@ pub fn error_to_string_empty_context_test() {
       expected: "Token",
       got: "Nothing",
       context: "",
+      rule: "",
+      surrounding: [],
     )
   let formatted = error_to_string(err)
   assert formatted == "in  line 1, col 1: Token (found: Nothing)"
@@ -316,6 +326,8 @@ pub fn parse_result_with_multiple_errors_returns_all_errors_test() {
       expected: "Name",
       got: "Eof",
       context: "first",
+      rule: "",
+      surrounding: [],
     )
   let err2 =
     ParseError(
@@ -323,6 +335,8 @@ pub fn parse_result_with_multiple_errors_returns_all_errors_test() {
       expected: "Keyword",
       got: "Name",
       context: "second",
+      rule: "",
+      surrounding: [],
     )
   let err3 =
     ParseError(
@@ -330,6 +344,8 @@ pub fn parse_result_with_multiple_errors_returns_all_errors_test() {
       expected: "Op",
       got: "String",
       context: "third",
+      rule: "",
+      surrounding: [],
     )
   let result: ParseResult(String) =
     ParseResult(ast: "fallback", errors: [err1, err2, err3])
@@ -1387,4 +1403,62 @@ pub fn parse_ref_returns_constructed_ast_test() {
   let result = parse(grammar, tokens, "error_node")
   assert result.ast == "ref_result"
   assert result.errors == []
+}
+
+// ============================================================================
+// ParseError enrichment tests
+// ============================================================================
+
+pub fn parse_error_contains_rule_name_test() {
+  // ParseError should contain the rule name that was being attempted
+  let err = ParseError(
+    span: single("test", 1, 1),
+    expected: "end of input",
+    got: "Name 'foo'",
+    context: "unexpected token",
+    rule: "parse_tokens_acc",
+    surrounding: [],
+  )
+  assert err.rule == "parse_tokens_acc"
+}
+
+pub fn parse_error_contains_context_test() {
+  // ParseError should contain the context where the error occurred
+  let err = ParseError(
+    span: single("test", 1, 1),
+    expected: "field",
+    got: "EOF",
+    context: "in record",
+    rule: "parse_rcd_fields",
+    surrounding: [],
+  )
+  assert err.context == "in record"
+}
+
+pub fn error_to_string_includes_rule_and_context_test() {
+  // error_to_string should include rule and context when present
+  let err = ParseError(
+    span: single("test.gleam", 3, 5),
+    expected: "\"->\"",
+    got: "\"=\"",
+    context: "in lambda pattern",
+    rule: "skip",
+    surrounding: [],
+  )
+  let formatted = error_to_string(err)
+  assert formatted == "in test.gleam line 3, col 5: \"->\" (found: \"=\") in in lambda pattern (rule: skip)"
+}
+
+pub fn error_to_string_empty_rule_no_parens_test() {
+  // error_to_string should not include parens when rule is empty
+  let err = ParseError(
+    span: single("test.gleam", 1, 1),
+    expected: "field",
+    got: "EOF",
+    context: "in record",
+    rule: "",
+    surrounding: [],
+  )
+  let formatted = error_to_string(err)
+  assert formatted == "in test.gleam line 1, col 1: field (found: EOF) in in record"
 }

@@ -78,8 +78,18 @@ pub type ParseResult(a) {
 }
 
 /// A parse error with source location and context.
+///
+/// For debugging, `rule` indicates which parser rule was being attempted,
+/// and `surrounding` shows the 3 tokens before and after the error position.
 pub type ParseError {
-  ParseError(span: Span, expected: String, got: String, context: String)
+  ParseError(
+    span: Span,
+    expected: String,
+    got: String,
+    context: String,
+    rule: String,
+    surrounding: List(Token),
+  )
 }
 
 // ============================================================================
@@ -408,6 +418,8 @@ pub fn parse(
           expected: grammar.start <> " rule",
           got: msg,
           context: "parse failure",
+          rule: grammar.start,
+          surrounding: [],
         )
       ParseResult(ast: error_node, errors: [parse_err])
     }
@@ -844,6 +856,14 @@ pub fn error_to_string(error: ParseError) -> String {
   <> " (found: "
   <> error.got
   <> ")"
+  <> case error.context {
+    "" -> ""
+    ctx -> " in " <> ctx
+  }
+  <> case error.rule {
+    "" -> ""
+    rule -> " (rule: " <> rule <> ")"
+  }
 }
 
 /// Check if an Either value is Left.

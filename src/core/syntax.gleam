@@ -79,13 +79,15 @@ pub fn parse_tokens(
       case rest {
         Error(_) -> #(t, errs)
         Ok(Token(kind: "Eof", value: "", span: _)) -> #(t, errs)
-        Ok(Token(kind: _, value: value, span: span)) -> {
+        Ok(Token(kind: kind, value: value, span: span)) -> {
           let err =
             ParseError(
               span: span,
               expected: "end of input",
               got: value,
               context: "unexpected token",
+              rule: "parse_tokens_acc",
+              surrounding: surrounding_tokens(tokens2, pos2),
             )
           #(t, [err, ..errs])
         }
@@ -162,6 +164,32 @@ fn span_for_pos(tokens: List(Token), pos: Int) -> Span {
   }
 }
 
+/// Get surrounding tokens for error reporting: 3 before and 3 after position.
+fn surrounding_tokens(tokens: List(Token), pos: Int) -> List(Token) {
+  let start = case pos - 3 {
+    n if n < 0 -> 0
+    n -> n
+  }
+  let before = tokens |> list.drop(start) |> list.take(pos - start)
+  let after = tokens |> list.drop(pos) |> list.take(3)
+  list.append(before, after)
+}
+
+/// Convert a token to a human-readable string for error messages.
+fn token_to_string(tok: Token) -> String {
+  case tok {
+    Token("Name", v, _) -> "Name '" <> v <> "'"
+    Token("Op", v, _) -> "Op '" <> v <> "'"
+    Token("Punct", v, _) -> "Punct '" <> v <> "'"
+    Token("Integer", v, _) -> "Integer '" <> v <> "'"
+    Token("Float", v, _) -> "Float '" <> v <> "'"
+    Token("String", v, _) -> "String '" <> v <> "'"
+    Token("Eof", _, _) -> "EOF"
+    Token("Keyword", v, _) -> "Keyword '" <> v <> "'"
+    Token(_, v, _) -> v
+  }
+}
+
 fn skip(kind: String, p: Parser) -> Parser {
   let #(tokens, pos, fn_, errors) = p
   case kind {
@@ -182,7 +210,9 @@ fn skip(kind: String, p: Parser) -> Parser {
             span: span_for_pos(tokens, pos),
             expected: "->",
             got: got,
-            context: "",
+            context: "in lambda pattern",
+            rule: "skip",
+            surrounding: surrounding_tokens(tokens, pos),
           )
           #(tokens, pos, fn_, [err, ..errors])
         }
@@ -205,7 +235,9 @@ fn skip(kind: String, p: Parser) -> Parser {
             span: span_for_pos(tokens, pos),
             expected: "=>",
             got: got,
-            context: "",
+            context: "in lambda pattern",
+            rule: "skip",
+            surrounding: surrounding_tokens(tokens, pos),
           )
           #(tokens, pos, fn_, [err, ..errors])
         }
@@ -1089,6 +1121,8 @@ fn parse_rcd_fields(
           expected: "field",
           got: "EOF",
           context: "in record",
+          rule: "parse_rcd_fields",
+          surrounding: surrounding_tokens(tokens, pos),
         )
       #(list.reverse(acc), #(tokens, pos, fn_, [err, ..errors]))
     }
@@ -1122,6 +1156,8 @@ fn parse_rcd_type_fields(
           expected: "field",
           got: "EOF",
           context: "in record type",
+          rule: "parse_rcd_type_fields",
+          surrounding: surrounding_tokens(tokens, pos),
         )
       #(list.reverse(acc), #(tokens, pos, fn_, [err, ..errors]))
     }
@@ -1338,6 +1374,8 @@ fn parse_cases_acc(p: Parser, acc: List(NamedCase)) -> #(List(NamedCase), Parser
           expected: "case pattern",
           got: "EOF",
           context: "end of match",
+          rule: "parse_cases_acc",
+          surrounding: surrounding_tokens(tokens, pos),
         )
       #(acc, #(tokens, pos, fn_, [err, ..errors]))
     }
@@ -1452,6 +1490,8 @@ fn parse_fix(p: Parser, span: Span) -> #(NamedTerm, Parser) {
             expected: ".",
             got: "=>",
             context: "fix expression",
+            rule: "parse_fix",
+            surrounding: surrounding_tokens(tokens, pos),
           )
           #(tokens, pos, fn_, [err, ..errors])
         }
@@ -1461,6 +1501,8 @@ fn parse_fix(p: Parser, span: Span) -> #(NamedTerm, Parser) {
             expected: ".",
             got: "=",
             context: "fix expression",
+            rule: "parse_fix",
+            surrounding: surrounding_tokens(tokens, pos),
           )
           #(tokens, pos, fn_, [err, ..errors])
         }
@@ -1474,6 +1516,8 @@ fn parse_fix(p: Parser, span: Span) -> #(NamedTerm, Parser) {
             expected: ".",
             got: got,
             context: "fix expression",
+            rule: "parse_fix",
+            surrounding: surrounding_tokens(tokens, pos),
           )
           #(tokens, pos, fn_, [err, ..errors])
         }
@@ -1510,6 +1554,8 @@ fn parse_list_items_acc(p: Parser, acc: List(NamedTerm)) -> #(List(NamedTerm), P
           expected: "list item",
           got: "EOF",
           context: "in list",
+          rule: "parse_list_items_acc",
+          surrounding: surrounding_tokens(tokens, pos),
         )
       #(list.reverse(acc), #(tokens, pos, fn_, [err, ..errors]))
     }
@@ -1593,6 +1639,8 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
               expected: "integer",
               got: v,
               context: "invalid integer literal",
+              rule: "parse_pattern",
+              surrounding: surrounding_tokens(tokens, pos),
             )
           #(PAny(span), #(tokens, pos + 1, fn_, [err, ..errors]))
         }
@@ -1609,6 +1657,8 @@ fn parse_pattern(p: Parser) -> #(Pattern, Parser) {
               expected: "float",
               got: v,
               context: "invalid float literal",
+              rule: "parse_pattern",
+              surrounding: surrounding_tokens(tokens, pos),
             )
           #(PAny(span), #(tokens, pos + 1, fn_, [err, ..errors]))
         }

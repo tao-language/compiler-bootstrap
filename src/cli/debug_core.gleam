@@ -121,9 +121,70 @@ fn format_tokens(tokens: List(Token)) -> String {
 }
 
 fn format_parse_error(err: ParseError) -> String {
-  "  " <> int.to_string(err.span.start_line) <> ":"
+  let line_col = int.to_string(err.span.start_line) <> ":"
   <> int.to_string(err.span.start_col)
-  <> " expected " <> err.expected <> ", got " <> err.got
+  let rule_info = case err.rule {
+    "" -> ""
+    rule -> " (rule: " <> rule <> ")"
+  }
+  let surrounding_info = case err.surrounding {
+    [] -> ""
+    tokens ->
+      "\n  surrounding: " <> token_list(tokens)
+  }
+  "  " <> line_col <> " expected " <> err.expected <> ", got " <> err.got
+  <> rule_info <> surrounding_info
+}
+
+/// Format surrounding tokens for error reporting.
+fn token_list(tokens: List(Token)) -> String {
+  case tokens {
+    [] -> ""
+    [first, ..rest] -> case rest {
+      [] -> token_to_string(first)
+      _ -> token_to_string(first) <> " " <> string.join(list.map(rest, token_to_string), with: " ")
+    }
+  }
+}
+
+/// Format a token to a human-readable string.
+fn token_to_string(tok: Token) -> String {
+  case tok {
+    TokenCtor(kind: kind, value: value, span: _) ->
+      case kind {
+        "Name" -> "Name '" <> value <> "'"
+        "Op" -> "Op '" <> value <> "'"
+        "Punct" -> "Punct '" <> value <> "'"
+        "Integer" -> "Integer '" <> value <> "'"
+        "Float" -> "Float '" <> value <> "'"
+        "String" -> "String '" <> value <> "'"
+        "Eof" -> "EOF"
+        "Keyword" -> "Keyword '" <> value <> "'"
+        _ -> value
+      }
+  }
+}
+
+/// Format a parse error with full context including surrounding tokens.
+fn format_parse_error_verbose(err: ParseError) -> String {
+  let line_col = int.to_string(err.span.start_line) <> ":"
+  <> int.to_string(err.span.start_col)
+  let rule_info = case err.rule {
+    "" -> ""
+    rule -> "\n  rule: " <> rule
+  }
+  let context_info = case err.context {
+    "" -> ""
+    ctx -> "\n  context: " <> ctx
+  }
+  let surrounding_info = case err.surrounding {
+    [] -> ""
+    tokens ->
+      "\n  surrounding: " <> token_list(tokens)
+  }
+  "Parse error at " <> line_col <> "\n"
+  <> "  expected: " <> err.expected <> "\n"
+  <> "  got: " <> err.got <> rule_info <> context_info <> surrounding_info
 }
 
 fn format_error(err: Error) -> String {

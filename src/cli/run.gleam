@@ -19,6 +19,7 @@ import gleam/float
 import gleam/string
 import simplifile
 import syntax/grammar.{type ParseError, ParseError as ParseErrorCtor}
+import syntax/span.{type Span}
 import core/ast.{type Value, type Head, type LiteralType,
   VLit, VNeut, VCtr, VCall, VFix, VPi, VLam, VRcd, VRcdT, VTyp, VTypeDef, VErr, HVar, HHole, HFix, Int, Float as AstFloat,
   VLitT, IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T, term_to_string}
@@ -168,12 +169,25 @@ pub fn load_file(path: String) -> Result(String, String) {
 }
 
 fn format_parse_errors(errors: List(ParseError)) -> List(String) {
-  list.map(errors, fn(e) {
+  errors
+  |> list.map(fn(e) {
     case e {
-      ParseErrorCtor(expected: exp, got: got, span: _, context: _) ->
-        "expected " <> exp <> ", got " <> got
+      ParseErrorCtor(expected: exp, got: got, span: span, context: ctx, rule: rule, surrounding: _surrounding) -> format_single_error(exp, got, span, ctx, rule)
     }
   })
+}
+
+fn format_single_error(exp: String, got: String, span: Span, ctx: String, rule: String) -> String {
+  let line_col = int.to_string(span.start_line) <> ":" <> int.to_string(span.start_col)
+  let rule_info = case rule {
+    "" -> ""
+    r -> " (rule: " <> r <> ")"
+  }
+  let ctx_info = case ctx {
+    "" -> ""
+    c -> " in " <> c
+  }
+  "Parse error at " <> line_col <> ": expected " <> exp <> ", got " <> got <> ctx_info <> rule_info
 }
 
 fn format_state_errors(errors: List(Error)) -> List(String) {
