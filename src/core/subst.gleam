@@ -63,10 +63,21 @@ pub fn force(
 ) -> Value {
   case value {
     VNeut(head, spine) -> {
-      let resolved = resolve_head(env, head)
-      case resolved {
-        Ok(v) -> apply_spine(env, v, spine, do_match_fn)
-        Error(_) -> value
+      case head {
+        HHole(id) -> {
+          // Look up hole by index in env (holes are stored as env[0], env[1], etc.)
+          case list.drop(env, id) {
+            [v, ..] -> apply_spine(env, v, spine, do_match_fn)
+            [] -> value
+          }
+        }
+        _ -> {
+          let resolved = resolve_head(env, head)
+          case resolved {
+            Ok(v) -> apply_spine(env, v, spine, do_match_fn)
+            Error(_) -> value
+          }
+        }
       }
     }
     _ -> value

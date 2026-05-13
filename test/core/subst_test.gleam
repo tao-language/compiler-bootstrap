@@ -59,20 +59,29 @@ pub fn force_empty_spine_returns_value_test() {
 }
 
 pub fn force_hole_resolved_test() {
-  // A hole that is bound in state should be resolved
+  // A hole that is bound in env should be resolved by index
   let hole_val = VCtr("Just", VLit(LitInt(1)))
-  let state = def_var(initial_state([]), "hole0", hole_val, hole_val)
+  // Pass hole_val in env so force can resolve HHole(0) -> env[0]
+  let env = [hole_val]
   let value = VNeut(HHole(0), [])
-  let result = force([], value, dummy_do_match)
+  let result = force(env, value, dummy_do_match)
   assert result == VCtr("Just", VLit(LitInt(1)))
 }
 
 pub fn force_hole_with_name_binding_test() {
-  // Holes are looked up by name "hole{id}"
+  // Holes are looked up by index in env
   let bound_val = VLit(LitFloat(3.14))
-  let state = def_var(initial_state([]), "hole5", bound_val, bound_val)
+  // For HHole(5), we need 5 values before it in env
+  let env = [
+    VCtr("hole0", VLit(LitInt(0))),
+    VCtr("hole1", VLit(LitInt(1))),
+    VCtr("hole2", VLit(LitInt(2))),
+    VCtr("hole3", VLit(LitInt(3))),
+    VCtr("hole4", VLit(LitInt(4))),
+    bound_val,
+  ]
   let value = VNeut(HHole(5), [])
-  let result = force([], value, dummy_do_match)
+  let result = force(env, value, dummy_do_match)
   assert result == VLit(LitFloat(3.14))
 }
 
