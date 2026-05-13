@@ -115,22 +115,11 @@ pub fn evaluate(state: State, term: Term) -> Value {
       VRcd(list.map(fields, fn(f) { #(f.0, evaluate(state, f.1)) }))
     Ann(term, _, _) -> evaluate(state, term)
     Match(arg, cases, _) -> {
+      // Evaluate the scrutinee to a value, then delegate to do_match.
+      // do_match handles VNeut (deferring match) and VFix (unrolling) internally.
       let scrutinee = evaluate(state, arg)
       let env = state_to_env(state)
-      case scrutinee {
-        VNeut(head, spine) -> {
-          // Scrutinee is neutral - defer the match by appending EMatch to the spine
-          // force() will resolve the head and apply the spine (including EMatch)
-          force(env, VNeut(head, list.append(spine, [EMatch(env, cases)])), do_match)
-        }
-        VFix(fix_name, fix_env, fix_body) -> {
-          // VFix is a deferred value - defer the match by treating it as neutral
-          // Pass VFix directly to HFix - no name lookup needed
-          let vfix_val = VFix(fix_name, fix_env, fix_body)
-          force(env, VNeut(HFix(vfix_val), [EMatch(env, cases)]), do_match)
-        }
-        _ -> do_match(env, state.truth_ctr, state.ffi, scrutinee, cases, [])
-      }
+      do_match(env, state.truth_ctr, state.ffi, scrutinee, cases, [])
     }
     Call(name, args, return_type, _span) -> {
       // Evaluate each (value_term, type_term) pair
@@ -162,11 +151,13 @@ pub fn evaluate(state: State, term: Term) -> Value {
     }
     Fix(name, body, _) -> {
       // $fix f. body evaluates to a VFix value.
+      // Store the current environment so that unrolling can access outer variables.
       // Shift body by -1 so that the fix variable (at Var(2) after term_to_debruijn
       // due to pattern variable shadowing) becomes Var(1) relative to the VLam's
       // parameter. This matches what infer_fix does.
       let shifted_body = shift_term_from(body, -1, 1)
-      VFix(name, [], shifted_body)
+      let env = state_to_env(state)
+      VFix(name, env, shifted_body)
     }
     Err(_, _) -> VErr
   }
@@ -202,32 +193,17 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     // β-reduction: substitute the argument for the lambda parameter, then
     // evaluate the body. The body's indices are already relative to this
     // lambda - no shift needed.
-    VLam(_env, _implicits, #(pname, param_type), body) -> {
-      // Convert int to float when param type is FloatT
-      let converted_arg = case param_type {
-        VLitT(FloatT) -> case arg_val {
-          VLit(LitInt(v)) -> {
-            // Convert int to float by parsing the string representation
-            case float.parse(int.to_string(v) <> ".0") {
-              Ok(f) -> VLit(LitFloat(f))
-              Error(_) -> arg_val
-            }
-          }
-          _ -> arg_val
-        }
-        _ -> arg_val
-      }
-      // The body's Var(0) refers to the lambda parameter at the current scope.
-      // Extend state with the parameter so that Var(0) resolves to arg_val,
-      // and Var(1), Var(2), etc. resolve to outer variables from the
-      // enclosing $let bindings (which are in state.vars).
-      let new_var = #(pname, #(converted_arg, VNeut(HHole(0), [])))
-      let extended = state.State(
-        ..state,
-        vars: list.append([new_var], state.vars),
-      )
-      let substituted = subst_term_var(0, converted_arg, body)
-      evaluate(extended, substituted)
+    // Use the VLam's env (outer variables) as the evaluation context, not the
+    // current state. The VLam env captures the free variables from the lambda's
+    // defining scope.
+    VLam(lam_env, _implicits, #(pname, param_type), body) -> {
+      // Use the VLam's env (outer variables) as the evaluation context, not the
+      // current state. The VLam env captures the free variables from the lambda's
+      // defining scope.
+      // Extend env with the lambda parameter.
+      let env_with_param = list.append([arg_val], lam_env)
+      let substituted = subst_term_var(0, arg_val, body)
+      evaluate(env_to_state(env_with_param, state.truth_ctr, state.ffi), substituted)
     }
     // VFix unroll: substitute the argument for Var(0) (Lambda param) and
     // the VFix for Var(1) (recursive ref), then evaluate.
@@ -237,47 +213,30 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     // Key: value_to_neut converts VFix→Fix(term) in subst.gleam, so
     // substitution preserves the fixpoint as a term-level construct.
     VFix(fix_name, fix_env, fix_body) -> {
-      let body = case fix_body {
-        Ann(inner, _, _) -> inner
-        _ -> fix_body
-      }
-      case body {
-        Lam(_implicits, param, body_term, _) -> {
-          // Convert int to float when param type is FloatT
-          let converted_arg = case param.1 {
-            Ann(typ, _, _) -> case typ {
-              LitT(FloatT, _) -> case arg_val {
-                VLit(LitInt(v)) -> {
-                  case float.parse(int.to_string(v) <> ".0") {
-                    Ok(f) -> VLit(LitFloat(f))
-                    Error(_) -> arg_val
-                  }
-                }
-                _ -> arg_val
-              }
-              _ -> arg_val
-            }
-            LitT(FloatT, _) -> case arg_val {
-              VLit(LitInt(v)) -> {
-                case float.parse(int.to_string(v) <> ".0") {
-                  Ok(f) -> VLit(LitFloat(f))
-                  Error(_) -> arg_val
-                }
-              }
-              _ -> arg_val
-            }
-            _ -> arg_val
-          }
-          // Step 1: Substitute the argument for Var(0) in the Lambda's body
-          let body_with_arg = subst_term_var(0, converted_arg, body_term)
-          // Step 2: Substitute the VFix for Var(1) (recursive reference)
-          // value_to_neut converts VFix→Fix(term), preserving the fixpoint
-          let self = VFix(fix_name, fix_env, fix_body)
-          let body_with_self = subst_term_var(1, self, body_with_arg)
-          // Evaluate the fully substituted body
-          evaluate(state, body_with_self)
+      // Only unroll VFix when applied to a concrete (non-neutral) argument.
+      // When applied to VNeut, defer by converting to VNeut(HFix, [EApp(...)]).
+      case arg_val {
+        VNeut(_, _) -> {
+          // Argument is neutral - defer the match by building a neutral spine
+          VNeut(HFix(VFix(fix_name, fix_env, fix_body)), [EApp(arg_val)])
         }
-        _ -> VErr
+        _ -> {
+          // Argument is concrete - unroll the VFix
+          let body = case fix_body {
+            Ann(inner, _, _) -> inner
+            _ -> fix_body
+          }
+          case body {
+            Lam(_implicits, param, body_term, _) -> {
+              let body_with_arg = subst_term_var(0, arg_val, body_term)
+              let self = VFix(fix_name, fix_env, fix_body)
+              let body_with_self = subst_term_var(1, self, body_with_arg)
+              let env_with_arg = list.append([arg_val], fix_env)
+              evaluate(env_to_state(env_with_arg, state.truth_ctr, state.ffi), body_with_self)
+            }
+            _ -> VErr
+          }
+        }
       }
     }
     // Extend neutral spine: variable or hole applied to argument
@@ -324,33 +283,8 @@ fn do_match(
   cases: List(Case),
   bindings: List(#(String, Value)),
 ) -> Value {
-  // Handle VFix scrutinee by unrolling and recursively matching
-  let scrutinee = case scrutinee {
-    VFix(fix_name, fix_env, fix_body) -> {
-      // Unroll VFix: get the lambda body and evaluate param type
-      let body = case fix_body {
-        Ann(inner, _, _) -> inner
-        _ -> fix_body
-      }
-      case body {
-        Lam(_implicits, param, body_term, _) -> {
-          let param_val = case param.1 {
-            Ann(t, _, _) -> evaluate(env_to_state(env, truth_ctr, ffi), t)
-            _ -> evaluate(env_to_state(env, truth_ctr, ffi), param.1)
-          }
-          // Create VLam and match against it
-          let lam_val = VLam(fix_env, [], #(param.0, param_val), body_term)
-          // Self-apply: the VFix is a fixed point, so we need to
-          // match the lambda body after substituting the VFix for the recursive ref
-          do_match(env, truth_ctr, ffi, lam_val, cases, bindings)
-        }
-        _ -> VErr
-      }
-    }
-    _ -> scrutinee
-  }
-
-  // If scrutinee is still VFix after unrolling, return VErr (no match)
+  // If scrutinee is VFix, defer the match - VFix unrolling should only
+  // happen in do_app when a concrete (non-neutral) argument is applied.
   case scrutinee {
     VFix(_, _, _) -> VErr
     _ -> case cases {
