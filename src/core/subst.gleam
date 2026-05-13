@@ -74,7 +74,7 @@ fn resolve_head(state: State, head: Head) -> Result(Value, Nil) {
         Error(_) -> Error(Nil)
       }
     }
-    HFix(name) -> {
+    HFix(name, _env) -> {
       // HFix represents a VFix - return a VFix value
       case lookup_var(state, name) {
         Ok(#(v, _)) -> case v {
@@ -104,7 +104,7 @@ fn lookup_level_local(
 pub fn apply_spine(state: State, value: Value, spine: List(Elim)) -> Value {
   case spine {
     [] -> value
-    [EMatch(cases), ..rest] -> {
+    [EMatch(_env, cases), ..rest] -> {
       // Evaluate the match on the value, then continue with remaining spine
       let match_result = match_values(state, cases, value)
       apply_spine(state, match_result, rest)
@@ -123,7 +123,7 @@ pub fn apply_spine(state: State, value: Value, spine: List(Elim)) -> Value {
 fn elim_arg_value(elim: Elim) -> Option(Value) {
   case elim {
     EApp(arg) -> Some(arg)
-    EMatch(_) -> None
+    EMatch(_env, _) -> None
   }
 }
 
@@ -377,7 +377,7 @@ fn neut_head_to_term(head: Head) -> Term {
   case head {
     HVar(level) -> Var(level, single("", 0, 0))
     HHole(id) -> Hole(id, single("", 0, 0))
-    HFix(name) -> Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
+    HFix(name, _env) -> Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
   }
 }
 
@@ -492,7 +492,7 @@ fn neut_head_to_term_with_spine(head: Head, spine: List(Elim), n: Int) -> Term {
       let applied = App(base, arg_term, single("", 0, 0))
       apply_remaining_spine(applied, n, rest)
     }
-    HVar(level), [EMatch(cases), ..rest] -> {
+    HVar(level), [EMatch(_env, cases), ..rest] -> {
       let base = Var(abs_index(level, n), single("", 0, 0))
       let match_term = Match(base, cases, single("", 0, 0))
       apply_remaining_spine(match_term, n, rest)
@@ -503,19 +503,19 @@ fn neut_head_to_term_with_spine(head: Head, spine: List(Elim), n: Int) -> Term {
       let applied = App(base, arg_term, single("", 0, 0))
       apply_remaining_spine(applied, n, rest)
     }
-    HHole(id), [EMatch(cases), ..rest] -> {
+    HHole(id), [EMatch(_env, cases), ..rest] -> {
       let base = Hole(id, single("", 0, 0))
       let match_term = Match(base, cases, single("", 0, 0))
       apply_remaining_spine(match_term, n, rest)
     }
-    HFix(name), [] -> Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
-    HFix(name), [EApp(arg), ..rest] -> {
+    HFix(name, _env), [] -> Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
+    HFix(name, _env), [EApp(arg), ..rest] -> {
       let base = Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
       let arg_term = force_levels_to_indices(arg, n)
       let applied = App(base, arg_term, single("", 0, 0))
       apply_remaining_spine(applied, n, rest)
     }
-    HFix(name), [EMatch(cases), ..rest] -> {
+    HFix(name, _env), [EMatch(_env, cases), ..rest] -> {
       let base = Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
       let match_term = Match(base, cases, single("", 0, 0))
       apply_remaining_spine(match_term, n, rest)
@@ -532,7 +532,7 @@ fn apply_remaining_spine(base: Term, n: Int, rest: List(Elim)) -> Term {
       let applied = App(base, next_term, single("", 0, 0))
       apply_remaining_spine(applied, n, rest_rest)
     }
-    [EMatch(cases), ..rest_rest] -> {
+    [EMatch(_env, cases), ..rest_rest] -> {
       let match_term = Match(base, cases, single("", 0, 0))
       apply_remaining_spine(match_term, n, rest_rest)
     }

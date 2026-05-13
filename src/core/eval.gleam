@@ -119,12 +119,12 @@ pub fn evaluate(state: State, term: Term) -> Value {
       case scrutinee {
         VNeut(head, spine) -> {
           // Scrutinee is neutral - defer the match by appending EMatch to the spine
-          VNeut(head, list.append(spine, [EMatch(cases)]))
+          VNeut(head, list.append(spine, [EMatch(state.vars, cases)]))
         }
         VFix(fix_name, _, _) -> {
           // VFix is a deferred value - defer the match by treating it as neutral
           // Create a neutral value with HFix head
-          VNeut(HFix(fix_name), [EMatch(cases)])
+          VNeut(HFix(fix_name, state.vars), [EMatch(state.vars, cases)])
         }
         _ -> do_match(state, state.truth_ctr, scrutinee, cases, [])
       }
@@ -320,25 +320,45 @@ fn do_match(
   cases: List(Case),
   bindings: List(#(String, Value)),
 ) -> Value {
-  case cases {
-    [] -> VErr
-    [CoreCase(pattern, guard, body, _case_span), ..rest] -> {
-      case match_pattern(pattern, scrutinee, bindings) {
-        Ok(env_bindings) -> {
-          // Evaluate optional guard
-          case guard {
-            Some(guard_term) -> {
-              let guard_val =
-                evaluate(match_state(env_bindings, truth_ctr, state.vars), guard_term)
-              case is_truth(truth_ctr, guard_val) {
-                True -> evaluate(match_state(env_bindings, truth_ctr, state.vars), body)
-                False -> do_match(state, truth_ctr, scrutinee, rest, bindings)
-              }
-            }
-            None -> evaluate(match_state(env_bindings, truth_ctr, state.vars), body)
+  case scrutinee {
+    VFix(fix_name, fix_env, fix_body) -> {
+      // Unroll VFix to VLam and try matching
+      let body = case fix_body {
+        Ann(inner, _, _) -> inner
+        _ -> fix_body
+      }
+      case body {
+        Lam(_implicits, param, body_term, _) -> {
+          let param_val = case param.1 {
+            Ann(t, _, _) -> evaluate(state, t)
+            _ -> evaluate(state, param.1)
           }
+          let lam_val = VLam(fix_env, [], #(param.0, param_val), body_term)
+          do_match(state, truth_ctr, lam_val, cases, bindings)
         }
-        Error(Nil) -> do_match(state, truth_ctr, scrutinee, rest, bindings)
+        _ -> VErr
+      }
+    }
+    _ -> case cases {
+      [] -> VErr
+      [CoreCase(pattern, guard, body, _case_span), ..rest] -> {
+        case match_pattern(pattern, scrutinee, bindings) {
+          Ok(env_bindings) -> {
+            // Evaluate optional guard
+            case guard {
+              Some(guard_term) -> {
+                let guard_val =
+                  evaluate(match_state(env_bindings, truth_ctr, state.vars), guard_term)
+                case is_truth(truth_ctr, guard_val) {
+                  True -> evaluate(match_state(env_bindings, truth_ctr, state.vars), body)
+                  False -> do_match(state, truth_ctr, scrutinee, rest, bindings)
+                }
+              }
+              None -> evaluate(match_state(env_bindings, truth_ctr, state.vars), body)
+            }
+          }
+          Error(Nil) -> do_match(state, truth_ctr, scrutinee, rest, bindings)
+        }
       }
     }
   }
@@ -745,7 +765,7 @@ pub fn eval_value_to_string(value: Value) -> String {
       let head_str = case head {
         HVar(level) -> "v" <> int.to_string(level)
         HHole(id) -> "?" <> int.to_string(id)
-        HFix(name) -> "$fix " <> name
+        HFix(name, _env) -> "$fix " <> name
       }
       case spine {
         [] -> head_str
@@ -754,7 +774,7 @@ pub fn eval_value_to_string(value: Value) -> String {
             list.fold(spine, "", fn(acc, e) {
               let s = case e {
                 EApp(arg) -> "(" <> eval_value_to_string(arg) <> ")"
-                EMatch(cases) -> " {" <> list.fold(cases, "", fn(acc, c) {
+                EMatch(_env, cases) -> " {" <> list.fold(cases, "", fn(acc, c) {
                   acc <> " | " <> pattern_to_string(c.pattern) <> " => " <> term_to_string(c.body)
                 }) <> " }"
               }

@@ -1170,7 +1170,7 @@ pub fn apply_unify_bindings(
       }
     }
     // HFix: preserve the fixpoint neutral value as-is (not a bindable variable)
-    ast.VNeut(ast.HFix(name), spine) -> ast.VNeut(ast.HFix(name), spine)
+    ast.VNeut(ast.HFix(name, env), spine) -> ast.VNeut(ast.HFix(name, env), spine)
     ast.VLam(env, implicits, param, body) ->
       ast.VLam(env, implicits, param, body)
     ast.VPi(env, implicits, domain, codomain) ->
@@ -1210,7 +1210,7 @@ fn apply_spine_to_value(v: ast.Value, spine: List(ast.Elim)) -> ast.Value {
   case spine {
     [] -> v
     [ast.EApp(_arg), ..rest] -> apply_spine_to_value(v, rest)
-    [ast.EMatch(_cases), ..rest] -> apply_spine_to_value(v, rest)
+    [ast.EMatch(_env, _cases), ..rest] -> apply_spine_to_value(v, rest)
   }
 }
 

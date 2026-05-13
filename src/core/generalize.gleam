@@ -62,7 +62,7 @@ fn free_holes_from(value: Value, binding: Int) -> List(Int) {
         list.fold(spine, [], fn(acc, elim) {
           case elim {
             EApp(arg) -> list.append(acc, free_holes_from(arg, binding))
-            EMatch(cases) -> list.append(acc, list.fold(cases, [], fn(acc, c) {
+            EMatch(_env, cases) -> list.append(acc, list.fold(cases, [], fn(acc, c) {
               list.append(acc, free_holes_from_term(c.body, binding))
             }))
           }
@@ -130,7 +130,7 @@ fn head_holes(head: Head) -> List(Int) {
   case head {
     HVar(_) -> []
     HHole(id) -> [id]
-    HFix(_) -> []
+    HFix(_name, _env) -> []
   }
 }
 
@@ -237,7 +237,7 @@ fn free_levels_from(value: Value, binding: Int) -> List(Int) {
         list.fold(spine, [], fn(acc, elim) {
           case elim {
             EApp(arg) -> list.append(acc, free_levels_from(arg, binding))
-            EMatch(cases) -> list.append(acc, list.fold(cases, [], fn(acc, c) {
+            EMatch(_env, cases) -> list.append(acc, list.fold(cases, [], fn(acc, c) {
               list.append(acc, free_levels_from_term(c.body, binding))
             }))
           }
@@ -307,7 +307,7 @@ fn head_level(head: Head, binding: Int) -> List(Int) {
         False -> []
       }
     HHole(_) -> []
-    HFix(_) -> []
+    HFix(_name, _env) -> []
   }
 }
 
@@ -448,7 +448,7 @@ fn subst_holes(value: Value, subst: List(#(Int, Int))) -> Value {
         list.map(spine, fn(elim) {
           case elim {
             EApp(arg) -> EApp(subst_values(arg, subst))
-            EMatch(cases) -> EMatch(list.map(cases, fn(c) {
+            EMatch(env, cases) -> EMatch(env, list.map(cases, fn(c) {
               Case(pattern: c.pattern, guard: c.guard, body: subst_holes_term(c.body, subst), span: c.span)
             }))
           }
@@ -590,7 +590,7 @@ fn subst_head(head: Head, subst: List(#(Int, Int))) -> Head {
       }
     }
     HVar(level) -> HVar(level)
-    HFix(name) -> HFix(name)
+    HFix(name, env) -> HFix(name, env)
   }
 }
 
