@@ -13,6 +13,7 @@ import core/state.{FfiEntry, def_var, type State, State}
 import core/eval.{evaluate, match_pattern}
 import core/subst.{force, force_levels_to_indices}
 import core/unify.{unify}
+import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, Some, None}
@@ -949,8 +950,17 @@ fn unify_infer_and_check(
   case inferred_type, expected_type {
     ast.VErr, _ | _, ast.VErr -> #(ast.VErr, ast.VErr, state)
     _, _ -> {
+      // Convert int literal to float when expected type is FloatT
+      let converted_value = case value, expected_type {
+        ast.VLit(ast.Int(v)), ast.VLitT(FloatT) ->
+          case float.parse(int.to_string(v) <> ".0") {
+            Ok(f) -> ast.VLit(ast.Float(f))
+            Error(_) -> value
+          }
+        _, _ -> value
+      }
       let state = unify(state, expected_type, inferred_type)
-      let forced = force([], value, dummy_do_match)
+      let forced = force([], converted_value, dummy_do_match)
       let forced_type = force([], inferred_type, dummy_do_match)
       #(forced, forced_type, state)
     }
