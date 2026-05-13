@@ -200,13 +200,14 @@ pub type Case {
 pub type Head {
   HVar(level: Int)
   HHole(id: Int)
-  HFix(name: String, env: List(#(String, #(Value, Value))))
+  /// HFix holds a VFix value directly (no name lookup needed)
+  HFix(value: Value)
 }
 
 /// Elimination form applied to a neutral term.
 pub type Elim {
   EApp(arg: Value)
-  EMatch(env: List(#(String, #(Value, Value))), cases: List(Case))
+  EMatch(env: Env, cases: List(Case))
 }
 
 /// Core values - normalized terms after evaluation.
@@ -298,7 +299,7 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
       }
     }
     VNeut(HHole(id), spine) -> VNeut(HHole(id), spine)
-    VNeut(HFix(name, env), spine) -> VNeut(HFix(name, env), spine)
+    VNeut(HFix(vfix), spine) -> VNeut(HFix(vfix), spine)
     VLam(_env, _implicits, _param, _body) -> v
     VPi(_env, _implicits, _domain, _codomain) -> v
     VLit(_value) -> v
@@ -1049,7 +1050,10 @@ fn neut_head_to_string(head: Head) -> String {
   case head {
     HVar(level) -> "v" <> int.to_string(level)
     HHole(id) -> "?" <> int.to_string(id)
-    HFix(name, _env) -> "$fix " <> name
+    HFix(vfix) -> case vfix {
+      VFix(name, _, _) -> "$fix " <> name
+      _ -> "$fix ?"
+    }
   }
 }
 

@@ -8,7 +8,7 @@ import core/ast.{
   LitT, shift_term_from,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
-import core/state.{type State, FfiEntry, State, lookup_ffi}
+import core/state.{State, type State, type FfiEntry as FfiEntryType, FfiEntry, lookup_ffi, state_to_env, env_to_state}
 import syntax/span.{type Span}
 import core/subst.{force, subst_term_var}
 import gleam/float
@@ -65,16 +65,16 @@ pub fn evaluate(state: State, term: Term) -> Value {
     Var(index, _) ->
       case list.drop(state.vars, index) {
         [#(_, #(value, _)), ..] -> value
-        _ -> force(state, VNeut(HVar(index), []), do_match)
+        _ -> force(state_to_env(state), VNeut(HVar(index), []), do_match)
       }
-    Hole(id, _) -> force(state, VNeut(HHole(id), []), do_match)
+    Hole(id, _) -> force(state_to_env(state), VNeut(HHole(id), []), do_match)
     Lam(implicits, #(name, param_type), body, _span) -> {
       // Evaluate the parameter type term to a value, then force to
       // resolve any holes in it. The body remains as a Term (closure).
-      let param_val = force(state, evaluate(state, param_type), do_match)
-      let env = list.map(state.vars, fn(v) { v.1.0 })
+      let env = state_to_env(state)
+      let param_val = force(env, evaluate(state, param_type), do_match)
       let implicit_env = list.map(implicits, fn(i) {
-        let ival = force(state, evaluate(state, i.1), do_match)
+        let ival = force(env, evaluate(state, i.1), do_match)
         #(i.0, ival)
       })
       VLam(env, implicit_env, #(name, param_val), body)
@@ -116,18 +116,20 @@ pub fn evaluate(state: State, term: Term) -> Value {
     Ann(term, _, _) -> evaluate(state, term)
     Match(arg, cases, _) -> {
       let scrutinee = evaluate(state, arg)
+      let env = state_to_env(state)
       case scrutinee {
         VNeut(head, spine) -> {
           // Scrutinee is neutral - defer the match by appending EMatch to the spine
           // force() will resolve the head and apply the spine (including EMatch)
-          force(state, VNeut(head, list.append(spine, [EMatch(state.vars, cases)])), do_match)
+          force(env, VNeut(head, list.append(spine, [EMatch(env, cases)])), do_match)
         }
-        VFix(fix_name, _, _) -> {
+        VFix(fix_name, fix_env, fix_body) -> {
           // VFix is a deferred value - defer the match by treating it as neutral
-          // force() will resolve the HFix head to VFix, then apply EMatch spine
-          force(state, VNeut(HFix(fix_name, state.vars), [EMatch(state.vars, cases)]), do_match)
+          // Pass VFix directly to HFix - no name lookup needed
+          let vfix_val = VFix(fix_name, fix_env, fix_body)
+          force(env, VNeut(HFix(vfix_val), [EMatch(env, cases)]), do_match)
         }
-        _ -> do_match(state, state.truth_ctr, scrutinee, cases, [])
+        _ -> do_match(env, state.truth_ctr, state.ffi, scrutinee, cases, [])
       }
     }
     Call(name, args, return_type, _span) -> {
@@ -315,8 +317,9 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
 /// // evaluates to the first case body with "v" bound
 /// ```
 fn do_match(
-  state: State,
+  env: List(Value),
   truth_ctr: String,
+  ffi: List(FfiEntryType),
   scrutinee: Value,
   cases: List(Case),
   bindings: List(#(String, Value)),
@@ -332,14 +335,14 @@ fn do_match(
       case body {
         Lam(_implicits, param, body_term, _) -> {
           let param_val = case param.1 {
-            Ann(t, _, _) -> evaluate(state, t)
-            _ -> evaluate(state, param.1)
+            Ann(t, _, _) -> evaluate(env_to_state(env, truth_ctr, ffi), t)
+            _ -> evaluate(env_to_state(env, truth_ctr, ffi), param.1)
           }
           // Create VLam and match against it
           let lam_val = VLam(fix_env, [], #(param.0, param_val), body_term)
           // Self-apply: the VFix is a fixed point, so we need to
           // match the lambda body after substituting the VFix for the recursive ref
-          do_match(state, truth_ctr, lam_val, cases, bindings)
+          do_match(env, truth_ctr, ffi, lam_val, cases, bindings)
         }
         _ -> VErr
       }
@@ -355,20 +358,22 @@ fn do_match(
       [CoreCase(pattern, guard, body, _case_span), ..rest] -> {
         case match_pattern(pattern, scrutinee, bindings) {
           Ok(env_bindings) -> {
+            // Convert env_bindings (List(#(String, Value))) to List(Value)
+            let env_with_bindings = list.append(env, list.map(env_bindings, fn(b) { b.1 }))
             // Evaluate optional guard
             case guard {
               Some(guard_term) -> {
                 let guard_val =
-                  evaluate(match_state(env_bindings, truth_ctr, state.vars), guard_term)
+                  evaluate(env_to_state(env_with_bindings, truth_ctr, ffi), guard_term)
                 case is_truth(truth_ctr, guard_val) {
-                  True -> evaluate(match_state(env_bindings, truth_ctr, state.vars), body)
-                  False -> do_match(state, truth_ctr, scrutinee, rest, bindings)
+                  True -> evaluate(env_to_state(env_with_bindings, truth_ctr, ffi), body)
+                  False -> do_match(env, truth_ctr, ffi, scrutinee, rest, bindings)
                 }
               }
-              None -> evaluate(match_state(env_bindings, truth_ctr, state.vars), body)
+              None -> evaluate(env_to_state(env_with_bindings, truth_ctr, ffi), body)
             }
           }
-          Error(Nil) -> do_match(state, truth_ctr, scrutinee, rest, bindings)
+          Error(Nil) -> do_match(env, truth_ctr, ffi, scrutinee, rest, bindings)
         }
       }
     }
@@ -776,7 +781,10 @@ pub fn eval_value_to_string(value: Value) -> String {
       let head_str = case head {
         HVar(level) -> "v" <> int.to_string(level)
         HHole(id) -> "?" <> int.to_string(id)
-        HFix(name, _env) -> "$fix " <> name
+        HFix(vfix) -> case vfix {
+          VFix(name, _, _) -> "$fix " <> name
+          _ -> "$fix ?"
+        }
       }
       case spine {
         [] -> head_str

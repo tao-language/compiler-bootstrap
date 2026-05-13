@@ -6,7 +6,7 @@
 ///
 /// Errors accumulate as the type checker progresses, allowing
 /// recovery after type errors.
-import core/ast.{type Value}
+import core/ast.{type Value, VTyp}
 import gleam/int
 import gleam/list
 import gleam/option.{type Option}
@@ -64,6 +64,36 @@ pub fn truth_ctr(state: State) -> String {
 /// Update the state with a different truth constructor name.
 pub fn with_truth_ctr(state: State, name: String) -> State {
   State(..state, truth_ctr: name)
+}
+
+// ============================================================================
+// STATE/ENV CONVERSION — For simplifying force/apply_spine API
+// ============================================================================
+
+/// Extract just the values from state.vars as a plain List(Value).
+/// Used by force/apply_spine which only need value lookup, not names/types.
+pub fn state_to_env(state: State) -> List(Value) {
+  list.map(state.vars, fn(v) { v.1.0 })
+}
+
+/// Create a minimal state from an env, with given truth_ctr and FFI.
+/// Used to rebuild a State for do_match_fn calls.
+pub fn env_to_state(
+  env: List(Value),
+  truth_ctr: String,
+  ffi: List(FfiEntry),
+) -> State {
+  let vars = list.index_map(env, fn(v, i) {
+    let name = "var_" <> int.to_string(i)
+    #(name, #(v, VTyp(i)))
+  })
+  State(
+    vars: vars,
+    errors: [],
+    ffi: ffi,
+    hole_counter: 0,
+    truth_ctr: truth_ctr,
+  )
 }
 
 // ============================================================================

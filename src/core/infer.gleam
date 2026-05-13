@@ -950,8 +950,8 @@ fn unify_infer_and_check(
     ast.VErr, _ | _, ast.VErr -> #(ast.VErr, ast.VErr, state)
     _, _ -> {
       let state = unify(state, expected_type, inferred_type)
-      let forced = force(state, value, dummy_do_match)
-      let forced_type = force(state, inferred_type, dummy_do_match)
+      let forced = force([], value, dummy_do_match)
+      let forced_type = force([], inferred_type, dummy_do_match)
       #(forced, forced_type, state)
     }
   }
@@ -1170,7 +1170,7 @@ pub fn apply_unify_bindings(
       }
     }
     // HFix: preserve the fixpoint neutral value as-is (not a bindable variable)
-    ast.VNeut(ast.HFix(name, env), spine) -> ast.VNeut(ast.HFix(name, env), spine)
+    ast.VNeut(ast.HFix(vfix), spine) -> ast.VNeut(ast.HFix(vfix), spine)
     ast.VLam(env, implicits, param, body) ->
       ast.VLam(env, implicits, param, body)
     ast.VPi(env, implicits, domain, codomain) ->
@@ -1217,8 +1217,9 @@ fn apply_spine_to_value(v: ast.Value, spine: List(ast.Elim)) -> ast.Value {
 /// Dummy do_match for force() calls in type-level operations.
 /// Never called in practice since type-level values don't have EMatch eliminators.
 fn dummy_do_match(
-  _state: state.State,
+  _env: List(ast.Value),
   _truth_ctr: String,
+  _ffi: List(state.FfiEntry),
   _scrutinee: ast.Value,
   _cases: List(ast.Case),
   _bindings: List(#(String, ast.Value)),

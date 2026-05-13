@@ -252,7 +252,10 @@ fn format_head(head: Head) -> String {
   case head {
     HVar(level) -> "v" <> int.to_string(level)
     HHole(id) -> "?" <> int.to_string(id)
-    HFix(name, _env) -> "$fix " <> name
+    HFix(vfix) -> case vfix {
+      VFix(name, _, _) -> "$fix " <> name
+      _ -> "$fix ?"
+    }
   }
 }
 

@@ -27,7 +27,7 @@ import core/ast.{
   Ann, App, Call, Case as CoreCase, Ctr, EApp, EMatch, Err, Fix, Float as LitFloat, HHole, HFix, HVar, Hole, Int as LitInt, Lam, Lit, Match, PAny, PCtr, PError, PLit, PLitT, PTyp, PUnit, PVar, PAlias, Pi, PRcd, Rcd, RcdT, Typ, VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, VTypeDef, TypeDef, Var, LitT, VLitT,
   make_neut, shift_opt, shift_term, value_to_string, term_to_string,
 }
-import core/state.{type State, lookup_var}
+import core/state.{type State, lookup_var, type FfiEntry}
 import syntax/span.{type Span, single}
 import gleam/int
 import gleam/list
@@ -50,11 +50,12 @@ import gleam/option.{type Option, None, Some}
 /// For `VNeut` values, resolves the head and applies all spine eliminators.
 /// The `do_match_fn` callback is used for `EMatch` eliminators.
 pub fn force(
-  state: State,
+  env: List(Value),
   value: Value,
   do_match_fn: fn(
-    State,
+    List(Value),
     String,
+    List(FfiEntry),
     Value,
     List(ast.Case),
     List(#(String, Value)),
@@ -62,9 +63,9 @@ pub fn force(
 ) -> Value {
   case value {
     VNeut(head, spine) -> {
-      let resolved = resolve_head(state, head)
+      let resolved = resolve_head(env, head)
       case resolved {
-        Ok(v) -> apply_spine(state, v, spine, do_match_fn)
+        Ok(v) -> apply_spine(env, v, spine, do_match_fn)
         Error(_) -> value
       }
     }
@@ -72,56 +73,29 @@ pub fn force(
   }
 }
 
-/// Resolve a neutral head to a value by looking it up in state.
-fn resolve_head(state: State, head: Head) -> Result(Value, Nil) {
+/// Resolve a neutral head to a value by looking it up in env.
+fn resolve_head(env: List(Value), head: Head) -> Result(Value, Nil) {
   case head {
-    HHole(id) -> {
-      let binding_name = "hole" <> int.to_string(id)
-      case lookup_var(state, binding_name) {
-        Ok(#(value, _type)) -> Ok(value)
-        Error(_) -> Error(Nil)
-      }
-    }
+    HHole(_) -> Error(Nil)
     HVar(level) -> {
-      case lookup_level_local(state.vars, level) {
-        Ok(#(value, _type)) -> Ok(value)
-        Error(_) -> Error(Nil)
+      case list.drop(env, level) {
+        [value, ..] -> Ok(value)
+        [] -> Error(Nil)
       }
     }
-    HFix(name, _env) -> {
-      // HFix represents a VFix - return a VFix value
-      case lookup_var(state, name) {
-        Ok(#(v, _)) -> case v {
-          VFix(f, env, body) -> Ok(VFix(f, env, body))
-          _ -> Error(Nil)
-        }
-        Error(_) -> Error(Nil)
-      }
-    }
+    HFix(vfix) -> Ok(vfix)
   }
 }
 
-/// Look up a variable by De Bruijn level from the outermost binding.
-fn lookup_level_local(
-  vars: List(#(String, #(Value, Value))),
-  level: Int,
-) -> Result(#(Value, Value), Nil) {
-  case vars, level {
-    [#(_, val), ..], 0 -> Ok(val)
-    [_, ..rest], _ -> lookup_level_local(rest, level - 1)
-    [], _ -> Error(Nil)
-  }
-}
-
-/// Look up a variable by De Bruijn level from the outermost binding.
 /// Apply a list of eliminators (a neutral spine) to a value.
 pub fn apply_spine(
-  state: State,
+  env: List(Value),
   value: Value,
   spine: List(Elim),
   do_match_fn: fn(
-    State,
+    List(Value),
     String,
+    List(FfiEntry),
     Value,
     List(ast.Case),
     List(#(String, Value)),
@@ -131,13 +105,13 @@ pub fn apply_spine(
     [] -> value
     [EMatch(_env, cases), ..rest] -> {
       // Use the do_match callback to properly resolve VFix and evaluate bodies
-      let match_result = do_match_fn(state, "", value, cases, [])
-      apply_spine(state, match_result, rest, do_match_fn)
+      let match_result = do_match_fn(env, "", [], value, cases, [])
+      apply_spine(env, match_result, rest, do_match_fn)
     }
     [EApp(arg), ..rest] -> {
       let forced_arg = arg
       case try_apply(value, forced_arg) {
-        Ok(new_val) -> apply_spine(state, new_val, rest, do_match_fn)
+        Ok(new_val) -> apply_spine(env, new_val, rest, do_match_fn)
         Error(_) -> make_neut(HVar(0))
       }
     }
@@ -402,7 +376,10 @@ fn neut_head_to_term(head: Head) -> Term {
   case head {
     HVar(level) -> Var(level, single("", 0, 0))
     HHole(id) -> Hole(id, single("", 0, 0))
-    HFix(name, _env) -> Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
+    HFix(vfix) -> case vfix {
+      VFix(name, _, body) -> Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
+      _ -> Fix("unknown", Var(0, single("", 0, 0)), single("", 0, 0))
+    }
   }
 }
 
@@ -533,14 +510,25 @@ fn neut_head_to_term_with_spine(head: Head, spine: List(Elim), n: Int) -> Term {
       let match_term = Match(base, cases, single("", 0, 0))
       apply_remaining_spine(match_term, n, rest)
     }
-    HFix(name, _env), [] -> Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
-    HFix(name, _env), [EApp(arg), ..rest] -> {
+    HFix(vfix), [] -> case vfix {
+      VFix(name, _, body) -> Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
+      _ -> Fix("unknown", Var(0, single("", 0, 0)), single("", 0, 0))
+    }
+    HFix(vfix), [EApp(arg), ..rest] -> {
+      let name = case vfix {
+        VFix(n, _, _) -> n
+        _ -> "unknown"
+      }
       let base = Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
       let arg_term = force_levels_to_indices(arg, n)
       let applied = App(base, arg_term, single("", 0, 0))
       apply_remaining_spine(applied, n, rest)
     }
-    HFix(name, _env), [EMatch(_env, cases), ..rest] -> {
+    HFix(vfix), [EMatch(_env, cases), ..rest] -> {
+      let name = case vfix {
+        VFix(n, _, _) -> n
+        _ -> "unknown"
+      }
       let base = Fix(name, Var(0, single("", 0, 0)), single("", 0, 0))
       let match_term = Match(base, cases, single("", 0, 0))
       apply_remaining_spine(match_term, n, rest)

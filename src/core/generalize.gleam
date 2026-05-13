@@ -130,7 +130,7 @@ fn head_holes(head: Head) -> List(Int) {
   case head {
     HVar(_) -> []
     HHole(id) -> [id]
-    HFix(_name, _env) -> []
+    HFix(_vfix) -> []
   }
 }
 
@@ -307,7 +307,7 @@ fn head_level(head: Head, binding: Int) -> List(Int) {
         False -> []
       }
     HHole(_) -> []
-    HFix(_name, _env) -> []
+    HFix(_vfix) -> []
   }
 }
 
@@ -590,7 +590,7 @@ fn subst_head(head: Head, subst: List(#(Int, Int))) -> Head {
       }
     }
     HVar(level) -> HVar(level)
-    HFix(name, env) -> HFix(name, env)
+    HFix(vfix) -> HFix(vfix)
   }
 }
 

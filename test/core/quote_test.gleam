@@ -22,7 +22,7 @@ import core/ast.{
   VTypeDef, TypeDef,
 }
 import core/quote.{quote, quote_at}
-import core/state.{initial_state, type State}
+import core/state.{initial_state, type FfiEntry, type State}
 import core/subst.{force}
 import core/eval.{evaluate}
 import gleeunit
@@ -30,8 +30,9 @@ import syntax/span.{single}
 
 // Dummy do_match for force() calls in tests
 fn dummy_do_match(
-  _state: State,
+  _env: List(Value),
   _truth_ctr: String,
+  _ffi: List(FfiEntry),
   _scrutinee: Value,
   _cases: List(Case),
   _bindings: List(#(String, Value)),
@@ -379,7 +380,7 @@ pub fn force_and_quote_integration_test() {
   let state = initial_state([])
   // Evaluate: identity function applied to 42
   let id_fn: Value = VLam([], [], #("x", VRcd([])), Var(0, single("", 0, 0)))
-  let result = force(state, id_fn, dummy_do_match)
+  let result = force([], id_fn, dummy_do_match)
   // The result should be a VLam (not forced — it's not a hole)
   assert case result {
     VLam([], [], #("x", _), _) -> True
@@ -391,7 +392,7 @@ pub fn force_resolves_hole_then_quote_test() {
   let state = initial_state([])
   // Create a hole and force it — since there's no binding, it stays as-is
   let hole_value = VNeut(HHole(99), [EApp(vi(42))])
-  let result = force(state, hole_value, dummy_do_match)
+  let result = force([], hole_value, dummy_do_match)
   // Should stay as VNeut since the hole has no binding
   assert case result {
     VNeut(HHole(99), _) -> True
