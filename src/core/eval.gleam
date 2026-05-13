@@ -391,25 +391,6 @@ pub fn is_truth(truth_ctr: String, value: Value) -> Bool {
   }
 }
 
-/// Create a temporary state with pattern-matched bindings for evaluation.
-/// The type field (`VNeut(HHole(0), [])`) is a placeholder - never used
-/// by the evaluator since type checking happens before evaluation.
-fn match_state(
-  bindings: List(#(String, Value)),
-  truth_ctr: String,
-  outer_vars: List(#(String, #(Value, Value))),
-) -> State {
-  // Pattern bindings shadow outer variables, so they come first
-  let pattern_vars = list.map(bindings, fn(b) { #(b.0, #(b.1, VNeut(HHole(0), []))) })
-  State(
-    vars: list.append(pattern_vars, outer_vars),
-    errors: [],
-    ffi: [],
-    hole_counter: 0,
-    truth_ctr: truth_ctr,
-  )
-}
-
 // ============================================================================
 // PATTERN MATCHING
 // ============================================================================
@@ -646,22 +627,8 @@ pub fn match_type_pattern(
         _ -> None
       }
     // VCtr: same tag check (legacy support)
-    VCtr(tag, _), VCtr(tag2, _) if tag == tag2 -> Some(bindings)
-    // VCtr: $Int wildcard matches integer type constructors
-    VCtr("Int", _), VCtr(tag2, _) ->
-      case tag2 {
-        "I8" | "I16" | "I32" | "I64" | "U8" | "U16" | "U32" | "U64" | "Int" ->
-          Some(bindings)
-        _ -> None
-      }
-    // VCtr: $Float wildcard matches float type constructors and integers
-    VCtr("Float", _), VCtr(tag2, _) ->
-      case tag2 {
-        "F16" | "F32" | "F64" | "Int" | "I8" | "I16" | "I32" | "I64" |
-        "U8" | "U16" | "U32" | "U64" | "Float" ->
-          Some(bindings)
-        _ -> None
-      }
+    VCtr(tag1, arg1), VCtr(tag2, arg2) if tag1 == tag2 -> 
+      match_type_pattern(arg1, arg2, bindings)
 
     // Record type: check each field recursively
     VRcd(fields), VRcd(arg_fields) ->
@@ -729,35 +696,6 @@ fn match_record_type_fields(
         Error(_) -> None  // Field missing in arg type
       }
     }
-  }
-}
-
-// ============================================================================
-// TYPE PATTERN MATCHING HELPERS
-// ============================================================================
-
-/// Check if a literal type matches a type pattern name.
-///
-/// PTyp("Int", _) matches $Int, $I8-$I64, $U8-$U64 (wildcard matching).
-/// PTyp("Float", _) matches $Float, $F16-$F64.
-/// PTyp("I8", _) matches $I8 and $Int.
-/// PTyp("I16", _) matches $I16 and $Int.
-/// etc.
-fn ptype_matches(type_name: String, t: LiteralType) -> Bool {
-  case t {
-    IntT -> list.contains(["Int", "I8", "I16", "I32", "I64", "U8", "U16", "U32", "U64"], type_name)
-    FloatT -> list.contains(["Float", "F16", "F32", "F64"], type_name)
-    I8T -> list.contains(["I8", "Int"], type_name)
-    I16T -> list.contains(["I16", "Int"], type_name)
-    I32T -> list.contains(["I32", "Int"], type_name)
-    I64T -> list.contains(["I64", "Int"], type_name)
-    U8T -> list.contains(["U8", "Int"], type_name)
-    U16T -> list.contains(["U16", "Int"], type_name)
-    U32T -> list.contains(["U32", "Int"], type_name)
-    U64T -> list.contains(["U64", "Int"], type_name)
-    F16T -> list.contains(["F16", "Float"], type_name)
-    F32T -> list.contains(["F32", "Float"], type_name)
-    F64T -> list.contains(["F64", "Float"], type_name)
   }
 }
 
