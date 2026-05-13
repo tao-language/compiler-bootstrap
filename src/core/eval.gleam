@@ -1,6 +1,6 @@
 /// Normalization by Evaluation (NBE) - Term → Value
 import core/ast.{
-  type Case, type Pattern, type Term, type Value, type LiteralType,
+  type Case, type Pattern, type Term, type Value,
   Ann, App, Call,
   Case as CoreCase, Ctr, EApp, EMatch, Err, Fix, Float as LitFloat, HHole, HFix, HVar, Hole,
   Int as LitInt, Lam, Lit, Match, PAny, PCtr as Pctr, PLit, PLitT, PUnit, PVar, PAlias, PTyp, PRcd, PError, Pi, Rcd, RcdT,
@@ -8,7 +8,7 @@ import core/ast.{
   LitT, shift_term_from,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
-import core/state.{State, type State, type FfiEntry as FfiEntryType, FfiEntry, lookup_ffi, state_to_env, env_to_state}
+import core/state.{type State, type FfiEntry as FfiEntryType, FfiEntry, lookup_ffi, state_to_env, env_to_state}
 import syntax/span.{type Span}
 import core/subst.{force, subst_term_var}
 import gleam/float
@@ -213,7 +213,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     // Use the VLam's env (outer variables) as the evaluation context, not the
     // current state. The VLam env captures the free variables from the lambda's
     // defining scope.
-    VLam(lam_env, _implicits, #(pname, param_type), body) -> {
+    VLam(lam_env, _implicits, #(_pname, param_type), body) -> {
       // Use the VLam's env (outer variables) as the evaluation context, not the
       // current state. The VLam env captures the free variables from the lambda's
       // defining scope.
@@ -258,7 +258,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
             _ -> fix_body
           }
           case body {
-            Lam(_implicits, param, body_term, _) -> {
+            Lam(_implicits, _param, body_term, _) -> {
               let body_with_arg = subst_term_var(0, arg_val, body_term)
               let self = VFix(fix_name, fix_env, fix_body)
               let body_with_self = subst_term_var(1, self, body_with_arg)
