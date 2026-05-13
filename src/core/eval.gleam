@@ -113,7 +113,24 @@ pub fn evaluate(state: State, term: Term) -> Value {
     Ctr(tag, arg, _) -> VCtr(tag, evaluate(state, arg))
     Rcd(fields, _) ->
       VRcd(list.map(fields, fn(f) { #(f.0, evaluate(state, f.1)) }))
-    Ann(term, _, _) -> evaluate(state, term)
+    Ann(term, type_, _) -> {
+      // Evaluate the inner term, then apply type-directed conversions
+      let evaluated = evaluate(state, term)
+      let type_val = evaluate(state, type_)
+      case type_val {
+        VLitT(FloatT) -> {
+          // If the annotation is $Float and the result is an Int, convert it
+          case evaluated {
+            VLit(LitInt(v)) -> case float.parse(int.to_string(v) <> ".0") {
+              Ok(f) -> VLit(LitFloat(f))
+              Error(_) -> evaluated
+            }
+            _ -> evaluated
+          }
+        }
+        _ -> evaluated
+      }
+    }
     Match(arg, cases, _) -> {
       // Evaluate the scrutinee to a value, then delegate to do_match.
       // do_match handles VNeut (deferring match) and VFix (unrolling) internally.
@@ -200,9 +217,23 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
       // Use the VLam's env (outer variables) as the evaluation context, not the
       // current state. The VLam env captures the free variables from the lambda's
       // defining scope.
+      // Check param_type (already a Value) for type-directed conversions
+      let converted_arg = case param_type {
+        VLitT(FloatT) -> {
+          // If param type is FloatT and arg is Int, convert it
+          case arg_val {
+            VLit(LitInt(v)) -> case float.parse(int.to_string(v) <> ".0") {
+              Ok(f) -> VLit(LitFloat(f))
+              Error(_) -> arg_val
+            }
+            _ -> arg_val
+          }
+        }
+        _ -> arg_val
+      }
       // Extend env with the lambda parameter.
-      let env_with_param = list.append([arg_val], lam_env)
-      let substituted = subst_term_var(0, arg_val, body)
+      let env_with_param = list.append([converted_arg], lam_env)
+      let substituted = subst_term_var(0, converted_arg, body)
       evaluate(env_to_state(env_with_param, state.truth_ctr, state.ffi), substituted)
     }
     // VFix unroll: substitute the argument for Var(0) (Lambda param) and
