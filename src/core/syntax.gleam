@@ -68,10 +68,11 @@ pub fn parse_tokens(
 ) -> #(Term, List(ParseError)) {
   let state = #(tokens, 0, filename, [])
   let span = single(filename, 1, 1)
-  let #(named, state2) = parse_tokens_acc(state, [])
+  let #(named, acc, state2) = parse_tokens_acc(state, [])
   let #(tokens2, pos2, _, errs) = state2
-  // Convert NamedTerm → Term
-  let term = term_to_debruijn(named)
+  // Convert NamedTerm → Term, wrapping in accumulated definitions
+  let folded = fold_named_terms(named, acc)
+  let term = term_to_debruijn(folded)
   case term {
     Err(msg, _) -> #(Err(msg, span), errs)
     t -> {
@@ -118,22 +119,45 @@ fn is_continuation_token(token: Token) -> Bool {
 }
 
 /// Parse sequential expressions, returning the last expression as the result
-fn parse_tokens_acc(p: Parser, acc: List(NamedTerm)) -> #(NamedTerm, Parser) {
+fn parse_tokens_acc(p: Parser, acc: List(NamedTerm)) -> #(NamedTerm, List(NamedTerm), Parser) {
   let #(term, p2) = parse_app(p, single("", 0, 0))
   let #(tokens2, pos2, _, _) = p2
   let rest = try_peek(tokens2, pos2)
   case rest {
-    Error(_) -> #(term, p2)
-    Ok(Token(kind: "Eof", value: "", span: _)) -> #(term, p2)
+    Error(_) -> #(term, acc, p2)
+    Ok(Token(kind: "Eof", value: "", span: _)) -> #(term, acc, p2)
     Ok(Token(kind: _, value: _, span: _)) -> {
       let #(tokens3, pos3, _, _) = p2
       case list.drop(tokens3, pos3) {
         [t, ..] -> case is_continuation_token(t) {
-          True -> #(term, p2)
+          True -> #(term, acc, p2)
           False -> parse_tokens_acc(p2, [term, ..acc])
         }
-        [] -> #(term, p2)
+        [] -> #(term, acc, p2)
       }
+    }
+  }
+}
+
+/// Fold accumulated NamedTerms into a single term by wrapping in let chains.
+/// The acc list is in reverse order (first parsed at head), so we reverse it
+/// and wrap each one as: let name = value; rest
+fn fold_named_terms(named: NamedTerm, acc: List(NamedTerm)) -> NamedTerm {
+  case acc {
+    [] -> named
+    [first, ..rest] -> {
+      // Extract the name from the first term if it's a let binding
+      let name = case first {
+        NamedLet(n, _, _, _, _) -> case n {
+          "" -> "_acc_" <> int.to_string(list.length(acc))
+          n -> n
+        }
+        _ -> "_acc_" <> int.to_string(list.length(acc))
+      }
+      fold_named_terms(
+        NamedLet(name, NamedRcd([], single("", 0, 0)), first, named, single("", 0, 0)),
+        rest
+      )
     }
   }
 }
@@ -348,6 +372,8 @@ fn parse_term(p: Parser) -> #(NamedTerm, Parser) {
       #(NamedRcdT(fields, span), p3)
     }
     // Prefixed tokens: $ followed by keyword
+    [Token("Op", "$", _), Token("Punct", ")", _), ..rest] ->
+      #(NamedRcd([], span), #(rest, 0, fn_, errors))
     [Token("Op", "$", _), Token("Name", "fn", _), ..rest] ->
       parse_lambda(#(rest, 0, fn_, errors), span)
     [Token("Op", "$", _), Token("Name", "let", _), ..rest] ->
@@ -947,25 +973,46 @@ fn parse_type_def_body_with_body(
     [Token("Eof", ..), ..] -> {
       #(type_def, p)
     }
-    [Token("Punct", v, _), ..] -> {
+    [Token("Punct", v, span), ..] -> {
       case v {
-        ":" | "." | "," | ";" | "]" | ")" | "}" -> {
+        // Tokens that signal end of type definition (no body follows)
+        ":" | "." | "," | ";" | "]" | ")" | "}" | "{" | "|" -> {
           #(type_def, p)
         }
+        // Any other punct token could start an expression, check line
         _ -> {
-          let #(body, rest) = parse_term(p)
-          #(body, rest)
+          let next = try_peek(tokens, pos)
+          case next {
+            Ok(Token(_, _, next_span)) -> case same_line(span, next_span) {
+              True -> {
+                let #(body, rest) = parse_term(p)
+                #(body, rest)
+              }
+              False -> #(type_def, p)
+            }
+            Error(_) -> #(type_def, p)
+          }
         }
       }
     }
-    [Token("Op", v, _), ..] -> {
+    [Token("Op", v, span), ..] -> {
       case v {
-        ":" | "." | "," | "~" | "(" | "-" | ">" | "=>" -> {
+        // Tokens that signal end of type definition (no body follows)
+        ":" | "." | "," | "~" | "(" | "-" | ">" | "=>" | "$" | "{" | "#" -> {
           #(type_def, p)
         }
         _ -> {
-          let #(body, rest) = parse_term(p)
-          #(body, rest)
+          let next = try_peek(tokens, pos)
+          case next {
+            Ok(Token(_, _, next_span)) -> case same_line(span, next_span) {
+              True -> {
+                let #(body, rest) = parse_term(p)
+                #(body, rest)
+              }
+              False -> #(type_def, p)
+            }
+            Error(_) -> #(type_def, p)
+          }
         }
       }
     }
@@ -1368,7 +1415,7 @@ fn parse_match(p: Parser, span: Span) -> #(NamedTerm, Parser) {
   let p3 = skip("(", p2)
   let #(arg, p4) = parse_term(p3)
   let p5 = skip(")", p4)
-  // Optionally consume : Type annotation after the match argument
+  // Optionally consume : Type or {type} annotation after the match argument
   // p5 is a Parser (tuple of 3 elements), check if next token is :
   let p6 = case p5 {
     #(tokens, pos, _, _) ->
@@ -1377,6 +1424,20 @@ fn parse_match(p: Parser, span: Span) -> #(NamedTerm, Parser) {
           let p_annot = skip(":", p5)
           let #(ann_type, p_new) = parse_term(p_annot)
           #(NamedAnn(arg, ann_type, current_span(p_annot)), p_new)
+        }
+        // Handle {type} annotation (without colon) when followed by { | ... }
+        [Token("Punct", "{", _), ..rest] -> {
+          // Check if this is a type annotation by looking ahead for "|" after closing "}"
+          let #(ann_type, p_after_annot) = parse_term(p5)
+          case p_after_annot {
+            #(tokens2, pos2, _, _) ->
+              case list.drop(tokens2, pos2) {
+                [Token("Punct", "{", _), Token("Punct", "|", _), ..] -> {
+                  #(NamedAnn(arg, ann_type, current_span(p5)), p_after_annot)
+                }
+                _ -> #(arg, p5)
+              }
+          }
         }
         _ -> #(arg, p5)
       }
@@ -1477,7 +1538,8 @@ fn parse_let(p: Parser, span: Span) -> #(NamedTerm, Parser) {
   let #(param_type, p4) = case p3 {
     #(tokens, pos, _, _) ->
       case list.drop(tokens, pos) {
-        [Token("Op", "$", _), ..] -> parse_term(p3)
+        [Token("Op", "$", _), Token("Name", _, _), ..] -> parse_term(p3)
+        [Token("Punct", "{", _), ..] -> parse_term(p3)
         _ -> #(NamedRcd([], span), p3)
       }
   }

@@ -14,4 +14,4 @@ $let eval = $fn<a: $Type>(expr: #Expr(a)) => $match (expr) {
 | #IsZero(e) => %i32_eq<#Bool({})>(eval x, 0: $I32)
 }
 
-eval #Add(#LitInt(1), #LitInt(2)) : $I32
+eval #Add({x: #LitInt(1), y: #LitInt(2)}) : $I32
