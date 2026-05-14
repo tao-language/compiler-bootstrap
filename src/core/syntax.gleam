@@ -798,6 +798,13 @@ fn parse_app_chain(p: Parser, fun: NamedTerm, span: Span) -> #(NamedTerm, Parser
               let app = NamedApp(fun, ffi_call, app_span)
               parse_app_chain(p2, app, app_span)
             }
+            // Constructor as application argument (same line only)
+            [Token("Op", "#", _), ..] -> {
+              let #(ctor_term, p2) = parse_term(#(tokens, pos, fn_, errors))
+              let app_span = merge(span, term_span_named(ctor_term))
+              let app = NamedApp(fun, ctor_term, app_span)
+              parse_app_chain(p2, app, app_span)
+            }
             // Integer and float literals as application arguments (same line only)
             [Token("Integer", _, _), ..] -> {
               let #(int_term, p2) = parse_term(#(tokens, pos, fn_, errors))
