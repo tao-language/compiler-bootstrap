@@ -187,9 +187,6 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
     // ── Record — unify field by field ────────────────────────
     VRcd(fields1), VRcd(fields2) -> match_records(state, fields1, fields2)
 
-    // ── Record type — unify field by field ───────────────────
-    VRcdT(fields1), VRcdT(fields2) -> match_record_types(state, fields1, fields2)
-
     // ── VTyp — same universe level unifies ───────────────────
     VTyp(l1), VTyp(l2) if l1 == l2 -> state
     VTyp(_l1), VTyp(_l2) -> add_type_mismatch_error(state, expected, actual)

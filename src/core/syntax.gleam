@@ -1253,12 +1253,125 @@ fn parse_rcd_type_fields(
       // Check for optional default: = default
       let #(tokens2, pos2, fn2, err2) = p4
       let #(default_val, p5) = case list.drop(tokens2, pos2) {
-        [Token("Punct", "=", _), ..rest] -> {
-          let p_eq = #(rest, 0, fn2, err2)
+        [Token("Punct", "=", _), Token("Punct", "}", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Punct", ";", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", "=", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", ",", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", ")", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", "]", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", ">", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", "<", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Eof", ..), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", "|", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", "&", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", "~", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", "-", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", ":", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", "@", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", "^", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", "!", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", "#", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Op", "$", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Punct", "(", _), ..] ->
+          #(
+            None,
+            #(tokens2, pos2, fn2, err2),
+          )
+        [Token("Punct", "=", _), Token("Name", ..), ..] -> {
+          let p_eq = #(list.drop(tokens2, pos2 + 1), 0, fn2, err2)
           let #(default_, p_eq2) = parse_term(p_eq)
             #(Some(default_), p_eq2)
         }
-        _ -> #(None, p4)
+        [Token("Punct", "=", _), Token("Integer", ..), ..] -> {
+          let p_eq = #(list.drop(tokens2, pos2 + 1), 0, fn2, err2)
+          let #(default_, p_eq2) = parse_term(p_eq)
+            #(Some(default_), p_eq2)
+        }
+        [Token("Punct", "=", _), Token("Float", ..), ..] -> {
+          let p_eq = #(list.drop(tokens2, pos2 + 1), 0, fn2, err2)
+          let #(default_, p_eq2) = parse_term(p_eq)
+            #(Some(default_), p_eq2)
+        }
+        _ -> #(
+          None,
+          #(tokens2, pos2, fn2, err2),
+        )
       }
       let p6 = skip(",", p5)
       parse_rcd_type_fields(p6, [#(name, type_, default_val), ..acc])
@@ -1538,7 +1651,11 @@ fn parse_let(p: Parser, span: Span) -> #(NamedTerm, Parser) {
   let #(param_type, p4) = case p3 {
     #(tokens, pos, _, _) ->
       case list.drop(tokens, pos) {
+        // Handle $Int, $Float, $Type, etc.
         [Token("Op", "$", _), Token("Name", _, _), ..] -> parse_term(p3)
+        // Handle ${...} record type syntax
+        [Token("Op", "$", _), Token("Punct", "{", _), ..] -> parse_term(p3)
+        // Handle {field: type, ...} record type (without $)
         [Token("Punct", "{", _), ..] -> parse_term(p3)
         _ -> #(NamedRcd([], span), p3)
       }

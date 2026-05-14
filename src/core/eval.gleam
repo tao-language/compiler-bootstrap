@@ -218,18 +218,27 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
       // current state. The VLam env captures the free variables from the lambda's
       // defining scope.
       // Check param_type (already a Value) for type-directed conversions
+      let filled_arg = case param_type, arg_val {
+        // Fill in missing record fields with defaults from the expected type
+        VRcdT(expected_fields), VRcd(fields) -> {
+          let defaults = build_defaults(expected_fields)
+          let filled = fill_fields(fields, defaults)
+          VRcd(filled)
+        }
+        _, _ -> arg_val
+      }
       let converted_arg = case param_type {
         VLitT(FloatT) -> {
           // If param type is FloatT and arg is Int, convert it
-          case arg_val {
+          case filled_arg {
             VLit(LitInt(v)) -> case float.parse(int.to_string(v) <> ".0") {
               Ok(f) -> VLit(LitFloat(f))
-              Error(_) -> arg_val
+              Error(_) -> filled_arg
             }
-            _ -> arg_val
+            _ -> filled_arg
           }
         }
-        _ -> arg_val
+        _ -> filled_arg
       }
       // Extend env with the lambda parameter.
       let env_with_param = list.append([converted_arg], lam_env)
@@ -760,4 +769,31 @@ pub fn eval_value_to_string(value: Value) -> String {
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
     VLitT(t) -> literal_type_to_string(t)
   }
+}
+
+/// Build a list of (name, default_value) pairs from a VRcdT's fields.
+fn build_defaults(
+  fields: List(#(String, Value, option.Option(Value))),
+) -> List(#(String, Value)) {
+  list.fold(fields, [], fn(acc, field) {
+    case field {
+      #(_, _, Some(default_val)) -> [#(field.0, default_val), ..acc]
+      _ -> acc
+    }
+  })
+}
+
+/// Fill in missing fields in a record with defaults.
+fn fill_fields(
+  fields: List(#(String, Value)),
+  defaults: List(#(String, Value)),
+) -> List(#(String, Value)) {
+  // Get the names of existing fields
+  let existing_names = list.map(fields, fn(f) { f.0 })
+  // Find defaults for fields not in existing
+  let missing = list.filter(defaults, fn(d) {
+    !list.contains(existing_names, d.0)
+  })
+  // Append missing fields to existing
+  list.append(fields, missing)
 }
