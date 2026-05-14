@@ -17,7 +17,7 @@
 /// The type checker calls this function at every place where two types
 /// must agree. All errors accumulate in state; no early returns.
 import core/ast.{
-  type Elim, type Head, type Value, type LiteralType,
+  type Elim, type Head, type Value, type LiteralType, type Term,
   EApp, HHole, HVar, VCtr, VCall, VFix, VErr, VLam, VLit,
   VNeut, VPi, VRcd, VRcdT, VTyp, VLitT, VTypeDef,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
@@ -32,7 +32,9 @@ import syntax/span.{single}
 /// Unify two values: `expected` is the type being checked against,
 /// `actual` is the value whose type must match.
 ///
-/// Returns the state (with errors accumulated if the types differ).
+/// Returns `(value, state)` where `value` is the unified type (with all
+/// substitutions applied) and `state` is the updated state (with errors
+/// accumulated if the types differ).
 ///
 /// ## Example
 ///
@@ -43,10 +45,32 @@ import syntax/span.{single}
 ///
 /// let state = initial_state([])
 /// // A hole unifies with any concrete value — binds the hole
-/// let final = unify(state, VNeut(HHole(0), []), VLit(LitInt(42)))
+/// let #(value, final) = unify(state, VNeut(HHole(0), []), VLit(LitInt(42)))
 /// ```
-pub fn unify(state: State, expected: Value, actual: Value) -> State {
-  match_values(state, expected, actual)
+pub fn unify(
+  state: State,
+  expected: Value,
+  actual: Value,
+  infer_fn: fn(State, Term) -> #(Value, Value, State),
+) -> #(Value, State) {
+  match_values(state, expected, actual, infer_fn)
+}
+
+/// Infer a result_type Term to get its Value.
+///
+/// This is used in GADT-style constructor checking to evaluate
+/// the result_type Term (which may contain type parameter references)
+/// to a Value that can be unified with the VCtr arg.
+fn infer_result_type(
+  state: State,
+  result_type: Term,
+  infer_fn: fn(State, Term) -> #(Value, Value, State),
+) -> #(Value, Value, State) {
+  // Evaluate the result_type Term using the infer function.
+  // This handles NbE-style normalization and resolves any
+  // type parameter references.
+  let #(value, type_, new_state) = infer_fn(state, result_type)
+  #(value, type_, new_state)
 }
 
 /// Check if a value is a wildcard literal type ($Int or $Float).
@@ -79,15 +103,20 @@ pub fn literal_type_matches_wildcard(wildcard: LiteralType, lit_type: LiteralTyp
 
 // ── Core matching logic ───────────────────────────────────────────
 
-fn match_values(state: State, expected: Value, actual: Value) -> State {
+fn match_values(
+  state: State,
+  expected: Value,
+  actual: Value,
+  infer_fn: fn(State, Term) -> #(Value, Value, State),
+) -> #(Value, State) {
   case expected, actual {
     // ── Same variable level — trivially unified ──────────────
-    VNeut(HVar(l1), _), VNeut(HVar(l2), _) if l1 == l2 -> state
+    VNeut(HVar(l1), _), VNeut(HVar(l2), _) if l1 == l2 -> #(expected, state)
 
     // ── Variable in expected — look up in state ──────────────
     VNeut(HVar(level), _), _ -> {
       case lookup_level(state, level) {
-        Ok(#(value, _)) -> match_values(state, value, actual)
+        Ok(#(value, _)) -> match_values(state, value, actual, infer_fn)
         Error(_) -> add_type_mismatch_error(state, expected, actual)
       }
     }
@@ -95,7 +124,7 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
     // ── Same variable level in actual — look up in state ────
     _, VNeut(HVar(l1), _) if l1 >= 0 ->
       case lookup_level(state, l1) {
-        Ok(#(value, _)) -> match_values(state, expected, value)
+        Ok(#(value, _)) -> match_values(state, expected, value, infer_fn)
         Error(_) -> add_type_mismatch_error(state, expected, actual)
       }
 
@@ -104,32 +133,39 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
       add_type_mismatch_error(state, expected, actual)
 
     // ── Hole in expected — bind it ───────────────────────────
-    VNeut(HHole(id), []), _ -> bind_hole(state, id, actual)
+    VNeut(HHole(id), []), _ -> {
+      let s1 = bind_hole(state, id, actual, infer_fn)
+      #(expected, s1)
+    }
 
     // ── Same hole ID — trivially unified ─────────────────────
-    VNeut(HHole(id1), _), VNeut(HHole(id2), _) if id1 == id2 -> state
+    VNeut(HHole(id1), _), VNeut(HHole(id2), _) if id1 == id2 -> #(expected, state)
 
     // ── Hole in actual — bind it ─────────────────────────────
-    _, VNeut(HHole(id), []) -> bind_hole(state, id, expected)
+    _, VNeut(HHole(id), []) -> {
+      let s1 = bind_hole(state, id, expected, infer_fn)
+      #(actual, s1)
+    }
 
     // ── Neutral — neutral comparison ─────────────────────────
     VNeut(head1, spine1), VNeut(head2, spine2) ->
-      match_neutral(state, head1, spine1, head2, spine2)
+      match_neutral(state, head1, spine1, head2, spine2, infer_fn)
 
     // ── Lambda — unify param types ───────────────────────────
     VLam(_env1, _implicits1, param1, _body1), VLam(_env2, _implicits2, param2, _body2) ->
-      match_values(state, param1.1, param2.1)
+      match_values(state, param1.1, param2.1, infer_fn)
 
     // ── Pi types — unify domains, then codomains ─────────────
     VPi(_env1, _implicits1, domain1, codomain1), VPi(_env2, _implicits2, domain2, codomain2) -> {
-      let s1 = match_values(state, domain1.1, domain2.1)
-      match_values(s1, codomain1, codomain2)
+      let #(dom_result, s1) = match_values(state, domain1.1, domain2.1, infer_fn)
+      let _ = dom_result
+      match_values(s1, codomain1, codomain2, infer_fn)
     }
 
     // ── Constructor — tag must match, then unify args ────────
     VCtr(tag1, arg1), VCtr(tag2, arg2) ->
       case tag1 == tag2 {
-        True -> match_values(state, arg1, arg2)
+        True -> match_values(state, arg1, arg2, infer_fn)
         False ->
           add_type_mismatch_error(
             state,
@@ -143,23 +179,27 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
     // FloatT matches FloatT, F16T-F64T, and all int types
     VLitT(wildcard), VLitT(specific) ->
       case literal_type_matches_wildcard(wildcard, specific) {
-        True -> state
+        True -> #(expected, state)
         False -> add_type_mismatch_error(state, expected, actual)
       }
     // Exact match for specific types
     VLitT(t1), VLitT(t2) ->
       case t1 == t2 {
-        True -> state
+        True -> #(expected, state)
         False -> add_type_mismatch_error(state, expected, actual)
       }
-    // ── Ctr ↔ TypeDef — check if Ctr name matches TypeDef constructor ─
+    // ── Ctr ↔ TypeDef — GADT-style constructor checking ─
     VCtr(tag, arg), VTypeDef(name, params, constructors) ->
       case list.find(constructors, fn(c) { c.0 == tag }) {
-        Ok(#(_, #(bindings, self_type, _result_type), _)) -> {
+        Ok(#(_, #(bindings, self_type, result_type), _)) -> {
           // Self type is already a value (holes for type params).
-          // Simply check that arg matches self_type structurally.
-          // Note: result_type is a Term, handled during inference.
-          match_values(state, self_type, arg)
+          // Unify arg with self_type.
+          let #(unified_arg, s1) = match_values(state, self_type, arg, infer_fn)
+          // Evaluate the result_type Term to get its Value.
+          // This is done via inference for NbE-style normalization.
+          let #(return_value, _, s2) = infer_result_type(s1, result_type, infer_fn)
+          // Unify the VCtr with the GADT return type.
+          match_values(s2, VCtr(tag, unified_arg), return_value, infer_fn)
         }
         Error(_) ->
           add_type_mismatch_error(
@@ -171,37 +211,26 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
 
     // ── TypeDef ↔ Ctr — symmetric case ───────────────────────
     VTypeDef(name, params, constructors), VCtr(tag, arg) ->
-      case list.find(constructors, fn(c) { c.0 == tag }) {
-        Ok(#(_, #(bindings, self_type, _result_type), _)) -> {
-          let s1 = match_values(state, self_type, arg)
-          s1
-        }
-        Error(_) ->
-          add_type_mismatch_error(
-            state,
-            VTypeDef(name, params, constructors),
-            VCtr(tag, VNeut(HHole(0), [])),
-          )
-      }
+      match_values(state, VCtr(tag, arg), VTypeDef(name, params, constructors), infer_fn)
 
     // ── Literal — exact value match ────────────────────────
     VLit(lit1), VLit(lit2) ->
       case lit1 == lit2 {
-        True -> state
+        True -> #(expected, state)
         False -> add_type_mismatch_error(state, expected, actual)
       }
 
     // ── Record — unify field by field ────────────────────────
-    VRcd(fields1), VRcd(fields2) -> match_records(state, fields1, fields2)
+    VRcd(fields1), VRcd(fields2) -> match_records(state, fields1, fields2, infer_fn)
 
     // ── VTyp — same universe level unifies ───────────────────
-    VTyp(l1), VTyp(l2) if l1 == l2 -> state
+    VTyp(l1), VTyp(l2) if l1 == l2 -> #(expected, state)
     VTyp(_l1), VTyp(_l2) -> add_type_mismatch_error(state, expected, actual)
 
     // ── VCall — deferred FFI call, unifies if name and args match ──
     VCall(n1, args1, ret1), VCall(n2, args2, ret2) -> {
       case n1 == n2 && list.length(args1) == list.length(args2) {
-        True -> match_values(state, ret1, ret2)
+        True -> match_values(state, ret1, ret2, infer_fn)
         False -> add_type_mismatch_error(state, expected, actual)
       }
     }
@@ -209,14 +238,14 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
     // ── VFix — recursive fixpoint, unifies if names match ──
     VFix(n1, _, _), VFix(n2, _, _) -> {
       case n1 == n2 {
-        True -> state
+        True -> #(expected, state)
         False -> add_type_mismatch_error(state, expected, actual)
       }
     }
 
     // ── VErr — unifies with any value (error recovery) ───────
-    VErr, _ -> state
-    _, VErr -> state
+    VErr, _ -> #(expected, state)
+    _, VErr -> #(expected, state)
 
     // ── Anything else — type mismatch ────────────────────────
     _, _ -> add_type_mismatch_error(state, expected, actual)
@@ -229,14 +258,22 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
 ///
 /// Stores the binding in the variable environment using the name
 /// `"hole{id}"` for lookup later.
-fn bind_hole(state: State, id: Int, value: Value) -> State {
+fn bind_hole(
+  state: State,
+  id: Int,
+  value: Value,
+  infer_fn: fn(State, Term) -> #(Value, Value, State),
+) -> State {
   // Occurs check: skip binding if it would create a cycle
   case occurs_check(id, value) {
     True -> state
     False -> {
       // Check if this hole already has a binding
       case find_hole_binding(state, id) {
-        Ok(already_bound) -> match_values(state, already_bound, value)
+        Ok(already_bound) -> {
+          let _s = match_values(state, already_bound, value, infer_fn)
+          state
+        }
         Error(Nil) -> {
           let binding_name = "hole" <> int.to_string(id)
           State(..state, vars: [#(binding_name, #(value, value)), ..state.vars])
@@ -291,11 +328,12 @@ fn match_neutral(
   spine1: List(Elim),
   head2: Head,
   spine2: List(Elim),
-) -> State {
+  infer_fn: fn(State, Term) -> #(Value, Value, State),
+) -> #(Value, State) {
   case head1, head2 {
     HVar(l1), HVar(l2) ->
       case l1 == l2 {
-        True -> match_spines(state, spine1, spine2)
+        True -> match_spines(state, spine1, spine2, infer_fn)
         False ->
           add_type_mismatch_error(
             state,
@@ -305,7 +343,7 @@ fn match_neutral(
       }
     HHole(id1), HHole(id2) ->
       case { id1 == id2 } && { list.length(spine1) == list.length(spine2) } {
-        True -> match_spines(state, spine1, spine2)
+        True -> match_spines(state, spine1, spine2, infer_fn)
         False ->
           add_type_mismatch_error(
             state,
@@ -320,10 +358,15 @@ fn match_neutral(
 
 /// Match two neutral spines element by element.
 /// Spines of different lengths are a type mismatch.
-fn match_spines(state: State, spine1: List(Elim), spine2: List(Elim)) -> State {
+fn match_spines(
+  state: State,
+  spine1: List(Elim),
+  spine2: List(Elim),
+  infer_fn: fn(State, Term) -> #(Value, Value, State),
+) -> #(Value, State) {
   case spine1, spine2 {
-    [], [] -> state
-    [EApp(arg1)], [EApp(arg2)] -> match_values(state, arg1, arg2)
+    [], [] -> #(VNeut(HVar(0), []), state)
+    [EApp(arg1)], [EApp(arg2)] -> match_values(state, arg1, arg2, infer_fn)
     _, _ ->
       add_type_mismatch_error(
         state,
@@ -339,12 +382,17 @@ fn match_records(
   state: State,
   fields1: List(#(String, Value)),
   fields2: List(#(String, Value)),
-) -> State {
+  infer_fn: fn(State, Term) -> #(Value, Value, State),
+) -> #(Value, State) {
   case fields1, fields2 {
-    [], [] -> state
+    [], [] -> #(VRcd([]), state)
     [#(name1, val1), ..rest1], [#(name2, val2), ..rest2] ->
       case name1 == name2 {
-        True -> match_records(match_values(state, val1, val2), rest1, rest2)
+        True -> {
+          let #(val_result, s1) = match_values(state, val1, val2, infer_fn)
+          let _ = val_result
+          match_records(s1, rest1, rest2, infer_fn)
+        }
         False -> add_type_mismatch_error(state, VRcd(fields1), VRcd(fields2))
       }
     _, _ -> add_type_mismatch_error(state, VRcd(fields1), VRcd(fields2))
@@ -356,19 +404,22 @@ fn match_record_types(
   state: State,
   fields1: List(#(String, Value, option.Option(Value))),
   fields2: List(#(String, Value, option.Option(Value))),
-) -> State {
+  infer_fn: fn(State, Term) -> #(Value, Value, State),
+) -> #(Value, State) {
   case fields1, fields2 {
-    [], [] -> state
+    [], [] -> #(VRcdT([]), state)
     [#(name1, type1, default1), ..rest1], [#(name2, type2, default2), ..rest2] ->
       case name1 == name2 {
         True -> {
-          let s1 = match_values(state, type1, type2)
+          let #(type_result, s1) = match_values(state, type1, type2, infer_fn)
+          let _ = type_result
           // Unify default values if both are present
-          let s2 = case default1, default2 {
-            Some(d1), Some(d2) -> match_values(s1, d1, d2)
-            _, _ -> s1
+          let #(d_result, s2) = case default1, default2 {
+            Some(d1), Some(d2) -> match_values(s1, d1, d2, infer_fn)
+            _, _ -> #(VRcdT([]), s1)
           }
-          match_record_types(s2, rest1, rest2)
+          let _ = d_result
+          match_record_types(s2, rest1, rest2, infer_fn)
         }
         False -> add_type_mismatch_error(state, VRcdT(fields1), VRcdT(fields2))
       }
@@ -393,6 +444,7 @@ fn add_type_mismatch_error(
   state: State,
   expected: Value,
   actual: Value,
-) -> State {
-  with_err(state, TypeMismatch(expected, actual, single("", 0, 0)))
+) -> #(Value, State) {
+  let new_state = with_err(state, TypeMismatch(expected, actual, single("", 0, 0)))
+  #(VErr, new_state)
 }

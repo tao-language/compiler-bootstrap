@@ -1059,7 +1059,8 @@ fn unify_infer_and_check(
         // Non-literal types: no conversion
         _, _ -> #(value, inferred_type)
       }
-      let state = unify(state, expected_type, converted_type)
+      let #( _, s1) = unify(state, expected_type, converted_type, infer)
+      let state = s1
       let forced = force([], converted_value, dummy_do_match)
       let forced_type = force([], converted_type, dummy_do_match)
       #(forced, forced_type, state)
