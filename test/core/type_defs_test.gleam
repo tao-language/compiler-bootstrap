@@ -50,14 +50,14 @@ fn t_var(level: Int) -> Term {
   Var(level, single("test", 0, 0))
 }
 
-/// Create a list of #(String, List(String), Value, Term, Span) tuples for a TypeDef.
+/// Create a list of #(String, #(List(String), Value, Term), Span) tuples for a TypeDef.
 fn make_constructors(
   tags: List(String),
   self_type: Value,
   result_template: Term,
-) -> List(#(String, List(String), Value, Term, Span)) {
+) -> List(#(String, #(List(String), Value, Term), Span)) {
   list.map(tags, fn(tag) {
-    #(tag, [], self_type, result_template, single("test", 0, 0))
+    #(tag, #([], self_type, result_template), single("test", 0, 0))
   })
 }
 
@@ -86,8 +86,8 @@ pub fn vtypef_multiple_constructors_test() {
     name: "Bool",
     params: [],
     constructors: [
-      #("True", [], v_neut(0), t_var(0), single("test", 0, 0)),
-      #("False", [], v_neut(0), t_var(0), single("test", 0, 0)),
+      #("True", #([], v_neut(0), t_var(0)), single("test", 0, 0)),
+      #("False", #([], v_neut(0), t_var(0)), single("test", 0, 0)),
     ],
   )
   assert list.length(vdef.constructors) == 2
@@ -188,7 +188,7 @@ pub fn subst_hhole_test() {
 pub fn compute_constructor_type_option_some_test() {
   let result_type = Var(0, single("test", 0, 0))
   let constructors = [
-    #("Some", [], v_neut(0), result_type, single("test", 0, 0)),
+    #("Some", #([], v_neut(0), result_type), single("test", 0, 0)),
   ]
   let result = compute_constructor_type(constructors, [v_lit_int(42)], "Some")
   // compute_constructor_type returns the substituted Term, not a Value

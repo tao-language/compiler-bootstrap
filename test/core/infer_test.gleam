@@ -1239,8 +1239,8 @@ pub fn infer_call_ffi_returns_int_test() {
 pub fn infer_type_def_has_type_star_test() {
   // A TypeDef should have type * (VTyp(0))
   let constructors = [
-    #("True", [], Var(0, sp()), Var(0, sp()), sp()),
-    #("False", [], Var(0, sp()), Var(0, sp()), sp()),
+    #("True", #([], Var(0, sp()), Var(0, sp())), sp()),
+    #("False", #([], Var(0, sp()), Var(0, sp())), sp()),
   ]
   let td = TypeDef("Bool", [], constructors, sp())
   let result = infer(initial_state([]), td)
@@ -1800,8 +1800,8 @@ pub fn gadt_lookup_constructor_found_test() {
   // When a TypeDef is in the env, lookup_constructor should find it.
   let result_type = Var(0, single("", 0, 0))
   let constructors = [
-    #("Some", [], VNeut(HHole(0), []), result_type, single("", 0, 0)),
-    #("None", [], VNeut(HHole(1), []), result_type, single("", 0, 0)),
+    #("Some", #([], VNeut(HHole(0), []), result_type), single("", 0, 0)),
+    #("None", #([], VNeut(HHole(1), []), result_type), single("", 0, 0)),
   ]
   let type_def = VTypeDef("Option", [#("a", VTyp(0))], constructors)
   let env = [type_def]
@@ -1824,7 +1824,7 @@ pub fn gadt_lookup_constructor_found_test() {
 pub fn gadt_lookup_constructor_not_found_test() {
   let result_type = Var(0, single("", 0, 0))
   let constructors = [
-    #("Some", [], VNeut(HHole(0), []), result_type, single("", 0, 0)),
+    #("Some", #([], VNeut(HHole(0), []), result_type), single("", 0, 0)),
   ]
   let type_def = VTypeDef("Option", [#("a", VTyp(0))], constructors)
   let env = [type_def]

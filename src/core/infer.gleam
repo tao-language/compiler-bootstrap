@@ -892,7 +892,7 @@ fn infer_type_def(
   state: state.State,
   name: String,
   params: List(#(String, ast.Term)),
-  constructors: List(#(String, List(String), ast.Term, ast.Term, Span)),
+  constructors: List(#(String, #(List(String), ast.Term, ast.Term), Span)),
   _span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
   // Evaluate type params to values and bind them as fresh holes.
@@ -927,11 +927,7 @@ fn infer_type_def(
   // state vars, and parser-level bindings are not present in the state.
   let num_type_params = list.length(params)
   let value_constructors = list.map(constructors, fn(c) {
-    let tag = c.0
-    let bindings = c.1
-    let self_type_term = c.2
-    let result_type_term = c.3
-    let ctor_span = c.4
+    let #(tag, #(bindings, self_type_term, result_type_term), ctor_span) = c
     // Shift De Bruijn indices by -(num_type_params) to account for type
     // params being at the front of state vars (parser-level bindings are
     // not present in the state).
@@ -940,7 +936,7 @@ fn infer_type_def(
     // Evaluate self_type to a value (type params resolve to bound holes)
     let self_type_val = evaluate(new_state, shifted_self)
     // Keep result_type as a Term (not evaluated) so inference can evaluate it later
-    #(tag, bindings, self_type_val, shifted_result, ctor_span)
+    #(tag, #(bindings, self_type_val, shifted_result), ctor_span)
   })
 
   // Keep type param bindings in vars so subsequent lambdas can reference them
@@ -1094,7 +1090,7 @@ pub fn lookup_constructor(
   }) {
     Ok(VTypeDef(_, params, constructors)) -> {
       case list.find(constructors, fn(c) { c.0 == tag }) {
-        Ok(#(_tag, bindings, self_type_val, result_type_val, _)) -> {
+        Ok(#(_tag, #(bindings, self_type_val, result_type_val), _)) -> {
           // The self_type and result_type values reference type params by name.
           // We need to evaluate them with the params as free variables.
           // For now, return the values as-is - they will be handled in infer_ctr.
@@ -1390,7 +1386,8 @@ pub fn apply_unify_bindings_to_term(
     ast.Typ(universe, span) -> t
     ast.LitT(lit_type, span) -> t
     ast.TypeDef(name, params, constructors, span) -> ast.TypeDef(name, params, list.map(constructors, fn(c) {
-      #(c.0, c.1, apply_unify_bindings_to_term(bindings, c.2), apply_unify_bindings_to_term(bindings, c.3), c.4)
+      let #(tag, #(ctor_bindings, self_ty, return_type), span) = c
+      #(tag, #(ctor_bindings, apply_unify_bindings_to_term(bindings, self_ty), apply_unify_bindings_to_term(bindings, return_type)), span)
     }), span)
     ast.Fix(name, body, span) -> ast.Fix(name, apply_unify_bindings_to_term(bindings, body), span)
     ast.Err(message, span) -> t

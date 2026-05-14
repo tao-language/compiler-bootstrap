@@ -233,10 +233,10 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
     TypeDef(name: name, params: params, constructors: cons, span: span) -> {
       let shift_cons = fn(ctor) {
         case ctor {
-          #(tag, bindings, self_ty, result, c_span) -> {
+          #(tag, #(bindings, self_ty, result), c_span) -> {
             let new_self = subst_term_from(idx, value, self_ty, from)
             let new_result = subst_term_from(idx, value, result, from)
-            #(tag, bindings, new_self, new_result, c_span)
+            #(tag, #(bindings, new_self, new_result), c_span)
           }
         }
       }
@@ -334,19 +334,17 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
       let params_terms = list.map(vparams, fn(p) {
         #(p.0, force_levels_to_indices(p.1, n))
       })
-      let shift_cons = fn(ctor: #(String, List(String), Value, Term, Span)) -> #(String, List(String), Term, Term, Span) {
-        let a = case ctor { #(x, _, _, _, _) -> x }
-        let bindings = case ctor { #(_, x, _, _, _) -> x }
-        let b = case ctor { #(_, _, x, _, _) -> x }
-        let result = case ctor { #(_, _, _, x, _) -> x }
-        let d = case ctor { #(_, _, _, _, x) -> x }
+      let shift_cons = fn(ctor: #(String, #(List(String), Value, Term), Span)) -> #(String, #(List(String), Term, Term), Span) {
+        let a = case ctor { #(x, _, _) -> x }
+        let #(bindings, b, result) = case ctor { #(_, x, _) -> x }
+        let d = case ctor { #(_, _, x) -> x }
         let r1: Term = force_levels_to_indices(b, n)
         // result is already a Term, just shift it by n
         let r2: Term = ast.shift_term(result, n)
-        let r3: #(String, List(String), Term, Term, Span) = #(a, bindings, r1, r2, d)
+        let r3: #(String, #(List(String), Term, Term), Span) = #(a, #(bindings, r1, r2), d)
         r3
       }
-      let typed_constructors: List(#(String, List(String), Term, Term, Span)) = list.map(c, shift_cons)
+      let typed_constructors: List(#(String, #(List(String), Term, Term), Span)) = list.map(c, shift_cons)
       TypeDef(
         name: vname,
         params: params_terms,

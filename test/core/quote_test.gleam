@@ -521,16 +521,16 @@ pub fn quote_vtypef_with_constructors_test() {
   let self_type = v_neut(0)
   let result_type = Var(0, single("test", 0, 0))
   let constructors = [
-    #("Some", [], self_type, result_type, single("test", 1, 1)),
-    #("None", [], self_type, result_type, single("test", 2, 1)),
+    #("Some", #([], self_type, result_type), single("test", 1, 1)),
+    #("None", #([], self_type, result_type), single("test", 2, 1)),
   ]
   let value = VTypeDef(name: "Bool", params: [], constructors: constructors)
   let term = quote(value)
   assert case term {
     TypeDef(name: "Bool", params: _, constructors: cons, span: _) ->
       case cons {
-        [#("Some", _, _, _, _), #("None", _, _, _, _)] -> True
-        [#("Some", _, _, _, _), #("None", _, _, _, _), ..] -> True
+        [#("Some", _, _), #("None", _, _)] -> True
+        [#("Some", _, _), #("None", _, _), ..] -> True
         _ -> False
       }
     _ -> False

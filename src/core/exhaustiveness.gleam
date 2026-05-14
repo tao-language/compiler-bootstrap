@@ -45,16 +45,16 @@ pub fn check_exhaustiveness(
 
 /// Check exhaustiveness for VTypeDef-style constructors.
 ///
-/// VTypeDef constructors have the format: #(tag, type_params, self_type, result_type, span)
+/// VTypeDef constructors have the format: #(tag, #(bindings, self_type, result_type), span)
 pub fn check_exhaustiveness_vdef(
   state: State,
-  constructors: List(#(String, List(String), Value, Term, Span)),
+  constructors: List(#(String, #(List(String), Value, Term), Span)),
   covered: List(String),
   span: Span,
 ) -> State {
   let all_tags = list.map(constructors, fn(c) {
     case c {
-      #(tag, _, _, _, _) -> tag
+      #(tag, _, _) -> tag
     }
   })
 

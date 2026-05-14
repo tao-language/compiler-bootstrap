@@ -254,17 +254,17 @@ fn make_type_def(tags: List(String)) -> List(#(String, Value, Value, Span)) {
 // ============================================================================
 
 /// Create VTypeDef-style constructors with the format:
-/// #(tag, type_params, self_type, result_type, span)
+/// #(tag, #(bindings, self_type, result_type), span)
 fn make_vdef_constructors(
   tags: List(String),
-) -> List(#(String, List(String), Value, Term, Span)) {
+) -> List(#(String, #(List(String), Value, Term), Span)) {
   list.map(tags, fn(tag) {
-    let type_params = case tag {
+    let bindings = case tag {
       "Some" -> ["a"]
       "Cons" -> ["m", "a"]
       _ -> []
     }
-    #(tag, type_params, make_neut(HHole(0)), Var(0, sp()), sp())
+    #(tag, #(bindings, make_neut(HHole(0)), Var(0, sp())), sp())
   })
 }
 

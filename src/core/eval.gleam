@@ -23,11 +23,11 @@ import gleam/string
 
 /// Convert a Term-level TypeDef constructor to a Value-level constructor.
 /// Passes through the bindings field unchanged.
-fn term_ctor_to_value(state: State, ctor: #(String, List(String), Term, Term, Span)) -> #(String, List(String), Value, Term, Span) {
-  let #(tag, bindings, self_type, result_type, span) = ctor
+fn term_ctor_to_value(state: State, ctor: #(String, #(List(String), Term, Term), Span)) -> #(String, #(List(String), Value, Term), Span) {
+  let #(tag, #(bindings, self_type, result_type), span) = ctor
   // Evaluate self_type to a value, keep result_type as Term
   let self_val = evaluate(state, self_type)
-  #(tag, bindings, self_val, result_type, span)
+  #(tag, #(bindings, self_val, result_type), span)
 }
 
 /// Evaluate a `Term` to a `Value` using Normalization by Evaluation (NBE).

@@ -86,7 +86,7 @@ pub type Term {
   TypeDef(
     name: String,
     params: List(#(String, Term)),
-    constructors: List(#(String, List(String), Term, Term, Span)),
+    constructors: List(#(String, #(List(String), Term, Term), Span)),
     span: Span,
   )
   /// Fixpoint: recursive function via Y combinator
@@ -141,7 +141,7 @@ pub type NamedTerm {
   NamedTypeDef(
     name: String,
     params: List(#(String, NamedTerm)),
-    constructors: List(#(String, List(String), NamedTerm, NamedTerm, Span)),
+    constructors: List(#(String, #(List(String), NamedTerm, NamedTerm), Span)),
     span: Span,
   )
   NamedErr(message: String, span: Span)
@@ -236,7 +236,11 @@ pub type Value {
   VCtr(tag: String, arg: Value)
   VRcd(fields: List(#(String, Value)))
   VRcdT(fields: List(#(String, Value, Option(Value))))
-  VTypeDef(name: String, params: List(#(String, Value)), constructors: List(#(String, List(String), Value, Term, Span)))
+  VTypeDef(
+    name: String,
+    params: List(#(String, Value)),
+    constructors: List(#(String, #(List(String), Value, Term), Span)),
+  )
   VTyp(level: Int)
   /// Evaluated literal type: $Int, $Float, $I32, $F64, etc.
   VLitT(t: LiteralType)
@@ -259,12 +263,12 @@ pub type Value {
 
 /// Look up a constructor by tag in a TypeDef.
 pub fn find_constructor(
-  constructors: List(#(String, List(String), Value, Term, Span)),
+  constructors: List(#(String, #(List(String), Value, Term), Span)),
   tag: String,
-) -> Option(#(String, List(String), Value, Term, Span)) {
-  let match_tag = fn(c: #(String, List(String), Value, Term, Span)) {
+) -> Option(#(String, #(List(String), Value, Term), Span)) {
+  let match_tag = fn(c: #(String, #(List(String), Value, Term), Span)) {
     case c {
-      #(t, _, _, _, _) -> t == tag
+      #(t, _, _) -> t == tag
     }
   }
   case list.find(constructors, match_tag) {
@@ -276,13 +280,13 @@ pub fn find_constructor(
 /// Compute the type of a constructor from a TypeDef.
 /// Returns the result_type Term (not evaluated), to be inferred later.
 pub fn compute_constructor_type(
-  constructors: List(#(String, List(String), Value, Term, Span)),
+  constructors: List(#(String, #(List(String), Value, Term), Span)),
   type_args: List(Value),
   tag: String,
 ) -> Option(Term) {
   case find_constructor(constructors, tag) {
     None -> None
-    Some(#(_, _, _, result, _)) -> Some(subst_term(type_args, result))
+    Some(#(_, #(_, _, result), _)) -> Some(subst_term(type_args, result))
   }
 }
 
@@ -365,7 +369,7 @@ pub fn subst_term(type_args: List(Value), t: Term) -> Term {
     Typ(universe, span) -> Typ(universe, span)
     LitT(t, span) -> LitT(t, span)
     TypeDef(name, params, constructors, span) -> TypeDef(name, params, list.map(constructors, fn(c) {
-      #(c.0, c.1, subst_term(type_args, c.2), subst_term(type_args, c.3), c.4)
+      #(c.0, #(c.1.0, subst_term(type_args, c.1.1), subst_term(type_args, c.1.2)), c.2)
     }), span)
     Fix(name, body, span) -> Fix(name, subst_term(type_args, body), span)
     Err(message, span) -> Err(message, span)
@@ -377,7 +381,7 @@ pub fn subst_term(type_args: List(Value), t: Term) -> Term {
 /// A TypeDef has type * (universe 0), represented as a nested Pi type:
 /// Pi(_, _, _, Pi(_, _, _, VTypeDef(name: "", params: [], constructors: constructors)))
 pub fn type_of_type_def(
-  constructors: List(#(String, List(String), Value, Term, Span)),
+  constructors: List(#(String, #(List(String), Value, Term), Span)),
 ) -> Value {
   VPi(
     [],
@@ -402,7 +406,7 @@ pub fn make_type_def(name: String, constructor_tags: List(String)) -> Term {
     name: name,
     params: [],
     constructors: list.map(constructor_tags, fn(tag) {
-      #(tag, [], self_type, result_type, single("", 0, 0))
+      #(tag, #([], self_type, result_type), single("", 0, 0))
     }),
     span: single("", 0, 0),
   )
@@ -547,11 +551,9 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
     TypeDef(name: n, params: params, constructors: cons, span: s) -> {
       let shift_cons = fn(c) {
         case c {
-          #(tag, bindings, self_ty, result, s) -> #(
+          #(tag, #(bindings, self_ty, result), s) -> #(
             tag,
-            bindings,
-            shift_term_from(self_ty, shift, from),
-            shift_term_from(result, shift, from),
+            #(bindings, shift_term_from(self_ty, shift, from), shift_term_from(result, shift, from)),
             s,
           )
         }
@@ -738,10 +740,10 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
       let param_names = list.map(params, fn(p) { p.0 })
       let type_env = list.append(param_names, [name, ..env])
       let shift_cons = fn(c) {
-        let #(tag, bindings, self_ty, result, s) = c
+        let #(tag, #(bindings, self_ty, result), s) = c
         let self_ty_db = named_term_to_debruijn(self_ty, type_env)
         let result_db = named_term_to_debruijn(result, type_env)
-        #(tag, bindings, self_ty_db, result_db, s)
+        #(tag, #(bindings, self_ty_db, result_db), s)
       }
       TypeDef(
         name: name,
@@ -903,9 +905,10 @@ pub fn term_to_string(term: Term) -> String {
       <> params_str
       <> " { "
       <> list.fold(constructors, "", fn(acc, c) {
-        let bindings_str = case c.1 {
+        let #(tag, #(bindings, self_ty, return_type), span) = c
+        let bindings_str = case bindings {
           [] -> ""
-          _ -> "@" <> list.fold(c.1, "", fn(a, b) {
+          _ -> "@" <> list.fold(bindings, "", fn(a, b) {
             case a {
               "" -> b
               _ -> a <> " " <> b
@@ -915,22 +918,22 @@ pub fn term_to_string(term: Term) -> String {
         case acc {
           "" ->
             "#"
-            <> c.0
+            <> tag
             <> "("
             <> bindings_str
-            <> term_to_string(c.2)
+            <> term_to_string(self_ty)
             <> " -> "
-            <> term_to_string(c.3)
+            <> term_to_string(return_type)
             <> ")"
           _ ->
             acc
             <> ", #"
-            <> c.0
+            <> tag
             <> "("
             <> bindings_str
-            <> term_to_string(c.2)
+            <> term_to_string(self_ty)
             <> " -> "
-            <> term_to_string(c.3)
+            <> term_to_string(return_type)
             <> ")"
         }
       })
@@ -1064,9 +1067,10 @@ pub fn value_to_string(value: Value) -> String {
       let cons_str = case c {
         [] -> ""
         _ -> "{ " <> list.fold(c, "", fn(acc, ctor) {
+          let #(tag, #(bindings, arg_type, return_type), span) = ctor
           let ctor_str = case acc {
-            "" -> "#" <> ctor.0 <> "(" <> value_to_string(ctor.2) <> " -> " <> term_to_string(ctor.3) <> ")"
-            _ -> ", #" <> ctor.0 <> "(" <> value_to_string(ctor.2) <> " -> " <> term_to_string(ctor.3) <> ")"
+            "" -> "#" <> tag <> "(" <> value_to_string(arg_type) <> " -> " <> term_to_string(return_type) <> ")"
+            _ -> ", #" <> tag <> "(" <> value_to_string(arg_type) <> " -> " <> term_to_string(return_type) <> ")"
           }
           acc <> ctor_str
         }) <> " }"

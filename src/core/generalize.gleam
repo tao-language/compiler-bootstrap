@@ -204,8 +204,9 @@ fn free_holes_term(term: Term, binding: Int) -> List(Int) {
     Typ(_, _) -> []
     TypeDef(_, _, constructors, _) -> {
       list.fold(constructors, [], fn(acc, c) {
-        let acc2 = list.append(acc, free_holes_term(c.2, binding))
-        list.append(acc2, free_holes_term(c.3, binding))
+        let #(tag, #(bindings, self_ty, return_type), span) = c
+        let acc2 = list.append(acc, free_holes_term(self_ty, binding))
+        list.append(acc2, free_holes_term(return_type, binding))
       })
     }
     LitT(_, _) -> []
@@ -381,8 +382,9 @@ fn free_levels_term(term: Term, binding: Int) -> List(Int) {
     Typ(_, _) -> []
     TypeDef(_, _, constructors, _) -> {
       list.fold(constructors, [], fn(acc, c) {
-        let acc2 = list.append(acc, free_levels_term(c.2, binding))
-        list.append(acc2, free_levels_term(c.3, binding))
+        let #(tag, #(bindings, self_ty, return_type), span) = c
+        let acc2 = list.append(acc, free_levels_term(self_ty, binding))
+        list.append(acc2, free_levels_term(return_type, binding))
       })
     }
     LitT(_, _) -> []
@@ -561,10 +563,10 @@ fn subst_holes_term(term: Term, subst: List(#(Int, Int))) -> Term {
     TypeDef(name: name, params: params, constructors: constructors, span: span) -> {
       let shift_cons = fn(ctor) {
         case ctor {
-          #(tag, bindings, self_ty, result, c_span) -> {
+          #(tag, #(bindings, self_ty, result), c_span) -> {
             let new_self = subst_holes_term(self_ty, subst)
             let new_result = subst_holes_term(result, subst)
-            #(tag, bindings, new_self, new_result, c_span)
+            #(tag, #(bindings, new_self, new_result), c_span)
           }
         }
       }

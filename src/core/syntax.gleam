@@ -657,9 +657,10 @@ fn term_to_string_named(term: NamedTerm) -> String {
     NamedTypeDef(_, _, constructors, _) -> {
       "$type { "
       <> list.fold(constructors, "", fn(acc, c) {
-        let bindings_str = case c.1 {
+        let #(tag, #(bindings, self_ty, return_type), span) = c
+        let bindings_str = case bindings {
           [] -> ""
-          _ -> "@" <> list.fold(c.1, "", fn(a, b) {
+          _ -> "@" <> list.fold(bindings, "", fn(a, b) {
             case a {
               "" -> b
               _ -> a <> " " <> b
@@ -669,23 +670,23 @@ fn term_to_string_named(term: NamedTerm) -> String {
         case acc {
           "" ->
             "#"
-            <> c.0
+            <> tag
             <> "("
             <> bindings_str
-            <> term_to_string_named(c.2)
+            <> term_to_string_named(self_ty)
             <> " -> "
-            <> term_to_string_named(c.3)
+            <> term_to_string_named(return_type)
             <> ")"
           _ ->
             acc
             <> " | "
             <> "#"
-            <> c.0
+            <> tag
             <> "("
             <> bindings_str
-            <> term_to_string_named(c.2)
+            <> term_to_string_named(self_ty)
             <> " -> "
-            <> term_to_string_named(c.3)
+            <> term_to_string_named(return_type)
             <> ")"
         }
       })
@@ -1035,7 +1036,7 @@ fn parse_type_def_body_with_body(
 
 // Parse type definition body: { | @bindings #C(arg) -> ReturnType }
 // The @bindings are constructor-bound variables solved by unification.
-fn parse_type_def_body(p: Parser) -> #(List(#(String, List(String), NamedTerm, NamedTerm, Span)), Parser) {
+fn parse_type_def_body(p: Parser) -> #(List(#(String, #(List(String), NamedTerm, NamedTerm), Span)), Parser) {
   let #(cases, rest) = parse_type_def_cases(p, [])
   case cases {
     [] -> #(cases, rest)
@@ -1044,7 +1045,7 @@ fn parse_type_def_body(p: Parser) -> #(List(#(String, List(String), NamedTerm, N
   }
 }
 
-fn parse_type_def_cases(p: Parser, acc: List(#(String, List(String), NamedTerm, NamedTerm, Span))) -> #(List(#(String, List(String), NamedTerm, NamedTerm, Span)), Parser) {
+fn parse_type_def_cases(p: Parser, acc: List(#(String, #(List(String), NamedTerm, NamedTerm), Span))) -> #(List(#(String, #(List(String), NamedTerm, NamedTerm), Span)), Parser) {
   let #(tokens, pos, fn_, errors) = p
   let p1 = #(tokens, pos, fn_, errors)
   let p2 = skip("|", p1)
@@ -1077,12 +1078,12 @@ fn parse_type_def_cases(p: Parser, acc: List(#(String, List(String), NamedTerm, 
                 True ->
                   parse_type_def_cases(
                     p10,
-                    [#(name, bindings, pattern, ret_type, span), ..acc],
+                    [#(name, #(bindings, pattern, ret_type), span), ..acc],
                   )
                 False ->
                   parse_type_def_cases(
                     p10,
-                    [#(name, bindings, pattern, ret_type, span), ..acc],
+                    [#(name, #(bindings, pattern, ret_type), span), ..acc],
                   )
               }
           }
