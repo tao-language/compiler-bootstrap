@@ -1072,6 +1072,33 @@ fn unify_infer_and_check(
 // GADT-STYLE CONSTRUCTOR CHECKING HELPERS
 // ============================================================================
 
+/// Find a TypeDef by looking up a constructor tag in the environment.
+///
+/// If the value is a VCtr(tag, arg), search through the env for VTypeDef
+/// values that contain a constructor with the given tag. Returns
+/// Some(#(type_def, arg)) if found, None otherwise.
+pub fn find_type_def(
+  env: List(Value),
+  value: Value,
+) -> Option(#(Value, Value)) {
+  case value {
+    ast.VCtr(tag, arg) -> {
+      // Search through env for a VTypeDef containing this constructor
+      case list.find(env, fn(v) {
+        case v {
+          ast.VTypeDef(_, _, constructors) ->
+            list.any(constructors, fn(c) { c.0 == tag })
+          _ -> False
+        }
+      }) {
+        Ok(type_def) -> Some(#(type_def, arg))
+        Error(_) -> None
+      }
+    }
+    _ -> None
+  }
+}
+
 /// Look up a constructor tag across all TypeDefs in the env.
 ///
 /// Searches through the env for VTypeDef values, then looks up
