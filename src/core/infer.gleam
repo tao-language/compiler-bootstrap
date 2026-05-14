@@ -9,9 +9,9 @@ import core/ast.{type Value,
   VTypeDef,
   IntT, FloatT}
 import core/exhaustiveness.{check_exhaustiveness_vdef}
-import core/state.{FfiEntry, def_var, type State, State}
+import core/state.{FfiEntry, def_var, env_to_state, type State, State}
 import core/eval.{evaluate, match_pattern}
-import core/subst.{force, force_levels_to_indices}
+import core/subst.{force, force_levels_to_indices, subst_term_var}
 import core/unify.{unify}
 import gleam/float
 import gleam/int
@@ -332,64 +332,60 @@ pub fn infer_fix(
 
 /// Check that a term has the expected type (verification).
 ///
-/// When checking a record literal against a record type with defaults,
-/// fills in missing fields with the default values from the expected type.
+/// This is a thin wrapper: infer the term, then fill in any missing
+/// record defaults at the value level before unifying.
 pub fn check(
   state: state.State,
   term: ast.Term,
   expected: ast.Value,
 ) -> #(ast.Value, ast.Value, state.State) {
-  // Fill in record defaults if checking a record against a record type
-  let filled_term = fill_record_defaults(term, expected)
-  let #(value, inferred, new_state) = infer(state, filled_term)
-  unify_infer_and_check(new_state, value, inferred, expected)
+  let #(value, inferred, new_state) = infer(state, term)
+  // Fill in missing record defaults at the value level
+  let filled_value = fill_record_defaults_value(value, expected)
+  unify_infer_and_check(new_state, filled_value, inferred, expected)
 }
 
-/// Fill in missing record fields with defaults from the expected record type.
+/// Fill in missing record fields with defaults at the value level.
 ///
-/// When the term is a record literal (`Rcd`) and the expected type is a
-/// record type (`VRcdT`) with default values, this fills in any missing
-/// fields with their defaults.
+/// When the value is a `VRcd` and the expected type is a `VRcdT`
+/// with default values, this fills in any missing fields with their defaults.
 ///
-/// For example, checking `{x: 1}` against `${x: $Int, y: $Int = 0}` produces
-/// `{x: 1, y: 0}` — the missing `y` field is filled with the default `0`.
-fn fill_record_defaults(
-  term: ast.Term,
+/// For example, checking `VRcd([#("x", VLit(Int(1)))])` against
+/// `VRcdT([#("x", VLitT(IntT), Some(VLitT(IntT))), #("y", VLitT(IntT), Some(VLit(42)))])`
+/// produces `VRcd([#("x", VLit(Int(1))), #("y", VLit(42))])`.
+fn fill_record_defaults_value(
+  value: ast.Value,
   expected: ast.Value,
-) -> ast.Term {
-  case term, expected {
-    ast.Rcd(fields, span), ast.VRcdT(expected_fields) -> {
-      // Build a map of field name -> default value (if any)
-      let defaults = build_defaults(expected_fields)
+) -> ast.Value {
+  case value, expected {
+    ast.VRcd(fields), ast.VRcdT(expected_fields) -> {
+      // Build a map of field name -> default value
+      let defaults = build_defaults_value(expected_fields)
       // Fill in missing fields
-      let filled = fill_fields(fields, defaults)
-      case filled == fields {
-        True -> term
-        False -> ast.Rcd(filled, span)
-      }
+      let filled = fill_fields_value(fields, defaults)
+      ast.VRcd(filled)
     }
-    _, _ -> term
+    _, _ -> value
   }
 }
 
-/// Build a list of (name, default_term) pairs from a VRcdT's fields.
-fn build_defaults(
-  expected: List(#(String, ast.Value, option.Option(ast.Value))),
-) -> List(#(String, ast.Term)) {
-  list.fold(expected, [], fn(acc, field) {
+/// Build a list of (name, default_value) pairs from a VRcdT's fields.
+fn build_defaults_value(
+  fields: List(#(String, ast.Value, option.Option(ast.Value))),
+) -> List(#(String, ast.Value)) {
+  list.fold(fields, [], fn(acc, field) {
     case field {
-      #(_, _, Some(default_val)) ->
-        [#(field.0, force_levels_to_indices(default_val, 0)), ..acc]
+      #(_, _, Some(default_val)) -> [#(field.0, default_val), ..acc]
       _ -> acc
     }
   })
 }
 
-/// Fill in missing fields in a record with defaults.
-fn fill_fields(
-  fields: List(#(String, ast.Term)),
-  defaults: List(#(String, ast.Term)),
-) -> List(#(String, ast.Term)) {
+/// Fill in missing fields in a record with defaults at the value level.
+fn fill_fields_value(
+  fields: List(#(String, ast.Value)),
+  defaults: List(#(String, ast.Value)),
+) -> List(#(String, ast.Value)) {
   // Get the names of existing fields
   let existing_names = list.map(fields, fn(f) { f.0 })
   // Find defaults for fields not in existing
@@ -522,44 +518,94 @@ fn infer_app(
   span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
   // Check if this is a $let binding: App(Lam(name, _, body), value, span)
-  // If so, evaluate the value and add it to the env before inferring the body.
-  // This ensures TypeDef values (VLam) are available for constructor lookup.
+  // If so, infer the arg, fill defaults at value level, add to env, infer body.
   case fun {
     ast.Lam(_implicits, #(param_name, param_type), body, _lam_span) -> {
       // Infer the argument to get its value and type
       let #(arg_val, arg_type, state2) = infer(state, arg)
-      let _ = arg_val
       // Evaluate the parameter type to get the expected value type
       let param_val = evaluate(state2, param_type)
-      // Fill in record defaults if checking a record against a record type
-      let filled_arg = fill_record_defaults(arg, param_val)
-      // Evaluate the (possibly filled) argument
-      let arg_eval = evaluate(state2, filled_arg)
-      let state_ext = def_var(state2, param_name, arg_eval, arg_type)
+      // Fill in record defaults at the value level
+      let filled_arg = fill_record_defaults_value(arg_val, param_val)
+      // Int→Float conversion if param type is FloatT
+      let converted_arg = case param_val {
+        ast.VLitT(ast.FloatT) ->
+          case filled_arg {
+            ast.VLit(ast.Int(v)) ->
+              case float.parse(int.to_string(v) <> ".0") {
+                Ok(f) -> ast.VLit(ast.Float(f))
+                Error(_) -> filled_arg
+              }
+            _ -> filled_arg
+          }
+        _ -> filled_arg
+      }
+      let state_ext = def_var(state2, param_name, converted_arg, arg_type)
       // Infer the body with the binding in the env
       let #(body_val, body_type, state_final) = infer(state_ext, body)
-      // The result is the body's value and type
       #(body_val, body_type, state_final)
     }
     _ -> {
-      // Normal function application
+      // Normal function application: infer both fun and arg
       let #(fun_val, fun_type, state2) = infer(state, fun)
+      let #(arg_val, arg_type, state3) = infer(state2, arg)
 
-      case fun_type {
-        ast.VPi(_env, _implicits, domain, codomain) -> {
-          let #(arg_val, _, state3) = check(state2, arg, domain.1)
-          let _ = arg_val
-          #(codomain, codomain, state3)
+      // Try to normalize via beta reduction
+      case fun_val {
+        // β-reduction: apply VLam to argument
+        ast.VLam(lam_env, _implicits, #(_pname, param_type), body) -> {
+          // Fill defaults if param_type is VRcdT
+          let filled_arg = fill_record_defaults_value(arg_val, param_type)
+          // Int→Float conversion if param type is FloatT
+          let converted_arg = case param_type {
+            ast.VLitT(ast.FloatT) ->
+              case filled_arg {
+                ast.VLit(ast.Int(v)) ->
+                  case float.parse(int.to_string(v) <> ".0") {
+                    Ok(f) -> ast.VLit(ast.Float(f))
+                    Error(_) -> filled_arg
+                  }
+                _ -> filled_arg
+              }
+            _ -> filled_arg
+          }
+          // Extend env with the lambda parameter
+          let env_with_param = list.append([converted_arg], lam_env)
+          let substituted = ast.shift_term(
+            subst_term_var(0, converted_arg, body),
+            1,
+          )
+          // Infer the body in the extended environment
+          let body_state = env_to_state(env_with_param, state3.truth_ctr, state3.ffi)
+          infer(body_state, substituted)
         }
-        // A VNeut with HHole head represents an unresolved function
-        // (e.g., a fix variable whose type is a hole to be solved).
-        ast.VNeut(ast.HHole(_), []) -> {
-          let fresh_id = state2.hole_counter
-          let codomain = ast.VNeut(ast.HHole(fresh_id), [])
-          let state3 = State(..state2, hole_counter: fresh_id + 1)
-          #(codomain, codomain, state3)
+        // VFix unroll: substitute arg for Var(0), VFix for Var(1)
+        ast.VFix(fix_name, fix_env, fix_body) -> {
+          let body = case fix_body {
+            ast.Ann(inner, _, _) -> inner
+            _ -> fix_body
+          }
+          case body {
+            ast.Lam(_implicits, _param, body_term, _) -> {
+              let body_with_arg = subst_term_var(0, arg_val, body_term)
+              let self = ast.VFix(fix_name, fix_env, fix_body)
+              let body_with_self = subst_term_var(1, self, body_with_arg)
+              let env_with_arg = list.append([arg_val], fix_env)
+              let body_state = env_to_state(env_with_arg, state3.truth_ctr, state3.ffi)
+              infer(body_state, body_with_self)
+            }
+            _ -> #(ast.VErr, ast.VErr, state3)
+          }
         }
-        _other -> {
+        // Neutral spine: extend with argument
+        ast.VNeut(head, spine) -> {
+          let new_neut = ast.VNeut(head, list.append(spine, [ast.EApp(arg_val)]))
+          #(new_neut, fun_type, state3)
+        }
+        // Error propagates
+        ast.VErr -> #(ast.VErr, ast.VErr, state3)
+        // Cannot apply a type/value that isn't a function
+        _ -> {
           let new_state = state.with_err(
             state,
             state.NotAFunction(fun_type, span),
@@ -615,22 +661,18 @@ fn check_match_cases(
   case cases {
     [] -> #(ast.VErr, ast.VErr, state)
     [ast.Case(pattern, _guard, body, _span), ..rest] -> {
-
       case match_pattern(pattern, scrutinee_val, []) {
         Ok(bindings) -> {
+          // Pattern matched: evaluate the body and return immediately
           let body_state = state.State(
             ..state,
             vars: list.map(bindings, fn(b) { #(b.0, #(b.1, ast.VNeut(ast.HHole(0), []))) }),
           )
-          let #(body_val, body_type, state3) = check(body_state, body, scrutinee_type)
-
-          let acc2 = list.append(acc, [#(body_val, body_type)])
-          check_match_cases(state3, scrutinee_val, scrutinee_type, rest, acc2)
+          check(body_state, body, scrutinee_type)
         }
         Error(_) -> {
-          let #(body_val, body_type, state3) = check(state, body, scrutinee_type)
-          let acc2 = list.append(acc, [#(body_val, body_type)])
-          check_match_cases(state3, scrutinee_val, scrutinee_type, rest, acc2)
+          // Pattern didn't match: try next case
+          check_match_cases(state, scrutinee_val, scrutinee_type, rest, acc)
         }
       }
     }
