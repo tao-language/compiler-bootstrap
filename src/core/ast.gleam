@@ -691,10 +691,13 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
       let params_debruijn = list.map(params, fn(p) {
         #(p.0, named_term_to_debruijn(p.1, env))
       })
+      // Add type parameter names to the env for self_ty and result conversion
+      let param_names = list.map(params, fn(p) { p.0 })
+      let type_env = list.append(param_names, [name, ..env])
       let shift_cons = fn(c) {
         let #(tag, bindings, self_ty, result, s) = c
-        let self_ty_db = named_term_to_debruijn(self_ty, [name, ..env])
-        let result_db = named_term_to_debruijn(result, env)
+        let self_ty_db = named_term_to_debruijn(self_ty, type_env)
+        let result_db = named_term_to_debruijn(result, type_env)
         #(tag, bindings, self_ty_db, result_db, s)
       }
       TypeDef(
