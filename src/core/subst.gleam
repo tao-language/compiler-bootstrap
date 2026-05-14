@@ -257,7 +257,7 @@ fn subst_term_from(idx: Int, value: Value, term: Term, from: Int) -> Term {
 /// For neutral values, extracts the head and returns a neutral term.
 /// For other values (literals, constructors, records), converts
 /// De Bruijn levels to De Bruijn indices.
-fn value_to_neut(value: Value) -> Term {
+pub fn value_to_neut(value: Value) -> Term {
   case value {
     VNeut(head, []) -> neut_head_to_term(head)
     _ -> force_levels_to_indices(value, 0)

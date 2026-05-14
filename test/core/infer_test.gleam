@@ -1447,9 +1447,14 @@ $let Vec = $type<n: $I32, a: $Type> {
   // x: 3.14 should match a -> a = $Float
   // xs: #Nil({}) should match #Vec({n: m, a: a}) -> m = 0, a = $Float
   // Result type: #Vec({n: %i32_add(0, 1), a: $Float}) = #Vec({n: 1, a: $Float})
+  // Debug: print the actual type
+  // io.debug(type_)
   assert case type_ {
     VCtr(_, _) -> True
-    _ -> False
+    _ -> {
+      // io.debug("Failed: type_ = " <> value_to_string(type_))
+      False
+    }
   }
 }
 

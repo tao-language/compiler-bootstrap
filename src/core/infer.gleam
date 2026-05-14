@@ -11,7 +11,7 @@ import core/ast.{type Value, type Term,
 import core/exhaustiveness.{check_exhaustiveness_vdef}
 import core/state.{FfiEntry, def_var, env_to_state, type State, State}
 import core/eval.{evaluate, match_pattern}
-import core/subst.{force, force_levels_to_indices, subst_term_var}
+import core/subst.{force, force_levels_to_indices, subst_term_var, value_to_neut}
 import core/unify.{unify}
 import gleam/float
 import gleam/int
@@ -841,6 +841,10 @@ fn infer_ctr(
 ) -> #(ast.Value, ast.Value, state.State) {
   // Infer the argument to get both its value and type
   let #(arg_val, arg_type, state1) = infer(state, arg)
+  
+  // Debug: print the tag and env
+  // io.debug("infer_ctr: tag=" <> tag)
+  // io.debug("infer_ctr: env_vars=" <> string.join(list.map(state1.vars, fn(v) { v.0 <> ":" <> value_to_string(v.1.0) }), ", "))
 
   // Look up constructor in env for GADT-style checking
   // Extract just the Value types from the env
@@ -863,9 +867,9 @@ fn infer_ctr(
           // Unification succeeded: substitute solved bindings into result_type (Term)
           // Then infer the result_type Term to get its Value
           let result_term = apply_unify_bindings_to_term(solved_bindings, result_type_val)
-          let #(result_val, result_type_val2, _) = infer(state1, result_term)
+          let #(result_val, result_type_val2, state2) = infer(state1, result_term)
           let ctr_val = ast.VCtr(tag, arg_val)
-          #(ctr_val, result_type_val2, state1)
+          #(ctr_val, result_type_val2, state2)
         }
         None -> {
           // Unification failed: error + best-effort
@@ -1382,8 +1386,8 @@ pub fn apply_unify_bindings_to_term(
     ast.Var(level, span) -> {
       case list.find(bindings, fn(b) { b.0 == level }) {
         Ok(#(_, solved_val)) -> {
-          // Convert solved value to a Var term (simple substitution)
-          ast.Var(0, span)
+          // Convert solved value to a Term using value_to_neut
+          value_to_neut(solved_val)
         }
         Error(_) -> t  // Not bound, leave as-is
       }
