@@ -334,14 +334,15 @@ pub fn force_levels_to_indices(value: Value, n: Int) -> Term {
       let params_terms = list.map(vparams, fn(p) {
         #(p.0, force_levels_to_indices(p.1, n))
       })
-      let shift_cons = fn(ctor: #(String, List(String), Value, Value, Span)) -> #(String, List(String), Term, Term, Span) {
+      let shift_cons = fn(ctor: #(String, List(String), Value, Term, Span)) -> #(String, List(String), Term, Term, Span) {
         let a = case ctor { #(x, _, _, _, _) -> x }
         let bindings = case ctor { #(_, x, _, _, _) -> x }
         let b = case ctor { #(_, _, x, _, _) -> x }
         let result = case ctor { #(_, _, _, x, _) -> x }
         let d = case ctor { #(_, _, _, _, x) -> x }
         let r1: Term = force_levels_to_indices(b, n)
-        let r2: Term = force_levels_to_indices(result, n)
+        // result is already a Term, just shift it by n
+        let r2: Term = ast.shift_term(result, n)
         let r3: #(String, List(String), Term, Term, Span) = #(a, bindings, r1, r2, d)
         r3
       }

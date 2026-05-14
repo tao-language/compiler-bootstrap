@@ -155,11 +155,11 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
     // ── Ctr ↔ TypeDef — check if Ctr name matches TypeDef constructor ─
     VCtr(tag, arg), VTypeDef(name, params, constructors) ->
       case list.find(constructors, fn(c) { c.0 == tag }) {
-        Ok(#(_, _, self_type, result_type, _)) -> {
+        Ok(#(_, _, self_type, _result_type, _)) -> {
           // Self type is already a value (holes for type params).
           // Simply check that arg matches self_type structurally.
-          let s1 = match_values(state, self_type, arg)
-          match_values(s1, result_type, VCtr(tag, arg))
+          // Note: result_type is a Term, handled during inference.
+          match_values(state, self_type, arg)
         }
         Error(_) ->
           add_type_mismatch_error(
@@ -172,9 +172,9 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
     // ── TypeDef ↔ Ctr — symmetric case ───────────────────────
     VTypeDef(name, params, constructors), VCtr(tag, arg) ->
       case list.find(constructors, fn(c) { c.0 == tag }) {
-        Ok(#(_, _, self_type, result_type, _)) -> {
+        Ok(#(_, _, self_type, _result_type, _)) -> {
           let s1 = match_values(state, self_type, arg)
-          match_values(s1, result_type, VCtr(tag, arg))
+          s1
         }
         Error(_) ->
           add_type_mismatch_error(

@@ -9,7 +9,7 @@
 /// - Missing patterns are reported with their tags
 /// - Redundant patterns are detected
 
-import core/ast.{type Value, HHole, make_neut}
+import core/ast.{type Value, type Term, HHole, make_neut}
 import core/state.{type State, MatchMissing}
 import gleam/list
 import syntax/span.{single, type Span}
@@ -48,7 +48,7 @@ pub fn check_exhaustiveness(
 /// VTypeDef constructors have the format: #(tag, type_params, self_type, result_type, span)
 pub fn check_exhaustiveness_vdef(
   state: State,
-  constructors: List(#(String, List(String), Value, Value, Span)),
+  constructors: List(#(String, List(String), Value, Term, Span)),
   covered: List(String),
   span: Span,
 ) -> State {

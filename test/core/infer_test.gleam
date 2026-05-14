@@ -1798,9 +1798,10 @@ pub fn gadt_apply_bindings_nested_test() {
 /// Unit test: lookup_constructor finds constructor in TypeDef.
 pub fn gadt_lookup_constructor_found_test() {
   // When a TypeDef is in the env, lookup_constructor should find it.
+  let result_type = Var(0, single("", 0, 0))
   let constructors = [
-    #("Some", [], VNeut(HHole(0), []), VCtr("Option", VNeut(HHole(0), [])), single("", 0, 0)),
-    #("None", [], VNeut(HHole(1), []), VCtr("Option", VNeut(HHole(1), [])), single("", 0, 0)),
+    #("Some", [], VNeut(HHole(0), []), result_type, single("", 0, 0)),
+    #("None", [], VNeut(HHole(1), []), result_type, single("", 0, 0)),
   ]
   let type_def = VTypeDef("Option", [#("a", VTyp(0))], constructors)
   let env = [type_def]
@@ -1809,9 +1810,9 @@ pub fn gadt_lookup_constructor_found_test() {
   assert case result {
     Some(#(_, _self_type, result_type)) -> {
       // self_type should be a hole (HVar(0) resolved to HHole(0))
-      // result_type should be VCtr("Option", hole)
+      // result_type should be a Var term
       case result_type {
-        VCtr("Option", _) -> True
+        Var(0, _) -> True
         _ -> False
       }
     }
@@ -1821,8 +1822,9 @@ pub fn gadt_lookup_constructor_found_test() {
 
 /// Unit test: lookup_constructor returns None for unknown constructor.
 pub fn gadt_lookup_constructor_not_found_test() {
+  let result_type = Var(0, single("", 0, 0))
   let constructors = [
-    #("Some", [], VNeut(HHole(0), []), VCtr("Option", VNeut(HHole(0), [])), single("", 0, 0)),
+    #("Some", [], VNeut(HHole(0), []), result_type, single("", 0, 0)),
   ]
   let type_def = VTypeDef("Option", [#("a", VTyp(0))], constructors)
   let env = [type_def]

@@ -6,7 +6,7 @@
 /// - Redundant pattern detection
 /// - TypeDef construction and extraction
 
-import core/ast.{type Value, HHole, make_neut}
+import core/ast.{type Value, type Term, HHole, make_neut, Var}
 import core/exhaustiveness.{
   check_exhaustiveness,
   check_exhaustiveness_vdef,
@@ -257,14 +257,14 @@ fn make_type_def(tags: List(String)) -> List(#(String, Value, Value, Span)) {
 /// #(tag, type_params, self_type, result_type, span)
 fn make_vdef_constructors(
   tags: List(String),
-) -> List(#(String, List(String), Value, Value, Span)) {
+) -> List(#(String, List(String), Value, Term, Span)) {
   list.map(tags, fn(tag) {
     let type_params = case tag {
       "Some" -> ["a"]
       "Cons" -> ["m", "a"]
       _ -> []
     }
-    #(tag, type_params, make_neut(HHole(0)), make_neut(HHole(0)), sp())
+    #(tag, type_params, make_neut(HHole(0)), Var(0, sp()), sp())
   })
 }
 

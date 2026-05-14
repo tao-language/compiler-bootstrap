@@ -236,7 +236,7 @@ pub type Value {
   VCtr(tag: String, arg: Value)
   VRcd(fields: List(#(String, Value)))
   VRcdT(fields: List(#(String, Value, Option(Value))))
-  VTypeDef(name: String, params: List(#(String, Value)), constructors: List(#(String, List(String), Value, Value, Span)))
+  VTypeDef(name: String, params: List(#(String, Value)), constructors: List(#(String, List(String), Value, Term, Span)))
   VTyp(level: Int)
   /// Evaluated literal type: $Int, $Float, $I32, $F64, etc.
   VLitT(t: LiteralType)
@@ -259,10 +259,10 @@ pub type Value {
 
 /// Look up a constructor by tag in a TypeDef.
 pub fn find_constructor(
-  constructors: List(#(String, List(String), Value, Value, Span)),
+  constructors: List(#(String, List(String), Value, Term, Span)),
   tag: String,
-) -> Option(#(String, List(String), Value, Value, Span)) {
-  let match_tag = fn(c: #(String, List(String), Value, Value, Span)) {
+) -> Option(#(String, List(String), Value, Term, Span)) {
+  let match_tag = fn(c: #(String, List(String), Value, Term, Span)) {
     case c {
       #(t, _, _, _, _) -> t == tag
     }
@@ -274,14 +274,15 @@ pub fn find_constructor(
 }
 
 /// Compute the type of a constructor from a TypeDef.
+/// Returns the result_type Term (not evaluated), to be inferred later.
 pub fn compute_constructor_type(
-  constructors: List(#(String, List(String), Value, Value, Span)),
+  constructors: List(#(String, List(String), Value, Term, Span)),
   type_args: List(Value),
   tag: String,
-) -> Option(Value) {
+) -> Option(Term) {
   case find_constructor(constructors, tag) {
     None -> None
-    Some(#(_, _, _, result, _)) -> Some(subst(type_args, result))
+    Some(#(_, _, _, result, _)) -> Some(subst_term(type_args, result))
   }
 }
 
@@ -329,12 +330,54 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
   }
 }
 
+/// Substitute HVar(level) references in a Term with actual type arguments.
+pub fn subst_term(type_args: List(Value), t: Term) -> Term {
+  case t {
+    Var(index, span) -> Var(index, span)
+    Hole(id, span) -> Hole(id, span)
+    Lam(implicits, param, body, span) -> Lam(implicits, param, subst_term(type_args, body), span)
+    App(fun, arg, span) -> App(subst_term(type_args, fun), subst_term(type_args, arg), span)
+    Pi(implicits, domain, codomain, span) -> Pi(
+      implicits,
+      #(domain.0, subst_term(type_args, domain.1)),
+      subst_term(type_args, codomain),
+      span,
+    )
+    Lit(value, span) -> Lit(value, span)
+    Ctr(tag, arg, span) -> Ctr(tag, subst_term(type_args, arg), span)
+    Match(arg, cases, span) -> Match(subst_term(type_args, arg), list.map(cases, fn(c) {
+      let new_guard = case c.guard {
+        None -> None
+        Some(g) -> Some(subst_term(type_args, g))
+      }
+      Case(c.pattern, new_guard, subst_term(type_args, c.body), c.span)
+    }), span)
+    Ann(term, type_, span) -> Ann(subst_term(type_args, term), subst_term(type_args, type_), span)
+    Call(name, args, return_type, span) -> Call(name, list.map(args, fn(a) { #(subst_term(type_args, a.0), subst_term(type_args, a.1)) }), subst_term(type_args, return_type), span)
+    Rcd(fields, span) -> Rcd(list.map(fields, fn(f) { #(f.0, subst_term(type_args, f.1)) }), span)
+    RcdT(fields, span) -> RcdT(list.map(fields, fn(f) {
+      let new_default = case f.2 {
+        None -> None
+        Some(d) -> Some(subst_term(type_args, d))
+      }
+      #(f.0, subst_term(type_args, f.1), new_default)
+    }), span)
+    Typ(universe, span) -> Typ(universe, span)
+    LitT(t, span) -> LitT(t, span)
+    TypeDef(name, params, constructors, span) -> TypeDef(name, params, list.map(constructors, fn(c) {
+      #(c.0, c.1, subst_term(type_args, c.2), subst_term(type_args, c.3), c.4)
+    }), span)
+    Fix(name, body, span) -> Fix(name, subst_term(type_args, body), span)
+    Err(message, span) -> Err(message, span)
+  }
+}
+
 /// Extract the type of a TypeDef (always `*` - universe 0).
 ///
 /// A TypeDef has type * (universe 0), represented as a nested Pi type:
 /// Pi(_, _, _, Pi(_, _, _, VTypeDef(name: "", params: [], constructors: constructors)))
 pub fn type_of_type_def(
-  constructors: List(#(String, List(String), Value, Value, Span)),
+  constructors: List(#(String, List(String), Value, Term, Span)),
 ) -> Value {
   VPi(
     [],
@@ -1022,8 +1065,8 @@ pub fn value_to_string(value: Value) -> String {
         [] -> ""
         _ -> "{ " <> list.fold(c, "", fn(acc, ctor) {
           let ctor_str = case acc {
-            "" -> "#" <> ctor.0 <> "(" <> value_to_string(ctor.2) <> " -> " <> value_to_string(ctor.3) <> ")"
-            _ -> ", #" <> ctor.0 <> "(" <> value_to_string(ctor.2) <> " -> " <> value_to_string(ctor.3) <> ")"
+            "" -> "#" <> ctor.0 <> "(" <> value_to_string(ctor.2) <> " -> " <> term_to_string(ctor.3) <> ")"
+            _ -> ", #" <> ctor.0 <> "(" <> value_to_string(ctor.2) <> " -> " <> term_to_string(ctor.3) <> ")"
           }
           acc <> ctor_str
         }) <> " }"

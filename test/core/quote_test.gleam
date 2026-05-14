@@ -519,10 +519,10 @@ pub fn quote_vtypef_empty_test() {
 
 pub fn quote_vtypef_with_constructors_test() {
   let self_type = v_neut(0)
-  let result_type = VCtr("Option", VNeut(HVar(0), []))
+  let result_type = Var(0, single("test", 0, 0))
   let constructors = [
     #("Some", [], self_type, result_type, single("test", 1, 1)),
-    #("None", [], self_type, self_type, single("test", 2, 1)),
+    #("None", [], self_type, result_type, single("test", 2, 1)),
   ]
   let value = VTypeDef(name: "Bool", params: [], constructors: constructors)
   let term = quote(value)

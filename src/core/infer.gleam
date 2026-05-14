@@ -5,7 +5,7 @@
 /// thin wrapper that synthesizes the term then unifies its type with
 /// the expected type.
 
-import core/ast.{type Value,
+import core/ast.{type Value, type Term,
   VTypeDef,
   IntT, FloatT}
 import core/exhaustiveness.{check_exhaustiveness_vdef}
@@ -849,7 +849,7 @@ fn infer_ctr(
 
   case constructor_info {
     Some(#(_bindings, self_type_val, result_type_val)) -> {
-      // self_type and result_type are already Values.
+      // self_type is a Value, result_type is a Term.
       // Type params (from TypeDef params) are referenced by name in the pattern.
       // Constructor-bound vars (@m) are also free variables.
       // For now, we treat them as-is - the unification will solve for free vars.
@@ -860,10 +860,12 @@ fn infer_ctr(
 
       case unified {
         Some(solved_bindings) -> {
-          // Unification succeeded: substitute solved bindings into result_type
-          let result_with_subst = apply_unify_bindings(solved_bindings, result_type_val)
+          // Unification succeeded: substitute solved bindings into result_type (Term)
+          // Then infer the result_type Term to get its Value
+          let result_term = apply_unify_bindings_to_term(solved_bindings, result_type_val)
+          let #(result_val, result_type_val2, _) = infer(state1, result_term)
           let ctr_val = ast.VCtr(tag, arg_val)
-          #(ctr_val, result_with_subst, state1)
+          #(ctr_val, result_type_val2, state1)
         }
         None -> {
           // Unification failed: error + best-effort
@@ -914,7 +916,7 @@ fn infer_type_def(
     },
   )
 
-  // Evaluate self_type and result_type terms for each constructor.
+  // Process self_type and result_type terms for each constructor.
   // Since type params are now bound as holes in the environment, any
   // free variable references (like `a` in `#Some(a)`) resolve to the
   // corresponding bound hole. This ensures both self_type and result_type
@@ -937,9 +939,8 @@ fn infer_type_def(
     let shifted_result = ast.shift_term(result_type_term, -num_type_params)
     // Evaluate self_type to a value (type params resolve to bound holes)
     let self_type_val = evaluate(new_state, shifted_self)
-    // Evaluate result_type to a value (type params resolve to same bound holes)
-    let result_type_val = evaluate(new_state, shifted_result)
-    #(tag, bindings, self_type_val, result_type_val, ctor_span)
+    // Keep result_type as a Term (not evaluated) so inference can evaluate it later
+    #(tag, bindings, self_type_val, shifted_result, ctor_span)
   })
 
   // Keep type param bindings in vars so subsequent lambdas can reference them
@@ -1078,11 +1079,11 @@ fn unify_infer_and_check(
 ///
 /// Searches through the env for VTypeDef values, then looks up
 /// the constructor by tag. Returns the @-bindings, self_type value,
-/// and result_type value if found.
+/// and result_type term if found.
 pub fn lookup_constructor(
   env: List(Value),
   tag: String,
-) -> Option(#(List(String), Value, Value)) {
+) -> Option(#(List(String), Value, Term)) {
   // Direct VTypeDef lookup
   case list.find(env, fn(v) {
     case v {
@@ -1345,6 +1346,54 @@ pub fn apply_unify_bindings(
     ast.VLitT(t) -> ast.VLitT(t)
     ast.VFix(name, env, body) -> ast.VFix(name, env, body)
     ast.VErr -> ast.VErr
+  }
+}
+
+/// Apply unification bindings to a Term (for result_type substitution).
+pub fn apply_unify_bindings_to_term(
+  bindings: List(#(Int, ast.Value)),
+  t: ast.Term,
+) -> ast.Term {
+  case t {
+    ast.Var(level, span) -> {
+      case list.find(bindings, fn(b) { b.0 == level }) {
+        Ok(#(_, solved_val)) -> {
+          // Convert solved value to a Var term (simple substitution)
+          ast.Var(0, span)
+        }
+        Error(_) -> t  // Not bound, leave as-is
+      }
+    }
+    ast.Hole(id, span) -> t
+    ast.Lam(implicits, param, body, span) -> ast.Lam(implicits, param, apply_unify_bindings_to_term(bindings, body), span)
+    ast.App(fun, arg, span) -> ast.App(apply_unify_bindings_to_term(bindings, fun), apply_unify_bindings_to_term(bindings, arg), span)
+    ast.Pi(implicits, domain, codomain, span) -> ast.Pi(implicits, #(domain.0, apply_unify_bindings_to_term(bindings, domain.1)), apply_unify_bindings_to_term(bindings, codomain), span)
+    ast.Lit(lit_value, span) -> t
+    ast.Ctr(tag, arg, span) -> ast.Ctr(tag, apply_unify_bindings_to_term(bindings, arg), span)
+    ast.Match(arg, cases, span) -> ast.Match(apply_unify_bindings_to_term(bindings, arg), list.map(cases, fn(c) {
+      let new_guard = case c.guard {
+        None -> None
+        Some(g) -> Some(apply_unify_bindings_to_term(bindings, g))
+      }
+      ast.Case(c.pattern, new_guard, apply_unify_bindings_to_term(bindings, c.body), c.span)
+    }), span)
+    ast.Ann(term, type_, span) -> ast.Ann(apply_unify_bindings_to_term(bindings, term), apply_unify_bindings_to_term(bindings, type_), span)
+    ast.Call(name, args, return_type, span) -> ast.Call(name, list.map(args, fn(a) { #(apply_unify_bindings_to_term(bindings, a.0), apply_unify_bindings_to_term(bindings, a.1)) }), apply_unify_bindings_to_term(bindings, return_type), span)
+    ast.Rcd(fields, span) -> ast.Rcd(list.map(fields, fn(f) { #(f.0, apply_unify_bindings_to_term(bindings, f.1)) }), span)
+    ast.RcdT(fields, span) -> ast.RcdT(list.map(fields, fn(f) {
+      let new_default = case f.2 {
+        None -> None
+        Some(d) -> Some(apply_unify_bindings_to_term(bindings, d))
+      }
+      #(f.0, apply_unify_bindings_to_term(bindings, f.1), new_default)
+    }), span)
+    ast.Typ(universe, span) -> t
+    ast.LitT(lit_type, span) -> t
+    ast.TypeDef(name, params, constructors, span) -> ast.TypeDef(name, params, list.map(constructors, fn(c) {
+      #(c.0, c.1, apply_unify_bindings_to_term(bindings, c.2), apply_unify_bindings_to_term(bindings, c.3), c.4)
+    }), span)
+    ast.Fix(name, body, span) -> ast.Fix(name, apply_unify_bindings_to_term(bindings, body), span)
+    ast.Err(message, span) -> t
   }
 }
 
