@@ -402,14 +402,14 @@ pub fn unify_int_wildcard_rejects_float_test() {
   assert list.length(final.errors) >= 1
 }
 
-/// Specific integer type (I32T) does NOT match IntT wildcard.
+/// IntT wildcard DOES match specific integer types (I32T, etc.).
 pub fn unify_int_type_matches_specific_int_test() {
   let state = initial_state([])
   let int_type = VLitT(IntT)
   let i32_type = VLitT(I32T)
   let final = unify(state, int_type, i32_type)
-  // IntT and I32T are different — should produce mismatch
-  assert list.length(final.errors) >= 1
+  // IntT is a wildcard that matches I32T — should succeed
+  assert list.length(final.errors) == 0
 }
 
 /// VLitT does NOT match a constructor VCtr tag.

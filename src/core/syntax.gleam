@@ -461,7 +461,8 @@ fn parse_term(p: Parser) -> #(NamedTerm, Parser) {
       case v {
         "#" -> {
           let span = current_span(p)
-          parse_ctr(#(tokens, pos + 1, fn_, errors), span)
+          let #(ctor, p_rest) = parse_ctr(#(tokens, pos + 1, fn_, errors), span)
+          parse_app_chain(p_rest, ctor, span)
         }
         "-" -> {
           let p = #(tokens, pos + 1, fn_, errors)
@@ -1547,7 +1548,12 @@ fn parse_match(p: Parser, span: Span) -> #(NamedTerm, Parser) {
           let #(ann_type, p_new) = parse_term(p_annot)
           #(NamedAnn(arg, ann_type, current_span(p_annot)), p_new)
         }
-        // Handle {type} annotation (without colon) when followed by { | ... }
+        // Handle {type} annotation (without colon) when NOT followed by { | ... }
+        // If followed by { | ... }, it's a match body, not a type annotation
+        [Token("Punct", "{", _), Token("Punct", "|", _), ..rest] -> {
+          // This is a match body, not a type annotation
+          #(arg, p5)
+        }
         [Token("Punct", "{", _), ..rest] -> {
           // Check if this is a type annotation by looking ahead for "|" after closing "}"
           let #(ann_type, p_after_annot) = parse_term(p5)

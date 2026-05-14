@@ -138,9 +138,16 @@ fn match_values(state: State, expected: Value, actual: Value) -> State {
           )
       }
 
-    // ── VLitT — exact type match ───────────────────────────
+    // ── VLitT — wildcard/specific type match ─────────────────
+    // IntT matches IntT, I8T-I64T, U8T-U64T
+    // FloatT matches FloatT, F16T-F64T, and all int types
+    VLitT(wildcard), VLitT(specific) ->
+      case literal_type_matches_wildcard(wildcard, specific) {
+        True -> state
+        False -> add_type_mismatch_error(state, expected, actual)
+      }
+    // Exact match for specific types
     VLitT(t1), VLitT(t2) ->
-
       case t1 == t2 {
         True -> state
         False -> add_type_mismatch_error(state, expected, actual)

@@ -1013,8 +1013,22 @@ pub fn value_to_string(value: Value) -> String {
         }
       })
       <> "}"
-    VTypeDef(name: n, params: _, constructors: _c) -> {
-      "<VTypeDef " <> n <> ">"
+    VTypeDef(name: n, params: p, constructors: c) -> {
+      let params_str = case p {
+        [] -> ""
+        _ -> "<" <> string.join(list.map(p, fn(p) { p.0 <> ": " <> value_to_string(p.1) }), ", ") <> ">" <> " "
+      }
+      let cons_str = case c {
+        [] -> ""
+        _ -> "{ " <> list.fold(c, "", fn(acc, ctor) {
+          let ctor_str = case acc {
+            "" -> "#" <> ctor.0 <> "(" <> value_to_string(ctor.2) <> " -> " <> value_to_string(ctor.3) <> ")"
+            _ -> ", #" <> ctor.0 <> "(" <> value_to_string(ctor.2) <> " -> " <> value_to_string(ctor.3) <> ")"
+          }
+          acc <> ctor_str
+        }) <> " }"
+      }
+      "<VTypeDef " <> n <> params_str <> cons_str <> ">"
     }
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
     VLitT(ltype) -> literal_type_to_string(ltype)

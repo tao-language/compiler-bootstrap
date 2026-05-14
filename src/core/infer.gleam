@@ -992,18 +992,79 @@ fn unify_infer_and_check(
   case inferred_type, expected_type {
     ast.VErr, _ | _, ast.VErr -> #(ast.VErr, ast.VErr, state)
     _, _ -> {
-      // Convert int literal to float when expected type is FloatT
-      let converted_value = case value, expected_type {
-        ast.VLit(ast.Int(v)), ast.VLitT(FloatT) ->
+      // Apply literal type coercion based on expected type.
+      // This handles Int→Float, Int→IXX/UXX, Float→FXX conversions.
+      let #(converted_value, converted_type) = case value, expected_type {
+        // Int literal → FloatT: convert to float
+        ast.VLit(ast.Int(v)), ast.VLitT(ast.FloatT) ->
           case float.parse(int.to_string(v) <> ".0") {
-            Ok(f) -> ast.VLit(ast.Float(f))
-            Error(_) -> value
+            Ok(f) -> #(ast.VLit(ast.Float(f)), ast.VLitT(ast.FloatT))
+            Error(_) -> #(value, inferred_type)
           }
-        _, _ -> value
+        // Int literal → FXX: convert to float
+        ast.VLit(ast.Int(v)), ast.VLitT(ast.F16T) ->
+          #(ast.VLit(ast.Float(int.to_float(v))), ast.VLitT(ast.F16T))
+        ast.VLit(ast.Int(v)), ast.VLitT(ast.F32T) ->
+          #(ast.VLit(ast.Float(int.to_float(v))), ast.VLitT(ast.F32T))
+        ast.VLit(ast.Int(v)), ast.VLitT(ast.F64T) ->
+          #(ast.VLit(ast.Float(int.to_float(v))), ast.VLitT(ast.F64T))
+        // Int literal → IXX/UXX: keep int, update type
+        ast.VLit(ast.Int(v)), ast.VLitT(ast.I8T) ->
+          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.I8T))
+        ast.VLit(ast.Int(v)), ast.VLitT(ast.I16T) ->
+          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.I16T))
+        ast.VLit(ast.Int(v)), ast.VLitT(ast.I32T) ->
+          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.I32T))
+        ast.VLit(ast.Int(v)), ast.VLitT(ast.I64T) ->
+          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.I64T))
+        ast.VLit(ast.Int(v)), ast.VLitT(ast.U8T) ->
+          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.U8T))
+        ast.VLit(ast.Int(v)), ast.VLitT(ast.U16T) ->
+          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.U16T))
+        ast.VLit(ast.Int(v)), ast.VLitT(ast.U32T) ->
+          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.U32T))
+        ast.VLit(ast.Int(v)), ast.VLitT(ast.U64T) ->
+          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.U64T))
+        // Float literal → FXX: keep float, update type
+        ast.VLit(ast.Float(v)), ast.VLitT(ast.F16T) ->
+          #(ast.VLit(ast.Float(v)), ast.VLitT(ast.F16T))
+        ast.VLit(ast.Float(v)), ast.VLitT(ast.F32T) ->
+          #(ast.VLit(ast.Float(v)), ast.VLitT(ast.F32T))
+        ast.VLit(ast.Float(v)), ast.VLitT(ast.F64T) ->
+          #(ast.VLit(ast.Float(v)), ast.VLitT(ast.F64T))
+        // Float literal → IntT/IXX/UXX: type error (handled by unify)
+        ast.VLit(ast.Float(_)), ast.VLitT(ast.IntT) ->
+          #(value, inferred_type)
+        ast.VLit(ast.Float(_)), ast.VLitT(ast.I8T) ->
+          #(value, inferred_type)
+        ast.VLit(ast.Float(_)), ast.VLitT(ast.I16T) ->
+          #(value, inferred_type)
+        ast.VLit(ast.Float(_)), ast.VLitT(ast.I32T) ->
+          #(value, inferred_type)
+        ast.VLit(ast.Float(_)), ast.VLitT(ast.I64T) ->
+          #(value, inferred_type)
+        ast.VLit(ast.Float(_)), ast.VLitT(ast.U8T) ->
+          #(value, inferred_type)
+        ast.VLit(ast.Float(_)), ast.VLitT(ast.U16T) ->
+          #(value, inferred_type)
+        ast.VLit(ast.Float(_)), ast.VLitT(ast.U32T) ->
+          #(value, inferred_type)
+        ast.VLit(ast.Float(_)), ast.VLitT(ast.U64T) ->
+          #(value, inferred_type)
+        // Int literal → IntT: keep as is
+        ast.VLit(ast.Int(_)), ast.VLitT(ast.IntT) ->
+          #(value, inferred_type)
+        // Float literal → FloatT: keep as is
+        ast.VLit(ast.Float(_)), ast.VLitT(ast.FloatT) ->
+          #(value, inferred_type)
+        // Wildcard types: let unify handle it
+        _, ast.VLitT(_) -> #(value, inferred_type)
+        // Non-literal types: no conversion
+        _, _ -> #(value, inferred_type)
       }
-      let state = unify(state, expected_type, inferred_type)
+      let state = unify(state, expected_type, converted_type)
       let forced = force([], converted_value, dummy_do_match)
-      let forced_type = force([], inferred_type, dummy_do_match)
+      let forced_type = force([], converted_type, dummy_do_match)
       #(forced, forced_type, state)
     }
   }
