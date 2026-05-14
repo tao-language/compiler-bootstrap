@@ -922,7 +922,8 @@ fn parse_type_def(p: Parser, span: Span) -> #(NamedTerm, Parser) {
       let p4 = skip("{", p3)
       let #(td_body, p5) = parse_type_def_body(p4)
       let p6 = skip("}", p5)
-      let td_span = current_span(p6)
+      // Use the span of the closing } for the type def, not the next token
+      let td_span = current_span(p5)
       let type_def = NamedTypeDef("", params, td_body, td_span)
       parse_type_def_body_with_body(p6, type_def)
     }
@@ -931,7 +932,8 @@ fn parse_type_def(p: Parser, span: Span) -> #(NamedTerm, Parser) {
       let p1 = #(rest, 0, fn_, errors)
       let #(td_body, p2) = parse_type_def_body(p1)
       let p3 = skip("}", p2)
-      let td_span = current_span(p3)
+      // Use the span of the closing } for the type def, not the next token
+      let td_span = current_span(p2)
       let type_def = NamedTypeDef("", [], td_body, td_span)
       parse_type_def_body_with_body(p3, type_def)
     }
