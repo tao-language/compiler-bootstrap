@@ -1104,6 +1104,36 @@ pub fn unify_type_pattern(
       }
     }
 
+    // arg_type is HHole: bind hole to the type_pattern
+    _, ast.VNeut(ast.HHole(id), []) -> {
+      case list.find(acc, fn(b) { b.0 == id }) {
+        Ok(#(_, existing_val)) -> {
+          case unify_type_pattern(existing_val, type_pattern, acc) {
+            Some(_) -> Some(acc)
+            None -> None
+          }
+        }
+        Error(_) -> {
+          Some([#(id, type_pattern), ..acc])
+        }
+      }
+    }
+
+    // arg_type is HVar: bind variable to the type_pattern
+    _, ast.VNeut(ast.HVar(level), []) -> {
+      case list.find(acc, fn(b) { b.0 == level }) {
+        Ok(#(_, existing_val)) -> {
+          case unify_type_pattern(existing_val, type_pattern, acc) {
+            Some(_) -> Some(acc)
+            None -> None
+          }
+        }
+        Error(_) -> {
+          Some([#(level, type_pattern), ..acc])
+        }
+      }
+    }
+
     // Both are constructor types: check same tag, unify args
     ast.VCtr(tag1, arg1), ast.VCtr(tag2, arg2) ->
       case tag1 == tag2 {
