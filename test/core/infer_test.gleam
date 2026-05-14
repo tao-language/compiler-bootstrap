@@ -1448,11 +1448,24 @@ $let Vec = $type<n: $I32, a: $Type> {
   // xs: #Nil({}) should match #Vec({n: m, a: a}) -> m = 0, a = $Float
   // Result type: #Vec({n: %i32_add(0, 1), a: $Float}) = #Vec({n: 1, a: $Float})
   // Debug: print the actual type
-  // io.debug(type_)
+  let debug_str = case type_ {
+    VCtr(tag, arg) -> "VCtr(" <> tag <> ", " <> case arg {
+      VRcd(fields) -> "VRcd(" <> list.map(fields, fn(f) { f.0 <> ":" <> case f.1 {
+        VLit(v) -> case v {
+          Float(fv) -> float.to_string(fv)
+          Int(iv) -> int.to_string(iv)
+        }
+        _ -> "?" }
+      }, ", ")" <> ")"
+      _ -> "other"
+    } <> ")"
+    _ -> "other"
+  }
+  io.println("DEBUG type_: " <> debug_str)
   assert case type_ {
     VCtr(_, _) -> True
     _ -> {
-      // io.debug("Failed: type_ = " <> value_to_string(type_))
+      io.println("DEBUG FAILED: type_ = " <> debug_str)
       False
     }
   }

@@ -741,8 +741,10 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
       let type_env = list.append(param_names, [name, ..env])
       let shift_cons = fn(c) {
         let #(tag, #(bindings, self_ty, result), s) = c
-        let self_ty_db = named_term_to_debruijn(self_ty, type_env)
-        let result_db = named_term_to_debruijn(result, type_env)
+        // Add constructor-bound variables (@m, etc.) to the env for self_ty and result conversion
+        let ctor_env = list.append(bindings, type_env)
+        let self_ty_db = named_term_to_debruijn(self_ty, ctor_env)
+        let result_db = named_term_to_debruijn(result, ctor_env)
         #(tag, #(bindings, self_ty_db, result_db), s)
       }
       TypeDef(

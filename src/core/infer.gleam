@@ -1231,6 +1231,10 @@ pub fn unify_type_pattern(
         False -> None
       }
 
+    // VCtr pattern vs VRcdT type: extract VCtr arg and unify against VRcdT
+    ast.VCtr(_tag, ast.VRcd(arg1_fields)), ast.VRcdT(fields2) ->
+      unify_rcd_vs_rcdt(arg1_fields, fields2, acc)
+
     // Both are record types: check same fields, unify each
     ast.VRcdT(fields1), ast.VRcdT(fields2) ->
       unify_rcdt_fields(fields1, fields2, acc)
@@ -1238,6 +1242,10 @@ pub fn unify_type_pattern(
     // VRcd pattern vs VRcdT type: check that each field type matches
     ast.VRcd(fields1), ast.VRcdT(fields2) ->
       unify_rcd_vs_rcdt(fields1, fields2, acc)
+
+    // Both are VRcd values: unify field values against field types
+    ast.VRcd(fields1), ast.VRcd(fields2) ->
+      unify_rcd_vs_rcdt(fields1, list.map(fields2, fn(f) { #(f.0, ast.VTyp(0), None) }), acc)
 
     // Both are the same literal type: match
     ast.VLit(lit1), ast.VLit(lit2) ->
