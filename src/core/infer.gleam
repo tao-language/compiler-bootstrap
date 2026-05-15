@@ -852,7 +852,7 @@ fn infer_ctr(
   let constructor_info = lookup_constructor(env_values, tag)
 
   case constructor_info {
-    Some(#(_bindings, self_type_val, result_type_val)) -> {
+    Some(#(bindings, self_type_val, result_type_val)) -> {
       // self_type is a Value, result_type is a Term.
       // Type params (from TypeDef params) are referenced by name in the pattern.
       // Constructor-bound vars (@m) are also free variables.
@@ -1302,9 +1302,13 @@ pub fn unify_type_pattern(
     ast.VRcd(fields1), ast.VRcdT(fields2) ->
       unify_rcd_vs_rcdt(fields1, fields2, acc)
 
-    // Both are VRcd values: unify field values against field types
+    // VRcd pattern vs VCtr with VRcd arg: extract VCtr arg and unify
+    ast.VRcd(fields1), ast.VCtr(_tag, ast.VRcd(fields2)) ->
+      unify_rcd_vs_rcdt(fields1, list.map(fields2, fn(f) { #(f.0, f.1, None) }), acc)
+
+    // Both are VRcd values: extract types from VRcd values and unify
     ast.VRcd(fields1), ast.VRcd(fields2) ->
-      unify_rcd_vs_rcdt(fields1, list.map(fields2, fn(f) { #(f.0, ast.VTyp(0), None) }), acc)
+      unify_rcd_vs_rcdt(fields1, list.map(fields2, fn(f) { #(f.0, f.1, None) }), acc)
 
     // Both are the same literal type: match
     ast.VLit(lit1), ast.VLit(lit2) ->

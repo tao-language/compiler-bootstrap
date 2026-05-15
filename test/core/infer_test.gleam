@@ -22,12 +22,13 @@ import core/ast.{
   HHole, HVar, Hole, Int as LitInt, Lam, Lit, LitT, Pi, Rcd, RcdT, Typ, TypeDef,
   VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, Var, VTypeDef, VLitT,
   IntT, FloatT, I32T, F64T,
+  value_to_string,
 }
 import core/infer.{
   check, infer, unify_type_pattern, apply_unify_bindings, lookup_constructor,
 }
 import core/eval.{evaluate}
-import core/state.{FfiEntry, State, initial_state}
+import core/state.{FfiEntry, State, initial_state, error_to_string}
 import core/syntax.{parse}
 import gleam/list
 import gleam/option.{type Option, None, Some}
