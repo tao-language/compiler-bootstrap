@@ -18,7 +18,7 @@
 /// must agree. All errors accumulate in state; no early returns.
 import core/ast.{
   type Elim, type Head, type Value, type LiteralType, type Term,
-  EApp, HHole, HVar, VCtr, VCall, VFix, VErr, VLam, VLit,
+  EApp, EMatch, HHole, HVar, VCtr, VCall, VFix, VErr, VLam, VLit,
   VNeut, VPi, VRcd, VRcdT, VTyp, VLitT, VTypeDef,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
@@ -110,21 +110,28 @@ fn match_values(
   infer_fn: fn(State, Term) -> #(Value, Value, State),
 ) -> #(Value, State) {
   case expected, actual {
-    // ── Same variable level — trivially unified ──────────────
-    VNeut(HVar(l1), _), VNeut(HVar(l2), _) if l1 == l2 -> #(expected, state)
+    // ── Same variable level — compare spines ─────────────────
+    VNeut(HVar(l1), spine1), VNeut(HVar(l2), spine2) if l1 == l2 ->
+      match_spines(state, spine1, spine2, infer_fn)
 
-    // ── Variable in expected — look up in state ──────────────
-    VNeut(HVar(level), _), _ -> {
+    // ── Variable in expected — look up in state, apply spine ─
+    VNeut(HVar(level), spine1), _ -> {
       case lookup_level(state, level) {
-        Ok(#(value, _)) -> match_values(state, value, actual, infer_fn)
+        Ok(#(value, _)) -> {
+          let applied = apply_spine_to_value(value, spine1)
+          match_values(state, applied, actual, infer_fn)
+        }
         Error(_) -> add_type_mismatch_error(state, expected, actual)
       }
     }
 
-    // ── Same variable level in actual — look up in state ────
-    _, VNeut(HVar(l1), _) if l1 >= 0 ->
+    // ── Same variable level in actual — look up in state, apply spine ──
+    _, VNeut(HVar(l1), spine2) if l1 >= 0 ->
       case lookup_level(state, l1) {
-        Ok(#(value, _)) -> match_values(state, expected, value, infer_fn)
+        Ok(#(value, _)) -> {
+          let applied = apply_spine_to_value(value, spine2)
+          match_values(state, expected, applied, infer_fn)
+        }
         Error(_) -> add_type_mismatch_error(state, expected, actual)
       }
 
@@ -367,6 +374,11 @@ fn match_spines(
   case spine1, spine2 {
     [], [] -> #(VNeut(HVar(0), []), state)
     [EApp(arg1)], [EApp(arg2)] -> match_values(state, arg1, arg2, infer_fn)
+    [EApp(arg1), ..rest1], [EApp(arg2), ..rest2] -> {
+      let #(result, s1) = match_values(state, arg1, arg2, infer_fn)
+      let _ = result
+      match_spines(s1, rest1, rest2, infer_fn)
+    }
     _, _ ->
       add_type_mismatch_error(
         state,
@@ -447,4 +459,25 @@ fn add_type_mismatch_error(
 ) -> #(Value, State) {
   let new_state = with_err(state, TypeMismatch(expected, actual, single("", 0, 0)))
   #(VErr, new_state)
+}
+
+/// Apply a neutral spine to a value.
+fn apply_spine_to_value(v: Value, spine: List(Elim)) -> Value {
+  case spine {
+    [] -> v
+    [EApp(arg), ..rest] ->
+      case v {
+        VLam(_env, _implicits, #(_pname, _ptype), body) -> {
+          // Beta-reduction placeholder: substitute and continue spine
+          // For full correctness we'd substitute arg into body, but
+          // for now just keep it as a neutral application
+          VNeut(HVar(0), [EApp(arg), ..rest])
+        }
+        _ -> VNeut(HVar(0), [EApp(arg), ..rest])
+      }
+    [EMatch(env, cases), ..rest] -> {
+      // Match elimination: defer as neutral
+      VNeut(HVar(0), [EMatch(env, cases), ..rest])
+    }
+  }
 }

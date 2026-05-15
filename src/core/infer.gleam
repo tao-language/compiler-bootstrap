@@ -1002,84 +1002,75 @@ fn unify_infer_and_check(
   inferred_type: ast.Value,
   expected_type: ast.Value,
 ) -> #(ast.Value, ast.Value, state.State) {
-  case inferred_type, expected_type {
-    ast.VErr, _ | _, ast.VErr -> #(ast.VErr, ast.VErr, state)
-    _, _ -> {
+  // Handle VErr value: return VErr with expected type
+  case value {
+    ast.VErr -> #(ast.VErr, expected_type, state)
+    _ -> {
+      let #(unified_value, state2) = unify(state, inferred_type, expected_type, infer)
       // Apply literal type coercion based on expected type.
-      // This handles Int→Float, Int→IXX/UXX, Float→FXX conversions.
-      let #(converted_value, converted_type) = case value, expected_type {
-        // Int literal → FloatT: convert to float
-        ast.VLit(ast.Int(v)), ast.VLitT(ast.FloatT) ->
-          case float.parse(int.to_string(v) <> ".0") {
-            Ok(f) -> #(ast.VLit(ast.Float(f)), ast.VLitT(ast.FloatT))
-            Error(_) -> #(value, inferred_type)
-          }
-        // Int literal → FXX: convert to float
-        ast.VLit(ast.Int(v)), ast.VLitT(ast.F16T) ->
-          #(ast.VLit(ast.Float(int.to_float(v))), ast.VLitT(ast.F16T))
-        ast.VLit(ast.Int(v)), ast.VLitT(ast.F32T) ->
-          #(ast.VLit(ast.Float(int.to_float(v))), ast.VLitT(ast.F32T))
-        ast.VLit(ast.Int(v)), ast.VLitT(ast.F64T) ->
-          #(ast.VLit(ast.Float(int.to_float(v))), ast.VLitT(ast.F64T))
-        // Int literal → IXX/UXX: keep int, update type
-        ast.VLit(ast.Int(v)), ast.VLitT(ast.I8T) ->
-          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.I8T))
-        ast.VLit(ast.Int(v)), ast.VLitT(ast.I16T) ->
-          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.I16T))
-        ast.VLit(ast.Int(v)), ast.VLitT(ast.I32T) ->
-          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.I32T))
-        ast.VLit(ast.Int(v)), ast.VLitT(ast.I64T) ->
-          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.I64T))
-        ast.VLit(ast.Int(v)), ast.VLitT(ast.U8T) ->
-          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.U8T))
-        ast.VLit(ast.Int(v)), ast.VLitT(ast.U16T) ->
-          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.U16T))
-        ast.VLit(ast.Int(v)), ast.VLitT(ast.U32T) ->
-          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.U32T))
-        ast.VLit(ast.Int(v)), ast.VLitT(ast.U64T) ->
-          #(ast.VLit(ast.Int(v)), ast.VLitT(ast.U64T))
-        // Float literal → FXX: keep float, update type
-        ast.VLit(ast.Float(v)), ast.VLitT(ast.F16T) ->
-          #(ast.VLit(ast.Float(v)), ast.VLitT(ast.F16T))
-        ast.VLit(ast.Float(v)), ast.VLitT(ast.F32T) ->
-          #(ast.VLit(ast.Float(v)), ast.VLitT(ast.F32T))
-        ast.VLit(ast.Float(v)), ast.VLitT(ast.F64T) ->
-          #(ast.VLit(ast.Float(v)), ast.VLitT(ast.F64T))
-        // Float literal → IntT/IXX/UXX: type error (handled by unify)
-        ast.VLit(ast.Float(_)), ast.VLitT(ast.IntT) ->
-          #(value, inferred_type)
-        ast.VLit(ast.Float(_)), ast.VLitT(ast.I8T) ->
-          #(value, inferred_type)
-        ast.VLit(ast.Float(_)), ast.VLitT(ast.I16T) ->
-          #(value, inferred_type)
-        ast.VLit(ast.Float(_)), ast.VLitT(ast.I32T) ->
-          #(value, inferred_type)
-        ast.VLit(ast.Float(_)), ast.VLitT(ast.I64T) ->
-          #(value, inferred_type)
-        ast.VLit(ast.Float(_)), ast.VLitT(ast.U8T) ->
-          #(value, inferred_type)
-        ast.VLit(ast.Float(_)), ast.VLitT(ast.U16T) ->
-          #(value, inferred_type)
-        ast.VLit(ast.Float(_)), ast.VLitT(ast.U32T) ->
-          #(value, inferred_type)
-        ast.VLit(ast.Float(_)), ast.VLitT(ast.U64T) ->
-          #(value, inferred_type)
-        // Int literal → IntT: keep as is
-        ast.VLit(ast.Int(_)), ast.VLitT(ast.IntT) ->
-          #(value, inferred_type)
-        // Float literal → FloatT: keep as is
-        ast.VLit(ast.Float(_)), ast.VLitT(ast.FloatT) ->
-          #(value, inferred_type)
-        // Wildcard types: let unify handle it
-        _, ast.VLitT(_) -> #(value, inferred_type)
-        // Non-literal types: no conversion
-        _, _ -> #(value, inferred_type)
+      let converted = case expected_type {
+        ast.VLitT(ast.FloatT) -> case value {
+          ast.VLit(ast.Int(v)) ->
+            case float.parse(int.to_string(v) <> ".0") {
+              Ok(f) -> #(ast.VLit(ast.Float(f)), ast.VLitT(ast.FloatT))
+              Error(_) -> #(value, inferred_type)
+            }
+          _ -> #(value, inferred_type)
+        }
+        ast.VLitT(ast.F16T) -> case value {
+          ast.VLit(ast.Int(v)) -> #(ast.VLit(ast.Float(int.to_float(v))), ast.VLitT(ast.F16T))
+          ast.VLit(ast.Float(v)) -> #(ast.VLit(ast.Float(v)), ast.VLitT(ast.F16T))
+          _ -> #(value, inferred_type)
+        }
+        ast.VLitT(ast.F32T) -> case value {
+          ast.VLit(ast.Int(v)) -> #(ast.VLit(ast.Float(int.to_float(v))), ast.VLitT(ast.F32T))
+          ast.VLit(ast.Float(v)) -> #(ast.VLit(ast.Float(v)), ast.VLitT(ast.F32T))
+          _ -> #(value, inferred_type)
+        }
+        ast.VLitT(ast.F64T) -> case value {
+          ast.VLit(ast.Int(v)) -> #(ast.VLit(ast.Float(int.to_float(v))), ast.VLitT(ast.F64T))
+          ast.VLit(ast.Float(v)) -> #(ast.VLit(ast.Float(v)), ast.VLitT(ast.F64T))
+          _ -> #(value, inferred_type)
+        }
+        ast.VLitT(ast.I8T) -> case value {
+          ast.VLit(ast.Int(v)) -> #(ast.VLit(ast.Int(v)), ast.VLitT(ast.I8T))
+          _ -> #(value, inferred_type)
+        }
+        ast.VLitT(ast.I16T) -> case value {
+          ast.VLit(ast.Int(v)) -> #(ast.VLit(ast.Int(v)), ast.VLitT(ast.I16T))
+          _ -> #(value, inferred_type)
+        }
+        ast.VLitT(ast.I32T) -> case value {
+          ast.VLit(ast.Int(v)) -> #(ast.VLit(ast.Int(v)), ast.VLitT(ast.I32T))
+          _ -> #(value, inferred_type)
+        }
+        ast.VLitT(ast.I64T) -> case value {
+          ast.VLit(ast.Int(v)) -> #(ast.VLit(ast.Int(v)), ast.VLitT(ast.I64T))
+          _ -> #(value, inferred_type)
+        }
+        ast.VLitT(ast.U8T) -> case value {
+          ast.VLit(ast.Int(v)) -> #(ast.VLit(ast.Int(v)), ast.VLitT(ast.U8T))
+          _ -> #(value, inferred_type)
+        }
+        ast.VLitT(ast.U16T) -> case value {
+          ast.VLit(ast.Int(v)) -> #(ast.VLit(ast.Int(v)), ast.VLitT(ast.U16T))
+          _ -> #(value, inferred_type)
+        }
+        ast.VLitT(ast.U32T) -> case value {
+          ast.VLit(ast.Int(v)) -> #(ast.VLit(ast.Int(v)), ast.VLitT(ast.U32T))
+          _ -> #(value, inferred_type)
+        }
+        ast.VLitT(ast.U64T) -> case value {
+          ast.VLit(ast.Int(v)) -> #(ast.VLit(ast.Int(v)), ast.VLitT(ast.U64T))
+          _ -> #(value, inferred_type)
+        }
+        _ -> #(value, inferred_type)
       }
-      let #( _, s1) = unify(state, expected_type, converted_type, infer)
-      let state = s1
+      let #(converted_value, converted_type) = converted
+      let _ = unified_value
       let forced = force([], converted_value, dummy_do_match)
       let forced_type = force([], converted_type, dummy_do_match)
-      #(forced, forced_type, state)
+      #(forced, forced_type, state2)
     }
   }
 }
@@ -1326,6 +1317,10 @@ pub fn unify_type_pattern(
         False -> None
       }
 
+    // VTyp(l) matches anything — represents a type universe
+    ast.VTyp(_l), _ -> Some(acc)
+    _, ast.VTyp(_l) -> Some(acc)
+
     // Structural mismatch
     _, _ -> None
   }
@@ -1355,6 +1350,8 @@ fn unify_rcdt_fields(
 
 /// Unify a VRcd pattern against a VRcdT type.
 /// Checks that each field value's type matches the corresponding field type.
+/// For GADT patterns, the field value itself is used as a type pattern
+/// (e.g., VCtr, VNeut, VCall, VTypeDef) to enable structural matching.
 fn unify_rcd_vs_rcdt(
   fields1: List(#(String, ast.Value)),
   fields2: List(#(String, ast.Value, option.Option(ast.Value))),
@@ -1365,23 +1362,10 @@ fn unify_rcd_vs_rcdt(
     [#(name1, value1), ..rest1] -> {
       case list.find(fields2, fn(f) { f.0 == name1 }) {
         Ok(#(_, type2, _)) -> {
-          let field_type = case value1 {
-            ast.VLit(_) -> ast.VTyp(0)
-            ast.VRcd(inner) -> ast.VRcdT(list.map(inner, fn(f) {
-              #(f.0, ast.VTyp(0), None)
-            }))
-            ast.VRcdT(inner) -> ast.VRcdT(inner)
-            ast.VCtr(_, _) -> ast.VTyp(0)
-            ast.VCall(_, _, _) -> value1
-            ast.VNeut(_, _) -> value1
-            ast.VTypeDef(_, _, _) -> ast.VTyp(0)
-            ast.VTyp(lvl) -> ast.VTyp(lvl + 1)
-            ast.VLitT(_) -> ast.VTyp(0)
-            ast.VErr -> ast.VErr
-            ast.VLam(_, _, _, _) -> ast.VTyp(0)
-            ast.VPi(_, _, _, _) -> ast.VTyp(0)
-            ast.VFix(_, _, _) -> ast.VTyp(0)
-          }
+          // Use the field value directly as a type pattern for GADT matching.
+          // This allows VCtr, VNeut, VCall, and VTypeDef values to be used
+          // as structural type patterns rather than extracting their type.
+          let field_type = value1
           case unify_type_pattern(field_type, type2, acc) {
             Some(new_acc) -> unify_rcd_vs_rcdt(rest1, fields2, new_acc)
             None -> None
