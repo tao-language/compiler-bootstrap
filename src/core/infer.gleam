@@ -540,7 +540,15 @@ fn infer_app(
           }
         _ -> filled_arg
       }
-      let state_ext = def_var(state2, param_name, converted_arg, arg_type)
+      // Update the lambda's env to include itself for recursive self-reference.
+      // The VLam's env is captured from the state before the lambda was added.
+      // We need to add the lambda itself so that it can reference itself in the body.
+      let updated_lam = case converted_arg {
+        ast.VLam(env, implicits, param, body) ->
+          ast.VLam(list.append(env, [converted_arg]), implicits, param, body)
+        _ -> converted_arg
+      }
+      let state_ext = def_var(state2, param_name, updated_lam, arg_type)
       // Infer the body with the binding in the env
       let #(body_val, body_type, state_final) = infer(state_ext, body)
       #(body_val, body_type, state_final)

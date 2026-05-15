@@ -293,6 +293,71 @@ pub fn infer_pi_type_test() {
 // APPLICATION INFERENCE
 // ============================================================================
 
+/// Minimal reproducer: polymorphic identity function with implicit type parameter
+/// $fn<a: $Type>(x: a) => x : Π(a: Type) -> a
+/// Applied to 42 : should return 42
+pub fn infer_poly_identity_test() {
+  // $fn<a: $Type>(x: a) => x
+  let param_type = var(1) // a (level 1 because a is in implicit_env)
+  let body = var(0) // x
+  let implicits = [#("a", typ(0))] // a: $Type
+  let lam = Lam(implicits, #("x", param_type), body, sp())
+  
+  // (fn<a>(x: a) => x) 42
+  let applied = app(lam, lit_int(42))
+  let result = infer(initial_state([]), applied)
+  let #(value, type_, _) = result
+  
+  // Should evaluate to 42
+  assert value == lit_val(42)
+}
+
+/// Reproducer: polymorphic identity function where the implicit param is used
+/// in a nested structure (like #Some(a) instead of just a)
+/// $fn<a: $Type>(x: #Some(a)) => x : Π(a: Type) -> #Some(a) -> #Some(a)
+/// Applied to #Some(42) : should return #Some(42)
+pub fn infer_poly_nested_type_test() {
+  // $fn<a: $Type>(x: #Some(a)) => x
+  // param_type = #Some(a) = VCtr("Some", Rcd([#("a", var(1))]))
+  let some_arg = var(1) // a
+  let param_type = Ctr("Some", Rcd([#("a", some_arg)], sp()), sp())
+  let body = var(0) // x
+  let implicits = [#("a", typ(0))] // a: $Type
+  let lam = Lam(implicits, #("x", param_type), body, sp())
+  
+  // The argument is #Some(42)
+  let arg = Ctr("Some", Rcd([#("a", lit_int(42))], sp()), sp())
+  let applied = app(lam, arg)
+  let result = infer(initial_state([]), applied)
+  let #(value, type_, _) = result
+  
+  // Should evaluate to #Some(42)
+  let expected = VCtr("Some", VRcd([#("a", lit_val(42))]))
+  assert value == expected
+}
+
+/// Reproducer: let-bound function that references itself
+/// $let id = fn(x: a) => x in id 42
+pub fn infer_let_self_ref_test() {
+  // $let id = fn(x: a) => x in id 42
+  // Desugars to: App(Lam("id", #("x", a), id 42), fn(x: a) => x)
+  // The body `id 42` references `id` which should be in the env
+  let param_type = var(1) // a
+  let body = var(0) // x
+  let implicits = [#("a", typ(0))] // a: $Type
+  let value = Lam(implicits, #("x", param_type), body, sp())
+  
+  // Body: id 42 where id is Var(0) (from NamedLet env ["id", ..])
+  let body_term = app(var(0), lit_int(42))
+  let let_term = App(Lam([], #("id", Rcd([], sp())), body_term, sp()), value, sp())
+  
+  let result = infer(initial_state([]), let_term)
+  let #(value, _, _) = result
+  
+  // Should evaluate to 42
+  assert value == lit_val(42)
+}
+
 pub fn infer_app_not_a_function_test() {
   // 42 42 : should error
   let result = infer(initial_state([]), app(lit_int(42), lit_int(0)))
