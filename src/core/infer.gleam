@@ -929,14 +929,15 @@ fn infer_type_def(
   // Note: De Bruijn indices in the type def body terms need to be shifted
   // by -(num_type_params) because the type params are at the front of the
   // state vars, and parser-level bindings are not present in the state.
+  //
+  // Only shift indices >= num_type_params (the type parameters), leaving
+  // constructor-bound variable indices (0..num_type_params-1) unchanged.
   let num_type_params = list.length(params)
   let value_constructors = list.map(constructors, fn(c) {
     let #(tag, #(bindings, self_type_term, result_type_term), ctor_span) = c
-    // Shift De Bruijn indices by -(num_type_params) to account for type
-    // params being at the front of state vars (parser-level bindings are
-    // not present in the state).
-    let shifted_self = ast.shift_term(self_type_term, -num_type_params)
-    let shifted_result = ast.shift_term(result_type_term, -num_type_params)
+    // Shift only type parameter indices (>= num_type_params), not constructor-bound vars
+    let shifted_self = ast.shift_term_from(self_type_term, -num_type_params, num_type_params)
+    let shifted_result = ast.shift_term_from(result_type_term, -num_type_params, num_type_params)
     // Evaluate self_type to a value (type params resolve to bound holes)
     let self_type_val = evaluate(new_state, shifted_self)
     // Keep result_type as a Term (not evaluated) so inference can evaluate it later
