@@ -926,22 +926,33 @@ fn infer_type_def(
   // corresponding bound hole. This ensures both self_type and result_type
   // use the same hole for the same type parameter.
   //
-  // Note: De Bruijn indices in the type def body terms need to be shifted
-  // by -(num_type_params) because the type params are at the front of the
-  // state vars, and parser-level bindings are not present in the state.
+  // For constructors with @-bindings (e.g., @m. #Cons(...) -> ...),
+  // we add the constructor-bound variables to the state so they resolve
+  // correctly when evaluating self_type and inferring result_type.
   //
-  // Only shift indices >= num_type_params (the type parameters), leaving
-  // constructor-bound variable indices (0..num_type_params-1) unchanged.
-  let num_type_params = list.length(params)
+  // Key insight: term_to_debruijn builds ctor_env = [bindings, params, ..env]
+  // so result indices are: m=0, n=1, a=2 (for 1 binding, 2 params).
+  // The state already has params at indices 0..n. We add bindings at indices
+  // 0..m (before params), so the last binding added ends up at index 0.
   let value_constructors = list.map(constructors, fn(c) {
     let #(tag, #(bindings, self_type_term, result_type_term), ctor_span) = c
-    // Shift only type parameter indices (>= num_type_params), not constructor-bound vars
-    let shifted_self = ast.shift_term_from(self_type_term, -num_type_params, num_type_params)
-    let shifted_result = ast.shift_term_from(result_type_term, -num_type_params, num_type_params)
-    // Evaluate self_type to a value (type params resolve to bound holes)
-    let self_type_val = evaluate(new_state, shifted_self)
+    // Add constructor-bound variables to the state in REVERSE order so that
+    // the first binding ends up at index 0 (matching ctor_env ordering).
+    // Each gets a fresh hole so it can be solved during GADT unification.
+    let state_with_bindings = list.fold(
+      list.reverse(bindings),
+      new_state,
+      fn(s, name) {
+        let fresh_id = s.hole_counter
+        let new_state = state.State(..s, hole_counter: fresh_id + 1)
+        let hole = ast.VNeut(ast.HHole(fresh_id), [])
+        def_var(new_state, name, hole, hole)
+      },
+    )
+    // Evaluate self_type to a value (type params and @-bindings resolve to bound holes)
+    let self_type_val = evaluate(state_with_bindings, self_type_term)
     // Keep result_type as a Term (not evaluated) so inference can evaluate it later
-    #(tag, #(bindings, self_type_val, shifted_result), ctor_span)
+    #(tag, #(bindings, self_type_val, result_type_term), ctor_span)
   })
 
   // Keep type param bindings in vars so subsequent lambdas can reference them

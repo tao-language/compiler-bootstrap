@@ -736,12 +736,16 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
       let params_debruijn = list.map(params, fn(p) {
         #(p.0, named_term_to_debruijn(p.1, env))
       })
-      // Add type parameter names to the env for self_ty and result conversion
+      // Add type parameter names to the env for self_ty and result conversion.
+      // Note: We do NOT include the TypeDef name in the env - it's not a
+      // variable reference in self_ty/result, so it would just shift indices.
       let param_names = list.map(params, fn(p) { p.0 })
-      let type_env = list.append(param_names, [name, ..env])
+      let type_env = list.append(param_names, env)
       let shift_cons = fn(c) {
         let #(tag, #(bindings, self_ty, result), s) = c
-        // Add constructor-bound variables (@m, etc.) to the env for self_ty and result conversion
+        // ctor_env = [bindings, params, ..env]
+        // Indices: m=0, n=1, a=2 (for 1 binding, 2 params)
+        // This matches the state ordering in infer_type_def.
         let ctor_env = list.append(bindings, type_env)
         let self_ty_db = named_term_to_debruijn(self_ty, ctor_env)
         let result_db = named_term_to_debruijn(result, ctor_env)
