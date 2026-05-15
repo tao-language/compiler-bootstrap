@@ -3,7 +3,7 @@
 /// Covers literals, identity, let bindings, match expressions,
 /// constructors, records, and error terms.
 
-import core/ast.{type Value, VLit, Lit, Var, VCtr, VLam, VRcd, VErr, Int as LitInt, Float as LitFloat}
+import core/ast.{type Value, VLit, Lit, Var, VCtr, VLam, VRcd, VErr, Int as LitInt, Float as LitFloat, term_to_debruijn}
 import core/eval.{evaluate}
 import core/infer.{infer}
 import core/quote.{quote}
@@ -21,7 +21,8 @@ pub fn main() {
 
 /// Parse and evaluate a source string.
 fn parse_eval(source: String) -> Value {
-  let #(term, _parse_errors) = parse(source)
+  let #(named_term, _parse_errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   evaluate(initial_state([]), term)
 }
 
@@ -187,7 +188,8 @@ pub fn app_to_int_test() {
 
 pub fn pipeline_identity_test() {
   let state = initial_state([])
-  let #(term, _) = parse("$fn(x: $Int) => x")
+  let #(named_term, _) = parse("$fn(x: $Int) => x")
+  let term = term_to_debruijn(named_term)
   let #(_value, _type_val, final_state) = infer(state, term)
   assert final_state.errors == []
   let evaluated = evaluate(initial_state([]), term)
@@ -199,7 +201,8 @@ pub fn pipeline_identity_test() {
 
 pub fn pipeline_lit_test() {
   let state = initial_state([])
-  let #(term, _) = parse("42")
+  let #(named_term, _) = parse("42")
+  let term = term_to_debruijn(named_term)
   let #(value, _type_val, final_state) = infer(state, term)
   assert final_state.errors == []
   assert value == vi(42)

@@ -22,7 +22,7 @@ import core/ast.{
   HHole, HVar, Hole, Int as LitInt, Lam, Lit, LitT, Pi, Rcd, RcdT, Typ, TypeDef,
   VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, Var, VTypeDef, VLitT,
   IntT, FloatT, I32T, F64T,
-  value_to_string,
+  term_to_debruijn, value_to_string,
 }
 import core/infer.{
   check, infer, unify_type_pattern, apply_unify_bindings, lookup_constructor,
@@ -1365,7 +1365,8 @@ $let Option = $type<a: $Type> {
 #Some(42)
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   // Type should be a constructor type (VCtr)
@@ -1385,7 +1386,8 @@ $let Option = $type<a: $Type> {
 #None({})
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   // None has no args, so self_type {} matches {}
@@ -1406,7 +1408,8 @@ $let Bool = $type {
 #True({})
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   // Type should be a constructor type
@@ -1426,7 +1429,8 @@ $let Option = $type<a: $Type> {
 #Some($Int)
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   assert case type_ {
@@ -1445,7 +1449,8 @@ $let Option = $type<a: $Type> {
 #Some(42) : #Option($Int)
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   // Falls back to VCtr inference
@@ -1465,7 +1470,8 @@ $let Option = $type<a: $Type> {
 #Some(42) : #Option($Float)
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   // $Int should NOT unify with $Float
@@ -1487,7 +1493,8 @@ $let Vec = $type<n: $I32, a: $Type> {
 #Nil({})
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   assert case type_ {
@@ -1506,7 +1513,8 @@ $let Vec = $type<n: $I32, a: $Type> {
 #Cons({x: 3.14, xs: #Nil({})})
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   // Cons has args {x: 3.14, xs: #Nil({})}
@@ -1529,7 +1537,8 @@ $let Vec = $type<n: $I32, a: $Type> {
 #Cons({x: 1, xs: #Nil({})})
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   // x: 1 is $Int, but xs: #Nil({}) implies a = hole
@@ -1581,7 +1590,8 @@ $let Vec = $type<n: $I32, a: $Type> {
 #Cons({x: 1, xs: #Cons({x: 2, xs: #Nil({})})})
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   assert case type_ {
@@ -1602,7 +1612,8 @@ $let Expr = $type<a: $Type> {
 #LitInt(42)
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   // LitInt($I32) self_type: $I32 should match arg 42 type $Int
@@ -1625,7 +1636,8 @@ $let Expr = $type<a: $Type> {
 #Add({x: #LitInt(1), y: #LitInt(2)})
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   assert case type_ {
@@ -1643,7 +1655,8 @@ $let Expr = $type<a: $Type> {
 #LitInt(42)
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   // Self type $I32 should match arg type of #LitInt(42)
@@ -1666,7 +1679,8 @@ $let Bool = $type {
 #True({})
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   assert case type_ {
@@ -1685,7 +1699,8 @@ $let Bool = $type {
 #False({})
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   assert case type_ {
@@ -1704,7 +1719,8 @@ $let Bool = $type {
 #True({}) : #Bool({})
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   assert case type_ {
@@ -1723,7 +1739,8 @@ $let Bool = $type {
 #True({x: 1})
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   // Self type {} does not match {x: 1}
@@ -1922,7 +1939,8 @@ $type<a: $Type> {
 }
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(type_def_val, _, _) = infer(state, term)
   
@@ -1959,7 +1977,8 @@ $let MyOption = $type<a: $Type> {
 #Just(42)
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   
@@ -1980,7 +1999,8 @@ $let Vec = $type<a: $Type> {
 #Nil({})
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   
@@ -2001,7 +2021,8 @@ $let Vec = $type<a: $Type> {
 #Nil({x: 1})
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(_value, type_, _) = infer(state, term)
   
@@ -2021,7 +2042,8 @@ $type<a: $Type, b: $Type> {
 }
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(type_def_val, _, _) = infer(state, term)
   
@@ -2042,7 +2064,8 @@ $type {
 #True({})
 "
   let state = initial_state([])
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   let #(type_def_val, _, _) = infer(state, term)
   
@@ -2119,8 +2142,8 @@ pub fn infer_vlam_application_type_mismatch_test() {
 pub fn infer_vlam_implicit_param_with_annotation_test() {
   let source = "$let identity: $pi<a: $Type>(a) -> a = $fn<a: $Type>(x: a) => x\nidentity 42"
   let state = initial_state([])
-  let #(_, _, _) = infer(state, parse(source).0)
-  let value = evaluate(state, parse(source).0)
+  let #(_, _, _) = infer(state, term_to_debruijn(parse(source).0))
+  let value = evaluate(state, term_to_debruijn(parse(source).0))
   
   assert case value {
     VLit(LitInt(42)) -> True
@@ -2132,7 +2155,7 @@ pub fn infer_vlam_implicit_param_with_annotation_test() {
 /// Test: Implicit param with float argument
 pub fn infer_vlam_implicit_param_float_test() {
   let source = "$let identity = $fn<a: $Type>(x: a) => x\nidentity 3.14"
-  let value = evaluate(initial_state([]), parse(source).0)
+  let value = evaluate(initial_state([]), term_to_debruijn(parse(source).0))
   
   assert case value {
     VLit(LitFloat(3.14)) -> True
@@ -2149,7 +2172,8 @@ pub fn infer_fixpoint_basic_test() {
   let source = "$fix f. $fn(x: $Int) => x"
   let state = initial_state([])
   let parsed = parse(source)
-  let #(value, type_, _) = infer(state, parsed.0)
+  let term = term_to_debruijn(parsed.0)
+  let #(value, type_, _) = infer(state, term)
   
   assert case value {
     VFix("f", _, _) -> True
@@ -2168,7 +2192,8 @@ pub fn infer_fixpoint_recursive_call_test() {
   let source = "$fix f. $fn(n: $Int) => n"
   let state = initial_state([])
   let parsed = parse(source)
-  let #(value, _, _) = infer(state, parsed.0)
+  let term = term_to_debruijn(parsed.0)
+  let #(value, _, _) = infer(state, term)
   
   // The value should be a VFix
   assert case value {

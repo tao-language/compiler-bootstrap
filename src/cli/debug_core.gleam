@@ -38,7 +38,7 @@ import core/ast.{
 import core/infer.{infer}
 import core/eval.{evaluate, do_app, eval_value_to_string}
 import core/state.{initial_state, type Error, error_to_string, type FfiEntry, FfiEntry, type State}
-import core/syntax.{parse, parse_named, term_to_string_named}
+import core/syntax.{parse, term_to_string_named}
 import syntax/base_lexer.{tokenize, type Token, Token as TokenCtor}
 import syntax/grammar.{type ParseError}
 
@@ -62,7 +62,7 @@ pub fn run(expression: String, trace_parser: Bool, trace_infer: Bool) -> Nil {
   io.println(format_tokens(tokens))
 
   // Step 2: Parse (returns NamedTerm with variable names)
-  let #(named_term, parse_errors) = parse_named(expression)
+  let #(named_term, parse_errors) = parse(expression)
 
   io.println("\n=== PARSING ===")
   io.println("  " <> term_to_string_named(named_term))
@@ -78,7 +78,7 @@ pub fn run(expression: String, trace_parser: Bool, trace_infer: Bool) -> Nil {
     }
   }
 
-  // Step 4: Show de Bruijn representation (NamedTerm → Term via term_to_debruijn)
+  // Step 4: Convert NamedTerm → Term with de Bruijn indices
   let term = term_to_debruijn(named_term)
   io.println("\n=== DEBRUIJN ===")
   io.println("  " <> term_to_string(term))
@@ -141,8 +141,8 @@ fn trace_parser_detailed(expression: String, parse_errors: List(ParseError)) -> 
   })
   list.each(indexed_tokens, fn(t) { io.println(t) })
   
-  let #(parsed_named, _) = parse_named(expression)
-  io.println("\nParse result: " <> term_to_string_named(parsed_named))
+  let #(parsed, _) = parse(expression)
+  io.println("\nParse result: " <> term_to_string_named(parsed))
   case parse_errors {
     [] -> io.println("Parse status: SUCCESS")
     errs -> io.println("Parse status: FAILED (" <> int.to_string(list.length(errs)) <> " errors)")

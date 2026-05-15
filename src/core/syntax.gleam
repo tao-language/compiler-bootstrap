@@ -56,19 +56,19 @@ import syntax/grammar.{type ParseError, ParseError}
 import syntax/span.{type Span, Span, merge, single}
 
 /// Parse a Core source string into a NamedTerm (with named variables).
-pub fn parse_named(source: String) -> #(NamedTerm, List(ParseError)) {
-  let tokens = tokenize(source)
-  parse_named_tokens(tokens, "")
-}
-
-/// Parse a Core source string into a Term (via NamedTerm → de Bruijn).
-pub fn parse(source: String) -> #(Term, List(ParseError)) {
+///
+/// The result preserves variable names — use `term_to_debruijn` to convert
+/// to a Term with De Bruijn indices for type checking and evaluation.
+pub fn parse(source: String) -> #(NamedTerm, List(ParseError)) {
   let tokens = tokenize(source)
   parse_tokens(tokens, "")
 }
 
-/// Parse tokens into a NamedTerm (with named variables, no de Bruijn conversion).
-pub fn parse_named_tokens(
+/// Parse tokens into a NamedTerm (with named variables).
+///
+/// The result preserves variable names — use `term_to_debruijn` to convert
+/// to a Term with De Bruijn indices for type checking and evaluation.
+pub fn parse_tokens(
   tokens: List(Token),
   filename: String,
 ) -> #(NamedTerm, List(ParseError)) {
@@ -96,42 +96,6 @@ pub fn parse_named_tokens(
               surrounding: surrounding_tokens(tokens2, pos2),
             )
           #(nt, [err, ..errs])
-        }
-      }
-    }
-  }
-}
-
-/// Parse tokens into a Core term (NamedTerm → Term via term_to_debruijn).
-pub fn parse_tokens(
-  tokens: List(Token),
-  filename: String,
-) -> #(Term, List(ParseError)) {
-  let state = #(tokens, 0, filename, [])
-  let span = single(filename, 1, 1)
-  let #(named, acc, state2) = parse_tokens_acc(state, [])
-  let #(tokens2, pos2, _, errs) = state2
-  // Convert NamedTerm → Term, wrapping in accumulated definitions
-  let folded = fold_named_terms(named, acc)
-  let term = term_to_debruijn(folded)
-  case term {
-    Err(msg, _) -> #(Err(msg, span), errs)
-    t -> {
-      let rest = try_peek(tokens2, pos2)
-      case rest {
-        Error(_) -> #(t, errs)
-        Ok(Token(kind: "Eof", value: "", span: _)) -> #(t, errs)
-        Ok(Token(kind: kind, value: value, span: span)) -> {
-          let err =
-            ParseError(
-              span: span,
-              expected: "end of input",
-              got: value,
-              context: "unexpected token",
-              rule: "parse_tokens_acc",
-              surrounding: surrounding_tokens(tokens2, pos2),
-            )
-          #(t, [err, ..errs])
         }
       }
     }

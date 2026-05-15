@@ -22,7 +22,7 @@ import syntax/grammar.{type ParseError, ParseError as ParseErrorCtor}
 import syntax/span.{type Span}
 import core/ast.{type Value, type Head, type LiteralType,
   VLit, VNeut, VCtr, VCall, VFix, VPi, VLam, VRcd, VRcdT, VTyp, VTypeDef, VErr, HVar, HHole, HFix, Int, Float as AstFloat,
-  VLitT, IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T, term_to_string}
+  VLitT, IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T, term_to_debruijn, term_to_string}
 import gleam/option.{Some, None}
 
 /// CLI command types.
@@ -153,7 +153,8 @@ pub fn execute(source: Source) -> Result(Value, List(String)) {
   case contents {
     Error(msg) -> Error([msg])
     Ok(text) -> {
-      let #(term, parse_errors) = parse(text)
+      let #(named_term, parse_errors) = parse(text)
+      let term = term_to_debruijn(named_term)
       let error_msgs = format_parse_errors(parse_errors)
       let all_errors = case error_msgs {
         [] -> []

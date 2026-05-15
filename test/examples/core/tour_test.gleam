@@ -8,6 +8,7 @@
 /// Each test is self-contained: it reads the tour file from disk,
 /// evaluates it, and asserts the expected result.
 import core/ast.{
+  term_to_debruijn,
   type Term, type Value, Float, FloatT, HHole, HVar, Int, IntT, VCtr, VErr, VLam,
   VLit, VLitT, VNeut, VPi, VRcd, VRcdT, VTyp, Var,
 }
@@ -70,7 +71,8 @@ fn read_file(path: String) -> String {
 
 /// Parse source content and return the term.
 fn parse_source(source: String) -> Term {
-  let #(term, errors) = parse(source)
+  let #(named_term, errors) = parse(source)
+  let term = term_to_debruijn(named_term)
   assert errors == []
   term
 }
