@@ -12,7 +12,7 @@ import core/exhaustiveness.{check_exhaustiveness_vdef}
 import core/state.{FfiEntry, def_var, env_to_state, type State, State}
 import core/eval.{evaluate, match_pattern}
 import core/subst.{force, force_levels_to_indices, subst_term_var, value_to_neut}
-import core/unify.{unify}
+import core/unify.{unify, literal_type_matches_wildcard}
 import gleam/float
 import gleam/int
 import gleam/list
@@ -1157,6 +1157,53 @@ pub fn lookup_constructor(
 /// variables to solve for. Known values (from lambda-bound variables) are
 /// treated as constants during unification.
 ///
+/// Check if two literal types match.
+/// Used in unify_type_pattern to match type patterns against argument types.
+/// Returns True if the argument type (t2) can be unified with the pattern (t1).
+///
+/// Matching rules:
+/// - If t1 (pattern) is a wildcard (IntT/FloatT), it matches t2 (actual type)
+/// - If t2 (actual type) is a wildcard (IntT/FloatT), it matches t1 (pattern)
+/// - Specific types (t1: I32T, etc.) only match themselves (exact match)
+fn literal_types_match(t1: ast.LiteralType, t2: ast.LiteralType) -> Bool {
+  case t1, t2 {
+    // Exact match for same types
+    ast.IntT, ast.IntT | ast.FloatT, ast.FloatT -> True
+    ast.I32T, ast.I32T | ast.I64T, ast.I64T | ast.U8T, ast.U8T |
+    ast.U16T, ast.U16T | ast.U32T, ast.U32T | ast.U64T, ast.U64T |
+    ast.F16T, ast.F16T | ast.F32T, ast.F32T | ast.F64T, ast.F64T -> True
+    // t1 is IntT wildcard: matches any int type (t2)
+    ast.IntT, ast.I8T | ast.IntT, ast.I16T | ast.IntT, ast.I32T |
+    ast.IntT, ast.I64T | ast.IntT, ast.U8T | ast.IntT, ast.U16T |
+    ast.IntT, ast.U32T | ast.IntT, ast.U64T -> True
+    // t1 is FloatT wildcard: matches any float or int type (t2)
+    ast.FloatT, ast.F16T | ast.FloatT, ast.F32T | ast.FloatT, ast.F64T |
+    ast.FloatT, ast.IntT | ast.FloatT, ast.I8T | ast.FloatT, ast.I16T |
+    ast.FloatT, ast.I32T | ast.FloatT, ast.I64T | ast.FloatT, ast.U8T |
+    ast.FloatT, ast.U16T | ast.FloatT, ast.U32T | ast.FloatT, ast.U64T -> True
+    // t2 is IntT wildcard: matches any int type (t1)
+    ast.I8T, ast.IntT | ast.I16T, ast.IntT | ast.I32T, ast.IntT |
+    ast.I64T, ast.IntT | ast.U8T, ast.IntT | ast.U16T, ast.IntT |
+    ast.U32T, ast.IntT | ast.U64T, ast.IntT -> True
+    // t2 is FloatT wildcard: matches any float or int type (t1)
+    ast.F16T, ast.FloatT | ast.F32T, ast.FloatT | ast.F64T, ast.FloatT |
+    ast.IntT, ast.FloatT | ast.I8T, ast.FloatT | ast.I16T, ast.FloatT |
+    ast.I32T, ast.FloatT | ast.I64T, ast.FloatT | ast.U8T, ast.FloatT |
+    ast.U16T, ast.FloatT | ast.U32T, ast.FloatT | ast.U64T, ast.FloatT -> True
+    // Everything else doesn't match
+    _, _ -> False
+  }
+}
+
+/// Unify a type pattern (self_type) against an argument type (arg_type).
+///
+/// Returns Option(List(#(Int, Value))) — Some(bindings) with the solved
+/// unification variables (as De Bruijn levels -> values), None on failure.
+///
+/// The self_type pattern may contain VNeut(HVar(level), []) as unification
+/// variables to solve for. Known values (from lambda-bound variables) are
+/// treated as constants during unification.
+///
 /// ## Unification rules
 ///
 /// - **HVar in pattern**: Bind it to the arg type (if not already bound)
@@ -1262,6 +1309,15 @@ pub fn unify_type_pattern(
     // Both are the same literal type: match
     ast.VLit(lit1), ast.VLit(lit2) ->
       case lit1 == lit2 {
+        True -> Some(acc)
+        False -> None
+      }
+
+    // Both are literal types: check if they match
+    // IntT matches IntT, I8T-I64T, U8T-U64T
+    // FloatT matches FloatT, F16T-F64T, and all int types
+    ast.VLitT(t1), ast.VLitT(t2) ->
+      case literal_types_match(t1, t2) {
         True -> Some(acc)
         False -> None
       }

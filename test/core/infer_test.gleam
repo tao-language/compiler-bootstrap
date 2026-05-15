@@ -21,7 +21,7 @@ import core/ast.{
   type Term, type Value, Ann, App, Call, Ctr, Err, Float as LitFloat,
   HHole, HVar, Hole, Int as LitInt, Lam, Lit, LitT, Pi, Rcd, RcdT, Typ, TypeDef,
   VCtr, VCall, VFix, VErr, VLam, VLit, VNeut, VPi, VRcd, VRcdT, VTyp, Var, VTypeDef, VLitT,
-  IntT, FloatT,
+  IntT, FloatT, I32T, F64T,
 }
 import core/infer.{
   check, infer, unify_type_pattern, apply_unify_bindings, lookup_constructor,
@@ -2107,6 +2107,48 @@ pub fn infer_fixpoint_recursive_call_test() {
   // The value should be a VFix
   assert case value {
     VFix(_, _, _) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// unify_type_pattern unit tests
+// ============================================================================
+
+pub fn unify_type_pattern_vlitt_match_test() {
+  // IntT should match I32T via wildcard matching
+  let bindings = unify_type_pattern(VLitT(IntT), VLitT(I32T), [])
+  assert bindings == Some([])
+  
+  // FloatT should match F64T via wildcard matching
+  let bindings = unify_type_pattern(VLitT(FloatT), VLitT(F64T), [])
+  assert bindings == Some([])
+  
+  // I32T should NOT match F64T
+  let bindings = unify_type_pattern(VLitT(I32T), VLitT(F64T), [])
+  assert bindings == None
+}
+
+pub fn unify_type_pattern_vctr_nested_test() {
+  // VCtr("Expr", VLitT(I32T)) should match VCtr("Expr", VLitT(IntT))
+  let bindings = unify_type_pattern(
+    VCtr("Expr", VLitT(I32T)),
+    VCtr("Expr", VLitT(IntT)),
+    [],
+  )
+  assert bindings == Some([])
+}
+
+pub fn unify_type_pattern_hvar_binding_test() {
+  // HVar should bind to VLitT
+  let bindings = unify_type_pattern(
+    VNeut(HVar(0), []),
+    VLitT(IntT),
+    [],
+  )
+  // Should bind HVar(0) to VLitT(IntT)
+  assert case bindings {
+    Some(bs) -> list.length(bs) == 1
     _ -> False
   }
 }
