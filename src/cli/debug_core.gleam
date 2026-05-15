@@ -27,18 +27,18 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
 import core/ast.{
-  type Term, type Value,
+  type NamedTerm, type Term, type Value,
   type Case, type Pattern,
   VErr, VCtr, VRcd, VLit, VLam, VNeut, VPi, VTyp,
   Lit, Var, App, Lam, Pi, Match, Ann, Call, Rcd, RcdT, Typ, TypeDef,
   LitT, Ctr, Fix, Err, Hole,
   Int as LitInt, Float as LitFloat,
-  term_to_string,
+  term_to_string, term_to_debruijn,
 }
 import core/infer.{infer}
 import core/eval.{evaluate, do_app, eval_value_to_string}
 import core/state.{initial_state, type Error, error_to_string, type FfiEntry, FfiEntry, type State}
-import core/syntax.{parse}
+import core/syntax.{parse, parse_named, term_to_string_named}
 import syntax/base_lexer.{tokenize, type Token, Token as TokenCtor}
 import syntax/grammar.{type ParseError}
 
@@ -61,11 +61,11 @@ pub fn run(expression: String, trace_parser: Bool, trace_infer: Bool) -> Nil {
   io.println("=== TOKENS ===")
   io.println(format_tokens(tokens))
 
-  // Step 2: Parse (returns Term with de Bruijn indices directly)
-  let #(term, parse_errors) = parse(expression)
+  // Step 2: Parse (returns NamedTerm with variable names)
+  let #(named_term, parse_errors) = parse_named(expression)
 
   io.println("\n=== PARSING ===")
-  io.println(term_to_string(term))
+  io.println("  " <> term_to_string_named(named_term))
 
   // Step 3: Show parse errors
   case parse_errors {
@@ -78,9 +78,10 @@ pub fn run(expression: String, trace_parser: Bool, trace_infer: Bool) -> Nil {
     }
   }
 
-  // Step 4: Show de Bruijn representation (parser already produces de Bruijn terms)
+  // Step 4: Show de Bruijn representation (NamedTerm → Term via term_to_debruijn)
+  let term = term_to_debruijn(named_term)
   io.println("\n=== DEBRUIJN ===")
-  io.println(term_to_string(term))
+  io.println("  " <> term_to_string(term))
 
   // Step 5: Type inference
   let state = initial_state(ffi_entries())
@@ -140,8 +141,8 @@ fn trace_parser_detailed(expression: String, parse_errors: List(ParseError)) -> 
   })
   list.each(indexed_tokens, fn(t) { io.println(t) })
   
-  let #(parsed_term, _) = parse(expression)
-  io.println("\nParse result: " <> term_to_string(parsed_term))
+  let #(parsed_named, _) = parse_named(expression)
+  io.println("\nParse result: " <> term_to_string_named(parsed_named))
   case parse_errors {
     [] -> io.println("Parse status: SUCCESS")
     errs -> io.println("Parse status: FAILED (" <> int.to_string(list.length(errs)) <> " errors)")
