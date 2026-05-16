@@ -215,7 +215,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
     // Use the VLam's env (outer variables) as the evaluation context, not the
     // current state. The VLam env captures the free variables from the lambda's
     // defining scope.
-    VLam(lam_env, _implicits, #(_pname, param_type), body) -> {
+    VLam(lam_env, implicits, #(_pname, param_type), body) -> {
       // Use the VLam's env (outer variables) as the evaluation context, not the
       // current state. The VLam env captures the free variables from the lambda's
       // defining scope.
@@ -242,10 +242,16 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
         }
         _ -> filled_arg
       }
-      // Extend env with the lambda parameter.
-      let env_with_param = list.append([converted_arg], lam_env)
-      let substituted = subst_term_var(0, converted_arg, body)
-      evaluate(env_to_state(env_with_param, state.truth_ctr, state.ffi), substituted)
+      // The lambda param is at index n (number of implicit params)
+      // Implicit params are at indices 0..n (matching term_to_debruijn ordering)
+      let n = list.length(implicits)
+      // Extend env with implicit params then the lambda parameter
+      let implicit_vals = list.map(implicits, fn(i) { i.1 })
+      let env_with_params = list.append(list.append(implicit_vals, [converted_arg]), lam_env)
+      // Substitute the argument for the lambda param at index n
+      // Shift by n because implicit params occupy indices 0..n-1
+      let substituted = subst_term_var(n, converted_arg, body)
+      evaluate(env_to_state(env_with_params, state.truth_ctr, state.ffi), substituted)
     }
     // VFix unroll: substitute the argument for Var(0) (Lambda param) and
     // the VFix for Var(1) (recursive ref), then evaluate.

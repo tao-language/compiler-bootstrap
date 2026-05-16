@@ -644,24 +644,33 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
     NamedLitT(ltype, span) -> LitT(ltype, span)
 
     NamedLam(implicits, #(name, param_type), body, span) -> {
-      // Convert implicits and param_type in current env
+      // Extract implicit param names for env building
+      let implicit_names = list.map(implicits, fn(i) { i.0 })
+      // Convert implicits in current env
       let implicits_debruijn = list.map(implicits, fn(i) {
         #(i.0, named_term_to_debruijn(i.1, env))
       })
-      let param_type_debruijn = named_term_to_debruijn(param_type, env)
-      // Push the lambda param onto the env for the body
-      let body_debruijn = named_term_to_debruijn(body, [name, ..env])
+      // Convert param_type with implicit params in scope (e.g., x: a where a is implicit)
+      let param_env = list.append(implicit_names, env)
+      let param_type_debruijn = named_term_to_debruijn(param_type, param_env)
+      // Push implicit param names and the lambda param onto the env for the body
+      // Implicit params come first so they have lower indices (e.g., a=0, x=1)
+      let body_env = list.append(implicit_names, [name, ..env])
+      let body_debruijn = named_term_to_debruijn(body, body_env)
       Lam(implicits_debruijn, #(name, param_type_debruijn), body_debruijn, span)
     }
 
     NamedPi(implicits, #(name, domain), codomain, span) -> {
+      let implicit_names = list.map(implicits, fn(i) { i.0 })
       let implicits_debruijn = list.map(implicits, fn(i) {
         #(i.0, named_term_to_debruijn(i.1, env))
       })
       // Domain is converted with name in scope (for $pi(a) -> a style)
+      // Codomain is converted with implicit params + name in scope
       let domain_env = [name, ..env]
+      let codomain_env = list.append(implicit_names, [name, ..env])
       let domain_debruijn = named_term_to_debruijn(domain, domain_env)
-      let codomain_debruijn = named_term_to_debruijn(codomain, domain_env)
+      let codomain_debruijn = named_term_to_debruijn(codomain, codomain_env)
       Pi(implicits_debruijn, #(name, domain_debruijn), codomain_debruijn, span)
     }
 
