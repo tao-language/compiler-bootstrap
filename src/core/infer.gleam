@@ -9,7 +9,7 @@ import core/ast.{type Value, type Term,
   VTypeDef,
   IntT, FloatT}
 import core/exhaustiveness.{check_exhaustiveness_vdef}
-import core/state.{FfiEntry, def_var, env_to_state, type State, State}
+import core/state.{FfiEntry, def_var, env_to_state, state_to_env, type State, State}
 import core/eval.{evaluate, match_pattern}
 import core/subst.{force, force_levels_to_indices, subst_term_var, value_to_neut}
 import core/unify.{unify, literal_type_matches_wildcard}
@@ -472,23 +472,38 @@ fn infer_lam(
 ) -> #(ast.Value, ast.Value, state.State) {
   let param_name = param.0
   let param_type_term = param.1
-  let param_val = evaluate(state, param_type_term)
+  let n = list.length(implicits)
 
-  // Evaluate implicits
-  let implicit_env = list.map(implicits, fn(i) {
-    let ival = evaluate(state, i.1)
-    #(i.0, ival)
-  })
-
-  let bound_value = ast.VNeut(ast.HVar(0), [])
-  let state_ext = state.State(
-    ..state,
-    vars: [#(param_name, #(bound_value, param_val)), ..state.vars],
+  // Evaluate implicits and add them to state as fresh holes (before lambda param)
+  // This ensures implicit params are at indices 0..n-1 in the state
+  let #(implicit_env, implicit_state) = list.fold(
+    list.reverse(implicits),
+    #( [], state ),
+    fn(acc, imp) {
+      let #(acc_env, s) = acc
+      let ival = evaluate(s, imp.1)
+      let fresh_id = s.hole_counter
+      let new_s = state.State(..s, hole_counter: fresh_id + 1)
+      let hole = ast.VNeut(ast.HHole(fresh_id), [])
+      let state_with_imp = def_var(new_s, imp.0, hole, ival)
+      #([#(imp.0, hole), ..acc_env], state_with_imp)
+    },
   )
 
+  // Add lambda param AFTER implicit params (so it's at index n)
+  let param_val = evaluate(implicit_state, param_type_term)
+  let bound_value = ast.VNeut(ast.HVar(n), [])
+  let state_ext = state.State(
+    ..implicit_state,
+    vars: [#(param_name, #(bound_value, param_val)), ..implicit_state.vars],
+  )
+
+  // Infer body directly — its De Bruijn indices are already correct:
+  // indices 0..n-1 = implicit params, index n = lambda param, index n+1+ = outer scope
   let #(_body_val, body_type, state5) = infer(state_ext, body)
 
-  let env = list.map(state.vars, fn(v) { v.1.0 })
+  // VLam env: outer scope variables only (drop implicit params and lambda param)
+  let env = list.map(list.drop(state.vars, n + 1), fn(v) { v.1.0 })
   let lam_value = ast.VLam(env, implicit_env, #(param_name, param_val), body)
   let pi_type = ast.VPi(env, implicit_env, #(param_name, param_val), body_type)
 
@@ -520,7 +535,8 @@ fn infer_app(
   // Check if this is a $let binding: App(Lam(name, _, body), value, span)
   // If so, infer the arg, fill defaults at value level, add to env, infer body.
   case fun {
-    ast.Lam(_implicits, #(param_name, param_type), body, _lam_span) -> {
+    ast.Lam(implicits, #(param_name, param_type), body, _lam_span) -> {
+      // This is a let binding: App(Lam("x", param_type, body), arg)
       // Infer the argument to get its value and type
       let #(arg_val, arg_type, state2) = infer(state, arg)
       // Evaluate the parameter type to get the expected value type
@@ -541,15 +557,37 @@ fn infer_app(
         _ -> filled_arg
       }
       // Update the lambda's env to include itself for recursive self-reference.
-      // The VLam's env is captured from the state before the lambda was added.
-      // We need to add the lambda itself so that it can reference itself in the body.
       let updated_lam = case converted_arg {
         ast.VLam(env, implicits, param, body) ->
           ast.VLam(list.append(env, [converted_arg]), implicits, param, body)
         _ -> converted_arg
       }
-      let state_ext = def_var(state2, param_name, updated_lam, arg_type)
-      // Infer the body with the binding in the env
+      // If the lambda has implicit params, add them to the state before the lambda param
+      // State order must be: [implicit_holes..., let_bound_var]
+      // so that body indices match: Var(0)..Var(n-1) = implicits, Var(n) = lambda param
+      let n = list.length(implicits)
+      let #(updated_lam, state_ext) = case implicits {
+        [] -> #(updated_lam, def_var(state2, param_name, updated_lam, arg_type))
+        [_, ..] -> {
+          // Add let-bound var first so Var(0) = let_bound_var
+          // Then add implicit holes which prepend (shift let_bound_var to index n)
+          let state_with_x = def_var(state2, param_name, updated_lam, arg_type)
+          // Add implicit holes in reverse order so the FIRST implicit ends up at index 0
+          let state_ext = list.fold(
+            list.reverse(implicits),
+            state_with_x,
+            fn(s, imp) {
+              let ival = evaluate(s, imp.1)
+              let fresh_id = s.hole_counter
+              let hole = ast.VNeut(ast.HHole(fresh_id), [])
+              let new_s = state.State(..s, hole_counter: fresh_id + 1)
+              def_var(new_s, imp.0, hole, ival)
+            },
+          )
+          #(updated_lam, state_ext)
+        }
+      }
+      // Infer the body directly — its indices are relative to the extended state
       let #(body_val, body_type, state_final) = infer(state_ext, body)
       #(body_val, body_type, state_final)
     }
@@ -561,7 +599,7 @@ fn infer_app(
       // Try to normalize via beta reduction
       case fun_val {
         // β-reduction: apply VLam to argument
-        ast.VLam(lam_env, _implicits, #(_pname, param_type), body) -> {
+        ast.VLam(lam_env, implicits, #(_pname, param_type), body) -> {
           // Fill defaults if param_type is VRcdT
           let filled_arg = fill_record_defaults_value(arg_val, param_type)
           // Int→Float conversion if param type is FloatT
@@ -577,15 +615,51 @@ fn infer_app(
               }
             _ -> filled_arg
           }
-          // Extend env with the lambda parameter
-          let env_with_param = list.append([converted_arg], lam_env)
-          let substituted = ast.shift_term(
-            subst_term_var(0, converted_arg, body),
-            1,
-          )
-          // Infer the body in the extended environment
-          let body_state = env_to_state(env_with_param, state3.truth_ctr, state3.ffi)
-          infer(body_state, substituted)
+          // The lambda body's De Bruijn indices are already correct:
+          // indices 0..n-1 = implicit params, index n = lambda param, index n+1+ = outer scope
+          // We do NOT shift the body.
+
+          // Handle implicit params: create fresh holes, bind them, extend state
+          let #(body_final, state_final) = case implicits {
+            [] -> {
+              // No implicit params: simple beta reduction
+              // Extend env with converted_arg (lambda param value)
+              let env_with_param = list.append(lam_env, [converted_arg])
+              let body_state = env_to_state(env_with_param, state3.truth_ctr, state3.ffi)
+              #(body, body_state)
+            }
+            [_, ..] -> {
+              // Has implicit params: bind them to fresh holes
+              // The holes will be resolved during force() in unify_infer_and_check
+              let n = list.length(implicits)
+              let #(holes, state_with_holes) = list.fold(
+                list.reverse(implicits),
+                #( [], state3 ),
+                fn(acc, imp) {
+                  let #(acc_holes, s) = acc
+                  // imp.1 is already a Value (from the VLam's implicit_env)
+                  let ival = imp.1
+                  let fresh_id = s.hole_counter
+                  let hole = ast.VNeut(ast.HHole(fresh_id), [])
+                  let new_s = state.State(..s, hole_counter: fresh_id + 1)
+                  // Bind the implicit param name to BOTH the hole value and ival type
+                  // so force() can resolve it by looking up the env at the hole's index
+                  let new_s = def_var(new_s, imp.0, hole, ival)
+                  #([hole, ..acc_holes], new_s)
+                },
+              )
+              // Don't shift the body — its indices already reference:
+              // Var(0)..Var(n-1) = implicit params (holes in state)
+              // Var(n) = lambda param (converted_arg)
+              // Only include implicit param values (not holes) and converted_arg
+              // The implicit param VALUE is ival (from the VLam's implicit_env)
+              let env_implicits = list.map(implicits, fn(imp) { imp.1 })
+              let env_all = list.append(env_implicits, [converted_arg])
+              let body_state = env_to_state(env_all, state_with_holes.truth_ctr, state_with_holes.ffi)
+              #(body, body_state)
+            }
+          }
+          infer(state_final, body_final)
         }
         // VFix unroll: substitute arg for Var(0), VFix for Var(1)
         ast.VFix(fix_name, fix_env, fix_body) -> {
@@ -1076,8 +1150,10 @@ fn unify_infer_and_check(
       }
       let #(converted_value, converted_type) = converted
       let _ = unified_value
-      let forced = force([], converted_value, dummy_do_match)
-      let forced_type = force([], converted_type, dummy_do_match)
+      // Pass state vars to force so implicit param holes can be resolved
+      let env = state_to_env(state2)
+      let forced = force(env, converted_value, dummy_do_match)
+      let forced_type = force(env, converted_type, dummy_do_match)
       #(forced, forced_type, state2)
     }
   }

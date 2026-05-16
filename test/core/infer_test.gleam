@@ -298,8 +298,8 @@ pub fn infer_pi_type_test() {
 /// Applied to 42 : should return 42
 pub fn infer_poly_identity_test() {
   // $fn<a: $Type>(x: a) => x
-  let param_type = var(1) // a (level 1 because a is in implicit_env)
-  let body = var(0) // x
+  let param_type = var(0) // a (implicit param at index 0)
+  let body = var(1)       // x (lambda param at index 1)
   let implicits = [#("a", typ(0))] // a: $Type
   let lam = Lam(implicits, #("x", param_type), body, sp())
   
@@ -318,10 +318,10 @@ pub fn infer_poly_identity_test() {
 /// Applied to #Some(42) : should return #Some(42)
 pub fn infer_poly_nested_type_test() {
   // $fn<a: $Type>(x: #Some(a)) => x
-  // param_type = #Some(a) = VCtr("Some", Rcd([#("a", var(1))]))
-  let some_arg = var(1) // a
+  // param_type = #Some(a) = VCtr("Some", Rcd([#("a", var(0))]))
+  let some_arg = var(0) // a (implicit param at index 0)
   let param_type = Ctr("Some", Rcd([#("a", some_arg)], sp()), sp())
-  let body = var(0) // x
+  let body = var(1)       // x (lambda param at index 1)
   let implicits = [#("a", typ(0))] // a: $Type
   let lam = Lam(implicits, #("x", param_type), body, sp())
   
