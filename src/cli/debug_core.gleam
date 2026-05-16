@@ -36,8 +36,8 @@ import core/ast.{
   term_to_string, term_to_debruijn,
 }
 import core/infer.{infer}
-import core/eval.{evaluate, do_app, eval_value_to_string}
-import core/state.{initial_state, type Error, error_to_string, type FfiEntry, FfiEntry, type State}
+import core/eval.{evaluate, do_app, eval_value_to_string, lookup_ffi_by_name}
+import core/state.{initial_state, type Error, error_to_string, type FfiEntry, FfiEntry, type State, lookup_ffi}
 import core/syntax.{parse, term_to_string_named}
 import syntax/base_lexer.{tokenize, type Token, Token as TokenCtor}
 import syntax/grammar.{type ParseError}
@@ -88,7 +88,7 @@ pub fn run(expression: String, trace_parser: Bool, trace_infer: Bool) -> Nil {
   let #(value, inferred_type, final_state) = infer(state, term)
 
   // Step 6: Evaluate (normalize) with FFI
-  let eval_result = evaluate(initial_state(ffi_entries()), term)
+  let eval_result = evaluate([], ffi_entries(), term)
   io.println("\n=== EVALUATION ===")
   io.println("  Result: " <> eval_value_to_string(eval_result))
 
@@ -274,20 +274,22 @@ fn term_short(term: Term) -> String {
 
 /// Recursively evaluate and print each App step.
 fn debug_eval(state: State, term: Term, depth: Int) -> Value {
+  let env = list.map(state.vars, fn(v) { v.1.0 })
+  let ffi = state.ffi
   let indent = string.repeat("  ", depth)
   io.println(indent <> "EVAL: " <> term_short(term))
   
   case term {
     App(fun, arg, _) -> {
-      let fun_val = evaluate(state, fun)
+      let fun_val = evaluate(env, ffi, fun)
       io.println(indent <> "  fun => " <> eval_value_to_string(fun_val))
-      let arg_val = evaluate(state, arg)
+      let arg_val = evaluate(env, ffi, arg)
       io.println(indent <> "  arg => " <> eval_value_to_string(arg_val))
-      let result = do_app(state, fun_val, arg_val)
+      let result = do_app(env, ffi, fun_val, arg_val)
       io.println(indent <> "  => " <> eval_value_to_string(result))
       result
     }
-    _ -> evaluate(state, term)
+    _ -> evaluate(env, ffi, term)
   }
 }
 

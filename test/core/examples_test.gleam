@@ -23,7 +23,7 @@ pub fn main() {
 fn parse_eval(source: String) -> Value {
   let #(named_term, _parse_errors) = parse(source)
   let term = term_to_debruijn(named_term)
-  evaluate(initial_state([]), term)
+  evaluate([], [], term)
 }
 
 /// Convert an int to the corresponding literal value.
@@ -192,7 +192,7 @@ pub fn pipeline_identity_test() {
   let term = term_to_debruijn(named_term)
   let #(_value, _type_val, final_state) = infer(state, term)
   assert final_state.errors == []
-  let evaluated = evaluate(initial_state([]), term)
+  let evaluated = evaluate([], [], term)
   assert case evaluated {
     VLam([], [], #("x", _), _body) -> True
     _ -> False

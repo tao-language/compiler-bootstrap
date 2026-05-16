@@ -31,7 +31,6 @@ import syntax/span.{single}
 // Dummy do_match for force() calls in tests
 fn dummy_do_match(
   _env: List(Value),
-  _truth_ctr: String,
   _ffi: List(FfiEntry),
   _scrutinee: Value,
   _cases: List(Case),
@@ -380,7 +379,7 @@ pub fn force_and_quote_integration_test() {
   let state = initial_state([])
   // Evaluate: identity function applied to 42
   let id_fn: Value = VLam([], [], #("x", VRcd([])), Var(0, single("", 0, 0)))
-  let result = force([], id_fn, dummy_do_match)
+  let result = force([], [], id_fn, dummy_do_match)
   // The result should be a VLam (not forced — it's not a hole)
   assert case result {
     VLam([], [], #("x", _), _) -> True
@@ -392,7 +391,7 @@ pub fn force_resolves_hole_then_quote_test() {
   let state = initial_state([])
   // Create a hole and force it — since there's no binding, it stays as-is
   let hole_value = VNeut(HHole(99), [EApp(vi(42))])
-  let result = force([], hole_value, dummy_do_match)
+  let result = force([], [], hole_value, dummy_do_match)
   // Should stay as VNeut since the hole has no binding
   assert case result {
     VNeut(HHole(99), _) -> True
@@ -413,7 +412,7 @@ pub fn evaluate_identity_then_quote_test() {
   let body = Var(0, single("", 0, 0))
   let param_type = Lit(LitInt(0), single("", 0, 0))
   let lam = Lam([], #("x", param_type), body, single("", 0, 0))
-  let value = evaluate(state, lam)
+  let value = evaluate([], [], lam)
   // The evaluated value is a VLam
   assert case value {
     VLam([], [], #("x", _), _body2) -> {
@@ -436,7 +435,7 @@ pub fn evaluate_lam_app_then_quote_test() {
   let param_type = Lit(LitInt(0), single("", 0, 0))
   let lam = Lam([], #("x", param_type), body, single("", 0, 0))
   let arg = Lit(LitInt(42), single("", 0, 0))
-  let result = evaluate(state, App(lam, arg, single("", 0, 0)))
+  let result = evaluate([], [], App(lam, arg, single("", 0, 0)))
   // After evaluation, we get VLit(LitInt(42))
   assert result == VLit(LitInt(42))
   // Quoting should give back the literal
@@ -561,7 +560,7 @@ pub fn quote_nested_ctr_deep_test() {
 pub fn roundtrip_eval_quote_int_test() {
   let state = initial_state([])
   let term = Lit(LitInt(42), single("test", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   let quoted = quote(value)
   assert case term {
     Lit(LitInt(42), _) -> True
@@ -578,7 +577,7 @@ pub fn roundtrip_eval_quote_lam_test() {
   let state = initial_state([])
   let body = Var(0, single("test", 1, 1))
   let term = Lam([], #("x", Lit(LitInt(0), single("test", 1, 1))), body, single("test", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   let quoted = quote(value)
   assert case quoted {
     Lam([], #("x", _), Var(0, _), _) -> True

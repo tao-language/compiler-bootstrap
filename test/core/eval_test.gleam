@@ -24,7 +24,7 @@ import core/ast.{
 import core/eval.{
   do_app, evaluate, is_truth, lookup_env, match_pattern, eval_value_to_string,
 }
-import core/state.{FfiEntry, initial_state, truth_ctr, with_truth_ctr}
+import core/state.{FfiEntry, initial_state}
 import gleam/option.{type Option, None, Some}
 import gleeunit
 import syntax/span.{single}
@@ -39,19 +39,19 @@ pub fn main() {
 
 pub fn eval_int_literal_test() {
   let state = initial_state([])
-  let value = evaluate(state, Lit(LitInt(42), single("", 1, 1)))
+  let value = evaluate([], [], Lit(LitInt(42), single("", 1, 1)))
   assert value == VLit(LitInt(42))
 }
 
 pub fn eval_float_literal_test() {
   let state = initial_state([])
-  let value = evaluate(state, Lit(LitFloat(3.14), single("", 1, 1)))
+  let value = evaluate([], [], Lit(LitFloat(3.14), single("", 1, 1)))
   assert value == VLit(LitFloat(3.14))
 }
 
 pub fn eval_zero_test() {
   let state = initial_state([])
-  let value = evaluate(state, Lit(LitInt(0), single("", 1, 1)))
+  let value = evaluate([], [], Lit(LitInt(0), single("", 1, 1)))
   assert value == VLit(LitInt(0))
 }
 
@@ -61,13 +61,13 @@ pub fn eval_zero_test() {
 
 pub fn eval_var_becomes_neutral_test() {
   let state = initial_state([])
-  let value = evaluate(state, Var(0, single("", 1, 1)))
+  let value = evaluate([], [], Var(0, single("", 1, 1)))
   assert value == VNeut(HVar(0), [])
 }
 
 pub fn eval_var_different_levels_test() {
   let state = initial_state([])
-  let value = evaluate(state, Var(5, single("", 1, 1)))
+  let value = evaluate([], [], Var(5, single("", 1, 1)))
   assert value == VNeut(HVar(5), [])
 }
 
@@ -77,13 +77,13 @@ pub fn eval_var_different_levels_test() {
 
 pub fn eval_hole_becomes_neutral_test() {
   let state = initial_state([])
-  let value = evaluate(state, Hole(42, single("", 1, 1)))
+  let value = evaluate([], [], Hole(42, single("", 1, 1)))
   assert value == VNeut(HHole(42), [])
 }
 
 pub fn eval_hole_zero_test() {
   let state = initial_state([])
-  let value = evaluate(state, Hole(0, single("", 1, 1)))
+  let value = evaluate([], [], Hole(0, single("", 1, 1)))
   assert value == VNeut(HHole(0), [])
 }
 
@@ -96,7 +96,7 @@ pub fn eval_lambda_creates_vlam_test() {
   let body = Var(0, single("", 1, 1))
   let param_type = Rcd([], single("", 1, 1))
   let term = Lam([], #("x", param_type), body, single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   assert case value {
     VLam(_, _, #(name, _), body_term) -> name == "x" && body_term == body
     _ -> False
@@ -113,7 +113,7 @@ pub fn eval_lambda_with_complex_body_test() {
     )
   let param_type = Rcd([], single("", 1, 1))
   let term = Lam([], #("f", param_type), body, single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   assert case value {
     VLam([], [], #("f", _), body_term) -> {
       case body_term {
@@ -136,7 +136,7 @@ pub fn eval_app_applies_lambda_test() {
   let param_type = Rcd([], single("", 1, 1))
   let lam = Lam([], #("x", param_type), lam_body, single("", 1, 1))
   let app_term = App(lam, Lit(LitInt(42), single("", 1, 1)), single("", 1, 1))
-  let value = evaluate(state, app_term)
+  let value = evaluate([], [], app_term)
   assert value == VLit(LitInt(42))
 }
 
@@ -147,7 +147,7 @@ pub fn eval_app_identity_function_test() {
   let param_type = Rcd([], single("", 1, 1))
   let identity = Lam([], #("x", param_type), body, single("", 1, 1))
   let app = App(identity, Lit(LitInt(42), single("", 1, 1)), single("", 1, 1))
-  let value = evaluate(state, app)
+  let value = evaluate([], [], app)
   assert value == VLit(LitInt(42))
 }
 
@@ -160,7 +160,7 @@ pub fn eval_app_nested_beta_test() {
     Lam([], #("x", Rcd([], single("", 1, 1))), inner_lam, single("", 1, 1))
   let app1 = App(outer_lam, Lit(LitInt(42), single("", 1, 1)), single("", 1, 1))
   let app2 = App(app1, Lit(LitInt(100), single("", 1, 1)), single("", 1, 1))
-  let value = evaluate(state, app2)
+  let value = evaluate([], [], app2)
   assert value == VLit(LitInt(42))
 }
 
@@ -173,7 +173,7 @@ pub fn eval_app_neutral_spine_test() {
       Lit(LitInt(42), single("", 1, 1)),
       single("", 1, 1),
     )
-  let value = evaluate(state, app_term)
+  let value = evaluate([], [], app_term)
   assert value == VNeut(HVar(0), [EApp(VLit(LitInt(42)))])
 }
 
@@ -189,7 +189,7 @@ pub fn eval_app_double_neutral_spine_test() {
       single("", 1, 1),
     )
   let app2 = App(app1, Lit(LitInt(2), single("", 1, 1)), single("", 1, 1))
-  let value = evaluate(state, app2)
+  let value = evaluate([], [], app2)
   assert value == VNeut(HVar(0), [EApp(VLit(LitInt(1))), EApp(VLit(LitInt(2)))])
 }
 
@@ -198,7 +198,7 @@ pub fn eval_app_error_propagates_test() {
   let state = initial_state([])
   let err_term = Err("error", single("", 1, 1))
   let app = App(err_term, Lit(LitInt(42), single("", 1, 1)), single("", 1, 1))
-  let value = evaluate(state, app)
+  let value = evaluate([], [], app)
   assert value == VErr
 }
 
@@ -208,7 +208,7 @@ pub fn eval_app_type_application_returns_error_test() {
   let pi =
     Pi([], #("pi_param", Lit(LitInt(0), single("", 1, 1))), Lit(LitInt(1), single("", 1, 1)), single("", 1, 1))
   let app = App(pi, Lit(LitInt(42), single("", 1, 1)), single("", 1, 1))
-  let value = evaluate(state, app)
+  let value = evaluate([], [], app)
   assert value == VErr
 }
 
@@ -222,7 +222,7 @@ pub fn do_app_beta_reduction_test() {
   let arg = VLit(LitInt(42))
   let body = Var(0, single("", 1, 1))
   let lam = VLam([], [], #("x", VRcd([])), body)
-  let result = do_app(state, lam, arg)
+  let result = do_app([], [], lam, arg)
   // The body Var(0) is substituted with the argument (converted to a Term
   // via value_to_neut → force_levels_to_indices), then evaluated.
   assert result == VLit(LitInt(42))
@@ -232,15 +232,15 @@ pub fn do_app_neutral_spine_test() {
   let state = initial_state([])
   let arg = VLit(LitInt(42))
   let neut = VNeut(HVar(0), [EApp(VLit(LitInt(1)))])
-  let result = do_app(state, neut, arg)
+  let result = do_app([], [], neut, arg)
   assert result == VNeut(HVar(0), [EApp(VLit(LitInt(1))), EApp(arg)])
 }
 
 pub fn do_app_vvar_applied_then_applied_again_test() {
   let state = initial_state([])
   // Build: (v0 42) 100 where v0 is a variable
-  let app1 = do_app(state, VNeut(HVar(0), []), VLit(LitInt(42)))
-  let app2 = do_app(state, app1, VLit(LitInt(100)))
+  let app1 = do_app([], [], VNeut(HVar(0), []), VLit(LitInt(42)))
+  let app2 = do_app([], [], app1, VLit(LitInt(100)))
   assert app2
     == VNeut(HVar(0), [EApp(VLit(LitInt(42))), EApp(VLit(LitInt(100)))])
 }
@@ -254,7 +254,7 @@ pub fn eval_pi_type_test() {
   let domain = Lit(LitInt(0), single("", 1, 1))
   let codomain = Lit(LitInt(1), single("", 1, 1))
   let pi = Pi([], #("pi_param", domain), codomain, single("", 1, 1))
-  let value = evaluate(state, pi)
+  let value = evaluate([], [], pi)
   assert value == VPi([], [], #("pi_param", VLit(LitInt(0))), VLit(LitInt(1)))
 }
 
@@ -263,7 +263,7 @@ pub fn eval_pi_with_vars_test() {
   let domain = Var(1, single("", 1, 1))
   let codomain = Var(0, single("", 1, 1))
   let pi = Pi([], #("pi_param", domain), codomain, single("", 1, 1))
-  let value = evaluate(state, pi)
+  let value = evaluate([], [], pi)
   // domain becomes VNeut(HVar(1)), codomain (shifted by 1) becomes Var(0, _) -> VNeut(HVar(0))
   assert value == VPi([], [], #("pi_param", VNeut(HVar(1), [])), VNeut(HVar(0), []))
 }
@@ -276,7 +276,7 @@ pub fn eval_ctr_test() {
   let state = initial_state([])
   let arg = Lit(LitInt(42), single("", 1, 1))
   let term = Ctr("Some", arg, single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   assert value == VCtr("Some", VLit(LitInt(42)))
 }
 
@@ -284,7 +284,7 @@ pub fn eval_nested_ctr_test() {
   let state = initial_state([])
   let inner = Ctr("Inner", Lit(LitInt(1), single("", 1, 1)), single("", 1, 1))
   let outer = Ctr("Outer", inner, single("", 1, 1))
-  let value = evaluate(state, outer)
+  let value = evaluate([], [], outer)
   assert value == VCtr("Outer", VCtr("Inner", VLit(LitInt(1))))
 }
 
@@ -295,7 +295,7 @@ pub fn eval_nested_ctr_test() {
 pub fn eval_empty_record_test() {
   let state = initial_state([])
   let term = Rcd([], single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   assert value == VRcd([])
 }
 
@@ -303,7 +303,7 @@ pub fn eval_record_with_fields_test() {
   let state = initial_state([])
   let fields = [#("name", Lit(LitInt(42), single("", 1, 1)))]
   let term = Rcd(fields, single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   assert value == VRcd([#("name", VLit(LitInt(42)))])
 }
 
@@ -315,7 +315,7 @@ pub fn eval_record_multiple_fields_test() {
   ]
 
   let term = Rcd(fields, single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   assert value == VRcd([#("a", VLit(LitInt(1))), #("b", VLit(LitInt(2)))])
 }
 
@@ -331,7 +331,7 @@ pub fn eval_ann_erases_annotation_test() {
       Lit(LitInt(0), single("", 1, 1)),
       single("", 1, 1),
     )
-  let value = evaluate(state, ann)
+  let value = evaluate([], [], ann)
   assert value == VLit(LitInt(42))
 }
 
@@ -341,7 +341,7 @@ pub fn eval_ann_erases_annotation_test() {
 
 pub fn eval_err_becomes_vevr_test() {
   let state = initial_state([])
-  let value = evaluate(state, Err("something went wrong", single("", 1, 1)))
+  let value = evaluate([], [], Err("something went wrong", single("", 1, 1)))
   assert value == VErr
 }
 
@@ -352,7 +352,7 @@ pub fn eval_err_becomes_vevr_test() {
 pub fn eval_typ_becomes_neutral_test() {
   // $Type<1> evaluates to VTyp(1)
   let state = initial_state([])
-  let value = evaluate(state, Typ(1, single("", 1, 1)))
+  let value = evaluate([], [], Typ(1, single("", 1, 1)))
   assert value == ast.VTyp(1)
 }
 
@@ -377,7 +377,7 @@ pub fn eval_match_first_case_matches_test() {
     CoreCase(PAny(single("", 1, 1)), None, case2_body, single("", 1, 1)),
   ]
   let term = Match(scrutinee, cases, single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   assert value == VLit(LitInt(42))
 }
 
@@ -397,7 +397,7 @@ pub fn eval_match_fallback_any_test() {
     CoreCase(PAny(single("", 1, 1)), None, case2_body, single("", 1, 1)),
   ]
   let term = Match(scrutinee, cases, single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   assert value == VLit(LitInt(0))
 }
 
@@ -405,7 +405,7 @@ pub fn eval_match_no_cases_returns_error_test() {
   let state = initial_state([])
   let scrutinee = Lit(LitInt(42), single("", 1, 1))
   let term = Match(scrutinee, [], single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   assert value == VErr
 }
 
@@ -423,14 +423,14 @@ pub fn eval_match_no_matching_case_returns_error_test() {
     ),
   ]
   let term = Match(scrutinee, cases, single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   assert value == VErr
 }
 
 pub fn eval_match_with_guard_passes_test() {
   let state = initial_state([])
   // Match 42 { | 42 ? #True() => 1 | _ => 0 }
-  // Guard evaluates to #True() which is_truth("True", _) matches
+  // Guard evaluates to #True() which is_truth(_) matches
   let scrutinee = Lit(LitInt(42), single("", 1, 1))
   let case1_body = Lit(LitInt(1), single("", 2, 1))
   let case2_body = Lit(LitInt(0), single("", 2, 1))
@@ -445,13 +445,13 @@ pub fn eval_match_with_guard_passes_test() {
     CoreCase(PAny(single("", 1, 1)), None, case2_body, single("", 1, 1)),
   ]
   let term = Match(scrutinee, cases, single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   assert value == VLit(LitInt(1))
 }
 
 pub fn eval_match_with_guard_fails_test() {
   let state = initial_state([])
-  // Guard evaluates to () (unit/empty record) which is_truth("True", _) returns False
+  // Guard evaluates to () (unit/empty record) which is_truth(_) returns False
   let scrutinee = Lit(LitInt(42), single("", 1, 1))
   let case1_body = Lit(LitInt(1), single("", 2, 1))
   let case2_body = Lit(LitInt(0), single("", 2, 1))
@@ -466,7 +466,7 @@ pub fn eval_match_with_guard_fails_test() {
     CoreCase(PAny(single("", 1, 1)), None, case2_body, single("", 1, 1)),
   ]
   let term = Match(scrutinee, cases, single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   // Guard is not #True(_) -> fallback to second case
   assert value == VLit(LitInt(0))
 }
@@ -498,7 +498,7 @@ pub fn eval_match_nested_match_test() {
     ),
   ]
   let term = Match(outer_scrutinee, outer_cases, single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   // Inner match evaluates to 42
   // Outer match resolves #Some(42) -> v=42
   // Final body returns v = 42
@@ -525,14 +525,14 @@ pub fn eval_call_with_ffi_test() {
   let arg = #(Lit(LitInt(42), single("", 1, 1)), Typ(0, single("", 1, 1)))
   let call =
     Call("double", [arg], Typ(0, single("", 1, 1)), single("", 1, 1))
-  let value = evaluate(state, call)
+  let value = evaluate([], [], call)
   assert value == VLit(LitInt(99))
 }
 
 pub fn eval_call_with_missing_ffi_deferred_test() {
   let state = initial_state([])
   let call = Call("nonexistent", [], Typ(0, single("", 1, 1)), single("", 1, 1))
-  let value = evaluate(state, call)
+  let value = evaluate([], [], call)
   assert case value {
     VCall("nonexistent", [], _) -> True
     _ -> False
@@ -543,7 +543,7 @@ pub fn eval_call_ffi_returns_none_deferred_test() {
   let ffi_fn = fn(_args: List(#(Value, Value))) -> Option(Value) { None }
   let state = initial_state([FfiEntry("bad_ffi", ffi_fn)])
   let call = Call("bad_ffi", [], Typ(0, single("", 1, 1)), single("", 1, 1))
-  let value = evaluate(state, call)
+  let value = evaluate([], [], call)
   assert case value {
     VCall("bad_ffi", [], _) -> True
     _ -> False
@@ -720,7 +720,7 @@ pub fn value_to_string_vpi_test() {
 pub fn eval_var_zero_in_empty_env_test() {
   // Variable in empty environment -> becomes neutral (will be unresolved at runtime)
   let state = initial_state([])
-  let value = evaluate(state, Var(0, single("", 1, 1)))
+  let value = evaluate([], [], Var(0, single("", 1, 1)))
   assert value == VNeut(HVar(0), [])
 }
 
@@ -733,7 +733,7 @@ pub fn eval_app_on_hole_neutral_test() {
       Lit(LitInt(42), single("", 1, 1)),
       single("", 1, 1),
     )
-  let value = evaluate(state, app)
+  let value = evaluate([], [], app)
   assert value == VNeut(HHole(0), [EApp(VLit(LitInt(42)))])
 }
 
@@ -744,7 +744,7 @@ pub fn eval_chain_of_applications_test() {
   let app1 = App(f, Lit(LitInt(1), single("", 1, 1)), single("", 1, 1))
   let app2 = App(app1, Lit(LitInt(2), single("", 1, 1)), single("", 1, 1))
   let app3 = App(app2, Lit(LitInt(3), single("", 1, 1)), single("", 1, 1))
-  let value = evaluate(state, app3)
+  let value = evaluate([], [], app3)
   assert value
     == VNeut(HVar(0), [
       EApp(VLit(LitInt(1))),
@@ -767,7 +767,7 @@ pub fn eval_match_on_constructor_neutral_test() {
     ),
   ]
   let term = Match(scrutinee, cases, single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   // #Some(v) matches -> returns body (Lit(1))
   assert value == VLit(LitInt(1))
 }
@@ -781,7 +781,7 @@ pub fn eval_app_on_literal_returns_error_test() {
       Lit(LitInt(1), single("", 1, 1)),
       single("", 1, 1),
     )
-  let value = evaluate(state, app)
+  let value = evaluate([], [], app)
   assert value == VErr
 }
 
@@ -794,13 +794,13 @@ pub fn eval_app_on_ctr_returns_error_test() {
       Lit(LitInt(1), single("", 1, 1)),
       single("", 1, 1),
     )
-  let value = evaluate(state, app)
+  let value = evaluate([], [], app)
   assert value == VErr
 }
 
 pub fn eval_match_first_case_evaluates_guard_test() {
   let state = initial_state([])
-  // First case guard is #True() -> is_truth("True", ...) matches
+  // First case guard is #True() -> is_truth(...) matches
   let scrutinee = Lit(LitInt(1), single("", 1, 1))
   let case1_guard = Ctr("True", Rcd([], single("", 1, 1)), single("", 1, 1))
   let case1_body = Lit(LitInt(99), single("", 2, 1))
@@ -815,13 +815,13 @@ pub fn eval_match_first_case_evaluates_guard_test() {
     CoreCase(PAny(single("", 1, 1)), None, case2_body, single("", 1, 1)),
   ]
   let term = Match(scrutinee, cases, single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   assert value == VLit(LitInt(99))
 }
 
 pub fn eval_match_second_case_with_guard_fails_test() {
   let state = initial_state([])
-  // First case guard is () which is_truth("True", ...) returns False
+  // First case guard is () which is_truth(...) returns False
   let scrutinee = Lit(LitInt(1), single("", 1, 1))
   let case1_guard = Rcd([], single("", 1, 1))
   let case1_body = Lit(LitInt(99), single("", 2, 1))
@@ -836,7 +836,7 @@ pub fn eval_match_second_case_with_guard_fails_test() {
     CoreCase(PAny(single("", 1, 1)), None, case2_body, single("", 1, 1)),
   ]
   let term = Match(scrutinee, cases, single("", 1, 1))
-  let value = evaluate(state, term)
+  let value = evaluate([], [], term)
   // Guard is not #True(_) -> fallback to second case
   assert value == VLit(LitInt(0))
 }
@@ -860,7 +860,7 @@ pub fn eval_call_evaluates_args_first_test() {
   let state = initial_state([FfiEntry("echo", ffi_fn)])
   let arg = #(Lit(LitInt(99), single("", 1, 1)), Typ(0, single("", 1, 1)))
   let call = Call("echo", [arg], Typ(0, single("", 1, 1)), single("", 1, 1))
-  let value = evaluate(state, call)
+  let value = evaluate([], [], call)
   assert value == VLit(LitInt(99))
 }
 
@@ -885,55 +885,34 @@ pub fn value_to_string_neutral_hole_with_spine_test() {
 // ============================================================================
 
 pub fn is_truth_matches_true_constructor_test() {
-  assert is_truth("True", VCtr("True", VLit(LitInt(0)))) == True
+  assert is_truth(VCtr("True", VLit(LitInt(0)))) == True
 }
 
 pub fn is_truth_matches_true_constructor_with_empty_arg_test() {
-  assert is_truth("True", VCtr("True", VRcd([]))) == True
+  assert is_truth(VCtr("True", VRcd([]))) == True
 }
 
 pub fn is_truth_rejects_different_constructor_test() {
-  assert is_truth("True", VCtr("Some", VLit(LitInt(42)))) == False
-  assert is_truth("True", VCtr("False", VRcd([]))) == False
+  assert is_truth(VCtr("Some", VLit(LitInt(42)))) == False
+  assert is_truth(VCtr("False", VRcd([]))) == False
 }
 
 pub fn is_truth_rejects_non_constructor_values_test() {
-  assert is_truth("True", VLit(LitInt(42))) == False
-  assert is_truth("True", VNeut(HVar(0), [])) == False
-  assert is_truth("True", VErr) == False
-  assert is_truth("True", VRcd([])) == False
-  assert is_truth("True", VPi([], [], #("pi_param", VLit(LitInt(0))), VNeut(HVar(0), []))) == False
+  assert is_truth(VLit(LitInt(42))) == False
+  assert is_truth(VNeut(HVar(0), [])) == False
+  assert is_truth(VErr) == False
+  assert is_truth(VRcd([])) == False
+  assert is_truth(VPi([], [], #("pi_param", VLit(LitInt(0))), VNeut(HVar(0), []))) == False
 }
 
 pub fn is_truth_configurable_constructor_test() {
   // Language can configure "MyTrue" as the truth constructor
-  assert is_truth("MyTrue", VCtr("MyTrue", VRcd([]))) == True
-  assert is_truth("MyTrue", VCtr("True", VRcd([]))) == False
+  assert is_truth(VCtr("MyTrue", VRcd([]))) == True
+  assert is_truth(VCtr("True", VRcd([]))) == False
 }
 
-// ============================================================================
-// TRUTH_CTR STATE HELPERS
-// ============================================================================
-
-pub fn initial_state_has_default_truth_ctr_test() {
-  let state = initial_state([])
-  assert truth_ctr(state) == "True"
-}
-
-pub fn with_truth_ctr_updates_state_test() {
-  let state = initial_state([])
-  let new_state = with_truth_ctr(state, "MyTrue")
-  assert truth_ctr(state) == "True"
-  // original unchanged
-  assert truth_ctr(new_state) == "MyTrue"
-}
-
-pub fn truth_ctr_preserved_after_eval_test() {
-  let state = with_truth_ctr(initial_state([]), "MyTrue")
-  let value = evaluate(state, Lit(LitInt(42), single("", 1, 1)))
-  // Evaluation doesn't modify the state
-  let _ = value
-}
+// Placeholder: truth_ctr tests removed - hardcoded to "True"
+// These tests will be updated when guards are re-implemented
 
 // ============================================================================
 // FIXPOINT (VFix) EVALUATION
@@ -943,7 +922,7 @@ pub fn fixpoint_basic_test() {
   // VFix evaluated directly returns VFix (not a VLam)
   let state = initial_state([])
   let fix_term = Fix("f", Lam([], #("x", Typ(0, single("", 1, 1))), Var(0, single("", 1, 1)), single("", 1, 1)), single("", 1, 1))
-  let value = evaluate(state, fix_term)
+  let value = evaluate([], [], fix_term)
   assert case value {
     VFix("f", _, _) -> True
     _ -> False

@@ -8,7 +8,23 @@ import core/ast.{
   LitT, shift_term_from,
   IntT, FloatT, I8T, I16T, I32T, I64T, U8T, U16T, U32T, U64T, F16T, F32T, F64T,
 }
-import core/state.{type State, type FfiEntry as FfiEntryType, FfiEntry, lookup_ffi, state_to_env, env_to_state}
+import core/state.{type State, type FfiEntry as FfiEntryType, FfiEntry, lookup_ffi, env_to_state}
+
+/// Look up an FFI entry by name from a plain FFI list.
+pub fn lookup_ffi_by_name(ffi: List(FfiEntryType), name: String) -> Result(FfiEntryType, Nil) {
+  lookup_ffi_loop(ffi, name)
+}
+
+fn lookup_ffi_loop(ffi: List(FfiEntryType), name: String) -> Result(FfiEntryType, Nil) {
+  case ffi {
+    [] -> Error(Nil)
+    [entry, ..rest] ->
+      case entry.fn_name == name {
+        True -> Ok(entry)
+        False -> lookup_ffi_loop(rest, name)
+      }
+  }
+}
 import syntax/span.{type Span}
 import core/subst.{force, subst_term_var}
 import gleam/float
@@ -23,10 +39,10 @@ import gleam/string
 
 /// Convert a Term-level TypeDef constructor to a Value-level constructor.
 /// Passes through the bindings field unchanged.
-fn term_ctor_to_value(state: State, ctor: #(String, #(List(String), Term, Term), Span)) -> #(String, #(List(String), Value, Term), Span) {
+fn term_ctor_to_value(env: List(Value), ffi: List(FfiEntryType), ctor: #(String, #(List(String), Term, Term), Span)) -> #(String, #(List(String), Value, Term), Span) {
   let #(tag, #(bindings, self_type, result_type), span) = ctor
   // Evaluate self_type to a value, keep result_type as Term
-  let self_val = evaluate(state, self_type)
+  let self_val = evaluate(env, ffi, self_type)
   #(tag, #(bindings, self_val, result_type), span)
 }
 
@@ -59,42 +75,40 @@ fn term_ctor_to_value(state: State, ctor: #(String, #(List(String), Term, Term),
 /// import core/ast.{Lit, LitInt, Rcd}
 ///
 /// let state = initial_state([])
-/// let value = evaluate(state, Lit(LitInt(42), ?))
+/// let value = evaluate([], [], Lit(LitInt(42), ?))
 /// // value == VLit(LitInt(42))
 /// ```
-pub fn evaluate(state: State, term: Term) -> Value {
+pub fn evaluate(env: List(Value), ffi: List(FfiEntryType), term: Term) -> Value {
   case term {
     Var(index, _) ->
-      case list.drop(state.vars, index) {
-        [#(_, #(value, _)), ..] -> value
-        _ -> force(state_to_env(state), VNeut(HVar(index), []), do_match)
+      case list.drop(env, index) {
+        [value, ..] -> value
+        _ -> force(env, ffi, VNeut(HVar(index), []), do_match)
       }
-    Hole(id, _) -> force(state_to_env(state), VNeut(HHole(id), []), do_match)
+    Hole(id, _) -> force(env, ffi, VNeut(HHole(id), []), do_match)
     Lam(implicits, #(name, param_type), body, _span) -> {
       // Evaluate the parameter type term to a value, then force to
       // resolve any holes in it. The body remains as a Term (closure).
-      let env = state_to_env(state)
-      let param_val = force(env, evaluate(state, param_type), do_match)
+      let param_val = force(env, ffi, evaluate(env, ffi, param_type), do_match)
       let implicit_env = list.map(implicits, fn(i) {
-        let ival = force(env, evaluate(state, i.1), do_match)
+        let ival = force(env, ffi, evaluate(env, ffi, i.1), do_match)
         #(i.0, ival)
       })
       VLam(env, implicit_env, #(name, param_val), body)
     }
     App(fun, arg, _) -> {
-      let fun_val = evaluate(state, fun)
-      let arg_val = evaluate(state, arg)
-      do_app(state, fun_val, arg_val)
+      let fun_val = evaluate(env, ffi, fun)
+      let arg_val = evaluate(env, ffi, arg)
+      do_app(env, ffi, fun_val, arg_val)
     }
     Pi(implicits, #(name, domain), codomain, _) -> {
       // Evaluate domain to a value. The codomain references the domain
       // at type level - no shift needed since Pi doesn't create a runtime
       // variable binding.
-      let env = list.map(state.vars, fn(v) { v.1.0 })
-      let dom = evaluate(state, domain)
-      let codom = evaluate(state, codomain)
+      let dom = evaluate(env, ffi, domain)
+      let codom = evaluate(env, ffi, codomain)
       let implicit_env = list.map(implicits, fn(i) {
-        let ival = evaluate(state, i.1)
+        let ival = evaluate(env, ffi, i.1)
         #(i.0, ival)
       })
       VPi(env, implicit_env, #(name, dom), codom)
@@ -102,9 +116,9 @@ pub fn evaluate(state: State, term: Term) -> Value {
     Lit(value, _) -> VLit(value)
     RcdT(fields, _) -> {
       let typed_fields = list.map(fields, fn(f) {
-        let field_type = evaluate(state, f.1)
+        let field_type = evaluate(env, ffi, f.1)
         let default_val = case f.2 {
-          Some(d) -> Some(evaluate(state, d))
+          Some(d) -> Some(evaluate(env, ffi, d))
           None -> None
         }
         #(f.0, field_type, default_val)
@@ -112,13 +126,13 @@ pub fn evaluate(state: State, term: Term) -> Value {
       VRcdT(typed_fields)
     }
     LitT(ltype, _) -> VLitT(ltype)
-    Ctr(tag, arg, _) -> VCtr(tag, evaluate(state, arg))
+    Ctr(tag, arg, _) -> VCtr(tag, evaluate(env, ffi, arg))
     Rcd(fields, _) ->
-      VRcd(list.map(fields, fn(f) { #(f.0, evaluate(state, f.1)) }))
+      VRcd(list.map(fields, fn(f) { #(f.0, evaluate(env, ffi, f.1)) }))
     Ann(term, type_, _) -> {
       // Evaluate the inner term, then apply type-directed conversions
-      let evaluated = evaluate(state, term)
-      let type_val = evaluate(state, type_)
+      let evaluated = evaluate(env, ffi, term)
+      let type_val = evaluate(env, ffi, type_)
       case type_val {
         VLitT(FloatT) -> {
           // If the annotation is $Float and the result is an Int, convert it
@@ -136,21 +150,20 @@ pub fn evaluate(state: State, term: Term) -> Value {
     Match(arg, cases, _) -> {
       // Evaluate the scrutinee to a value, then delegate to do_match.
       // do_match handles VNeut (deferring match) and VFix (unrolling) internally.
-      let scrutinee = evaluate(state, arg)
-      let env = state_to_env(state)
-      do_match(env, state.truth_ctr, state.ffi, scrutinee, cases, [])
+      let scrutinee = evaluate(env, ffi, arg)
+      do_match(env, ffi, scrutinee, cases, [])
     }
     Call(name, args, return_type, _span) -> {
       // Evaluate each (value_term, type_term) pair
-      let arg_vals = list.map(args, fn(ta) { evaluate(state, ta.0) })
-      let arg_types = list.map(args, fn(ta) { evaluate(state, ta.1) })
+      let arg_vals = list.map(args, fn(ta) { evaluate(env, ffi, ta.0) })
+      let arg_types = list.map(args, fn(ta) { evaluate(env, ffi, ta.1) })
       let arg_pairs = list.map2(arg_vals, arg_types, fn(v, t) { #(v, t) })
 
       // Evaluate return type
-      let ret_type_val = evaluate(state, return_type)
+      let ret_type_val = evaluate(env, ffi, return_type)
 
       // Look up FFI entry
-      case lookup_ffi(state, name) {
+      case lookup_ffi_by_name(ffi, name) {
         Ok(FfiEntry(fn_name: _, impl: impl_fn)) ->
           case impl_fn(arg_pairs) {
             Some(result) -> result
@@ -163,9 +176,9 @@ pub fn evaluate(state: State, term: Term) -> Value {
     TypeDef(name: n, params: p, constructors: c, span: _) -> {
       // Evaluate params to values
       let value_params = list.map(p, fn(param) {
-        #(param.0, evaluate(state, param.1))
+        #(param.0, evaluate(env, ffi, param.1))
       })
-      let value_constructors = list.map(c, fn(ctor) { term_ctor_to_value(state, ctor) })
+      let value_constructors = list.map(c, fn(ctor) { term_ctor_to_value(env, ffi, ctor) })
       VTypeDef(name: n, params: value_params, constructors: value_constructors)
     }
     Fix(name, body, _) -> {
@@ -175,7 +188,6 @@ pub fn evaluate(state: State, term: Term) -> Value {
       // due to pattern variable shadowing) becomes Var(1) relative to the VLam's
       // parameter. This matches what infer_fix does.
       let shifted_body = shift_term_from(body, -1, 1)
-      let env = state_to_env(state)
       VFix(name, env, shifted_body)
     }
     Err(_, _) -> VErr
@@ -207,17 +219,17 @@ pub fn evaluate(state: State, term: Term) -> Value {
 /// let result = do_app(fn_val, arg_val)
 /// // result == VLam(#("x", VRcd([])), VLit(LitInt(42))) after force
 /// ```
-pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
+pub fn do_app(env: List(Value), ffi: List(FfiEntryType), fun_val: Value, arg_val: Value) -> Value {
   case fun_val {
     // β-reduction: substitute the argument for the lambda parameter, then
     // evaluate the body. The body's indices are already relative to this
     // lambda - no shift needed.
     // Use the VLam's env (outer variables) as the evaluation context, not the
-    // current state. The VLam env captures the free variables from the lambda's
+    // current env. The VLam env captures the free variables from the lambda's
     // defining scope.
     VLam(lam_env, implicits, #(_pname, param_type), body) -> {
       // Use the VLam's env (outer variables) as the evaluation context, not the
-      // current state. The VLam env captures the free variables from the lambda's
+      // current env. The VLam env captures the free variables from the lambda's
       // defining scope.
       // Check param_type (already a Value) for type-directed conversions
       let filled_arg = case param_type, arg_val {
@@ -251,7 +263,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
       // Substitute the argument for the lambda param at index n
       // Shift by n because implicit params occupy indices 0..n-1
       let substituted = subst_term_var(n, converted_arg, body)
-      evaluate(env_to_state(env_with_params, state.truth_ctr, state.ffi), substituted)
+      evaluate(env_with_params, ffi, substituted)
     }
     // VFix unroll: substitute the argument for Var(0) (Lambda param) and
     // the VFix for Var(1) (recursive ref), then evaluate.
@@ -280,7 +292,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
               let self = VFix(fix_name, fix_env, fix_body)
               let body_with_self = subst_term_var(1, self, body_with_arg)
               let env_with_arg = list.append([arg_val], fix_env)
-              evaluate(env_to_state(env_with_arg, state.truth_ctr, state.ffi), body_with_self)
+              evaluate(env_with_arg, ffi, body_with_self)
             }
             _ -> VErr
           }
@@ -308,9 +320,7 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
 /// in order. The first matching case body is evaluated (in the pattern-
 /// bound environment extended with the original state's variables).
 ///
-/// The `truth_ctr` parameter specifies the constructor name that
-/// represents truth in guards (e.g., `"True"`). A guard passes if it
-/// evaluates to `#<truth_ctr>(...)` - any other value is falsy.
+/// Guards check for `#True(...)` as the truth constructor.
 ///
 /// ## Example
 ///
@@ -325,7 +335,6 @@ pub fn do_app(state: State, fun_val: Value, arg_val: Value) -> Value {
 /// ```
 fn do_match(
   env: List(Value),
-  truth_ctr: String,
   ffi: List(FfiEntryType),
   scrutinee: Value,
   cases: List(Case),
@@ -346,16 +355,16 @@ fn do_match(
             case guard {
               Some(guard_term) -> {
                 let guard_val =
-                  evaluate(env_to_state(env_with_bindings, truth_ctr, ffi), guard_term)
-                case is_truth(truth_ctr, guard_val) {
-                  True -> evaluate(env_to_state(env_with_bindings, truth_ctr, ffi), body)
-                  False -> do_match(env, truth_ctr, ffi, scrutinee, rest, bindings)
+                  evaluate(env_with_bindings, ffi, guard_term)
+                case is_truth(guard_val) {
+                  True -> evaluate(env_with_bindings, ffi, body)
+                  False -> do_match(env, ffi, scrutinee, rest, bindings)
                 }
               }
-              None -> evaluate(env_to_state(env_with_bindings, truth_ctr, ffi), body)
+              None -> evaluate(env_with_bindings, ffi, body)
             }
           }
-          Error(Nil) -> do_match(env, truth_ctr, ffi, scrutinee, rest, bindings)
+          Error(Nil) -> do_match(env, ffi, scrutinee, rest, bindings)
         }
       }
     }
@@ -364,11 +373,10 @@ fn do_match(
 
 /// Check if a value matches the truth constructor.
 ///
-/// A guard evaluates to true if it produces a constructor whose tag
-/// matches the configured `truth_ctr` (e.g., `#True(...)`).
-pub fn is_truth(truth_ctr: String, value: Value) -> Bool {
+/// A guard evaluates to true if it produces a `#True(...)` constructor.
+pub fn is_truth(value: Value) -> Bool {
   case value {
-    VCtr(tag, _) -> tag == truth_ctr
+    VCtr("True", _) -> True
     _ -> False
   }
 }

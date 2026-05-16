@@ -500,7 +500,7 @@ pub fn infer_roundtrip_lit_int_test() {
   // Evaluate a literal, then infer its type
   let term = lit_int(42)
   let state = initial_state([])
-  let evaluated = evaluate(state, term)
+  let evaluated = evaluate([], [], term)
   let result = infer(state, term)
   let #(value, _, _) = result
   // Both should produce the same value
@@ -514,7 +514,7 @@ pub fn infer_roundtrip_lit_int_test() {
 pub fn infer_roundtrip_lit_float_test() {
   let term = lit_float(1.0)
   let state = initial_state([])
-  let evaluated = evaluate(state, term)
+  let evaluated = evaluate([], [], term)
   let result = infer(state, term)
   let #(value, _, _) = result
   assert case evaluated {
@@ -528,7 +528,7 @@ pub fn infer_roundtrip_lambda_test() {
   // Lambda evaluates to a VLam
   let lam = lam("x", lit_t_int(), var(0))
   let state = initial_state([])
-  let evaluated = evaluate(state, lam)
+  let evaluated = evaluate([], [], lam)
   let result = infer(state, lam)
   let #(value, type_, _) = result
   assert case evaluated {
@@ -1322,7 +1322,7 @@ pub fn infer_lambda_evaluates_to_vlam_test() {
   let body = var(0)
   let lam = lam("x", param_type, body)
   let state = initial_state([])
-  let evaluated = evaluate(state, lam)
+  let evaluated = evaluate([], [], lam)
   let #(value, _, _) = infer(state, lam)
   assert case evaluated {
     VLam(..) -> True
@@ -1340,7 +1340,7 @@ pub fn infer_pi_evaluates_to_vpi_test() {
   let codomain = lit_int(0)
   let pi = pi(domain, codomain)
   let state = initial_state([])
-  let evaluated = evaluate(state, pi)
+  let evaluated = evaluate([], [], pi)
   let #(value, _, _) = infer(state, pi)
   assert case evaluated {
     VPi(..) -> True
@@ -2143,7 +2143,7 @@ pub fn infer_vlam_implicit_param_with_annotation_test() {
   let source = "$let identity: $pi<a: $Type>(a) -> a = $fn<a: $Type>(x: a) => x\nidentity 42"
   let state = initial_state([])
   let #(_, _, _) = infer(state, term_to_debruijn(parse(source).0))
-  let value = evaluate(state, term_to_debruijn(parse(source).0))
+  let value = evaluate([], [], term_to_debruijn(parse(source).0))
   
   assert case value {
     VLit(LitInt(42)) -> True
@@ -2155,7 +2155,7 @@ pub fn infer_vlam_implicit_param_with_annotation_test() {
 /// Test: Implicit param with float argument
 pub fn infer_vlam_implicit_param_float_test() {
   let source = "$let identity = $fn<a: $Type>(x: a) => x\nidentity 3.14"
-  let value = evaluate(initial_state([]), term_to_debruijn(parse(source).0))
+  let value = evaluate([], [], term_to_debruijn(parse(source).0))
   
   assert case value {
     VLit(LitFloat(3.14)) -> True

@@ -36,34 +36,18 @@ pub type FfiEntry {
 /// * `errors` — Accumulated errors during type checking
 /// * `ffi` — FFI builtin definitions available at runtime
 /// * `hole_counter` — Next fresh hole ID
-/// * `truth_ctr` — Name of the truth constructor (e.g., "True") for guard evaluation
 pub type State {
   State(
     vars: List(#(String, #(Value, Value))),
     errors: List(Error),
     ffi: List(FfiEntry),
     hole_counter: Int,
-    truth_ctr: String,
   )
 }
 
 /// Create a fresh initial state.
-///
-/// The truth constructor defaults to `"True"` — any `#True(...)` value
-/// evaluates to truthy in guards. Set a different constructor via
-/// `with_truth_ctr` to configure the language semantics.
 pub fn initial_state(ffi: List(FfiEntry)) -> State {
-  State(vars: [], errors: [], ffi: ffi, hole_counter: 0, truth_ctr: "True")
-}
-
-/// Return the truth constructor name from the state.
-pub fn truth_ctr(state: State) -> String {
-  state.truth_ctr
-}
-
-/// Update the state with a different truth constructor name.
-pub fn with_truth_ctr(state: State, name: String) -> State {
-  State(..state, truth_ctr: name)
+  State(vars: [], errors: [], ffi: ffi, hole_counter: 0)
 }
 
 // ============================================================================
@@ -76,11 +60,10 @@ pub fn state_to_env(state: State) -> List(Value) {
   list.map(state.vars, fn(v) { v.1.0 })
 }
 
-/// Create a minimal state from an env, with given truth_ctr and FFI.
+/// Create a minimal state from an env and FFI.
 /// Used to rebuild a State for do_match_fn calls.
 pub fn env_to_state(
   env: List(Value),
-  truth_ctr: String,
   ffi: List(FfiEntry),
 ) -> State {
   let vars = list.index_map(env, fn(v, i) {
@@ -92,7 +75,6 @@ pub fn env_to_state(
     errors: [],
     ffi: ffi,
     hole_counter: 0,
-    truth_ctr: truth_ctr,
   )
 }
 

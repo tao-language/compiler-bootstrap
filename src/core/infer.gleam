@@ -481,7 +481,7 @@ fn infer_lam(
     #( [], state ),
     fn(acc, imp) {
       let #(acc_env, s) = acc
-      let ival = evaluate(s, imp.1)
+      let ival = evaluate(state_to_env(s), s.ffi, imp.1)
       let fresh_id = s.hole_counter
       let new_s = state.State(..s, hole_counter: fresh_id + 1)
       let hole = ast.VNeut(ast.HHole(fresh_id), [])
@@ -491,7 +491,7 @@ fn infer_lam(
   )
 
   // Add lambda param AFTER implicit params (so it's at index n)
-  let param_val = evaluate(implicit_state, param_type_term)
+  let param_val = evaluate(state_to_env(implicit_state), implicit_state.ffi, param_type_term)
   let bound_value = ast.VNeut(ast.HVar(n), [])
   let state_ext = state.State(
     ..implicit_state,
@@ -519,8 +519,8 @@ fn infer_pi(
 ) -> #(ast.Value, ast.Value, state.State) {
   let dom_name = domain.0
   let dom_term = domain.1
-  let dom_val = evaluate(state, dom_term)
-  let codom_val = evaluate(state, codomain)
+  let dom_val = evaluate(state_to_env(state), state.ffi, dom_term)
+  let codom_val = evaluate(state_to_env(state), state.ffi, codomain)
   let pi_type = ast.VPi([], [], #(dom_name, dom_val), codom_val)
   // Pi types are types, so their type is * (VTyp(0))
   #(pi_type, ast.VTyp(0), state)
@@ -540,7 +540,7 @@ fn infer_app(
       // Infer the argument to get its value and type
       let #(arg_val, arg_type, state2) = infer(state, arg)
       // Evaluate the parameter type to get the expected value type
-      let param_val = evaluate(state2, param_type)
+      let param_val = evaluate(state_to_env(state2), state2.ffi, param_type)
       // Fill in record defaults at the value level
       let filled_arg = fill_record_defaults_value(arg_val, param_val)
       // Int→Float conversion if param type is FloatT
@@ -578,7 +578,7 @@ fn infer_app(
             list.reverse(implicits),
             def_var(state2, param_name, updated_lam, arg_type),
             fn(s, imp) {
-              let ival = evaluate(s, imp.1)
+              let ival = evaluate(state_to_env(s), s.ffi, imp.1)
               // Use arg_type as the implicit param's VALUE
               def_var(s, imp.0, arg_type, ival)
             },
@@ -624,7 +624,7 @@ fn infer_app(
               // No implicit params: simple beta reduction
               // Extend env with converted_arg (lambda param value)
               let env_with_param = list.append(lam_env, [converted_arg])
-              let body_state = env_to_state(env_with_param, state3.truth_ctr, state3.ffi)
+              let body_state = env_to_state(env_with_param, state3.ffi)
               #(body, body_state)
             }
             [_, ..] -> {
@@ -666,7 +666,7 @@ fn infer_app(
               let self = ast.VFix(fix_name, fix_env, fix_body)
               let body_with_self = subst_term_var(1, self, body_with_arg)
               let env_with_arg = list.append([arg_val], fix_env)
-              let body_state = env_to_state(env_with_arg, state3.truth_ctr, state3.ffi)
+              let body_state = env_to_state(env_with_arg, state3.ffi)
               infer(body_state, body_with_self)
             }
             _ -> #(ast.VErr, ast.VErr, state3)
@@ -698,7 +698,7 @@ fn infer_ann(
   type_: ast.Term,
   _span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
-  let type_val = evaluate(state, type_)
+  let type_val = evaluate(state_to_env(state), state.ffi, type_)
   let #(value, _, state2) = check(state, inner, type_val)
   #(value, type_val, state2)
 }
@@ -801,12 +801,12 @@ fn infer_call(
   span: Span,
 ) -> #(ast.Value, ast.Value, state.State) {
   // Evaluate each (value_term, type_term) pair
-  let arg_vals = list.map(args, fn(ta) { evaluate(state, ta.0) })
-  let arg_types = list.map(args, fn(ta) { evaluate(state, ta.1) })
+  let arg_vals = list.map(args, fn(ta) { evaluate(state_to_env(state), state.ffi, ta.0) })
+  let arg_types = list.map(args, fn(ta) { evaluate(state_to_env(state), state.ffi, ta.1) })
   let arg_pairs = list.map2(arg_vals, arg_types, fn(v, t) { #(v, t) })
 
   // Evaluate return type
-  let ret_type_val = evaluate(state, return_type)
+  let ret_type_val = evaluate(state_to_env(state), state.ffi, return_type)
 
   case state.lookup_ffi(state, name) {
     Ok(FfiEntry(_fn_name, impl_fn)) ->
@@ -875,7 +875,7 @@ fn infer_rcd_type_fields(
     [#(name, field_type, default), ..rest] -> {
       let #(field_val, _, state2) = infer(state, field_type)
       let default_val = case default {
-        Some(d) -> Some(evaluate(state2, d))
+        Some(d) -> Some(evaluate(state_to_env(state2), state2.ffi, d))
         None -> None
       }
       infer_rcd_type_fields(
@@ -988,7 +988,7 @@ fn infer_type_def(
       let #(acc_bindings, s) = acc
       let fresh_id = s.hole_counter
       let new_state = state.State(..s, hole_counter: fresh_id + 1)
-      let _param_val = evaluate(new_state, p.1)
+      let _param_val = evaluate(state_to_env(new_state), new_state.ffi, p.1)
       let hole = ast.VNeut(ast.HHole(fresh_id), [])
       let updated_state = def_var(new_state, p.0, hole, hole)
       #([#(p.0, hole), ..acc_bindings], updated_state)
@@ -1025,7 +1025,7 @@ fn infer_type_def(
       },
     )
     // Evaluate self_type to a value (type params and @-bindings resolve to bound holes)
-    let self_type_val = evaluate(state_with_bindings, self_type_term)
+    let self_type_val = evaluate(state_to_env(state_with_bindings), state_with_bindings.ffi, self_type_term)
     // Keep result_type as a Term (not evaluated) so inference can evaluate it later
     #(tag, #(bindings, self_type_val, result_type_term), ctor_span)
   })
@@ -1145,8 +1145,8 @@ fn unify_infer_and_check(
       let _ = unified_value
       // Pass state vars to force so implicit param holes can be resolved
       let env = state_to_env(state2)
-      let forced = force(env, converted_value, dummy_do_match)
-      let forced_type = force(env, converted_type, dummy_do_match)
+      let forced = force(env, state2.ffi, converted_value, dummy_do_match)
+      let forced_type = force(env, state2.ffi, converted_type, dummy_do_match)
       #(forced, forced_type, state2)
     }
   }
@@ -1580,7 +1580,6 @@ fn apply_spine_to_value(v: ast.Value, spine: List(ast.Elim)) -> ast.Value {
 /// Never called in practice since type-level values don't have EMatch eliminators.
 fn dummy_do_match(
   _env: List(ast.Value),
-  _truth_ctr: String,
   _ffi: List(state.FfiEntry),
   _scrutinee: ast.Value,
   _cases: List(ast.Case),

@@ -50,10 +50,10 @@ import gleam/option.{None, Some}
 /// The `do_match_fn` callback is used for `EMatch` eliminators.
 pub fn force(
   env: List(Value),
+  ffi: List(FfiEntry),
   value: Value,
   do_match_fn: fn(
     List(Value),
-    String,
     List(FfiEntry),
     Value,
     List(ast.Case),
@@ -66,14 +66,14 @@ pub fn force(
         HHole(id) -> {
           // Look up hole by index in env (holes are stored as env[0], env[1], etc.)
           case list.drop(env, id) {
-            [v, ..] -> apply_spine(env, v, spine, do_match_fn)
+            [v, ..] -> apply_spine(env, v, spine, ffi, do_match_fn)
             [] -> value
           }
         }
         _ -> {
           let resolved = resolve_head(env, head)
           case resolved {
-            Ok(v) -> apply_spine(env, v, spine, do_match_fn)
+            Ok(v) -> apply_spine(env, v, spine, ffi, do_match_fn)
             Error(_) -> value
           }
         }
@@ -102,9 +102,9 @@ pub fn apply_spine(
   env: List(Value),
   value: Value,
   spine: List(Elim),
+  ffi: List(FfiEntry),
   do_match_fn: fn(
     List(Value),
-    String,
     List(FfiEntry),
     Value,
     List(ast.Case),
@@ -115,13 +115,13 @@ pub fn apply_spine(
     [] -> value
     [EMatch(_env, cases), ..rest] -> {
       // Use the do_match callback to properly resolve VFix and evaluate bodies
-      let match_result = do_match_fn(env, "", [], value, cases, [])
-      apply_spine(env, match_result, rest, do_match_fn)
+      let match_result = do_match_fn(env, ffi, value, cases, [])
+      apply_spine(env, match_result, rest, ffi, do_match_fn)
     }
     [EApp(arg), ..rest] -> {
       let forced_arg = arg
       case try_apply(value, forced_arg) {
-        Ok(new_val) -> apply_spine(env, new_val, rest, do_match_fn)
+        Ok(new_val) -> apply_spine(env, new_val, rest, ffi, do_match_fn)
         Error(_) -> make_neut(HVar(0))
       }
     }

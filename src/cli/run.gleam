@@ -132,7 +132,7 @@ pub fn check_source(source: Source) -> Nil {
   let result = execute(source)
   case result {
     Ok(value) -> {
-      let type_val = evaluate(initial_state([]), quote(value))
+      let type_val = evaluate([], [], quote(value))
       io.println("Result type: " <> format_type(type_val))
       cli_halt(0)
     }
