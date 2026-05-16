@@ -2243,3 +2243,155 @@ pub fn unify_type_pattern_hvar_binding_test() {
     _ -> False
   }
 }
+
+// ============================================================================
+// IMPLICIT ARGUMENT INFERENCE
+// ============================================================================
+
+/// Test: Let-bound polymorphic identity function with int argument.
+/// $let typeof = $fn<a: $Type>(x: a) => a in typeof 42
+/// The implicit type param <a> should be inferred as $Int from the argument.
+pub fn infer_let_poly_identity_int_test() {
+  // Build the polymorphic identity lambda: $fn<a: $Type>(x: a) => a
+  let param_type = var(1) // a (level 1 because a is in implicit_env)
+  let body = var(0)       // x
+  let implicits = [#("a", typ(0))] // a: $Type
+  let lam_value = Lam(implicits, #("x", param_type), body, sp())
+
+  // $let typeof = fn<a>(x: a) => a in typeof 42
+  // Desugars to: App(Lam([], #("typeof", unit), typeof 42), fn<a>(x: a) => a)
+  let let_body = app(var(0), lit_int(42))
+  let let_term = App(
+    Lam([], #("typeof", rcd([])), let_body, sp()),
+    lam_value,
+    sp(),
+  )
+
+  let result = infer(initial_state([]), let_term)
+  let #(value, type_, _) = result
+
+  // Value should be 42
+  assert value == lit_val(42)
+  // Type should be $Int (VLitT(IntT))
+  assert type_ == v_int(0)
+}
+
+/// Test: Let-bound polymorphic identity function with float argument.
+/// $let typeof = $fn<a: $Type>(x: a) => a in typeof 3.14
+/// The implicit type param <a> should be inferred as $Float.
+pub fn infer_let_poly_identity_float_test() {
+  let param_type = var(1)
+  let body = var(0)
+  let implicits = [#("a", typ(0))]
+  let lam_value = Lam(implicits, #("x", param_type), body, sp())
+
+  let let_body = app(var(0), lit_float(3.14))
+  let let_term = App(
+    Lam([], #("typeof", rcd([])), let_body, sp()),
+    lam_value,
+    sp(),
+  )
+
+  let result = infer(initial_state([]), let_term)
+  let #(value, type_, _) = result
+
+  assert value == VLit(LitFloat(3.14))
+  assert type_ == VLitT(FloatT)
+}
+
+/// Test: Direct application of polymorphic identity with int.
+/// ($fn<a: $Type>(x: a) => x) 42 should have type $Int.
+pub fn infer_direct_poly_identity_int_test() {
+  let param_type = var(1)
+  let body = var(0)
+  let implicits = [#("a", typ(0))]
+  let lam = Lam(implicits, #("x", param_type), body, sp())
+  let applied = app(lam, lit_int(42))
+
+  let result = infer(initial_state([]), applied)
+  let #(value, type_, _) = result
+
+  assert value == lit_val(42)
+  assert type_ == v_int(0)
+}
+
+/// Test: Direct application of polymorphic identity with float.
+/// ($fn<a: $Type>(x: a) => x) 3.14 should have type $Float.
+pub fn infer_direct_poly_identity_float_test() {
+  let param_type = var(1)
+  let body = var(0)
+  let implicits = [#("a", typ(0))]
+  let lam = Lam(implicits, #("x", param_type), body, sp())
+  let applied = app(lam, lit_float(3.14))
+
+  let result = infer(initial_state([]), applied)
+  let #(value, type_, _) = result
+
+  assert value == VLit(LitFloat(3.14))
+  assert type_ == VLitT(FloatT)
+}
+
+/// Test: Using the parser to define a typeof function and apply it.
+/// $let typeof = $fn<a: $Type>(x: a) => x; typeof 42
+/// The body returns x (the argument), with type a unified to $Int.
+pub fn infer_parser_poly_identity_int_test() {
+  // Use a semicolon to separate the let binding from the application
+  // Body is x (lambda param), not a (implicit param)
+  let source = "$let typeof = $fn<a: $Type>(x: a) => x; typeof 42"
+  let state = initial_state([])
+  let parsed = parse(source)
+  let error_count = list.length(parsed.1)
+  assert error_count == 0
+  let term = term_to_debruijn(parsed.0)
+  let result = infer(state, term)
+  let value = result.0
+  let type_ = result.1
+  let state_ = result.2
+  
+  assert state_.errors == []
+  assert value == VLit(LitInt(42))
+  assert type_ == VLitT(IntT)
+}
+
+/// Test: Using the parser with float argument.
+/// $let typeof = $fn<a: $Type>(x: a) => x; typeof 3.14
+pub fn infer_parser_poly_identity_float_test() {
+  let source = "$let typeof = $fn<a: $Type>(x: a) => x; typeof 3.14"
+  let state = initial_state([])
+  let parsed = parse(source)
+  let error_count = list.length(parsed.1)
+  assert error_count == 0
+  let term = term_to_debruijn(parsed.0)
+  let result = infer(state, term)
+  let value = result.0
+  let type_ = result.1
+  let state_ = result.2
+  
+  assert state_.errors == []
+  assert value == VLit(LitFloat(3.14))
+  assert type_ == VLitT(FloatT)
+}
+
+/// Test: Nested implicit parameters — identity function applied directly.
+/// $let id = $fn<a: $Type>(x: a) => a in id 42
+/// Tests that implicit params work through a single let-binding.
+pub fn infer_nested_implicit_param_test() {
+  let param_type = var(1)
+  let body = var(0)
+  let implicits = [#("a", typ(0))]
+  let lam_value = Lam(implicits, #("x", param_type), body, sp())
+
+  // $let id = fn<a>(x: a) => a in id 42
+  let let_term = App(
+    Lam([], #("id", rcd([])), app(var(0), lit_int(42)), sp()),
+    lam_value,
+    sp(),
+  )
+
+  let result = infer(initial_state([]), let_term)
+  let #(value, type_, _) = result
+
+  // The type should be $Int
+  assert value == lit_val(42)
+  assert type_ == v_int(0)
+}
