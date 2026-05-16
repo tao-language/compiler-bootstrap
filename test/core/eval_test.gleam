@@ -521,11 +521,11 @@ pub fn eval_call_with_ffi_test() {
       _ -> None
     }
   }
-  let state = initial_state([FfiEntry("double", ffi_fn)])
+  let ffi = [FfiEntry("double", ffi_fn)]
   let arg = #(Lit(LitInt(42), single("", 1, 1)), Typ(0, single("", 1, 1)))
   let call =
     Call("double", [arg], Typ(0, single("", 1, 1)), single("", 1, 1))
-  let value = evaluate([], [], call)
+  let value = evaluate([], ffi, call)
   assert value == VLit(LitInt(99))
 }
 
@@ -857,10 +857,10 @@ pub fn eval_call_evaluates_args_first_test() {
     }
   }
   // Use a simpler arg - just a literal
-  let state = initial_state([FfiEntry("echo", ffi_fn)])
+  let ffi = [FfiEntry("echo", ffi_fn)]
   let arg = #(Lit(LitInt(99), single("", 1, 1)), Typ(0, single("", 1, 1)))
   let call = Call("echo", [arg], Typ(0, single("", 1, 1)), single("", 1, 1))
-  let value = evaluate([], [], call)
+  let value = evaluate([], ffi, call)
   assert value == VLit(LitInt(99))
 }
 
@@ -905,11 +905,8 @@ pub fn is_truth_rejects_non_constructor_values_test() {
   assert is_truth(VPi([], [], #("pi_param", VLit(LitInt(0))), VNeut(HVar(0), []))) == False
 }
 
-pub fn is_truth_configurable_constructor_test() {
-  // Language can configure "MyTrue" as the truth constructor
-  assert is_truth(VCtr("MyTrue", VRcd([]))) == True
-  assert is_truth(VCtr("True", VRcd([]))) == False
-}
+// Placeholder: configurable truth_ctr removed - hardcoded to "True"
+// These tests will be updated when guards are re-implemented
 
 // Placeholder: truth_ctr tests removed - hardcoded to "True"
 // These tests will be updated when guards are re-implemented
