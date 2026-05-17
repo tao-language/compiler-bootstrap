@@ -8,8 +8,8 @@
 import gleam/float
 import gleam/int
 import gleam/list
-import gleam/string
 import gleam/option.{type Option, None, Some}
+import gleam/string
 import syntax/span.{type Span, single}
 
 // ============================================================================
@@ -51,47 +51,37 @@ pub type LiteralType {
 /// Terms use De Bruijn indices: Var(0) refers to the innermost
 /// enclosing binder, Var(1) to the one before that, etc.
 pub type Term {
-  Var(index: Int, span: Span)
+  Typ(universe: Int, span: Span)
   Hole(id: Int, span: Span)
-  Lam(
-    implicits: List(#(String, Term)),
-    param: #(String, Term),
-    body: Term,
-    span: Span,
-  )
-  App(fun: Term, arg: Term, span: Span)
-  Pi(
-    implicits: List(#(String, Term)),
-    domain: #(String, Term),
-    codomain: Term,
-    span: Span,
-  )
   Lit(value: Literal, span: Span)
+  LitT(typ: LiteralType, span: Span)
+  Var(index: Int, span: Span)
   Ctr(tag: String, arg: Term, span: Span)
-  Match(arg: Term, cases: List(Case), span: Span)
-  Ann(term: Term, type_: Term, span: Span)
-  /// FFI builtin call: `%name(arg1: T1, arg2: T2, ...) -> ReturnType`
-  /// `args` are (value, type) pairs for each argument.
-  Call(
-    name: String,
-    args: List(#(Term, Term)),
-    return_type: Term,
-    span: Span,
-  )
   Rcd(fields: List(#(String, Term)), span: Span)
   RcdT(fields: List(#(String, Term, Option(Term))), span: Span)
-  Typ(universe: Int, span: Span)
-  /// Literal type annotations: $Int, $Float, $I32, $F64, etc.
-  LitT(t: LiteralType, span: Span)
+  Call(name: String, args: List(#(Term, Term)), return_type: Term, span: Span)
   TypeDef(
     name: String,
     params: List(#(String, Term)),
     constructors: List(#(String, #(List(String), Term, Term), Span)),
     span: Span,
   )
-  /// Fixpoint: recursive function via Y combinator
-  /// $fix(name) => body - desugars to a recursive lambda
+  Ann(term: Term, type_: Term, span: Span)
+  Lam(
+    implicits: List(#(String, Term)),
+    param: #(String, Term),
+    body: Term,
+    span: Span,
+  )
+  Pi(
+    implicits: List(#(String, Term)),
+    domain: #(String, Term),
+    codomain: Term,
+    span: Span,
+  )
   Fix(name: String, body: Term, span: Span)
+  App(fun: Term, arg: Term, span: Span)
+  Match(arg: Term, cases: List(Case), span: Span)
   Err(message: String, span: Span)
 }
 
@@ -156,17 +146,14 @@ pub type NamedTerm {
   )
   /// Syntax sugar: `$fix name. body` — desugars to App(Lam(name, _, body), value)
   /// The body is a lambda that receives the recursive reference as its first parameter.
-  NamedFix(
-    name: String,
-    body: NamedTerm,
-    span: Span,
-  )
+  NamedFix(name: String, body: NamedTerm, span: Span)
 }
 
 /// Named case in a match expression.
 pub type NamedCase {
   NamedCase(
-    pattern: Pattern,  // Patterns already use named variables
+    pattern: Pattern,
+    // Patterns already use named variables
     guard: Option(NamedTerm),
     body: NamedTerm,
     span: Span,
@@ -246,18 +233,10 @@ pub type Value {
   VLitT(t: LiteralType)
   /// Deferred FFI call - FFI returned None (not concrete enough), carry forward
   /// for runtime evaluation.
-  VCall(
-    name: String,
-    args: List(#(Value, Value)),
-    return_type: Value,
-  )
+  VCall(name: String, args: List(#(Value, Value)), return_type: Value)
   /// Fixpoint value - when applied, unrolls the fix body with the VFix
   /// itself extended into the environment for recursive calls.
-  VFix(
-    name: String,
-    env: Env,
-    body: Term,
-  )
+  VFix(name: String, env: Env, body: Term)
   VErr
 }
 
@@ -312,13 +291,15 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
     VRcd(fields) ->
       VRcd(list.map(fields, fn(f) { #(f.0, subst(type_args, f.1)) }))
     VRcdT(fields) ->
-      VRcdT(list.map(fields, fn(f) {
-        let new_default = case f.2 {
-          Some(d) -> Some(subst(type_args, d))
-          None -> None
-        }
-        #(f.0, subst(type_args, f.1), new_default)
-      }))
+      VRcdT(
+        list.map(fields, fn(f) {
+          let new_default = case f.2 {
+            Some(d) -> Some(subst(type_args, d))
+            None -> None
+          }
+          #(f.0, subst(type_args, f.1), new_default)
+        }),
+      )
     VCall(name, args, return_type) ->
       VCall(
         name,
@@ -327,7 +308,8 @@ pub fn subst(type_args: List(Value), v: Value) -> Value {
       )
     VFix(name, env, body) ->
       VFix(name, list.map(env, fn(v) { subst(type_args, v) }), body)
-    VTypeDef(name: n, params: p, constructors: c) -> VTypeDef(name: n, params: p, constructors: c)
+    VTypeDef(name: n, params: p, constructors: c) ->
+      VTypeDef(name: n, params: p, constructors: c)
     VTyp(level) -> VTyp(level)
     VLitT(ltype) -> VLitT(ltype)
     VErr -> VErr
@@ -339,38 +321,70 @@ pub fn subst_term(type_args: List(Value), t: Term) -> Term {
   case t {
     Var(index, span) -> Var(index, span)
     Hole(id, span) -> Hole(id, span)
-    Lam(implicits, param, body, span) -> Lam(implicits, param, subst_term(type_args, body), span)
-    App(fun, arg, span) -> App(subst_term(type_args, fun), subst_term(type_args, arg), span)
-    Pi(implicits, domain, codomain, span) -> Pi(
-      implicits,
-      #(domain.0, subst_term(type_args, domain.1)),
-      subst_term(type_args, codomain),
-      span,
-    )
+    Lam(implicits, param, body, span) ->
+      Lam(implicits, param, subst_term(type_args, body), span)
+    App(fun, arg, span) ->
+      App(subst_term(type_args, fun), subst_term(type_args, arg), span)
+    Pi(implicits, domain, codomain, span) ->
+      Pi(
+        implicits,
+        #(domain.0, subst_term(type_args, domain.1)),
+        subst_term(type_args, codomain),
+        span,
+      )
     Lit(value, span) -> Lit(value, span)
     Ctr(tag, arg, span) -> Ctr(tag, subst_term(type_args, arg), span)
-    Match(arg, cases, span) -> Match(subst_term(type_args, arg), list.map(cases, fn(c) {
-      let new_guard = case c.guard {
-        None -> None
-        Some(g) -> Some(subst_term(type_args, g))
-      }
-      Case(c.pattern, new_guard, subst_term(type_args, c.body), c.span)
-    }), span)
-    Ann(term, type_, span) -> Ann(subst_term(type_args, term), subst_term(type_args, type_), span)
-    Call(name, args, return_type, span) -> Call(name, list.map(args, fn(a) { #(subst_term(type_args, a.0), subst_term(type_args, a.1)) }), subst_term(type_args, return_type), span)
-    Rcd(fields, span) -> Rcd(list.map(fields, fn(f) { #(f.0, subst_term(type_args, f.1)) }), span)
-    RcdT(fields, span) -> RcdT(list.map(fields, fn(f) {
-      let new_default = case f.2 {
-        None -> None
-        Some(d) -> Some(subst_term(type_args, d))
-      }
-      #(f.0, subst_term(type_args, f.1), new_default)
-    }), span)
+    Match(arg, cases, span) ->
+      Match(
+        subst_term(type_args, arg),
+        list.map(cases, fn(c) {
+          let new_guard = case c.guard {
+            None -> None
+            Some(g) -> Some(subst_term(type_args, g))
+          }
+          Case(c.pattern, new_guard, subst_term(type_args, c.body), c.span)
+        }),
+        span,
+      )
+    Ann(term, type_, span) ->
+      Ann(subst_term(type_args, term), subst_term(type_args, type_), span)
+    Call(name, args, return_type, span) ->
+      Call(
+        name,
+        list.map(args, fn(a) {
+          #(subst_term(type_args, a.0), subst_term(type_args, a.1))
+        }),
+        subst_term(type_args, return_type),
+        span,
+      )
+    Rcd(fields, span) ->
+      Rcd(list.map(fields, fn(f) { #(f.0, subst_term(type_args, f.1)) }), span)
+    RcdT(fields, span) ->
+      RcdT(
+        list.map(fields, fn(f) {
+          let new_default = case f.2 {
+            None -> None
+            Some(d) -> Some(subst_term(type_args, d))
+          }
+          #(f.0, subst_term(type_args, f.1), new_default)
+        }),
+        span,
+      )
     Typ(universe, span) -> Typ(universe, span)
     LitT(t, span) -> LitT(t, span)
-    TypeDef(name, params, constructors, span) -> TypeDef(name, params, list.map(constructors, fn(c) {
-      #(c.0, #(c.1.0, subst_term(type_args, c.1.1), subst_term(type_args, c.1.2)), c.2)
-    }), span)
+    TypeDef(name, params, constructors, span) ->
+      TypeDef(
+        name,
+        params,
+        list.map(constructors, fn(c) {
+          #(
+            c.0,
+            #(c.1.0, subst_term(type_args, c.1.1), subst_term(type_args, c.1.2)),
+            c.2,
+          )
+        }),
+        span,
+      )
     Fix(name, body, span) -> Fix(name, subst_term(type_args, body), span)
     Err(message, span) -> Err(message, span)
   }
@@ -553,12 +567,21 @@ pub fn shift_term_from(term: Term, shift: Int, from: Int) -> Term {
         case c {
           #(tag, #(bindings, self_ty, result), s) -> #(
             tag,
-            #(bindings, shift_term_from(self_ty, shift, from), shift_term_from(result, shift, from)),
+            #(
+              bindings,
+              shift_term_from(self_ty, shift, from),
+              shift_term_from(result, shift, from),
+            ),
             s,
           )
         }
       }
-      TypeDef(name: n, params: params, constructors: list.map(cons, shift_cons), span: s)
+      TypeDef(
+        name: n,
+        params: params,
+        constructors: list.map(cons, shift_cons),
+        span: s,
+      )
     }
     Err(msg, span) -> Err(msg, span)
     Fix(name, body, span) -> Fix(name, shift_term_from(body, shift, from), span)
@@ -571,7 +594,11 @@ pub fn list_index_of(list: List(String), value: String) -> Option(Int) {
   list_index_of_acc(list, value, 0)
 }
 
-fn list_index_of_acc(list: List(String), value: String, acc: Int) -> Option(Int) {
+fn list_index_of_acc(
+  list: List(String),
+  value: String,
+  acc: Int,
+) -> Option(Int) {
   case list {
     [] -> None
     [first, ..rest] ->
@@ -629,7 +656,6 @@ fn collect_pattern_vars(pattern: Pattern) -> List(String) {
   }
 }
 
-
 fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
   case nt {
     NamedVar(name, span) -> {
@@ -647,9 +673,8 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
       // Extract implicit param names for env building
       let implicit_names = list.map(implicits, fn(i) { i.0 })
       // Convert implicits in current env
-      let implicits_debruijn = list.map(implicits, fn(i) {
-        #(i.0, named_term_to_debruijn(i.1, env))
-      })
+      let implicits_debruijn =
+        list.map(implicits, fn(i) { #(i.0, named_term_to_debruijn(i.1, env)) })
       // Convert param_type with implicit params in scope (e.g., x: a where a is implicit)
       let param_env = list.append(implicit_names, env)
       let param_type_debruijn = named_term_to_debruijn(param_type, param_env)
@@ -662,9 +687,8 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
 
     NamedPi(implicits, #(name, domain), codomain, span) -> {
       let implicit_names = list.map(implicits, fn(i) { i.0 })
-      let implicits_debruijn = list.map(implicits, fn(i) {
-        #(i.0, named_term_to_debruijn(i.1, env))
-      })
+      let implicits_debruijn =
+        list.map(implicits, fn(i) { #(i.0, named_term_to_debruijn(i.1, env)) })
       // Domain is converted with name in scope (for $pi(a) -> a style)
       // Codomain is converted with implicit params + name in scope
       let domain_env = [name, ..env]
@@ -678,7 +702,7 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
       App(
         named_term_to_debruijn(fun, env),
         named_term_to_debruijn(arg, env),
-        span
+        span,
       )
     }
 
@@ -689,7 +713,7 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
     NamedRcd(fields, span) -> {
       Rcd(
         list.map(fields, fn(f) { #(f.0, named_term_to_debruijn(f.1, env)) }),
-        span
+        span,
       )
     }
 
@@ -702,7 +726,7 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
           }
           #(f.0, named_term_to_debruijn(f.1, env), default_debruijn)
         }),
-        span
+        span,
       )
     }
 
@@ -710,7 +734,7 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
       Ann(
         named_term_to_debruijn(term, env),
         named_term_to_debruijn(type_, env),
-        span
+        span,
       )
     }
 
@@ -718,7 +742,10 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
       Call(
         name,
         list.map(args, fn(ta) {
-          #(named_term_to_debruijn(ta.0, env), named_term_to_debruijn(ta.1, env))
+          #(
+            named_term_to_debruijn(ta.0, env),
+            named_term_to_debruijn(ta.1, env),
+          )
         }),
         named_term_to_debruijn(return_type, env),
         span,
@@ -727,24 +754,24 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
 
     NamedMatch(arg, cases, span) -> {
       let arg_debruijn = named_term_to_debruijn(arg, env)
-      let cases_debruijn = list.map(cases, fn(c) {
-        // Extract pattern-bound variables and add them to the env
-        let pattern_vars = collect_pattern_vars(c.pattern)
-        let env_with_patterns = list.append(pattern_vars, env)
-        let guard_debruijn = case c.guard {
-          Some(g) -> Some(named_term_to_debruijn(g, env_with_patterns))
-          None -> None
-        }
-        let body_debruijn = named_term_to_debruijn(c.body, env_with_patterns)
-        Case(c.pattern, guard_debruijn, body_debruijn, c.span)
-      })
+      let cases_debruijn =
+        list.map(cases, fn(c) {
+          // Extract pattern-bound variables and add them to the env
+          let pattern_vars = collect_pattern_vars(c.pattern)
+          let env_with_patterns = list.append(pattern_vars, env)
+          let guard_debruijn = case c.guard {
+            Some(g) -> Some(named_term_to_debruijn(g, env_with_patterns))
+            None -> None
+          }
+          let body_debruijn = named_term_to_debruijn(c.body, env_with_patterns)
+          Case(c.pattern, guard_debruijn, body_debruijn, c.span)
+        })
       Match(arg_debruijn, cases_debruijn, span)
     }
 
     NamedTypeDef(name, params, constructors, span) -> {
-      let params_debruijn = list.map(params, fn(p) {
-        #(p.0, named_term_to_debruijn(p.1, env))
-      })
+      let params_debruijn =
+        list.map(params, fn(p) { #(p.0, named_term_to_debruijn(p.1, env)) })
       // Add type parameter names to the env for self_ty and result conversion.
       // Note: We do NOT include the TypeDef name in the env - it's not a
       // variable reference in self_ty/result, so it would just shift indices.
@@ -778,7 +805,7 @@ fn named_term_to_debruijn(nt: NamedTerm, env: List(String)) -> Term {
       App(
         Lam([], #(name, param_type_debruijn), body_debruijn, span),
         value_debruijn,
-        span
+        span,
       )
     }
 
@@ -871,7 +898,7 @@ pub fn term_to_string(term: Term) -> String {
       <> name
       <> "<"
       <> term_to_string(return_type)
-      <> ">(" 
+      <> ">("
       <> list.fold(args, "", fn(acc, ta) {
         let arg_str = term_to_string(ta.0) <> ": " <> term_to_string(ta.1)
         case acc {
@@ -881,14 +908,14 @@ pub fn term_to_string(term: Term) -> String {
       })
       <> ")"
     Rcd(fields, _) ->
-        "{"
-        <> list.fold(fields, "", fn(acc, f) {
-          case acc {
-            "" -> f.0 <> ": " <> term_to_string(f.1)
-            _ -> acc <> ", " <> f.0 <> ": " <> term_to_string(f.1)
-          }
-        })
-        <> "}"
+      "{"
+      <> list.fold(fields, "", fn(acc, f) {
+        case acc {
+          "" -> f.0 <> ": " <> term_to_string(f.1)
+          _ -> acc <> ", " <> f.0 <> ": " <> term_to_string(f.1)
+        }
+      })
+      <> "}"
     RcdT(fields, _) ->
       "${"
       <> list.fold(fields, "", fn(acc, f) {
@@ -909,9 +936,8 @@ pub fn term_to_string(term: Term) -> String {
       let params_str = case params {
         [] -> ""
         _ -> {
-          let params_strs = list.map(params, fn(p) {
-            p.0 <> ": " <> term_to_string(p.1)
-          })
+          let params_strs =
+            list.map(params, fn(p) { p.0 <> ": " <> term_to_string(p.1) })
           "<" <> string.join(params_strs, ", ") <> "> "
         }
       }
@@ -923,12 +949,15 @@ pub fn term_to_string(term: Term) -> String {
         let #(tag, #(bindings, self_ty, return_type), span) = c
         let bindings_str = case bindings {
           [] -> ""
-          _ -> "@" <> list.fold(bindings, "", fn(a, b) {
-            case a {
-              "" -> b
-              _ -> a <> " " <> b
-            }
-          }) <> ". "
+          _ ->
+            "@"
+            <> list.fold(bindings, "", fn(a, b) {
+              case a {
+                "" -> b
+                _ -> a <> " " <> b
+              }
+            })
+            <> ". "
         }
         case acc {
           "" ->
@@ -955,8 +984,7 @@ pub fn term_to_string(term: Term) -> String {
       <> " }"
     }
     Err(msg, _) -> "\"" <> msg <> "\""
-    Fix(name, body, _) ->
-      "$fix " <> name <> ". " <> term_to_string(body)
+    Fix(name, body, _) -> "$fix " <> name <> ". " <> term_to_string(body)
   }
 }
 
@@ -1077,28 +1105,59 @@ pub fn value_to_string(value: Value) -> String {
     VTypeDef(name: n, params: p, constructors: c) -> {
       let params_str = case p {
         [] -> ""
-        _ -> "<" <> string.join(list.map(p, fn(p) { p.0 <> ": " <> value_to_string(p.1) }), ", ") <> ">" <> " "
+        _ ->
+          "<"
+          <> string.join(
+            list.map(p, fn(p) { p.0 <> ": " <> value_to_string(p.1) }),
+            ", ",
+          )
+          <> ">"
+          <> " "
       }
       let cons_str = case c {
         [] -> ""
-        _ -> "{ " <> list.fold(c, "", fn(acc, ctor) {
-          let #(tag, #(bindings, arg_type, return_type), span) = ctor
-          let ctor_str = case acc {
-            "" -> "#" <> tag <> "(" <> value_to_string(arg_type) <> " -> " <> term_to_string(return_type) <> ")"
-            _ -> ", #" <> tag <> "(" <> value_to_string(arg_type) <> " -> " <> term_to_string(return_type) <> ")"
-          }
-          acc <> ctor_str
-        }) <> " }"
+        _ ->
+          "{ "
+          <> list.fold(c, "", fn(acc, ctor) {
+            let #(tag, #(bindings, arg_type, return_type), span) = ctor
+            let ctor_str = case acc {
+              "" ->
+                "#"
+                <> tag
+                <> "("
+                <> value_to_string(arg_type)
+                <> " -> "
+                <> term_to_string(return_type)
+                <> ")"
+              _ ->
+                ", #"
+                <> tag
+                <> "("
+                <> value_to_string(arg_type)
+                <> " -> "
+                <> term_to_string(return_type)
+                <> ")"
+            }
+            acc <> ctor_str
+          })
+          <> " }"
       }
       "<VTypeDef " <> n <> params_str <> cons_str <> ">"
     }
     VTyp(level) -> "$Type<" <> int.to_string(level) <> ">"
     VLitT(ltype) -> literal_type_to_string(ltype)
     VCall(name, args, return_type) -> {
-      let arg_strs = list.map(args, fn(a) {
-        value_to_string(a.0) <> ": " <> value_to_string(a.1)
-      })
-      "VCall(" <> name <> "(" <> string.join(arg_strs, ", ") <> ") -> " <> value_to_string(return_type) <> ")"
+      let arg_strs =
+        list.map(args, fn(a) {
+          value_to_string(a.0) <> ": " <> value_to_string(a.1)
+        })
+      "VCall("
+      <> name
+      <> "("
+      <> string.join(arg_strs, ", ")
+      <> ") -> "
+      <> value_to_string(return_type)
+      <> ")"
     }
     VFix(name, _env, body) ->
       "VFix(" <> name <> " => " <> term_to_string(body) <> ")"
@@ -1124,15 +1183,15 @@ pub fn literal_type_to_string(type_: LiteralType) -> String {
   }
 }
 
-
 fn neut_head_to_string(head: Head) -> String {
   case head {
     HVar(level) -> "v" <> int.to_string(level)
     HHole(id) -> "?" <> int.to_string(id)
-    HFix(vfix) -> case vfix {
-      VFix(name, _, _) -> "$fix " <> name
-      _ -> "$fix ?"
-    }
+    HFix(vfix) ->
+      case vfix {
+        VFix(name, _, _) -> "$fix " <> name
+        _ -> "$fix ?"
+      }
   }
 }
 
@@ -1142,9 +1201,16 @@ fn neut_to_string(head: Head, spine: List(Elim)) -> String {
     list.fold(spine, "", fn(acc, e) {
       let s = case e {
         EApp(arg) -> "(" <> value_to_string(arg) <> ")"
-        EMatch(_env, cases) -> " {" <> list.fold(cases, "", fn(acc, c) {
-          acc <> " | " <> pattern_to_string(c.pattern) <> " => " <> term_to_string(c.body)
-        }) <> " }"
+        EMatch(_env, cases) ->
+          " {"
+          <> list.fold(cases, "", fn(acc, c) {
+            acc
+            <> " | "
+            <> pattern_to_string(c.pattern)
+            <> " => "
+            <> term_to_string(c.body)
+          })
+          <> " }"
       }
       acc <> s
     })
