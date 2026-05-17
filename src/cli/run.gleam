@@ -165,12 +165,12 @@ pub fn execute(source: Source) -> Result(Value, List(String)) {
       }
 
       let state = initial_state([])
-      let #(value, _, final_state) = infer(state, term)
+      let #(result_term, _, final_state) = infer(state, term)
       let type_errors = format_state_errors(final_state.errors)
       let all_errors = list.append(all_errors, type_errors)
 
       case all_errors {
-        [] -> Ok(value)
+        [] -> Ok(evaluate([], [], result_term))
         errs -> Error(errs)
       }
     }

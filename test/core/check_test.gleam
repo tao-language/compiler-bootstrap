@@ -80,7 +80,7 @@ pub fn check_bool_true_test() {
   let state = initial_state([])
   let term = Ctr("True", Lit(LitInt(0), single("", 0, 0)), single("", 0, 0))
   let expected = VCtr("Bool", v_neut(0))
-  let #(value, type_, _) = check(state, term, expected)
+  let #(result_term, type_, _) = check(state, term, expected)
   // Should succeed - True is a valid Bool constructor
   assert type_ != VErr
 }
@@ -90,7 +90,7 @@ pub fn check_bool_false_test() {
   let state = initial_state([])
   let term = Ctr("False", Lit(LitInt(0), single("", 0, 0)), single("", 0, 0))
   let expected = VCtr("Bool", v_neut(0))
-  let #(value, type_, _) = check(state, term, expected)
+  let #(result_term, type_, _) = check(state, term, expected)
   // Should succeed - False is a valid Bool constructor
   assert type_ != VErr
 }
@@ -100,9 +100,9 @@ pub fn check_bool_wrong_constructor_test() {
   let state = initial_state([])
   let term = Ctr("Wrong", Lit(LitInt(0), single("", 0, 0)), single("", 0, 0))
   let expected = VCtr("Bool", v_neut(0))
-  let #(value, type_, new_state) = check(state, term, expected)
+  let #(result_term, type_, new_state) = check(state, term, expected)
   // Should fail - Wrong is not a valid Bool constructor
-  assert value == VErr || list.length(new_state.errors) >= 1
+  assert result_term == ast.Err("", single("", 0, 0)) || list.length(new_state.errors) >= 1
 }
 
 // ============================================================================
@@ -114,7 +114,7 @@ pub fn check_option_some_test() {
   let state = initial_state([])
   let term = Ctr("Some", Ctr("Int", Lit(LitInt(42), single("", 0, 0)), single("", 0, 0)), single("", 0, 0))
   let expected = VCtr("Option", VLitT(IntT))
-  let #(value, type_, _) = check(state, term, expected)
+  let #(result_term, type_, _) = check(state, term, expected)
   // Should succeed - Some is a valid Option constructor
   assert type_ != VErr
 }
@@ -124,7 +124,7 @@ pub fn check_option_none_test() {
   let state = initial_state([])
   let term = Ctr("None", Lit(LitInt(0), single("", 0, 0)), single("", 0, 0))
   let expected = VCtr("Option", VLitT(IntT))
-  let #(value, type_, _) = check(state, term, expected)
+  let #(result_term, type_, _) = check(state, term, expected)
   // Should succeed - None is a valid Option constructor
   assert type_ != VErr
 }
@@ -134,9 +134,9 @@ pub fn check_option_wrong_constructor_test() {
   let state = initial_state([])
   let term = Ctr("Wrong", Lit(LitInt(0), single("", 0, 0)), single("", 0, 0))
   let expected = VCtr("Option", VLitT(IntT))
-  let #(value, type_, new_state) = check(state, term, expected)
+  let #(result_term, type_, new_state) = check(state, term, expected)
   // Should fail - Wrong is not a valid Option constructor
-  assert value == VErr || list.length(new_state.errors) >= 1
+  assert result_term == ast.Err("", single("", 0, 0)) || list.length(new_state.errors) >= 1
 }
 
 // ============================================================================
@@ -148,7 +148,7 @@ pub fn check_list_cons_test() {
   let state = initial_state([])
   let term = Ctr("Cons", Ctr("Int", Lit(LitInt(42), single("", 0, 0)), single("", 0, 0)), single("", 0, 0))
   let expected = VCtr("List", VLitT(IntT))
-  let #(value, type_, _) = check(state, term, expected)
+  let #(result_term, type_, _) = check(state, term, expected)
   // Should succeed - Cons is a valid List constructor
   assert type_ != VErr
 }
@@ -158,7 +158,7 @@ pub fn check_list_nil_test() {
   let state = initial_state([])
   let term = Ctr("Nil", Lit(LitInt(0), single("", 0, 0)), single("", 0, 0))
   let expected = VCtr("List", VLitT(IntT))
-  let #(value, type_, _) = check(state, term, expected)
+  let #(result_term, type_, _) = check(state, term, expected)
   // Should succeed - Nil is a valid List constructor
   assert type_ != VErr
 }
@@ -168,9 +168,9 @@ pub fn check_list_wrong_constructor_test() {
   let state = initial_state([])
   let term = Ctr("Wrong", Lit(LitInt(0), single("", 0, 0)), single("", 0, 0))
   let expected = VCtr("List", VLitT(IntT))
-  let #(value, type_, new_state) = check(state, term, expected)
+  let #(result_term, type_, new_state) = check(state, term, expected)
   // Should fail - Wrong is not a valid List constructor
-  assert value == VErr || list.length(new_state.errors) >= 1
+  assert result_term == ast.Err("", single("", 0, 0)) || list.length(new_state.errors) >= 1
 }
 
 // ============================================================================
