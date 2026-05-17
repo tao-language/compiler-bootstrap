@@ -85,10 +85,10 @@ pub fn run(expression: String, trace_parser: Bool, trace_infer: Bool) -> Nil {
 
   // Step 5: Type inference
   let state = initial_state(ffi_entries())
-  let #(value, inferred_type, final_state) = infer(state, term)
+  let #(result_term, inferred_type, final_state) = infer(state, term)
 
   // Step 6: Evaluate (normalize) with FFI
-  let eval_result = evaluate([], ffi_entries(), term)
+  let eval_result = evaluate([], ffi_entries(), result_term)
   io.println("\n=== EVALUATION ===")
   io.println("  Result: " <> eval_value_to_string(eval_result))
 
@@ -96,7 +96,6 @@ pub fn run(expression: String, trace_parser: Bool, trace_infer: Bool) -> Nil {
   case final_state.errors {
     [] -> {
       io.println("\n=== INFERENCE ===")
-      io.println("  Value: " <> eval_value_to_string(value))
       io.println("  Type:  " <> eval_value_to_string(inferred_type))
       io.println("  Errors: " <> int.to_string(list.length(final_state.errors)))
       io.println("\n=== ERRORS ===")
@@ -104,7 +103,6 @@ pub fn run(expression: String, trace_parser: Bool, trace_infer: Bool) -> Nil {
     }
     errs -> {
       io.println("\n=== INFERENCE ===")
-      io.println("  Value: " <> eval_value_to_string(value))
       io.println("  Type:  " <> eval_value_to_string(inferred_type))
       io.println("  Errors: " <> int.to_string(list.length(final_state.errors)))
       io.println("\n=== ERRORS ===")
@@ -155,9 +153,9 @@ fn trace_infer_detailed(state: State, term: Term) -> Nil {
   io.println("\n=== INFERENCE DETAILED TRACE ===")
   io.println("\nTerm: " <> term_to_string(term))
   
-  let #(value, inferred_type, final_state) = infer(state, term)
+  let #(result_term, inferred_type, final_state) = infer(state, term)
   io.println("\nInference result:")
-  io.println("  Value: " <> eval_value_to_string(value))
+  io.println("  Result term: " <> term_to_string(result_term))
   io.println("  Type:  " <> eval_value_to_string(inferred_type))
   io.println("  Errors: " <> int.to_string(list.length(final_state.errors)))
   
