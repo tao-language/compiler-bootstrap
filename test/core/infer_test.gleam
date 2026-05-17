@@ -29,7 +29,6 @@ const s7 = Span("infer_test", 7, 7, 7, 7)
 
 const s8 = Span("infer_test", 8, 8, 8, 8)
 
-// Typ
 pub fn infer_typ0_test() {
   let term = ast.Typ(0, s0)
   let #(result, type_, state) = infer(new_state, term)
@@ -46,26 +45,24 @@ pub fn infer_typ1_test() {
   assert state == new_state
 }
 
-// Hole
 pub fn infer_hole_concrete_test() {
-  let new_state = State(vars: [], errors: [], ffi: [], hole_counter: 1)
+  let new_state = State(..new_state, hole_counter: 1)
   let term = ast.Hole(0, s0)
   let #(result, type_, state) = infer(new_state, term)
   assert result == term
   assert type_ == ast.vhole(1, [])
-  assert state == State(vars: [], errors: [], ffi: [], hole_counter: 2)
+  assert state == State(..new_state, hole_counter: 2)
 }
 
 pub fn infer_hole_unknown_test() {
-  let new_state = State(vars: [], errors: [], ffi: [], hole_counter: 10)
+  let new_state = State(..new_state, hole_counter: 10)
   let term = ast.Hole(-1, s0)
   let #(result, type_, state) = infer(new_state, term)
   assert result == ast.Hole(10, s0)
   assert type_ == ast.vhole(11, [])
-  assert state == State(vars: [], errors: [], ffi: [], hole_counter: 12)
+  assert state == State(..new_state, hole_counter: 12)
 }
 
-// Lit
 pub fn infer_lit_int_test() {
   let term = ast.int(42, s0)
   let #(result, type_, state) = infer(new_state, term)
@@ -82,7 +79,6 @@ pub fn infer_lit_float_test() {
   assert state == new_state
 }
 
-// LitT
 pub fn infer_litt_intt_test() {
   let term = ast.int_t(s0)
   let #(result, type_, state) = infer(new_state, term)
@@ -99,19 +95,17 @@ pub fn infer_floatt_intt_test() {
   assert state == new_state
 }
 
-// Var
 pub fn infer_var_undefined_test() {
   let term = ast.Var(1, s0)
   let #(result, type_, state) = infer(new_state, term)
-  let errors = [state.VarUndefined(1, s0)]
   assert result == term
   assert type_ == ast.VErr
-  assert state == State(vars: [], errors: errors, ffi: [], hole_counter: 0)
+  assert state == with_err(new_state, state.VarUndefined(1, s0))
 }
 
 pub fn infer_var0_test() {
   let vars = [#("x", #(ast.vint(42), ast.vint_t))]
-  let new_state = State(vars: vars, errors: [], ffi: [], hole_counter: 0)
+  let new_state = State(..new_state, vars: vars)
   let term = ast.Var(0, s0)
   let #(result, type_, state) = infer(new_state, term)
   assert result == term
@@ -124,7 +118,7 @@ pub fn infer_var1_test() {
     #("x", #(ast.vint(42), ast.vint_t)),
     #("y", #(ast.vfloat(3.14), ast.vfloat_t)),
   ]
-  let new_state = State(vars: vars, errors: [], ffi: [], hole_counter: 0)
+  let new_state = State(..new_state, vars: vars)
   let term = ast.Var(1, s0)
   let #(result, type_, state) = infer(new_state, term)
   assert result == term
@@ -132,7 +126,6 @@ pub fn infer_var1_test() {
   assert state == new_state
 }
 
-// Ctr
 pub fn infer_ctr_test() {
   let term = ast.Ctr("A", ast.Typ(0, s0), s1)
   let #(result, type_, state) = infer(new_state, term)
@@ -141,7 +134,6 @@ pub fn infer_ctr_test() {
   assert state == new_state
 }
 
-// Rcd
 pub fn infer_rcd0_test() {
   let term = ast.Rcd([], s0)
   let #(result, type_, state) = infer(new_state, term)
@@ -167,7 +159,6 @@ pub fn infer_rcd2_test() {
   assert state == new_state
 }
 
-// RcdT
 pub fn infer_rcdt0_test() {
   let term = ast.RcdT([], s0)
   let #(result, type_, state) = infer(new_state, term)
@@ -241,9 +232,22 @@ pub fn infer_ann_type_mismatch_test() {
   let #(result, type_, state) = infer(new_state, term)
   let error = state.TypeMismatch(#(ast.vfloat_t, s1), #(ast.vint_t, s2))
   assert result == ast.float(3.14, s1)
-  assert type_ == ast.VErr
+  assert type_ == ast.vfloat_t
   assert state == with_err(new_state, error)
 }
+
+pub fn infer_ann_hole_type_test() {
+  let term = ast.Ann(ast.int(42, s1), ast.Hole(10, s2), s0)
+  let #(result, type_, state) = infer(new_state, term)
+  assert result == ast.int(42, s1)
+  assert state.errors == []
+  assert type_ == ast.vint_t
+  assert state
+    == State(..new_state, subst: [#(10, ast.vint_t)], hole_counter: 1)
+}
+// pub fn infer_lam_monomorphic_test() {
+//   let term = ast.Lam([], #("x", ))
+// }
 //   Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )
 //   Pi( implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span, )
 //   Fix(name: String, body: Term, span: Span)

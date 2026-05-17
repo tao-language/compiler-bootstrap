@@ -17,23 +17,50 @@
 /// The type checker calls this function at every place where two types
 /// must agree. All errors accumulate in state; no early returns.
 import core/ast
-import core/state.{type State, TypeMismatch, with_err}
+import core/state.{type State, TypeMismatch, solve_hole, with_err}
+import gleam/list
+import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
 pub fn unify(
   state: State,
   a: #(ast.Value, Span),
   b: #(ast.Value, Span),
-) -> #(ast.Value, State) {
+) -> State {
   let #(value1, span1) = a
   let #(value2, span2) = b
-  case #(value1, value2) {
-    #(ast.VTyp(u1), ast.VTyp(u2)) if u1 == u2 -> #(value1, state)
-    #(ast.VLit(v1), ast.VLit(v2)) if v1 == v2 -> #(value1, state)
-    #(ast.VLitT(v1), ast.VLitT(v2)) if v1 == v2 -> #(value1, state)
-    _ -> {
-      let state = with_err(state, TypeMismatch(a, b))
-      #(ast.VErr, state)
+  case value1, value2 {
+    ast.VTyp(u1), ast.VTyp(u2) if u1 == u2 -> state
+    ast.VLit(v1), ast.VLit(v2) if v1 == v2 -> state
+    ast.VLitT(v1), ast.VLitT(v2) if v1 == v2 -> state
+    ast.VNeut(h1, spine1), ast.VNeut(h2, spine2) if h1 == h2 ->
+      unify_spines(state, spine1, spine2)
+    _, ast.VNeut(ast.HHole(id), _) -> solve_hole(state, id, value1)
+    ast.VNeut(ast.HHole(id), _), _ -> solve_hole(state, id, value2)
+    _, _ -> with_err(state, TypeMismatch(a, b))
+  }
+}
+
+fn unify_spines(
+  state: State,
+  spine1: List(ast.Elim),
+  spine2: List(ast.Elim),
+) -> State {
+  case spine1, spine2 {
+    [], [] -> state
+    [a, ..spine1], [b, ..spine2] -> {
+      let state = unify_elim(state, a, b)
+      unify_spines(state, spine1, spine2)
     }
+    _, _ -> with_err(state, state.SpineArityMismatch(spine1, spine2))
+  }
+}
+
+fn unify_elim(state: State, elim1: ast.Elim, elim2: ast.Elim) -> State {
+  case elim1, elim2 {
+    ast.EApp(arg1, span1), ast.EApp(arg2, span2) ->
+      unify(state, #(arg1, span1), #(arg2, span2))
+    ast.EMatch(env1, cases1, span1), ast.EMatch(env2, cases2, span2) -> todo
+    _, _ -> with_err(state, state.SpineElimMismatch(elim1, elim2))
   }
 }

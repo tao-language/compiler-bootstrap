@@ -44,6 +44,7 @@ pub type FFI =
 pub type State {
   State(
     vars: List(#(String, #(Value, Value))),
+    subst: Subst,
     errors: List(Error),
     ffi: FFI,
     hole_counter: Int,
@@ -55,8 +56,10 @@ pub type Subst =
 
 /// Type checking errors.
 pub type Error {
-  TypeMismatch(expected: #(Value, Span), got: #(Value, Span))
   VarUndefined(level: Int, span: Span)
+  TypeMismatch(#(Value, Span), #(Value, Span))
+  SpineArityMismatch(List(ast.Elim), List(ast.Elim))
+  SpineElimMismatch(ast.Elim, ast.Elim)
   HoleUnsolved(id: Int, span: Span)
   NotAFunction(fun_type: Value, span: Span)
   CtrUndefined(tag: String, span: Span)
@@ -72,7 +75,13 @@ pub type Error {
   CtorNotFound(tag: String, span: Span)
 }
 
-pub const new_state = State(vars: [], errors: [], ffi: [], hole_counter: 0)
+pub const new_state = State(
+  vars: [],
+  subst: [],
+  errors: [],
+  ffi: [],
+  hole_counter: 0,
+)
 
 pub fn state_to_env(state: State) -> List(Value) {
   list.map(state.vars, fn(entry) {
@@ -96,6 +105,10 @@ pub fn with_err(state: State, error: Error) -> State {
 
 pub fn with_err_list(state: State, errors: List(Error)) -> State {
   State(..state, errors: list.append(state.errors, errors))
+}
+
+pub fn solve_hole(state: State, id: Int, value: ast.Value) -> State {
+  State(..state, subst: [#(id, value), ..state.subst])
 }
 
 pub fn def_var(state: State, name: String, entry: #(Value, Value)) -> State {

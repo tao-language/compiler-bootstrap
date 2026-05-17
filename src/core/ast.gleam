@@ -177,8 +177,8 @@ pub type Head {
 
 /// Eliminators form applied to a neutral term.
 pub type Elim {
-  EApp(arg: Value)
-  EMatch(env: Env, cases: List(Case))
+  EApp(arg: Value, span: Span)
+  EMatch(env: Env, cases: List(Case), span: Span)
 }
 
 /// Core values - normalized terms after evaluation.
@@ -189,10 +189,10 @@ pub type Value {
   VTyp(universe: Int)
   VLit(value: Literal)
   VLitT(t: LiteralType)
+  VNeut(head: Head, spine: List(Elim))
   VCtr(tag: String, arg: Value)
   VRcd(fields: List(#(String, Value)))
   VRcdT(fields: List(#(String, Value, Option(Value))))
-  VNeut(head: Head, spine: List(Elim))
   VLam(
     env: Env,
     implicits: List(#(String, Value)),
