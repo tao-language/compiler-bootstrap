@@ -7,9 +7,11 @@
 /// Errors accumulate as the type checker progresses, allowing
 /// recovery after type errors.
 import core/ast.{type Value, VTyp}
+import core/utils
 import gleam/int
 import gleam/list
 import gleam/option.{type Option}
+import syntax/span.{type Span, Span}
 
 // ============================================================================
 // FFI
@@ -23,6 +25,9 @@ import gleam/option.{type Option}
 pub type FfiEntry {
   FfiEntry(fn_name: String, impl: fn(List(#(Value, Value))) -> Option(Value))
 }
+
+pub type FFI =
+  List(FfiEntry)
 
 // ============================================================================
 // STATE
@@ -40,269 +45,64 @@ pub type State {
   State(
     vars: List(#(String, #(Value, Value))),
     errors: List(Error),
-    ffi: List(FfiEntry),
+    ffi: FFI,
     hole_counter: Int,
   )
 }
 
-/// Create a fresh initial state.
-pub fn initial_state(ffi: List(FfiEntry)) -> State {
-  State(vars: [], errors: [], ffi: ffi, hole_counter: 0)
-}
-
-// ============================================================================
-// STATE/ENV CONVERSION — For simplifying force/apply_spine API
-// ============================================================================
-
-/// Extract just the values from state.vars as a plain List(Value).
-/// Used by force/apply_spine which only need value lookup, not names/types.
-pub fn state_to_env(state: State) -> List(Value) {
-  list.map(state.vars, fn(v) { v.1.0 })
-}
-
-/// Create a minimal state from an env and FFI.
-/// Used to rebuild a State for do_match_fn calls.
-pub fn env_to_state(
-  env: List(Value),
-  ffi: List(FfiEntry),
-) -> State {
-  let vars = list.index_map(env, fn(v, i) {
-    let name = "var_" <> int.to_string(i)
-    #(name, #(v, VTyp(i)))
-  })
-  State(
-    vars: vars,
-    errors: [],
-    ffi: ffi,
-    hole_counter: 0,
-  )
-}
-
-// ============================================================================
-// STATE HELPERS — Error accumulation
-// ============================================================================
-
-/// Add an error to the state.
-///
-/// The state is returned unchanged — the caller is responsible for
-/// using the returned state to continue.
-pub fn with_err(state: State, error: Error) -> State {
-  State(..state, errors: [error, ..state.errors])
-}
-
-/// Continue with a state that has accumulated multiple errors.
-///
-/// Use this when a function needs to produce several errors but
-/// wants to keep going.
-pub fn continue_with_errors(state: State, errors: List(Error)) -> State {
-  State(..state, errors: list.append(errors, state.errors))
-}
-
-// ============================================================================
-// STATE HELPERS — Variable environment
-// ============================================================================
-
-/// Bind a variable in the state.
-///
-/// The variable is added to the front of the environment, so the
-/// most recently bound variable is found first.
-///
-/// Returns the updated state.
-pub fn def_var(
-  state: State,
-  name: String,
-  value: Value,
-  type_: Value,
-) -> State {
-  State(..state, vars: [#(name, #(value, type_)), ..state.vars])
-}
-
-/// Look up a variable in the state.
-///
-/// Returns `Error(Nil)` if the variable is not found.
-pub fn lookup_var(state: State, name: String) -> Result(#(Value, Value), Nil) {
-  lookup_loop(state.vars, name)
-}
-
-fn lookup_loop(
-  vars: List(#(String, #(Value, Value))),
-  name: String,
-) -> Result(#(Value, Value), Nil) {
-  case vars {
-    [] -> Error(Nil)
-    [#(n, v), ..rest] ->
-      case n == name {
-        True -> Ok(v)
-        False -> lookup_loop(rest, name)
-      }
-  }
-}
-
-/// Look up a variable by De Bruijn level.
-///
-/// `level` is the number of binders to skip from the outermost.
-/// Level 0 refers to the most recently bound variable.
-pub fn lookup_by_level(
-  state: State,
-  level: Int,
-) -> Result(#(Value, Value), Nil) {
-  lookup_by_level_loop(state.vars, level)
-}
-
-fn lookup_by_level_loop(
-  vars: List(#(String, #(Value, Value))),
-  level: Int,
-) -> Result(#(Value, Value), Nil) {
-  case vars {
-    [] -> Error(Nil)
-    [#(_, v), ..rest] ->
-      case level {
-        0 -> Ok(v)
-        _ -> lookup_by_level_loop(rest, level - 1)
-      }
-  }
-}
-
-// ============================================================================
-// STATE HELPERS — Holes
-// ============================================================================
-
-/// Create a new fresh hole ID.
-///
-/// Returns the ID and the updated state. Hole IDs are monotonically
-/// increasing.
-///
-/// Positive IDs are type-level holes; negative IDs are term-level holes.
-pub fn new_hole(state: State) -> #(Int, State) {
-  let id = state.hole_counter
-  #(id, State(..state, hole_counter: id + 1))
-}
-
-/// Create a fresh hole value (VNeut(HHole(id), [])).
-pub fn new_hole_value(state: State) -> #(Value, State) {
-  let id = state.hole_counter
-  let hole = ast.make_hole_neut(id)
-  #(hole, State(..state, hole_counter: id + 1))
-}
-
-/// Get the current hole counter value.
-pub fn hole_counter(state: State) -> Int {
-  state.hole_counter
-}
-
-// ============================================================================
-// STATE HELPERS — FFI
-// ============================================================================
-
-/// Register an FFI entry in the state.
-///
-/// Returns the updated state with the new FFI entry added.
-pub fn with_ffi_entry(state: State, entry: FfiEntry) -> State {
-  State(..state, ffi: [entry, ..state.ffi])
-}
-
-/// Look up an FFI entry by name.
-///
-/// Returns `Error(Nil)` if the name is not found.
-pub fn lookup_ffi(state: State, name: String) -> Result(FfiEntry, Nil) {
-  lookup_ffi_loop(state.ffi, name)
-}
-
-fn lookup_ffi_loop(ffi: List(FfiEntry), name: String) -> Result(FfiEntry, Nil) {
-  case ffi {
-    [] -> Error(Nil)
-    [entry, ..rest] ->
-      case entry.fn_name == name {
-        True -> Ok(entry)
-        False -> lookup_ffi_loop(rest, name)
-      }
-  }
-}
+pub type Subst =
+  List(#(Int, Value))
 
 /// Type checking errors.
 pub type Error {
-  TypeMismatch(expected: Value, got: Value, span: Span)
-  VarUndefined(name: String, span: Span)
+  TypeMismatch(expected: #(Value, Span), got: #(Value, Span))
+  VarUndefined(level: Int, span: Span)
   HoleUnsolved(id: Int, span: Span)
   NotAFunction(fun_type: Value, span: Span)
   CtrUndefined(tag: String, span: Span)
   MatchMissing(patterns: List(String), covered: List(String), span: Span)
   MatchRedundant(span: Span)
   StepLimitExceeded(steps: Int, span: Span)
-  // GADT constructor checking errors
-  CtorArgTypeMismatch(tag: String, expected_pattern: Value, actual_type: Value, span: Span)
+  CtorArgTypeMismatch(
+    tag: String,
+    expected_pattern: Value,
+    actual_type: Value,
+    span: Span,
+  )
   CtorNotFound(tag: String, span: Span)
 }
 
-/// Span type for error reporting.
-import syntax/span.{type Span}
+pub const new_state = State(vars: [], errors: [], ffi: [], hole_counter: 0)
 
-// ============================================================================
-// ERROR HELPERS
-// ============================================================================
-
-/// Create a VarUndefined error for a variable at a given De Bruijn level.
-/// The name is synthesized as "v@{level}" for debugging.
-pub fn undef_var_error(level: Int, span: Span) -> Error {
-  VarUndefined("v@" <> int.to_string(level), span)
+pub fn state_to_env(state: State) -> List(Value) {
+  list.map(state.vars, fn(entry) {
+    let #(_name, #(value, _type)) = entry
+    value
+  })
 }
 
-/// Check if the state has any errors.
-pub fn has_errors(state: State) -> Bool {
-  state.errors != []
+pub fn env_to_state(env: List(Value), ffi: FFI) -> State {
+  let vars =
+    list.index_map(env, fn(value, i) {
+      let name = ast.value_to_string(ast.vvar(i, []))
+      #(name, #(value, VTyp(i)))
+    })
+  State(..new_state, vars: vars, ffi: ffi)
 }
 
-/// Get all errors from the state (most recent first).
-pub fn errors(state: State) -> List(Error) {
-  state.errors
+pub fn with_err(state: State, error: Error) -> State {
+  with_err_list(state, [error])
 }
 
-/// Extract just the variable bindings from the state (without errors).
-pub fn get_vars(state: State) -> List(#(String, #(Value, Value))) {
-  state.vars
+pub fn with_err_list(state: State, errors: List(Error)) -> State {
+  State(..state, errors: list.append(state.errors, errors))
 }
 
-/// Format an error as a human-readable string.
-pub fn error_to_string(error: Error) -> String {
-  case error {
-    TypeMismatch(expected, got, _) ->
-      "Type mismatch: expected "
-      <> ast.value_to_string(expected)
-      <> ", got "
-      <> ast.value_to_string(got)
-    VarUndefined(name, _) -> "Undefined variable: " <> name
-    HoleUnsolved(id, _) -> "Unsolved hole: ?" <> int.to_string(id)
-    NotAFunction(fun_type, _) ->
-      "Not a function: " <> ast.value_to_string(fun_type)
-    CtrUndefined(tag, _) -> "Undefined constructor: " <> tag
-    MatchMissing(patterns, covered, _) ->
-      "Missing match cases. Patterns not covered: "
-      <> join_list(patterns, ", ")
-      <> ". Covered: "
-      <> join_list(covered, ", ")
-    MatchRedundant(_) -> "Redundant match case"
-    StepLimitExceeded(steps, _) ->
-      "Step limit exceeded (" <> int.to_string(steps) <> " steps)"
-    CtorArgTypeMismatch(tag: tag, expected_pattern: expected_pattern, actual_type: actual_type, span: _) ->
-      "Constructor '" <> tag
-      <> "' argument type mismatch: expected "
-      <> ast.value_to_string(expected_pattern)
-      <> ", got "
-      <> ast.value_to_string(actual_type)
-    CtorNotFound(tag: tag, span: _) ->
-      "Constructor '" <> tag <> "' not found"
-  }
+pub fn def_var(state: State, name: String, entry: #(Value, Value)) -> State {
+  State(..state, vars: [#(name, entry), ..state.vars])
 }
 
-/// Join a list of strings with a separator.
-fn join_list(items: List(String), separator: String) -> String {
-  case items {
-    [] -> ""
-    [first, ..rest] -> {
-      let rec_join = fn(acc: String, item: String) -> String {
-        acc <> separator <> item
-      }
-      first <> list.fold(rest, "", rec_join)
-    }
-  }
+pub fn new_hole(state: State) -> #(Int, State) {
+  let id = state.hole_counter
+  #(id, State(..state, hole_counter: id + 1))
 }
