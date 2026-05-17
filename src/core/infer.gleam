@@ -552,8 +552,8 @@ fn fill_fields_term(
   // Note: We convert default values to literal terms where possible
   let default_terms = list.map(missing, fn(d) {
     case d.1 {
-      ast.VLit(value) -> #(d.0, ast.Lit(value, single("", 0, 0, 0)))
-      _ -> #(d.0, ast.Err("Cannot convert default to term", single("", 0, 0, 0)))
+      ast.VLit(l) -> #(d.0, ast.Lit(l, single("", 0, 0)))
+      _ -> #(d.0, ast.Err("Cannot convert default to term", single("", 0, 0)))
     }
   })
   list.append(fields, default_terms)
@@ -693,6 +693,17 @@ fn infer_pi(
   #(ast.Pi([], filled_domain, filled_codomain, span), ast.VTyp(0), state)
 }
 
+/// Helper: extract a Value from a Term (for Lit terms, return the Lit value)
+fn term_to_value(t: ast.Term) -> ast.Value {
+  case t {
+    ast.Lit(lit, _) -> ast.VLit(lit)
+    ast.Var(_, _) -> ast.VNeut(ast.HVar(0), [])
+    ast.Hole(_, _) -> ast.VNeut(ast.HHole(0), [])
+    ast.Err(_, _) -> ast.VErr
+    _ -> ast.VNeut(ast.HHole(0), [])
+  }
+}
+
 fn infer_app(
   state: state.State,
   fun: ast.Term,
@@ -724,10 +735,10 @@ fn infer_app(
         _ -> filled_arg
       }
       // Update the lambda's env to include itself for recursive self-reference.
-      let updated_lam = case converted_arg {
+      let updated_lam = case term_to_value(converted_arg) {
         ast.VLam(env, implicits, param, body) ->
-          ast.VLam(list.append(env, [converted_arg]), implicits, param, body)
-        _ -> converted_arg
+          ast.VLam(list.append(env, [term_to_value(converted_arg)]), implicits, param, body)
+        _ -> ast.VLam([], [], #("_", ast.VNeut(ast.HHole(0), [])), ast.Hole(0, single("", 0, 0)))
       }
       // If the lambda has implicit params, add them to the state before the lambda param
       // State order must be: [implicit_holes..., let_bound_var]
@@ -761,20 +772,21 @@ fn infer_app(
       // Normal function application: infer both fun and arg
       let #(fun_result, fun_type, state2) = infer(state, fun)
       let #(arg_result, arg_type, state3) = infer(state2, arg)
+      let fun_val = term_to_value(fun_result)
 
       // Try to normalize via beta reduction
-      case fun_result {
+      case fun_val {
         // β-reduction: apply VLam to argument
         ast.VLam(lam_env, implicits, #(_pname, param_type), body) -> {
           // Fill defaults if param_type is VRcdT
-          let filled_arg = fill_record_defaults_value(arg_result, param_type)
+          let filled_arg = fill_record_defaults_term(arg_result, param_type)
           // Int→Float conversion if param type is FloatT
           let converted_arg = case param_type {
             ast.VLitT(ast.FloatT) ->
               case filled_arg {
-                ast.Lit(ast.Int(v), span) ->
+                ast.Lit(ast.Int(v), s) ->
                   case float.parse(int.to_string(v) <> ".0") {
-                    Ok(f) -> ast.Lit(ast.Float(f), span)
+                    Ok(f) -> ast.Lit(ast.Float(f), s)
                     Error(_) -> filled_arg
                   }
                 _ -> filled_arg
@@ -790,7 +802,7 @@ fn infer_app(
             [] -> {
               // No implicit params: simple beta reduction
               // Extend env with converted_arg (lambda param value)
-              let env_with_param = list.append(lam_env, [converted_arg])
+              let env_with_param = list.append(lam_env, [term_to_value(converted_arg)])
               let body_state = env_to_state(env_with_param, state3.ffi)
               #(body, body_state)
             }
@@ -805,7 +817,7 @@ fn infer_app(
               //
               // Since def_var prepends to the list, we add the lambda param
               // FIRST, then add implicit params in reverse order.
-              let state_with_lam = def_var(state3, "_param", converted_arg, param_type)
+              let state_with_lam = def_var(state3, "_param", term_to_value(converted_arg), param_type)
               let state_with_implicits = list.fold(
                 list.reverse(implicits),
                 state_with_lam,
@@ -829,30 +841,32 @@ fn infer_app(
           }
           case body {
             ast.Lam(_implicits, _param, body_term, _) -> {
-              let body_with_arg = subst_term_var(0, arg_result, body_term)
+              let arg_val = term_to_value(arg_result)
+              let body_with_arg = subst_term_var(0, arg_val, body_term)
               let self = ast.VFix(fix_name, fix_env, fix_body)
               let body_with_self = subst_term_var(1, self, body_with_arg)
-              let env_with_arg = list.append([arg_result], fix_env)
+              let env_with_arg = list.append([arg_val], fix_env)
               let body_state = env_to_state(env_with_arg, state3.ffi)
               infer(body_state, body_with_self)
             }
-            _ -> #(ast.VErr, ast.VErr, state3)
+            _ -> #(ast.Err("VFix unroll failed", span), ast.VErr, state3)
           }
         }
         // Neutral spine: extend with argument
         ast.VNeut(head, spine) -> {
-          let new_neut = ast.VNeut(head, list.append(spine, [ast.EApp(arg_result)]))
-          #(ast.Var(0, span), fun_type, state3)
+          let arg_val = term_to_value(arg_result)
+          let _new_neut = ast.VNeut(head, list.append(spine, [ast.EApp(arg_val)]))
+          #(fun_result, fun_type, state3)
         }
         // Error propagates
-        ast.VErr -> #(ast.VErr, ast.VErr, state3)
+        ast.VErr -> #(ast.Err("Application error", span), ast.VErr, state3)
         // Cannot apply a type/value that isn't a function
         _ -> {
           let new_state = state.with_err(
             state,
             state.NotAFunction(fun_type, span),
           )
-          #(ast.VErr, ast.VErr, new_state)
+          #(ast.Err("Not a function", span), ast.VErr, new_state)
         }
       }
     }
@@ -877,7 +891,7 @@ fn infer_match(
   span: Span,
 ) -> #(ast.Term, ast.Value, state.State) {
   let #(arg_result, arg_type, state2) = infer(state, arg)
-  let #(result_val, result_type, final_state) =
+  let #(result_term, result_type, final_state) =
     check_match_cases(state2, arg_result, arg_type, cases, [])
 
   // Check exhaustiveness if the scrutinee type is a TypeDef
@@ -889,7 +903,7 @@ fn infer_match(
     _ -> final_state
   }
 
-  // result_val is already the evaluated body of the matching case
+  // result_term is the checked body of the matching case
   // Return the Match term with the result body
   #(ast.Match(arg_result, cases, span), result_type, final_state)
 }
@@ -900,11 +914,19 @@ fn check_match_cases(
   scrutinee_type: ast.Value,
   cases: List(ast.Case),
   acc: List(#(ast.Value, ast.Value)),
-) -> #(ast.Value, ast.Value, state.State) {
+) -> #(ast.Term, ast.Value, state.State) {
+  // Convert scrutinee result term to value for pattern matching
+  let scrutinee_val = case scrutinee_result {
+    ast.Lit(lit, _) -> ast.VLit(lit)
+    ast.Var(_, _) -> ast.VNeut(ast.HVar(0), [])
+    ast.Hole(_, _) -> ast.VNeut(ast.HHole(0), [])
+    ast.Err(_, _) -> ast.VErr
+    _ -> ast.VNeut(ast.HHole(0), [])
+  }
   case cases {
-    [] -> #(ast.VErr, ast.VErr, state)
+    [] -> #(ast.Err("No matching case", single("", 0, 0)), ast.VErr, state)
     [ast.Case(pattern, _guard, body, _span), ..rest] -> {
-      case match_pattern(pattern, scrutinee_result, []) {
+      case match_pattern(pattern, scrutinee_val, []) {
         Ok(bindings) -> {
           // Pattern matched: check the body and return immediately
           let body_state = state.State(
@@ -984,7 +1006,49 @@ fn infer_call(
   let ret_type_val = evaluate(state_to_env(new_state), new_state.ffi, return_type)
 
   // Return the Call term with result terms (not evaluated)
-  #(ast.Call(name, list.reverse(arg_results), fill_holes_in_term(new_state, return_type), span), ret_type_val, new_state)
+  // arg_results is List(#(Term, Value)) - convert Value parts to Term parts
+  let call_args = list.map(list.reverse(arg_results), fn(a) {
+    #(a.0, value_to_term(a.1))
+  })
+  #(ast.Call(name, call_args, fill_holes_in_term(new_state, return_type), span), ret_type_val, new_state)
+}
+
+/// Helper: convert a Value to a Term (for Call arguments)
+fn value_to_term(v: ast.Value) -> ast.Term {
+  case v {
+    ast.VLit(lit) -> ast.Lit(lit, single("", 0, 0))
+    ast.VNeut(n, _) -> ast.Hole(0, single("", 0, 0))
+    ast.VCtr(tag, arg) -> ast.Ctr(tag, value_to_term(arg), single("", 0, 0))
+    ast.VRcd(fields) -> ast.Rcd(list.map(fields, fn(f) { #(f.0, value_to_term(f.1)) }), single("", 0, 0))
+    ast.VCall(name, args, ret) -> ast.Call(name, list.map(args, fn(a) { #(value_to_term(a.0), value_to_term(a.1)) }), value_to_term(ret), single("", 0, 0))
+    ast.VRcdT(fields) -> ast.RcdT(list.map(fields, fn(f) {
+      #(f.0, value_to_term(f.1), case f.2 { Some(d) -> Some(value_to_term(d)) None -> None })
+    }), single("", 0, 0))
+    ast.VTyp(l) -> ast.Typ(l, single("", 0, 0))
+    ast.VLitT(t) -> ast.LitT(t, single("", 0, 0))
+    ast.VFix(name, env, body) -> ast.Fix(name, body, single("", 0, 0))
+    ast.VLam(env, implicits, param, body) -> ast.Lam(
+      list.map(implicits, fn(i) { #(i.0, value_to_term(i.1)) }),
+      #(param.0, value_to_term(param.1)),
+      body,
+      single("", 0, 0),
+    )
+    ast.VPi(env, implicits, domain, codomain) -> ast.Pi(
+      list.map(implicits, fn(i) { #(i.0, value_to_term(i.1)) }),
+      #(domain.0, value_to_term(domain.1)),
+      value_to_term(codomain),
+      single("", 0, 0),
+    )
+    ast.VTypeDef(name, params, constructors) -> ast.TypeDef(
+      name, list.map(params, fn(p) { #(p.0, value_to_term(p.1)) }),
+      list.map(constructors, fn(c) {
+        let #(tag, #(ctor_bindings, self_ty, return_type), ctor_span) = c
+        #(tag, #(ctor_bindings, value_to_term(self_ty), return_type), ctor_span)
+      }),
+      single("", 0, 0),
+    )
+    ast.VErr -> ast.Err("Value to term conversion failed", single("", 0, 0))
+  }
 }
 
 fn infer_rcd(
@@ -1001,7 +1065,7 @@ fn infer_rcd(
       #(f.0, t.1, None)
     }),
   )
-  #(ast.Rcd(list.map2(field_results, fields, fn(r, f) { #(f.0, r) }), span), rcd_type, new_state)
+  #(ast.Rcd(field_results, span), rcd_type, new_state)
 }
 
 /// Infer a record type: ${name: type, default?, ...}
@@ -1010,20 +1074,28 @@ fn infer_rcd_type(
   fields: List(#(String, ast.Term, option.Option(ast.Term))),
   span: Span,
 ) -> #(ast.Term, ast.Value, state.State) {
-  // Evaluate each field's type annotation and optional default to values
-  let #(field_vals, new_state) = infer_rcd_type_fields(state, fields, [], [])
+  // Infer each field's type annotation and optional default
+  let #(field_results, new_state) = infer_rcd_type_fields(state, fields, [])
   // Record type ${...} has type $Type<0> (VTyp(0))
-  #(ast.RcdT(fields, span), ast.VTyp(0), new_state)
+  // field_results is List(#(String, Term, Option(Value)))
+  // Convert Option(Value) defaults to Option(Term) defaults
+  let field_terms = list.map(field_results, fn(f) {
+    let new_default = case f.2 {
+      Some(d) -> Some(value_to_term(d))
+      None -> None
+    }
+    #(f.0, f.1, new_default)
+  })
+  #(ast.RcdT(field_terms, span), ast.VTyp(0), new_state)
 }
 
 /// Recursively infer record type fields with their optional defaults.
 fn infer_rcd_type_fields(
   state: state.State,
   fields: List(#(String, ast.Term, option.Option(ast.Term))),
-  acc: List(#(String, ast.Value, option.Option(ast.Value))),
-  _types_acc: List(#(String, ast.Value)),
+  acc: List(#(String, ast.Term, option.Option(ast.Value))),
 ) -> #(
-  List(#(String, ast.Value, option.Option(ast.Value))),
+  List(#(String, ast.Term, option.Option(ast.Value))),
   state.State,
 ) {
   case fields {
@@ -1038,7 +1110,6 @@ fn infer_rcd_type_fields(
         state2,
         rest,
         [#(name, field_result, default_val), ..acc],
-        [],
       )
     }
   }
@@ -1235,7 +1306,19 @@ fn unify_infer_and_check(
   case result_term {
     ast.Err(message, span) -> #(ast.Err(message, span), expected_type, state)
     _ -> {
-      let #(unified_term, state2) = unify(state, inferred_type, expected_type, infer)
+      // Create a wrapper function that extracts the value from the result term
+      let infer_fn = fn(s: state.State, t: ast.Term) -> #(ast.Value, ast.Value, state.State) {
+        let #(term, type_, new_state) = infer(s, t)
+        let value = case term {
+          ast.Lit(lit, _) -> ast.VLit(lit)
+          ast.Var(_, _) -> ast.VNeut(ast.HVar(0), [])
+          ast.Hole(_, _) -> ast.VNeut(ast.HHole(0), [])
+          ast.Err(_, _) -> ast.VErr
+          _ -> ast.VNeut(ast.HHole(0), [])
+        }
+        #(value, type_, new_state)
+      }
+      let #(unified_term, state2) = unify(state, inferred_type, expected_type, infer_fn)
       // Apply literal type coercion based on expected type.
       let converted = case expected_type {
         ast.VLitT(ast.FloatT) -> case result_term {
