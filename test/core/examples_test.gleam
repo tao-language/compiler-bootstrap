@@ -1,3 +1,4 @@
+import syntax/span.{single}
 /// End-to-end pipeline tests: parse -> infer -> evaluate -> quote
 ///
 /// Covers literals, identity, let bindings, match expressions,
@@ -203,9 +204,9 @@ pub fn pipeline_lit_test() {
   let state = initial_state([])
   let #(named_term, _) = parse("42")
   let term = term_to_debruijn(named_term)
-  let #(value, _type_val, final_state) = infer(state, term)
+  let #(result_term, _type_val, final_state) = infer(state, term)
   assert final_state.errors == []
-  assert value == vi(42)
+  assert result_term == ast.Lit(ast.Int(42), single("", 1, 1))
 }
 
 // ============================================================================

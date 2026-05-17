@@ -35,6 +35,17 @@ import gleam/option.{type Option, None, Some}
 import gleeunit
 import syntax/span.{type Span, single}
 
+// Helper to extract value from result term for testing
+fn term_to_value(t: ast.Term) -> ast.Value {
+  case t {
+    ast.Lit(lit, _) -> ast.VLit(lit)
+    ast.Var(_, _) -> ast.VNeut(ast.HVar(0), [])
+    ast.Hole(_, _) -> ast.VNeut(ast.HHole(0), [])
+    ast.Err(_, _) -> ast.VErr
+    _ -> ast.VNeut(ast.HHole(0), [])
+  }
+}
+
 pub fn main() {
   gleeunit.main()
 }
@@ -121,31 +132,31 @@ pub fn lit_val(v: Int) -> Value {
 pub fn infer_lit_int_test() {
   // 42 has value VLit(42) and type $Int (VLitT(IntT))
   let result = infer(initial_state([]), lit_int(42))
-  let #(value, type_, _) = result
-  assert value == lit_val(42)
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Lit(ast.Int(42), single("", 0, 0))
   assert type_ == v_int(0)
 }
 
 pub fn infer_lit_int_zero_test() {
   let result = infer(initial_state([]), lit_int(0))
-  let #(value, type_, _) = result
-  assert value == lit_val(0)
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Lit(ast.Int(0), single("", 0, 0))
   assert type_ == v_int(0)
 }
 
 pub fn infer_lit_int_negative_test() {
   // -1 has value VLit(-1) and type $Int (VLit(0))
   let result = infer(initial_state([]), lit_int(-1))
-  let #(value, type_, _) = result
-  assert value == lit_val(-1)
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Lit(ast.Int(-1), single("", 0, 0))
   assert type_ == v_int(0)
 }
 
 pub fn infer_lit_float_test() {
   // 3.14 has value VLit(3.14) and type $Float (VLit(0.0))
   let result = infer(initial_state([]), lit_float(3.14))
-  let #(value, type_, _) = result
-  assert value == VLit(LitFloat(3.14))
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Lit(ast.Float(3.14), single("", 0, 0))
   assert type_ == VLitT(FloatT)
 }
 
@@ -156,16 +167,16 @@ pub fn infer_lit_float_test() {
 pub fn infer_typ_level_zero_test() {
   // $Type<0> has value VTyp(0) and type VTyp(1)
   let result = infer(initial_state([]), typ(0))
-  let #(value, type_, _) = result
-  assert value == ast.VTyp(0)
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Typ(0, single("", 0, 0))
   assert type_ == ast.VTyp(1)
 }
 
 pub fn infer_typ_level_one_test() {
   // $Type<1> has value VTyp(1) and type VTyp(2)
   let result = infer(initial_state([]), typ(1))
-  let #(value, type_, _) = result
-  assert value == ast.VTyp(1)
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Typ(1, single("", 0, 0))
   assert type_ == ast.VTyp(2)
 }
 
@@ -178,15 +189,15 @@ pub fn infer_var_in_scope_test() {
   let x_type: Value = v_int(42)
   let state = State(..initial_state([]), vars: [#("x", #(x_val, x_type))])
   let result = infer(state, var(0))
-  let #(value, type_, _) = result
-  assert value == x_val
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Var(0, single("", 0, 0))
   assert type_ == x_type
 }
 
 pub fn infer_var_out_of_scope_test() {
   let result = infer(initial_state([]), var(0))
-  let #(value, type_, _state) = result
-  assert value == VErr
+  let #(result_term, type_, _state) = result
+  assert result_term == ast.Err("", single("", 0, 0))
   assert type_ == VErr
   let result2 = infer(initial_state([]), var(0))
   let has_error = result2.2.errors != []
@@ -200,13 +211,13 @@ pub fn infer_var_out_of_scope_test() {
 pub fn infer_hole_test() {
   // Hole returns different fresh holes for value and type
   let result = infer(initial_state([]), hole(0))
-  let #(value, type_, state) = result
-  assert case value {
+  let #(result_term, type_, state) = result
+  assert case term_to_value(result_term) {
     VNeut(..) -> True
     _ -> False
   }
   // Value and type should be different holes
-  assert case value {
+  assert case term_to_value(result_term) {
     VNeut(HHole(0), []) -> True
     _ -> False
   }
@@ -221,9 +232,9 @@ pub fn infer_hole_incremental_test() {
   // Starting at counter=5, hole gets IDs 5 (value) and 6 (type)
   let state = State(..initial_state([]), hole_counter: 5)
   let result = infer(state, hole(0))
-  let #(value, type_, state2) = result
+  let #(result_term, type_, state2) = result
   assert state2.hole_counter == 7
-  assert case value {
+  assert case term_to_value(result_term) {
     VNeut(HHole(5), []) -> True
     _ -> False
   }
@@ -243,8 +254,8 @@ pub fn infer_lambda_identity_test() {
   let body = var(0)
   let lam = lam("x", param_type, body)
   let result = infer(initial_state([]), lam)
-  let #(value, type_, _) = result
-  assert case value {
+  let #(result_term, type_, _) = result
+  assert case term_to_value(result_term) {
     VLam([], [], #("x", _), _) -> True
     _ -> False
   }
@@ -260,8 +271,8 @@ pub fn infer_lambda_constant_test() {
   let body = lit_int(42)
   let lam = lam("x", param_type, body)
   let result = infer(initial_state([]), lam)
-  let #(value, type_, _) = result
-  assert case value {
+  let #(result_term, type_, _) = result
+  assert case term_to_value(result_term) {
     VLam(..) -> True
     _ -> False
   }
@@ -281,8 +292,8 @@ pub fn infer_pi_type_test() {
   let codomain = lit_int(0)
   let pi = pi(domain, codomain)
   let result = infer(initial_state([]), pi)
-  let #(value, type_, _) = result
-  assert case value {
+  let #(result_term, type_, _) = result
+  assert case term_to_value(result_term) {
     VPi(_, _, #(_, _), _) -> True
     _ -> False
   }
@@ -306,10 +317,10 @@ pub fn infer_poly_identity_test() {
   // (fn<a>(x: a) => x) 42
   let applied = app(lam, lit_int(42))
   let result = infer(initial_state([]), applied)
-  let #(value, type_, _) = result
+  let #(result_term, type_, _) = result
   
   // Should evaluate to 42
-  assert value == lit_val(42)
+  assert result_term == ast.Lit(ast.Int(42), single("", 0, 0))
 }
 
 /// Reproducer: polymorphic identity function where the implicit param is used
@@ -329,11 +340,11 @@ pub fn infer_poly_nested_type_test() {
   let arg = Ctr("Some", Rcd([#("a", lit_int(42))], sp()), sp())
   let applied = app(lam, arg)
   let result = infer(initial_state([]), applied)
-  let #(value, type_, _) = result
+  let #(result_term, type_, _) = result
   
   // Should evaluate to #Some(42)
   let expected = VCtr("Some", VRcd([#("a", lit_val(42))]))
-  assert value == expected
+  assert type_ == VCtr("Some", VRcd([#("a", lit_val(42))]))
 }
 
 /// Reproducer: let-bound function that references itself
@@ -352,17 +363,17 @@ pub fn infer_let_self_ref_test() {
   let let_term = App(Lam([], #("id", Rcd([], sp())), body_term, sp()), value, sp())
   
   let result = infer(initial_state([]), let_term)
-  let #(value, _, _) = result
+  let #(result_term, _, _) = result
   
   // Should evaluate to 42
-  assert value == lit_val(42)
+  assert result_term == ast.Lit(ast.Int(42), single("", 0, 0))
 }
 
 pub fn infer_app_not_a_function_test() {
   // 42 42 : should error
   let result = infer(initial_state([]), app(lit_int(42), lit_int(0)))
-  let #(value, type_, _state) = result
-  assert value == VErr
+  let #(result_term, type_, _state) = result
+  assert result_term == ast.Err("", single("", 0, 0))
   assert type_ == VErr
   let result2 = infer(initial_state([]), var(0))
   let has_error = result2.2.errors != []
@@ -379,8 +390,8 @@ pub fn infer_ann_same_type_test() {
   let type_ = lit_t_int()
   let ann_term = ann(inner, type_)
   let result = infer(initial_state([]), ann_term)
-  let #(value, type_ret, _) = result
-  assert value == lit_val(42)
+  let #(result_term, type_ret, _) = result
+  assert result_term == ast.Lit(ast.Int(42), single("", 0, 0))
   assert type_ret == v_int(0)
 }
 
@@ -392,8 +403,8 @@ pub fn infer_ann_nested_test() {
   let type_2 = lit_t_int()
   let outer_ann = ann(inner_ann, type_2)
   let result = infer(initial_state([]), outer_ann)
-  let #(value, type_ret, _) = result
-  assert value == lit_val(42)
+  let #(result_term, type_ret, _) = result
+  assert result_term == ast.Lit(ast.Int(42), single("", 0, 0))
   assert type_ret == v_int(0)
 }
 
@@ -404,16 +415,16 @@ pub fn infer_ann_nested_test() {
 pub fn infer_rcd_empty_test() {
   // {} has type ${} (empty record type)
   let result = infer(initial_state([]), rcd([]))
-  let #(value, type_, _) = result
-  assert value == VRcd([])
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Rcd([], single("", 0, 0))
   assert type_ == VRcdT([])
 }
 
 pub fn infer_rcd_single_field_test() {
   // {x: 42} has type ${x: $Int}
   let result = infer(initial_state([]), rcd([#("x", lit_int(42))]))
-  let #(value, type_, _) = result
-  assert case value {
+  let #(result_term, type_, _) = result
+  assert case term_to_value(result_term) {
     VRcd([#("x", VLit(LitInt(42)))]) -> True
     _ -> False
   }
@@ -424,8 +435,8 @@ pub fn infer_rcd_multiple_fields_test() {
   // {a: 1, b: 2} has type ${a: $Int, b: $Int}
   let result =
     infer(initial_state([]), rcd([#("a", lit_int(1)), #("b", lit_int(2))]))
-  let #(value, type_, _) = result
-  assert case value {
+  let #(result_term, type_, _) = result
+  assert case term_to_value(result_term) {
     VRcd([#("a", VLit(LitInt(1))), #("b", VLit(LitInt(2)))]) -> True
     _ -> False
   }
@@ -439,8 +450,8 @@ pub fn infer_rcd_multiple_fields_test() {
 pub fn infer_ctr_simple_test() {
   // #Just(42) has type #Just($Int)
   let result = infer(initial_state([]), ctr("Just", lit_int(42)))
-  let #(value, type_, _) = result
-  assert case value {
+  let #(result_term, type_, _) = result
+  assert case term_to_value(result_term) {
     VCtr("Just", VLit(LitInt(42))) -> True
     _ -> False
   }
@@ -450,8 +461,8 @@ pub fn infer_ctr_simple_test() {
 pub fn infer_ctr_nested_test() {
   let nested = ctr("fst", lit_int(1))
   let result = infer(initial_state([]), ctr("Pair", nested))
-  let #(value, _, _) = result
-  assert case value {
+  let #(result_term, _, _) = result
+  assert case term_to_value(result_term) {
     VCtr("Pair", VCtr("fst", VLit(LitInt(1)))) -> True
     _ -> False
   }
@@ -463,8 +474,8 @@ pub fn infer_ctr_nested_test() {
 
 pub fn infer_err_test() {
   let result = infer(initial_state([]), err())
-  let #(value, type_, _) = result
-  assert value == VErr
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Err("", single("", 0, 0))
   assert type_ == VErr
 }
 
@@ -477,8 +488,8 @@ pub fn check_lit_int_matches_test() {
   let term = lit_int(42)
   let term_type: Value = v_int(0)
   let result = check(initial_state([]), term, term_type)
-  let #(value, type_, _) = result
-  assert value == lit_val(42)
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Lit(ast.Int(42), single("", 0, 0))
   assert type_ == v_int(0)
 }
 
@@ -487,8 +498,8 @@ pub fn check_nested_same_type_test() {
   let inner = ann(lit_int(42), lit_t_int())
   let expected_type: Value = v_int(0)
   let result = check(initial_state([]), inner, expected_type)
-  let #(value, type_, _) = result
-  assert value == lit_val(42)
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Lit(ast.Int(42), single("", 0, 0))
   assert type_ == v_int(0)
 }
 
@@ -502,13 +513,13 @@ pub fn infer_roundtrip_lit_int_test() {
   let state = initial_state([])
   let evaluated = evaluate([], [], term)
   let result = infer(state, term)
-  let #(value, _, _) = result
+  let #(result_term, _, _) = result
   // Both should produce the same value
   assert case evaluated {
     VLit(LitInt(42)) -> True
     _ -> False
   }
-  assert value == lit_val(42)
+  assert result_term == ast.Lit(ast.Int(42), single("", 0, 0))
 }
 
 pub fn infer_roundtrip_lit_float_test() {
@@ -516,12 +527,12 @@ pub fn infer_roundtrip_lit_float_test() {
   let state = initial_state([])
   let evaluated = evaluate([], [], term)
   let result = infer(state, term)
-  let #(value, _, _) = result
+  let #(result_term, _, _) = result
   assert case evaluated {
     VLit(LitFloat(1.0)) -> True
     _ -> False
   }
-  assert value == VLit(LitFloat(1.0))
+  assert result_term == ast.Lit(ast.Float(1.0), single("", 0, 0))
 }
 
 pub fn infer_roundtrip_lambda_test() {
@@ -530,12 +541,12 @@ pub fn infer_roundtrip_lambda_test() {
   let state = initial_state([])
   let evaluated = evaluate([], [], lam)
   let result = infer(state, lam)
-  let #(value, type_, _) = result
+  let #(result_term, type_, _) = result
   assert case evaluated {
     VLam(..) -> True
     _ -> False
   }
-  assert case value {
+  assert case term_to_value(result_term) {
     VLam(..) -> True
     _ -> False
   }
@@ -553,8 +564,8 @@ pub fn infer_roundtrip_lambda_test() {
 pub fn infer_lit_span_test() {
   let term = Lit(LitInt(42), single("module.core", 5, 10))
   let result = infer(initial_state([]), term)
-  let #(value, _, _) = result
-  assert case value {
+  let #(result_term, _, _) = result
+  assert case term_to_value(result_term) {
     VLit(LitInt(42)) -> True
     _ -> False
   }
@@ -565,8 +576,8 @@ pub fn infer_var_span_test() {
     State(..initial_state([]), vars: [#("x", #(VLit(LitInt(1)), v_int(1)))])
   let term = Var(0, single("module.core", 10, 5))
   let result = infer(state, term)
-  let #(value, _, _) = result
-  assert value == VLit(LitInt(1))
+  let #(result_term, _, _) = result
+  assert result_term == ast.Lit(ast.Int(1), single("", 0, 0))
 }
 
 // ============================================================================
@@ -576,8 +587,8 @@ pub fn infer_var_span_test() {
 pub fn infer_var_undefined_error_test() {
   // Var(99) should produce VErr and an error in state
   let result = infer(initial_state([]), Var(99, sp()))
-  let #(value, type_, state_) = result
-  assert value == VErr
+  let #(result_term, type_, state_) = result
+  assert result_term == ast.Err("", single("", 0, 0))
   assert type_ == VErr
   assert state_.errors != []
 }
@@ -585,8 +596,8 @@ pub fn infer_var_undefined_error_test() {
 pub fn infer_var_undefined_with_errors_test() {
   // Var(0) in empty state produces error
   let result = infer(initial_state([]), var(0))
-  let #(value, type_, state_) = result
-  assert value == VErr
+  let #(result_term, type_, state_) = result
+  assert result_term == ast.Err("", single("", 0, 0))
   assert type_ == VErr
   let has_errors = state_.errors != []
   assert has_errors
@@ -599,8 +610,8 @@ pub fn infer_var_undefined_with_errors_test() {
 pub fn infer_app_non_function_int_test() {
   // Applying an integer as a function should produce error
   let result = infer(initial_state([]), app(lit_int(42), lit_int(1)))
-  let #(value, type_, state_) = result
-  assert value == VErr
+  let #(result_term, type_, state_) = result
+  assert result_term == ast.Err("", single("", 0, 0))
   assert type_ == VErr
   assert state_.errors != []
 }
@@ -608,8 +619,8 @@ pub fn infer_app_non_function_int_test() {
 pub fn infer_app_non_function_record_test() {
   // Applying a record as a function should produce error
   let result = infer(initial_state([]), app(rcd([]), lit_int(1)))
-  let #(value, type_, state_) = result
-  assert value == VErr
+  let #(result_term, type_, state_) = result
+  assert result_term == ast.Err("", single("", 0, 0))
   assert type_ == VErr
   assert state_.errors != []
 }
@@ -618,8 +629,8 @@ pub fn infer_app_non_function_constructor_test() {
   // Applying a constructor as a function should produce error
   let result =
     infer(initial_state([]), app(ctr("Just", lit_int(1)), lit_int(2)))
-  let #(value, type_, state_) = result
-  assert value == VErr
+  let #(result_term, type_, state_) = result
+  assert result_term == ast.Err("", single("", 0, 0))
   assert type_ == VErr
   assert state_.errors != []
 }
@@ -641,8 +652,8 @@ pub fn infer_var_shadowing_test() {
       #("x", #(outer_val, outer_type)),
     ])
   let result = infer(state, var(0))
-  let #(value, type_, _) = result
-  assert value == inner_val
+  let #(result_term, type_, _) = result
+  assert type_ == inner_val
   assert type_ == inner_type
 }
 
@@ -658,8 +669,8 @@ pub fn infer_var_outer_binding_test() {
       #("outer", #(outer_val, outer_type)),
     ])
   let result = infer(state, var(0))
-  let #(value, type_, _) = result
-  assert value == inner_val
+  let #(result_term, type_, _) = result
+  assert type_ == inner_val
   assert type_ == inner_type
 }
 
@@ -669,8 +680,8 @@ pub fn infer_lambda_nested_bindings_test() {
   let inner_lam = lam("y", lit_t_int(), inner_body)
   let outer_lam = lam("x", lit_int(0), inner_lam)
   let result = infer(initial_state([]), outer_lam)
-  let #(value, type_, _) = result
-  assert case value {
+  let #(result_term, type_, _) = result
+  assert case term_to_value(result_term) {
     VLam([], [], #("x", _), _) -> True
     _ -> False
   }
@@ -689,8 +700,8 @@ pub fn infer_multiple_vars_in_scope_test() {
       #("z", #(VLit(LitInt(3)), v_int(3))),
     ])
   let result = infer(state, var(0))
-  let #(value, _, _) = result
-  assert value == VLit(LitInt(1))
+  let #(result_term, _, _) = result
+  assert result_term == ast.Lit(ast.Int(1), single("", 0, 0))
 }
 
 // NOTE: Match inference is tested via the evaluator (eval_test.gleam)
@@ -710,8 +721,8 @@ pub fn infer_call_ffi_test() {
   let state = initial_state([FfiEntry("get_99", ffi_fn)])
   let term = Call("get_99", [], Typ(0, sp()), sp())
   let result = infer(state, term)
-  let #(value, _, _) = result
-  assert case value {
+  let #(result_term, _, _) = result
+  assert case term_to_value(result_term) {
     VLit(LitInt(99)) -> True
     _ -> False
   }
@@ -720,8 +731,8 @@ pub fn infer_call_ffi_test() {
 pub fn infer_call_ffi_not_found_deferred_test() {
   // FFI call with non-existent function should produce VCall
   let result = infer(initial_state([]), Call("nonexistent", [], Typ(0, sp()), sp()))
-  let #(value, type_, state_) = result
-  assert case value {
+  let #(result_term, type_, state_) = result
+  assert case term_to_value(result_term) {
     VCall("nonexistent", [], _) -> True
     _ -> False
   }
@@ -743,8 +754,8 @@ pub fn infer_rcdt_no_defaults_test() {
       sp(),
     )
   let result = infer(initial_state([]), rcdt)
-  let #(value, _, _) = result
-  assert case value {
+  let #(result_term, _, _) = result
+  assert case term_to_value(result_term) {
     VRcdT(fields) -> list.length(fields) == 2
     _ -> False
   }
@@ -761,8 +772,8 @@ pub fn infer_rcdt_with_defaults_test() {
       sp(),
     )
   let result = infer(initial_state([]), rcdt)
-  let #(value, _, _) = result
-  assert case value {
+  let #(result_term, _, _) = result
+  assert case term_to_value(result_term) {
     VRcdT(fields) -> list.length(fields) == 2
     _ -> False
   }
@@ -778,9 +789,9 @@ pub fn check_rcd_fills_defaults_test() {
       #("y", VNeut(HVar(0), []), Some(VLit(LitInt(0)))),
     ])
   let result = check(initial_state([]), rcd, rcdt_type)
-  let #(value, _, _) = result
+  let #(result_term, _, _) = result
   // The record should now have both x and y fields
-  assert case value {
+  assert case term_to_value(result_term) {
     VRcd(fields) -> list.length(fields) == 2
     _ -> False
   }
@@ -795,8 +806,8 @@ pub fn check_rcd_no_defaults_needed_test() {
       #("x", VNeut(HVar(0), []), None),
     ])
   let result = check(initial_state([]), rcd, rcdt_type)
-  let #(value, _, _) = result
-  assert case value {
+  let #(result_term, _, _) = result
+  assert case term_to_value(result_term) {
     VRcd(fields) -> list.length(fields) == 1
     _ -> False
   }
@@ -807,9 +818,9 @@ pub fn check_rcd_not_rcdt_no_fill_test() {
   let rcd = Rcd([#("x", lit_int(1))], sp())
   let expected = VNeut(HVar(0), [])
   let result = check(initial_state([]), rcd, expected)
-  let #(value, _, _) = result
+  let #(result_term, _, _) = result
   // The record should still have only one field
-  assert case value {
+  assert case term_to_value(result_term) {
     VRcd(fields) -> list.length(fields) == 1
     _ -> False
   }
@@ -840,8 +851,8 @@ pub fn check_lit_int_matches_float_type_test() {
   let term = lit_int(42)
   let term_type: Value = VLit(LitFloat(0.0))
   let result = check(initial_state([]), term, term_type)
-  let #(value, type_, _) = result
-  assert value == lit_val(42)
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Lit(ast.Int(42), single("", 0, 0))
   assert type_ == v_int(0)
 }
 
@@ -850,9 +861,9 @@ pub fn check_lit_float_cannot_match_int_type_test() {
   let term = lit_float(3.14)
   let term_type: Value = v_int(0)
   let result = check(initial_state([]), term, term_type)
-  let #(value, type_, _) = result
+  let #(result_term, type_, _) = result
   // Best-effort: value is still the literal
-  assert value == VLit(LitFloat(3.14))
+  assert result_term == ast.Lit(ast.Float(3.14), single("", 0, 0))
   // Type is the inferred type (unification records error but returns inferred type)
   assert type_ == VLitT(FloatT)
 }
@@ -862,8 +873,8 @@ pub fn check_lit_int_cannot_match_type_type_test() {
   let term = lit_int(42)
   let term_type: Value = VTyp(0)
   let result = check(initial_state([]), term, term_type)
-  let #(value, _, _) = result
-  assert value == lit_val(42)
+  let #(result_term, _, _) = result
+  assert result_term == ast.Lit(ast.Int(42), single("", 0, 0))
 }
 
 // ── Type Universe Tests ─────────────────────────────────────────────────
@@ -871,16 +882,16 @@ pub fn check_lit_int_cannot_match_type_type_test() {
 pub fn infer_typ_zero_has_type_one_test() {
   // $Type<0> has value VTyp(0) and type VTyp(1)
   let result = infer(initial_state([]), typ(0))
-  let #(value, type_, _) = result
-  assert value == VTyp(0)
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Typ(0, single("", 0, 0))
   assert type_ == VTyp(1)
 }
 
 pub fn infer_typ_one_has_type_two_test() {
   // $Type<1> has value VTyp(1) and type VTyp(2)
   let result = infer(initial_state([]), typ(1))
-  let #(value, type_, _) = result
-  assert value == VTyp(1)
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Typ(1, single("", 0, 0))
   assert type_ == VTyp(2)
 }
 
@@ -888,8 +899,8 @@ pub fn infer_int_type_has_type_universe_test() {
   // $Int (parsed as lit_int(0)) has value VLit(LitInt(0)) and type $Int (VLit(Int(0)))
   // Note: $Int as a type reference is parsed differently, not as a literal 0
   let result = infer(initial_state([]), lit_int(0))
-  let #(value, type_, _) = result
-  assert value == lit_val(0)
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Lit(ast.Int(0), single("", 0, 0))
   assert type_ == v_int(0)
 }
 
@@ -901,8 +912,8 @@ pub fn infer_var_bound_to_int_has_type_int_test() {
   let x_type: Value = v_int(0)
   let state = State(..initial_state([]), vars: [#("x", #(x_val, x_type))])
   let result = infer(state, var(0))
-  let #(value, type_, _) = result
-  assert value == x_val
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Var(0, single("", 0, 0))
   assert type_ == x_type
 }
 
@@ -912,8 +923,8 @@ pub fn infer_var_bound_to_type_has_type_type_test() {
   let x_type: Value = VTyp(1)
   let state = State(..initial_state([]), vars: [#("x", #(x_val, x_type))])
   let result = infer(state, var(0))
-  let #(value, type_, _) = result
-  assert value == x_val
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Var(0, single("", 0, 0))
   assert type_ == x_type
 }
 
@@ -925,8 +936,8 @@ pub fn infer_var_bound_to_lambda_has_pi_type_test() {
   let x_type: Value = VPi([], [], #("x", param_val), body_type)
   let state = State(..initial_state([]), vars: [#("x", #(x_val, x_type))])
   let result = infer(state, var(0))
-  let #(value, type_, _) = result
-  assert value == x_val
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Var(0, single("", 0, 0))
   assert type_ == x_type
 }
 
@@ -935,8 +946,8 @@ pub fn infer_var_bound_to_lambda_has_pi_type_test() {
 pub fn infer_hole_value_and_type_are_different_test() {
   // A hole should have a fresh value hole and a different fresh type hole
   let result = infer(initial_state([]), hole(0))
-  let #(value, type_, _) = result
-  assert case value {
+  let #(result_term, type_, _) = result
+  assert case term_to_value(result_term) {
     VNeut(HHole(0), []) -> True
     _ -> False
   }
@@ -1081,23 +1092,23 @@ pub fn infer_pi_float_codomain_type_test() {
 pub fn infer_app_not_a_function_int_test() {
   // 42 applied to 42 should produce VErr
   let result = infer(initial_state([]), app(lit_int(42), lit_int(42)))
-  let #(value, _, _) = result
-  assert value == VErr
+  let #(result_term, _, _) = result
+  assert result_term == ast.Err("", single("", 0, 0))
 }
 
 pub fn infer_app_not_a_function_record_test() {
   // {} applied to 42 should produce VErr
   let result = infer(initial_state([]), app(rcd([]), lit_int(42)))
-  let #(value, _, _) = result
-  assert value == VErr
+  let #(result_term, _, _) = result
+  assert result_term == ast.Err("", single("", 0, 0))
 }
 
 pub fn infer_app_not_a_function_ctr_test() {
   // #Just(42) applied to 42 should produce VErr
   let result =
     infer(initial_state([]), app(ctr("Just", lit_int(42)), lit_int(42)))
-  let #(value, _, _) = result
-  assert value == VErr
+  let #(result_term, _, _) = result
+  assert result_term == ast.Err("", single("", 0, 0))
 }
 
 // ── Annotation Tests ────────────────────────────────────────────────────
@@ -1191,9 +1202,9 @@ pub fn infer_ctr_float_arg_type_test() {
 pub fn infer_ctr_unit_arg_type_test() {
   // #True({}) has type #True(VRcdT([])) - record type, not record value
   let result = infer(initial_state([]), ctr("True", rcd([])))
-  let #(value, type_, _) = result
+  let #(result_term, type_, _) = result
   // Value is VCtr("True", VRcd([]))
-  assert case value {
+  assert case term_to_value(result_term) {
     VCtr("True", VRcd([])) -> True
     _ -> False
   }
@@ -1206,8 +1217,8 @@ pub fn check_ctr_matches_option_int_type_test() {
   let term = ctr("Some", lit_int(42))
   let expected: Value = VCtr("Option", v_int(0))
   let result = check(initial_state([]), term, expected)
-  let #(value, type_, _) = result
-  assert value == VCtr("Some", VLit(LitInt(42)))
+  let #(result_term, type_, _) = result
+  assert result_term == ast.Ctr("Some", ast.Lit(ast.Int(42), single("", 0, 0)), single("", 0, 0))
   assert type_ == VCtr("Some", v_int(0))
 }
 
@@ -1216,9 +1227,9 @@ pub fn check_ctr_float_doesnt_match_option_int_type_test() {
   let term = ctr("Some", lit_float(3.14))
   let expected: Value = VCtr("Option", v_int(0))
   let result = check(initial_state([]), term, expected)
-  let #(value, _, _) = result
+  let #(result_term, _, _) = result
   // Value should still be the constructor (best-effort)
-  assert case value {
+  assert case term_to_value(result_term) {
     VCtr("Some", VLit(LitFloat(3.14))) -> True
     _ -> False
   }
@@ -1229,16 +1240,16 @@ pub fn check_ctr_float_doesnt_match_option_int_type_test() {
 pub fn infer_app_int_as_function_error_test() {
   // 42 42 should produce VErr and a NotAFunction error
   let result = infer(initial_state([]), app(lit_int(42), lit_int(42)))
-  let #(value, _, state) = result
-  assert value == VErr
+  let #(result_term, _, state) = result
+  assert result_term == ast.Err("", single("", 0, 0))
   assert state.errors != []
 }
 
 pub fn infer_app_record_as_function_error_test() {
   // {} 42 should produce VErr
   let result = infer(initial_state([]), app(rcd([]), lit_int(42)))
-  let #(value, _, state) = result
-  assert value == VErr
+  let #(result_term, _, state) = result
+  assert result_term == ast.Err("", single("", 0, 0))
   assert state.errors != []
 }
 
@@ -1246,16 +1257,16 @@ pub fn infer_app_ctr_as_function_error_test() {
   // #Just(42) 42 should produce VErr
   let result =
     infer(initial_state([]), app(ctr("Just", lit_int(42)), lit_int(42)))
-  let #(value, _, state) = result
-  assert value == VErr
+  let #(result_term, _, state) = result
+  assert result_term == ast.Err("", single("", 0, 0))
   assert state.errors != []
 }
 
 pub fn infer_undefined_var_error_test() {
   // Var(99) should produce VErr and VarUndefined error
   let result = infer(initial_state([]), Var(99, sp()))
-  let #(value, _, state) = result
-  assert value == VErr
+  let #(result_term, _, state) = result
+  assert result_term == ast.Err("", single("", 0, 0))
   assert state.errors != []
 }
 
@@ -1263,18 +1274,18 @@ pub fn infer_ann_type_mismatch_error_test() {
   // 3.14 : $Int should produce VErr and TypeMismatch error
   let term = ann(lit_float(3.14), lit_int(0))
   let result = infer(initial_state([]), term)
-  let #(value, _, _) = result
+  let #(result_term, _, _) = result
   // Best-effort: value is still the literal
-  assert value == VLit(LitFloat(3.14))
+  assert result_term == ast.Lit(ast.Float(3.14), single("", 0, 0))
 }
 
 pub fn infer_ann_constructor_type_mismatch_test() {
   // 42 : #Bool({}) should produce VErr and TypeMismatch error
   let term = ann(lit_int(42), ctr("Bool", rcd([])))
   let result = infer(initial_state([]), term)
-  let #(value, _, _) = result
+  let #(result_term, _, _) = result
   // Best-effort: value is still the literal
-  assert value == lit_val(42)
+  assert result_term == ast.Lit(ast.Int(42), single("", 0, 0))
 }
 
 pub fn infer_match_type_checking_test() {
@@ -1323,12 +1334,12 @@ pub fn infer_lambda_evaluates_to_vlam_test() {
   let lam = lam("x", param_type, body)
   let state = initial_state([])
   let evaluated = evaluate([], [], lam)
-  let #(value, _, _) = infer(state, lam)
+  let #(result_term, _, _) = infer(state, lam)
   assert case evaluated {
     VLam(..) -> True
     _ -> False
   }
-  assert case value {
+  assert case term_to_value(result_term) {
     VLam(..) -> True
     _ -> False
   }
@@ -1341,12 +1352,12 @@ pub fn infer_pi_evaluates_to_vpi_test() {
   let pi = pi(domain, codomain)
   let state = initial_state([])
   let evaluated = evaluate([], [], pi)
-  let #(value, _, _) = infer(state, pi)
+  let #(result_term, _, _) = infer(state, pi)
   assert case evaluated {
     VPi(..) -> True
     _ -> False
   }
-  assert case value {
+  assert case term_to_value(result_term) {
     VPi(..) -> True
     _ -> False
   }
@@ -1946,7 +1957,7 @@ $type<a: $Type> {
   
   // The type_def_val should be a VTypeDef
   assert case type_def_val {
-    VTypeDef(_, _, _) -> True
+    TypeDef(_, _, _, _) -> True
     _ -> True  // Accept any result for now
   }
 }
@@ -2048,7 +2059,7 @@ $type<a: $Type, b: $Type> {
   let #(type_def_val, _, _) = infer(state, term)
   
   assert case type_def_val {
-    VTypeDef(_, _, _) -> True
+    TypeDef(_, _, _, _) -> True
     _ -> True  // Accept any result for now
   }
 }
@@ -2070,7 +2081,7 @@ $type {
   let #(type_def_val, _, _) = infer(state, term)
   
   assert case type_def_val {
-    VTypeDef(_, _, _) -> True
+    TypeDef(_, _, _, _) -> True
     _ -> True  // Accept any result for now
   }
 }
@@ -2085,9 +2096,9 @@ pub fn infer_vlam_no_implicit_test() {
   let body = var(0)
   let lam = lam("x", param_type, body)
   let state = initial_state([])
-  let #(value, type_, _) = infer(state, lam)
+  let #(result_term, type_, _) = infer(state, lam)
   
-  assert case value {
+  assert case term_to_value(result_term) {
     VLam(..) -> True
     _ -> False
   }
@@ -2106,9 +2117,9 @@ pub fn infer_vlam_application_test() {
   let arg = lit_int(42)
   let app = App(lam, arg, sp())
   let state = initial_state([])
-  let #(value, type_, _) = infer(state, app)
+  let #(result_term, type_, _) = infer(state, app)
   
-  assert case value {
+  assert case term_to_value(result_term) {
     VLit(LitInt(42)) -> True
     _ -> False
   }
@@ -2128,10 +2139,10 @@ pub fn infer_vlam_application_type_mismatch_test() {
   let arg = lit_float(3.14)
   let app = App(lam, arg, sp())
   let state = initial_state([])
-  let #(value, _, _) = infer(state, app)
+  let #(result_term, _, _) = infer(state, app)
 
   // VLam case evaluates body with arg bound — no type checking on param type
-  assert case value {
+  assert case term_to_value(result_term) {
     VLit(LitFloat(3.14)) -> True
     _ -> False
   }
@@ -2142,10 +2153,10 @@ pub fn infer_vlam_application_type_mismatch_test() {
 pub fn infer_vlam_implicit_param_with_annotation_test() {
   let source = "$let identity: $pi<a: $Type>(a) -> a = $fn<a: $Type>(x: a) => x\nidentity 42"
   let state = initial_state([])
-  let #(_, _, _) = infer(state, term_to_debruijn(parse(source).0))
-  let value = evaluate([], [], term_to_debruijn(parse(source).0))
+  let #(result_term, _, _) = infer(state, term_to_debruijn(parse(source).0))
+  let #(result_term, _, _) = infer(initial_state([]), term_to_debruijn(parse(source).0))
   
-  assert case value {
+  assert case term_to_value(result_term) {
     VLit(LitInt(42)) -> True
     _ -> False
   }
@@ -2155,9 +2166,9 @@ pub fn infer_vlam_implicit_param_with_annotation_test() {
 /// Test: Implicit param with float argument
 pub fn infer_vlam_implicit_param_float_test() {
   let source = "$let identity = $fn<a: $Type>(x: a) => x\nidentity 3.14"
-  let value = evaluate([], [], term_to_debruijn(parse(source).0))
+  let #(result_term, _, _) = infer(initial_state([]), term_to_debruijn(parse(source).0))
   
-  assert case value {
+  assert case term_to_value(result_term) {
     VLit(LitFloat(3.14)) -> True
     _ -> False
   }
@@ -2173,9 +2184,9 @@ pub fn infer_fixpoint_basic_test() {
   let state = initial_state([])
   let parsed = parse(source)
   let term = term_to_debruijn(parsed.0)
-  let #(value, type_, _) = infer(state, term)
+  let #(result_term, type_, _) = infer(state, term)
   
-  assert case value {
+  assert case term_to_value(result_term) {
     VFix("f", _, _) -> True
     _ -> False
   }
@@ -2193,10 +2204,10 @@ pub fn infer_fixpoint_recursive_call_test() {
   let state = initial_state([])
   let parsed = parse(source)
   let term = term_to_debruijn(parsed.0)
-  let #(value, _, _) = infer(state, term)
+  let #(result_term, _, _) = infer(state, term)
   
   // The value should be a VFix
-  assert case value {
+  assert case term_to_value(result_term) {
     VFix(_, _, _) -> True
     _ -> False
   }
@@ -2270,10 +2281,10 @@ pub fn infer_typeof_int_test() {
   )
 
   let result = infer(initial_state([]), let_term)
-  let #(value, type_, _) = result
+  let #(result_term, type_, _) = result
 
   // typeof 42 should return $Int (a type value)
-  assert value == VLitT(IntT)
+  assert type_ == VLitT(IntT)
   // The type of a type value is $Type<0>
   assert type_ == VTyp(0)
 }
@@ -2295,9 +2306,9 @@ pub fn infer_typeof_float_test() {
   )
 
   let result = infer(initial_state([]), let_term)
-  let #(value, type_, _) = result
+  let #(result_term, type_, _) = result
 
-  assert value == VLitT(FloatT)
+  assert type_ == VLitT(FloatT)
   assert type_ == VTyp(0)
 }
 
@@ -2311,9 +2322,9 @@ pub fn infer_direct_poly_identity_int_test() {
   let applied = app(lam, lit_int(42))
 
   let result = infer(initial_state([]), applied)
-  let #(value, type_, _) = result
+  let #(result_term, type_, _) = result
 
-  assert value == lit_val(42)
+  assert result_term == ast.Lit(ast.Int(42), single("", 0, 0))
   assert type_ == v_int(0)
 }
 
@@ -2327,9 +2338,9 @@ pub fn infer_direct_poly_identity_float_test() {
   let applied = app(lam, lit_float(3.14))
 
   let result = infer(initial_state([]), applied)
-  let #(value, type_, _) = result
+  let #(result_term, type_, _) = result
 
-  assert value == VLit(LitFloat(3.14))
+  assert result_term == ast.Lit(ast.Float(3.14), single("", 0, 0))
   assert type_ == VLitT(FloatT)
 }
 
@@ -2349,7 +2360,7 @@ pub fn infer_parser_typeof_int_test() {
   let state_ = result.2
   
   assert state_.errors == []
-  assert value == VLitT(IntT)
+  assert type_ == VLitT(IntT)
   assert type_ == VTyp(0)
 }
 
@@ -2368,7 +2379,7 @@ pub fn infer_parser_typeof_float_test() {
   let state_ = result.2
   
   assert state_.errors == []
-  assert value == VLitT(FloatT)
+  assert type_ == VLitT(FloatT)
   assert type_ == VTyp(0)
 }
 
@@ -2389,8 +2400,9 @@ pub fn infer_nested_identity_param_test() {
   )
 
   let result = infer(initial_state([]), let_term)
-  let #(value, type_, _) = result
+  let #(result_term, type_, _) = result
 
-  assert value == lit_val(42)
+  assert result_term == ast.Lit(ast.Int(42), single("", 0, 0))
   assert type_ == v_int(0)
 }
+

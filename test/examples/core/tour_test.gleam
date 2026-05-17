@@ -13,6 +13,7 @@ import core/ast.{
   VLit, VLitT, VNeut, VPi, VRcd, VRcdT, VTyp, Var,
 }
 import core/infer.{infer}
+import core/eval.{evaluate}
 import core/state.{type FfiEntry, FfiEntry, initial_state}
 import core/syntax.{parse}
 import gleam/option.{type Option, None, Some}
@@ -82,8 +83,8 @@ fn eval_file(path: String) -> Value {
   let content = read_file(path)
   let term = parse_source(content)
   let state = initial_state(ffi_entries())
-  let #(result, _, _) = infer(state, term)
-  result
+  let #(result_term, _, _) = infer(state, term)
+  evaluate([], [], result_term)
 }
 
 // ============================================================================
