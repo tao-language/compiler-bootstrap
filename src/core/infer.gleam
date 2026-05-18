@@ -260,10 +260,9 @@ fn infer_lam(
   let #(param, domain, state) = push_param(state, param)
   let #(body, codomain, state) = infer(state, body)
   let state = vars_pop(state, list.length(implicits) + 1)
-  let env = state.state_to_env(state)
   #(
     ast.Lam(implicits, param, body, span),
-    ast.VPi(env, implicits_values, domain, codomain),
+    ast.VPi(state_to_env(state), implicits_values, domain, codomain),
     state,
   )
 }
@@ -273,7 +272,6 @@ fn push_param(
   param: #(String, ast.Term),
 ) -> #(#(String, ast.Term), #(String, ast.Value), State) {
   let #(name, type_) = param
-  let #(type_, _kind, state) = infer(state, type_)
   let env = state_to_env(state)
   let type_value = eval(state.ffi, env, type_)
   let state = vars_push(state, name, ast.vvar(0, []), type_value)

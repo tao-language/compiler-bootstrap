@@ -7,6 +7,7 @@
 /// Errors accumulate as the type checker progresses, allowing
 /// recovery after type errors.
 import core/ast.{type Value, VTyp}
+import core/shift.{shift_value}
 import core/utils
 import gleam/int
 import gleam/list
@@ -114,7 +115,12 @@ pub fn vars_push(
   value: Value,
   type_: Value,
 ) -> State {
-  State(..state, vars: [#(name, value, type_), ..state.vars])
+  let shifted =
+    list.map(state.vars, fn(entry) {
+      let #(name, value, type_) = entry
+      #(name, shift_value(value, 1), shift_value(type_, 1))
+    })
+  State(..state, vars: [#(name, value, type_), ..shifted])
 }
 
 pub fn vars_pop(state: State, num_vars: Int) -> State {
