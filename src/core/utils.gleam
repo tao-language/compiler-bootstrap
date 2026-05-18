@@ -1,15 +1,17 @@
-pub fn list_at(list: List(a), index: Int) -> Result(a, Nil) {
+import gleam/option.{type Option, None, Some}
+
+pub fn list_at(list: List(a), index: Int) -> Option(a) {
   case list {
-    [] -> Error(Nil)
-    [head, ..] if index <= 0 -> Ok(head)
+    [head, ..] if index <= 0 -> Some(head)
     [_, ..tail] -> list_at(tail, index - 1)
+    [] -> None
   }
 }
 
-pub fn list_lookup(list: List(#(k, v)), key: k) -> Result(v, Nil) {
+pub fn list_lookup(list: List(#(k, v)), key: k) -> Option(v) {
   case list {
-    [] -> Error(Nil)
-    [#(k, v), ..] if k == key -> Ok(v)
+    [#(k, v), ..] if k == key -> Some(v)
     [_, ..tail] -> list_lookup(tail, key)
+    [] -> None
   }
 }

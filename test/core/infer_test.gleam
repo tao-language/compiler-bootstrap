@@ -246,10 +246,50 @@ pub fn infer_ann_hole_type_test() {
 }
 
 pub fn infer_lam_monomorphic_identity_test() {
+  // $fn(x: $Int) => x
   let term = ast.Lam([], #("x", ast.int_t(s1)), ast.Var(0, s2), s0)
   let #(result, type_, state) = infer(new_state, term)
   assert result == term
   assert type_ == ast.VPi([], [], #("x", ast.vint_t), ast.vint_t)
+  assert state == new_state
+}
+
+pub fn infer_lam_polymorphic_identity_test() {
+  // $fn<a: $Type>(x: a) => x
+  let term =
+    ast.Lam(
+      [#("a", ast.Typ(0, s1))],
+      #("x", ast.Var(0, s2)),
+      ast.Var(0, s3),
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert result == term
+  // $pi<a: $Type>(x: a) -> a
+  assert type_
+    == ast.VPi(
+      [],
+      [#("a", ast.VTyp(0))],
+      #("x", ast.vvar(1, [])),
+      ast.vvar(1, []),
+    )
+  assert state == new_state
+}
+
+pub fn infer_lam_polymorphic_typeof_test() {
+  // $fn<a: $Type>(x: a) => a
+  let term =
+    ast.Lam(
+      [#("a", ast.Typ(0, s1))],
+      #("x", ast.Var(0, s2)),
+      ast.Var(1, s3),
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert result == term
+  // $pi<a: $Type>(x: a) -> $Type
+  assert type_
+    == ast.VPi([], [#("a", ast.VTyp(0))], #("x", ast.vvar(1, [])), ast.VTyp(0))
   assert state == new_state
 }
 //   Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )

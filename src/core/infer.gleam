@@ -12,6 +12,7 @@ import core/state.{
 }
 import core/unify.{unify}
 import core/utils
+import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
@@ -132,8 +133,8 @@ fn infer_var(
   span: Span,
 ) -> #(ast.Term, ast.Value, State) {
   case utils.list_at(state.vars, index) {
-    Ok(#(_name, _value, type_)) -> #(ast.Var(index, span), type_, state)
-    Error(Nil) -> {
+    Some(#(_name, _value, type_)) -> #(ast.Var(index, span), type_, state)
+    None -> {
       let state = with_err(state, state.VarUndefined(index, span))
       #(ast.Var(index, span), ast.VErr, state)
     }
@@ -258,7 +259,7 @@ fn infer_lam(
   let #(implicits, implicits_values, state) = push_param_list(state, implicits)
   let #(param, domain, state) = push_param(state, param)
   let #(body, codomain, state) = infer(state, body)
-  let state = vars_pop(state, 1)
+  let state = vars_pop(state, list.length(implicits) + 1)
   let env = state.state_to_env(state)
   #(
     ast.Lam(implicits, param, body, span),
