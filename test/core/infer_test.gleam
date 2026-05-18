@@ -104,7 +104,7 @@ pub fn infer_var_undefined_test() {
 }
 
 pub fn infer_var0_test() {
-  let vars = [#("x", #(ast.vint(42), ast.vint_t))]
+  let vars = [#("x", ast.vint(42), ast.vint_t)]
   let new_state = State(..new_state, vars: vars)
   let term = ast.Var(0, s0)
   let #(result, type_, state) = infer(new_state, term)
@@ -115,8 +115,8 @@ pub fn infer_var0_test() {
 
 pub fn infer_var1_test() {
   let vars = [
-    #("x", #(ast.vint(42), ast.vint_t)),
-    #("y", #(ast.vfloat(3.14), ast.vfloat_t)),
+    #("x", ast.vint(42), ast.vint_t),
+    #("y", ast.vfloat(3.14), ast.vfloat_t),
   ]
   let new_state = State(..new_state, vars: vars)
   let term = ast.Var(1, s0)
@@ -240,14 +240,18 @@ pub fn infer_ann_hole_type_test() {
   let term = ast.Ann(ast.int(42, s1), ast.Hole(10, s2), s0)
   let #(result, type_, state) = infer(new_state, term)
   assert result == ast.int(42, s1)
-  assert state.errors == []
   assert type_ == ast.vint_t
   assert state
     == State(..new_state, subst: [#(10, ast.vint_t)], hole_counter: 1)
 }
-// pub fn infer_lam_monomorphic_test() {
-//   let term = ast.Lam([], #("x", ))
-// }
+
+pub fn infer_lam_monomorphic_identity_test() {
+  let term = ast.Lam([], #("x", ast.int_t(s1)), ast.Var(0, s2), s0)
+  let #(result, type_, state) = infer(new_state, term)
+  assert result == term
+  assert type_ == ast.VPi([], [], #("x", ast.vint_t), ast.vint_t)
+  assert state == new_state
+}
 //   Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )
 //   Pi( implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span, )
 //   Fix(name: String, body: Term, span: Span)

@@ -43,7 +43,7 @@ pub type FFI =
 /// * `hole_counter` — Next fresh hole ID
 pub type State {
   State(
-    vars: List(#(String, #(Value, Value))),
+    vars: List(#(String, Value, Value)),
     subst: Subst,
     errors: List(Error),
     ffi: FFI,
@@ -84,17 +84,14 @@ pub const new_state = State(
 )
 
 pub fn state_to_env(state: State) -> List(Value) {
-  list.map(state.vars, fn(entry) {
-    let #(_name, #(value, _type)) = entry
-    value
-  })
+  list.map(state.vars, fn(entry) { entry.1 })
 }
 
 pub fn env_to_state(env: List(Value), ffi: FFI) -> State {
   let vars =
     list.index_map(env, fn(value, i) {
       let name = ast.value_to_string(ast.vvar(i, []))
-      #(name, #(value, VTyp(i)))
+      #(name, value, VTyp(i))
     })
   State(..new_state, vars: vars, ffi: ffi)
 }
@@ -107,12 +104,24 @@ pub fn with_err_list(state: State, errors: List(Error)) -> State {
   State(..state, errors: list.append(state.errors, errors))
 }
 
-pub fn solve_hole(state: State, id: Int, value: ast.Value) -> State {
+pub fn with_subst(state: State, id: Int, value: ast.Value) -> State {
   State(..state, subst: [#(id, value), ..state.subst])
 }
 
-pub fn def_var(state: State, name: String, entry: #(Value, Value)) -> State {
-  State(..state, vars: [#(name, entry), ..state.vars])
+pub fn vars_push(
+  state: State,
+  name: String,
+  value: Value,
+  type_: Value,
+) -> State {
+  State(..state, vars: [#(name, value, type_), ..state.vars])
+}
+
+pub fn vars_pop(state: State, num_vars: Int) -> State {
+  case num_vars > 0, state.vars {
+    True, [_, ..vars] -> vars_pop(State(..state, vars: vars), num_vars - 1)
+    _, _ -> state
+  }
 }
 
 pub fn new_hole(state: State) -> #(Int, State) {

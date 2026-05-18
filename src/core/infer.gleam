@@ -7,7 +7,8 @@
 import core/ast
 import core/eval.{eval}
 import core/state.{
-  type State, FfiEntry, State, def_var, env_to_state, state_to_env, with_err,
+  type State, FfiEntry, State, env_to_state, state_to_env, vars_pop, vars_push,
+  with_err,
 }
 import core/unify.{unify}
 import core/utils
@@ -33,8 +34,8 @@ pub fn infer(state: State, term: ast.Term) -> #(ast.Term, ast.Value, State) {
     ast.Call(name, args, return_type, span) ->
       infer_call(state, name, args, return_type, span)
     ast.Ann(inner, type_, _) -> infer_ann(state, inner, type_)
-    // ast.Lam(implicits, param, body, span) ->
-    //   infer_lam(state, implicits, param, body, span)
+    ast.Lam(implicits, param, body, span) ->
+      infer_lam(state, implicits, param, body, span)
     // ast.Pi(implicits, domain, codomain, span) ->
     //   infer_pi(state, implicits, domain, codomain, span)
     // ast.Fix(name, body, span) -> infer_fix(state, name, body, span)
@@ -131,7 +132,7 @@ fn infer_var(
   span: Span,
 ) -> #(ast.Term, ast.Value, State) {
   case utils.list_at(state.vars, index) {
-    Ok(#(_name, #(_value, type_))) -> #(ast.Var(index, span), type_, state)
+    Ok(#(_name, _value, type_)) -> #(ast.Var(index, span), type_, state)
     Error(Nil) -> {
       let state = with_err(state, state.VarUndefined(index, span))
       #(ast.Var(index, span), ast.VErr, state)
@@ -246,53 +247,51 @@ fn infer_ann(
   let #(term, #(_, type_value), state) = check_on_term(state, term, type_)
   #(term, type_value, state)
 }
-// fn infer_lam(
-//   state: State,
-//   implicits: List(#(String, ast.Term)),
-//   param: #(String, ast.Term),
-//   body: ast.Term,
-//   span: Span,
-// ) -> #(ast.Term, ast.Value, State) {
-//   let param_name = param.0
-//   let param_type_term = param.1
-//   let n = list.length(implicits)
 
-//   // Evaluate implicits and add them to state as fresh holes (before lambda param)
-//   // This ensures implicit params are at indices 0..n-1 in the state
-//   let #(implicit_env, implicit_state) =
-//     list.fold(list.reverse(implicits), #([], state), fn(acc, imp) {
-//       let #(acc_env, s) = acc
-//       let ival = evaluate(state_to_env(s), s.ffi, imp.1)
-//       let fresh_id = s.hole_counter
-//       let new_s = State(..s, hole_counter: fresh_id + 1)
-//       let hole = ast.VNeut(ast.HHole(fresh_id), [])
-//       let state_with_imp = def_var(new_s, imp.0, hole, ival)
-//       #([#(imp.0, hole), ..acc_env], state_with_imp)
-//     })
+fn infer_lam(
+  state: State,
+  implicits: List(#(String, ast.Term)),
+  param: #(String, ast.Term),
+  body: ast.Term,
+  span: Span,
+) -> #(ast.Term, ast.Value, State) {
+  let #(implicits, implicits_values, state) = push_param_list(state, implicits)
+  let #(param, domain, state) = push_param(state, param)
+  let #(body, codomain, state) = infer(state, body)
+  let state = vars_pop(state, 1)
+  let env = state.state_to_env(state)
+  #(
+    ast.Lam(implicits, param, body, span),
+    ast.VPi(env, implicits_values, domain, codomain),
+    state,
+  )
+}
 
-//   // Add lambda param AFTER implicit params (so it's at index n)
-//   let param_val =
-//     evaluate(state_to_env(implicit_state), implicit_state.ffi, param_type_term)
-//   let bound_value = ast.VNeut(ast.HVar(n), [])
-//   let state_ext =
-//     State(..implicit_state, vars: [
-//       #(param_name, #(bound_value, param_val)),
-//       ..implicit_state.vars
-//     ])
+fn push_param(
+  state: State,
+  param: #(String, ast.Term),
+) -> #(#(String, ast.Term), #(String, ast.Value), State) {
+  let #(name, type_) = param
+  let #(type_, _kind, state) = infer(state, type_)
+  let env = state_to_env(state)
+  let type_value = eval(state.ffi, env, type_)
+  let state = vars_push(state, name, ast.vvar(0, []), type_value)
+  #(#(name, type_), #(name, type_value), state)
+}
 
-//   // Infer body directly — its De Bruijn indices are already correct:
-//   // indices 0..n-1 = implicit params, index n = lambda param, index n+1+ = outer scope
-//   let #(body_result, body_type, state5) = infer(state_ext, body)
-
-//   // VLam env: outer scope variables only (drop implicit params and lambda param)
-//   let env = list.map(list.drop(state.vars, n + 1), fn(v) { v.1.0 })
-//   let lam_value =
-//     ast.VLam(env, implicit_env, #(param_name, param_val), body_result)
-//   let pi_type = ast.VPi(env, implicit_env, #(param_name, param_val), body_type)
-
-//   #(ast.Lam(implicits, param, body_result, span), pi_type, state5)
-// }
-
+fn push_param_list(
+  state: State,
+  params: List(#(String, ast.Term)),
+) -> #(List(#(String, ast.Term)), List(#(String, ast.Value)), State) {
+  case params {
+    [] -> #([], [], state)
+    [param, ..params] -> {
+      let #(param, param_value, state) = push_param(state, param)
+      let #(params, param_values, state) = push_param_list(state, params)
+      #([param, ..params], [param_value, ..param_values], state)
+    }
+  }
+}
 // fn infer_pi(
 //   state: State,
 //   _implicits: List(#(String, ast.Term)),

@@ -1,9 +1,6 @@
 /// Tests for the Infer module (Bidirectional Type Checking)
 import core/ast
-import core/state.{
-  SpineArityMismatch, SpineElimMismatch, State, TypeMismatch, new_state,
-  with_err,
-}
+import core/state.{SpineArityMismatch, State, TypeMismatch, new_state, with_err}
 import core/unify.{unify}
 import gleeunit
 import syntax/span.{Span}
@@ -72,17 +69,33 @@ pub fn unify_vneut_spine_arity_mismatch_test() {
 
 pub fn unify_vneut_spine_elim_mismatch_test() {
   let a = #(ast.vvar(0, [ast.EApp(ast.vint_t, s2)]), s1)
+  let b = #(ast.vvar(0, [ast.EMatch([], [], s4)]), s3)
+  let state = unify(new_state, a, b)
+  let error =
+    state.SpineElimMismatch(ast.EApp(ast.vint_t, s2), ast.EMatch([], [], s4))
+  assert state == with_err(new_state, error)
+}
+
+pub fn unify_vneut_spine_type_mismatch_test() {
+  let a = #(ast.vvar(0, [ast.EApp(ast.vint_t, s2)]), s1)
   let b = #(ast.vvar(0, [ast.EApp(ast.vfloat_t, s4)]), s3)
   let state = unify(new_state, a, b)
   let error = TypeMismatch(#(ast.vint_t, s2), #(ast.vfloat_t, s4))
   assert state == with_err(new_state, error)
 }
 
-pub fn unify_vneut_hole_test() {
-  let a = #(ast.vint_t, s1)
-  let b = #(ast.vhole(42, []), s1)
+pub fn unify_vneut_hole_a_test() {
+  let a = #(ast.vhole(10, []), s1)
+  let b = #(ast.vint_t, s2)
   let state = unify(new_state, a, b)
-  assert state == State(..state, subst: [#(42, ast.vint_t)])
+  assert state == State(..state, subst: [#(10, ast.vint_t)])
+}
+
+pub fn unify_vneut_hole_b_test() {
+  let a = #(ast.vint_t, s1)
+  let b = #(ast.vhole(10, []), s2)
+  let state = unify(new_state, a, b)
+  assert state == State(..state, subst: [#(10, ast.vint_t)])
 }
 // VNeut(head: Head, spine: List(Elim))
 // VCtr(tag: String, arg: Value)
