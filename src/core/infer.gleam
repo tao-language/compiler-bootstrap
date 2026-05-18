@@ -6,6 +6,7 @@
 /// the expected type.
 import core/ast
 import core/eval.{eval}
+import core/shift.{shift_value}
 import core/state.{
   type State, FfiEntry, State, env_to_state, state_to_env, vars_pop, vars_push,
   with_err,
@@ -275,7 +276,10 @@ fn push_param(
   let env = state_to_env(state)
   let type_value = eval(state.ffi, env, type_)
   let state = vars_push(state, name, ast.vvar(0, []), type_value)
-  #(#(name, type_), #(name, type_value), state)
+  // Shift type_value by 1 to account for the new variable being prepended
+  // to the vars list (which shifts all existing indices up by 1).
+  let shifted_type_value = shift_value(type_value, 1)
+  #(#(name, type_), #(name, shifted_type_value), state)
 }
 
 fn push_param_list(
