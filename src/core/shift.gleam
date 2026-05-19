@@ -25,6 +25,7 @@ pub fn shift_value(value: ast.Value, delta: Int) -> ast.Value {
 fn shift_head(head: ast.Head, delta: Int) -> ast.Head {
   case head {
     ast.HVar(lvl) -> ast.HVar(lvl + delta)
+    ast.HHole(id) -> ast.HHole(id)
     _ -> {
       echo head
       todo

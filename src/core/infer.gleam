@@ -8,8 +8,7 @@ import core/ast
 import core/eval.{eval}
 import core/shift.{shift_value}
 import core/state.{
-  type State, FfiEntry, State, env_to_state, state_to_env, vars_pop, vars_push,
-  with_err,
+  type State, FfiEntry, State, env_to_state, state_to_env, with_err,
 }
 import core/unify.{unify}
 import core/utils
@@ -71,10 +70,10 @@ fn check_on_term(
 ) -> #(ast.Term, #(ast.Term, ast.Value), State) {
   let env = state_to_env(state)
   let #(type_, _, state) = infer(state, type_)
-  let type_value = eval(state.ffi, env, type_)
-  let #(term, type_value, state) =
-    check(state, term, #(type_value, ast.get_span(type_)))
-  #(term, #(type_, type_value), state)
+  let type_val = eval(state.ffi, env, type_)
+  let #(term, type_val, state) =
+    check(state, term, #(type_val, ast.get_span(type_)))
+  #(term, #(type_, type_val), state)
 }
 
 /// Infer a type universe ($Type<n>).
@@ -223,8 +222,8 @@ fn infer_call(
   let #(args, state) = check_call_args(state, args)
   let #(return_type, _, state) = infer(state, return_type)
   let env = state_to_env(state)
-  let return_type_value = eval(state.ffi, env, return_type)
-  #(ast.Call(name, args, return_type, span), return_type_value, state)
+  let return_type_val = eval(state.ffi, env, return_type)
+  #(ast.Call(name, args, return_type, span), return_type_val, state)
 }
 
 fn check_call_args(
@@ -246,24 +245,26 @@ fn infer_ann(
   term: ast.Term,
   type_: ast.Term,
 ) -> #(ast.Term, ast.Value, State) {
-  let #(term, #(_, type_value), state) = check_on_term(state, term, type_)
-  #(term, type_value, state)
+  let #(term, #(_, type_val), state) = check_on_term(state, term, type_)
+  #(term, type_val, state)
 }
 
 fn infer_lam(
   state: State,
   implicits: List(#(String, ast.Term)),
-  param: #(String, ast.Term),
+  param_type: #(String, ast.Term),
   body: ast.Term,
   span: Span,
 ) -> #(ast.Term, ast.Value, State) {
-  let #(implicits, implicits_values, state) = push_param_list(state, implicits)
-  let #(param, domain, state) = push_param(state, param)
-  let #(body, codomain, state) = infer(state, body)
-  let state = vars_pop(state, list.length(implicits) + 1)
+  let #(implicits, implicits_val, state) = push_param_list(state, implicits)
+  let #(param_type, param_type_val, state) = push_param(state, param_type)
+  let #(body, body_type, state) = infer(state, body)
+  let num_params = list.length(implicits) + 1
+  let state = pop_params(state, num_params)
+  let env = list.map(state_to_env(state), shift_value(_, num_params))
   #(
-    ast.Lam(implicits, param, body, span),
-    ast.VPi(state_to_env(state), implicits_values, domain, codomain),
+    ast.Lam(implicits, param_type, body, span),
+    ast.VPi(env, implicits_val, param_type_val, body_type),
     state,
   )
 }
@@ -272,14 +273,11 @@ fn push_param(
   state: State,
   param: #(String, ast.Term),
 ) -> #(#(String, ast.Term), #(String, ast.Value), State) {
-  let #(name, type_) = param
-  let env = state_to_env(state)
-  let type_value = eval(state.ffi, env, type_)
-  let state = vars_push(state, name, ast.vvar(0, []), type_value)
-  // Shift type_value by 1 to account for the new variable being prepended
-  // to the vars list (which shifts all existing indices up by 1).
-  let shifted_type_value = shift_value(type_value, 1)
-  #(#(name, type_), #(name, shifted_type_value), state)
+  let #(name, param_type) = param
+  let param_type_val = eval(state.ffi, state_to_env(state), param_type)
+  let new_var = #(name, ast.vvar(0, []), param_type_val)
+  let state = State(..state, vars: [new_var, ..state.vars])
+  #(#(name, param_type), #(name, param_type_val), state)
 }
 
 fn push_param_list(
@@ -289,12 +287,18 @@ fn push_param_list(
   case params {
     [] -> #([], [], state)
     [param, ..params] -> {
-      let #(param, param_value, state) = push_param(state, param)
-      let #(params, param_values, state) = push_param_list(state, params)
-      #([param, ..params], [param_value, ..param_values], state)
+      let #(param_type, param_type_val, state) = push_param(state, param)
+      let #(params, params_val, state) = push_param_list(state, params)
+      #([param_type, ..params], [param_type_val, ..params_val], state)
     }
   }
 }
+
+fn pop_params(state: State, num_params: Int) -> State {
+  State(..state, vars: list.drop(state.vars, num_params))
+}
+//
+
 // fn infer_pi(
 //   state: State,
 //   _implicits: List(#(String, ast.Term)),

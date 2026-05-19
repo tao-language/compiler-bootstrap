@@ -2,6 +2,7 @@
 import core/ast
 import core/infer.{infer}
 import core/state.{State, new_state, with_err}
+import gleam/list
 import gleam/option.{None, Some}
 import gleeunit
 import syntax/span.{Span}
@@ -250,6 +251,7 @@ pub fn infer_lam_monomorphic_identity_test() {
   let term = ast.Lam([], #("x", ast.int_t(s1)), ast.Var(0, s2), s0)
   let #(result, type_, state) = infer(new_state, term)
   assert result == term
+  // $pi(x: $Int) -> $Int
   assert type_ == ast.VPi([], [], #("x", ast.vint_t), ast.vint_t)
   assert state == new_state
 }
@@ -270,7 +272,7 @@ pub fn infer_lam_polymorphic_identity_test() {
     == ast.VPi(
       [],
       [#("a", ast.VTyp(0))],
-      #("x", ast.vvar(1, [])),
+      #("x", ast.vvar(0, [])),
       ast.vvar(0, []),
     )
   assert state == new_state
@@ -289,10 +291,38 @@ pub fn infer_lam_polymorphic_typeof_test() {
   assert result == term
   // $pi<a: $Type>(x: a) -> $Type
   assert type_
-    == ast.VPi([], [#("a", ast.VTyp(0))], #("x", ast.vvar(1, [])), ast.VTyp(0))
+    == ast.VPi([], [#("a", ast.VTyp(0))], #("x", ast.vvar(0, [])), ast.VTyp(0))
+  assert state == new_state
+}
+
+pub fn infer_lam_closure_test() {
+  // $let y: $Float = 3.14; $fn(x: $Int) => y
+  let term = ast.Lam([], #("x", ast.int_t(s1)), ast.Var(1, s2), s0)
+  let var_y = #("y", ast.vfloat(3.14), ast.vfloat_t)
+  let new_state = state.vars_push(new_state, var_y)
+  let #(result, type_, state) = infer(new_state, term)
+  assert result == term
+  assert type_
+    == ast.VPi([ast.vfloat(3.14)], [], #("x", ast.vint_t), ast.vfloat_t)
+  assert state == new_state
+}
+
+pub fn infer_lam_closure_shift_test() {
+  // $let z = 3.14; $let y = z; $fn(x: $Int) => y
+  let term = ast.Lam([], #("x", ast.int_t(s1)), ast.Var(1, s2), s0)
+  let var_y = #("y", ast.vvar(1, []), ast.vfloat_t)
+  let var_z = #("z", ast.vfloat(3.14), ast.vfloat_t)
+  let new_state = state.vars_push(new_state, var_z)
+  let new_state = state.vars_push(new_state, var_y)
+  assert list.map(new_state.vars, fn(var) { var.0 }) == ["y", "z"]
+  let #(result, type_, state) = infer(new_state, term)
+  assert result == term
+  let env = [ast.vvar(2, []), ast.vfloat(3.14)]
+  assert type_ == ast.VPi(env, [], #("x", ast.vint_t), ast.vfloat_t)
   assert state == new_state
 }
 //   Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )
+
 //   Pi( implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span, )
 //   Fix(name: String, body: Term, span: Span)
 //   App(fun: Term, arg: Term, span: Span)

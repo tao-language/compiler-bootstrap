@@ -38,10 +38,11 @@ pub type FFI =
 ///
 /// State is threaded through every phase of the compiler. Fields:
 ///
-/// * `vars` — Variable environment (name → #(value, type))
-/// * `errors` — Accumulated errors during type checking
-/// * `ffi` — FFI builtin definitions available at runtime
-/// * `hole_counter` — Next fresh hole ID
+/// * `vars`: Variable environment (name → #(value, type))
+/// * `subst`: Hole substitutions (hole_id → value)
+/// * `errors`: Accumulated errors during type checking
+/// * `ffi`: FFI builtin definitions available at runtime
+/// * `hole_counter`: Next fresh hole ID
 pub type State {
   State(
     vars: List(#(String, Value, Value)),
@@ -109,18 +110,24 @@ pub fn with_subst(state: State, id: Int, value: ast.Value) -> State {
   State(..state, subst: [#(id, value), ..state.subst])
 }
 
-pub fn vars_push(
-  state: State,
-  name: String,
-  value: Value,
-  type_: Value,
-) -> State {
-  let shifted =
+/// Restores the variable scope of a state to a previous length,
+/// but preserves all hole substitutions, errors, and the hole counter.
+pub fn restore_scope(state: State, old_vars_length: Int) -> State {
+  let to_drop = list.length(state.vars) - old_vars_length
+  State(..state, vars: list.drop(state.vars, to_drop))
+}
+
+pub fn vars_shift(state: State, delta: Int) -> State {
+  let shifted_vars =
     list.map(state.vars, fn(entry) {
       let #(name, value, type_) = entry
-      #(name, shift_value(value, 1), shift_value(type_, 1))
+      #(name, shift_value(value, delta), shift_value(type_, delta))
     })
-  State(..state, vars: [#(name, value, type_), ..shifted])
+  State(..state, vars: shifted_vars)
+}
+
+pub fn vars_push(state: State, var: #(String, Value, Value)) -> State {
+  State(..state, vars: [var, ..state.vars])
 }
 
 pub fn vars_pop(state: State, num_vars: Int) -> State {
