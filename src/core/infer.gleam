@@ -8,7 +8,7 @@ import core/ast
 import core/eval.{eval}
 import core/shift.{shift_value}
 import core/state.{
-  type State, FfiEntry, State, env_to_state, state_to_env, with_err,
+  type FFI, type State, FfiEntry, State, env_to_state, state_to_env, with_err,
 }
 import core/unify.{unify}
 import core/utils
@@ -259,9 +259,7 @@ fn infer_lam(
   let #(implicits, implicits_val, state) = push_param_list(state, implicits)
   let #(param_type, param_type_val, state) = push_param(state, param_type)
   let #(body, body_type, state) = infer(state, body)
-  let num_params = list.length(implicits) + 1
-  let state = pop_params(state, num_params)
-  let env = list.map(state_to_env(state), shift_value(_, num_params))
+  let #(env, state) = pop_params(state, list.length(implicits) + 1)
   #(
     ast.Lam(implicits, param_type, body, span),
     ast.VPi(env, implicits_val, param_type_val, body_type),
@@ -275,9 +273,13 @@ fn push_param(
 ) -> #(#(String, ast.Term), #(String, ast.Value), State) {
   let #(name, param_type) = param
   let param_type_val = eval(state.ffi, state_to_env(state), param_type)
-  let new_var = #(name, ast.vvar(0, []), param_type_val)
-  let state = State(..state, vars: [new_var, ..state.vars])
-  #(#(name, param_type), #(name, param_type_val), state)
+  let state = state.vars_shift(state, 1)
+  let var = #(name, ast.vvar(0, []), param_type_val)
+  #(
+    #(name, param_type),
+    #(name, param_type_val),
+    State(..state, vars: [var, ..state.vars]),
+  )
 }
 
 fn push_param_list(
@@ -294,8 +296,11 @@ fn push_param_list(
   }
 }
 
-fn pop_params(state: State, num_params: Int) -> State {
-  State(..state, vars: list.drop(state.vars, num_params))
+fn pop_params(state: State, num_params: Int) -> #(ast.Env, State) {
+  let state = State(..state, vars: list.drop(state.vars, num_params))
+  let env = state_to_env(state)
+  let state = state.vars_shift(state, -num_params)
+  #(env, state)
 }
 //
 

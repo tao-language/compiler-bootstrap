@@ -1,6 +1,7 @@
 import core/ast
 import core/state.{type FFI}
 import core/utils
+import gleam/list
 import gleam/option.{None, Some}
 
 pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
@@ -16,8 +17,20 @@ pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
       }
     // Var(index: Int, span: Span)
     // Ctr(tag: String, arg: Term, span: Span)
-    // Rcd(fields: List(#(String, Term)), span: Span)
-    // RcdT(fields: List(#(String, Term, Option(Term))), span: Span)
+    ast.Rcd(fields, _) ->
+      ast.VRcd(
+        list.map(fields, fn(field) {
+          let #(name, term) = field
+          #(name, eval(ffi, env, term))
+        }),
+      )
+    ast.RcdT(fields, _) ->
+      ast.VRcdT(
+        list.map(fields, fn(field) {
+          let #(name, term, default) = field
+          #(name, eval(ffi, env, term), option.map(default, eval(ffi, env, _)))
+        }),
+      )
     // Call(name: String, args: List(#(Term, Term)), return_type: Term, span: Span)
     // Ann(term: Term, type_: Term, span: Span)
     // Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )

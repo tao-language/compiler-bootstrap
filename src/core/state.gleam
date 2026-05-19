@@ -110,34 +110,17 @@ pub fn with_subst(state: State, id: Int, value: ast.Value) -> State {
   State(..state, subst: [#(id, value), ..state.subst])
 }
 
-/// Restores the variable scope of a state to a previous length,
-/// but preserves all hole substitutions, errors, and the hole counter.
-pub fn restore_scope(state: State, old_vars_length: Int) -> State {
-  let to_drop = list.length(state.vars) - old_vars_length
-  State(..state, vars: list.drop(state.vars, to_drop))
-}
-
-pub fn vars_shift(state: State, delta: Int) -> State {
-  let shifted_vars =
-    list.map(state.vars, fn(entry) {
-      let #(name, value, type_) = entry
-      #(name, shift_value(value, delta), shift_value(type_, delta))
-    })
-  State(..state, vars: shifted_vars)
-}
-
-pub fn vars_push(state: State, var: #(String, Value, Value)) -> State {
-  State(..state, vars: [var, ..state.vars])
-}
-
-pub fn vars_pop(state: State, num_vars: Int) -> State {
-  case num_vars > 0, state.vars {
-    True, [_, ..vars] -> vars_pop(State(..state, vars: vars), num_vars - 1)
-    _, _ -> state
-  }
-}
-
 pub fn new_hole(state: State) -> #(Int, State) {
   let id = state.hole_counter
   #(id, State(..state, hole_counter: id + 1))
+}
+
+pub fn vars_shift(state: State, delta: Int) -> State {
+  State(
+    ..state,
+    vars: list.map(state.vars, fn(var) {
+      let #(name, value, type_val) = var
+      #(name, shift_value(value, delta), shift_value(type_val, delta))
+    }),
+  )
 }
