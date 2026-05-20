@@ -329,16 +329,49 @@ pub fn infer_lam_two_implicits_test() {
     )
 }
 
+pub fn infer_lam_nested_test() {
+  // $fn(x: $Int) => $fn(y: $Float) => {a: x, b: y}
+  let term =
+    ast.Lam(
+      [],
+      #("x", ast.int_t(s1)),
+      ast.Lam(
+        [],
+        #("y", ast.float_t(s3)),
+        ast.Rcd([#("a", ast.Var(1, s5)), #("b", ast.Var(0, s6))], s4),
+        s2,
+      ),
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  // $pi(x: $Int) -> $pi(y: $Float) -> ${a: $Int, b: $Float}
+  assert type_
+    == ast.VPi(
+      [],
+      [],
+      #("x", ast.vint_t),
+      ast.VPi(
+        [ast.vvar(1, [])],
+        [],
+        #("y", ast.vfloat_t),
+        ast.VRcdT([#("a", ast.vint_t, None), #("b", ast.vfloat_t, None)]),
+      ),
+    )
+}
+
 pub fn infer_lam_closure_test() {
   // $let y: $Float = 3.14; $fn(x: $Int) => y
   let term = ast.Lam([], #("x", ast.int_t(s1)), ast.Var(1, s2), s0)
   let var_y = #("y", ast.vfloat(3.14), ast.vfloat_t)
   let new_state = State(..new_state, vars: [var_y])
   let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
   assert result == term
+  // $pi(x: $Int) -> $Float (with env [3.14])
   assert type_
     == ast.VPi([ast.vfloat(3.14)], [], #("x", ast.vint_t), ast.vfloat_t)
-  assert state == new_state
 }
 
 pub fn infer_lam_closure_shift_test() {
@@ -349,10 +382,11 @@ pub fn infer_lam_closure_shift_test() {
   let new_state = State(..new_state, vars: [var_y, var_z])
   assert list.map(new_state.vars, fn(var) { var.0 }) == ["y", "z"]
   let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
   assert result == term
+  // $pi(x: $Int) -> $Float (with env [z, 3.14])
   let env = [ast.vvar(2, []), ast.vfloat(3.14)]
   assert type_ == ast.VPi(env, [], #("x", ast.vint_t), ast.vfloat_t)
-  assert state == new_state
 }
 //   Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )
 
