@@ -217,7 +217,7 @@ fn infer_rcd_type_fields(
 fn infer_call(
   state: State,
   name: String,
-  args: List(#(ast.Term, ast.Term)),
+  args: List(ast.Term),
   return_type: ast.Term,
   span: Span,
 ) -> #(ast.Term, ast.Value, State) {
@@ -230,14 +230,14 @@ fn infer_call(
 
 fn check_call_args(
   state: State,
-  args: List(#(ast.Term, ast.Term)),
-) -> #(List(#(ast.Term, ast.Term)), State) {
+  args: List(ast.Term),
+) -> #(List(ast.Term), State) {
   case args {
     [] -> #([], state)
-    [#(arg, arg_type), ..args] -> {
-      let #(arg, #(arg_type, _), state) = check_on_term(state, arg, arg_type)
+    [arg, ..args] -> {
+      let #(arg, _, state) = infer(state, arg)
       let #(args, state) = check_call_args(state, args)
-      #([#(arg, arg_type), ..args], state)
+      #([arg, ..args], state)
     }
   }
 }

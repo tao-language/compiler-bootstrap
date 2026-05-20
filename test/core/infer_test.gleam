@@ -202,20 +202,9 @@ pub fn infer_call_test() {
 }
 
 pub fn infer_call_args_test() {
-  let term =
-    ast.Call("f", [#(ast.float(3.14, s1), ast.float_t(s2))], ast.int_t(s1), s0)
+  let term = ast.Call("f", [ast.float(3.14, s1)], ast.int_t(s1), s0)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
-  assert result == term
-  assert type_ == ast.vint_t
-}
-
-pub fn infer_call_arg_type_mismatch_test() {
-  let term =
-    ast.Call("f", [#(ast.float(3.14, s1), ast.int_t(s2))], ast.int_t(s1), s0)
-  let #(result, type_, state) = infer(new_state, term)
-  let error = state.TypeMismatch(#(ast.vfloat_t, s1), #(ast.vint_t, s2))
-  assert state == with_err(new_state, error)
   assert result == term
   assert type_ == ast.vint_t
 }

@@ -24,7 +24,7 @@ import syntax/span.{type Span, Span}
 /// is the result of type-checking the argument. This enables operator
 /// overloading in Phase 5.
 pub type FFI =
-  List(#(String, fn(List(#(Value, Value))) -> Option(Value)))
+  List(#(String, fn(List(Value)) -> Option(Value)))
 
 // ============================================================================
 // STATE

@@ -133,22 +133,9 @@ pub fn eval_call_return_some_test() {
 
 pub fn eval_call_args_test() {
   let term =
-    ast.Call(
-      "f",
-      [
-        #(ast.int(42, s2), ast.int_t(s3)),
-        #(ast.float(3.14, s4), ast.float_t(s5)),
-      ],
-      ast.int_t(s1),
-      s0,
-    )
+    ast.Call("f", [ast.int(42, s2), ast.float(3.14, s4)], ast.int_t(s1), s0)
   let result = eval([], [], term)
-  assert result
-    == ast.vcall(
-      "f",
-      [#(ast.vint(42), ast.vint_t), #(ast.vfloat(3.14), ast.vfloat_t)],
-      [],
-    )
+  assert result == ast.vcall("f", [ast.vint(42), ast.vfloat(3.14)], [])
 }
 // TypeDef(
 // Ann(term: Term, type_: Term, span: Span)

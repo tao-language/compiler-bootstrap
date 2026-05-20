@@ -31,11 +31,7 @@ pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
         }),
       )
     ast.Call(name, args, _, _) -> {
-      let args_val =
-        list.map(args, fn(typed_arg) {
-          let #(arg, type_) = typed_arg
-          #(eval(ffi, env, arg), eval(ffi, env, type_))
-        })
+      let args_val = list.map(args, eval(ffi, env, _))
       let result =
         utils.list_lookup(ffi, name)
         |> option.then(fn(call) { call(args_val) })

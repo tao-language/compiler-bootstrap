@@ -50,7 +50,7 @@ pub type Term {
   Ctr(tag: String, arg: Term, span: Span)
   Rcd(fields: List(#(String, Term)), span: Span)
   RcdT(fields: List(#(String, Term, Option(Term))), span: Span)
-  Call(name: String, args: List(#(Term, Term)), return_type: Term, span: Span)
+  Call(name: String, args: List(Term), return_type: Term, span: Span)
   Ann(term: Term, type_: Term, span: Span)
   Lam(
     implicits: List(#(String, Term)),
@@ -171,7 +171,7 @@ pub type NamedCase {
 pub type Head {
   HVar(level: Int)
   HHole(id: Int)
-  HCall(name: String, args: List(#(Value, Value)))
+  HCall(name: String, args: List(Value))
   HFix(env: Env, body: Term)
 }
 
@@ -316,11 +316,7 @@ pub fn vhole(id: Int, spine: List(Elim)) -> Value {
   VNeut(HHole(id), spine)
 }
 
-pub fn vcall(
-  name: String,
-  args: List(#(Value, Value)),
-  spine: List(Elim),
-) -> Value {
+pub fn vcall(name: String, args: List(Value), spine: List(Elim)) -> Value {
   VNeut(HCall(name, args), spine)
 }
 
