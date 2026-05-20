@@ -137,11 +137,16 @@ pub fn eval_call_args_test() {
   let result = eval([], [], term)
   assert result == ast.vcall("f", [ast.vint(42), ast.vfloat(3.14)], [])
 }
-// TypeDef(
-// Ann(term: Term, type_: Term, span: Span)
-// Lam(
-// Pi(
+
+pub fn eval_ann_test() {
+  let term = ast.Ann(ast.int(42, s1), ast.int_t(s2), s0)
+  let result = eval([], [], term)
+  assert result == ast.vint(42)
+}
+// Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )
+// Pi( implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span, )
 // Fix(name: String, body: Term, span: Span)
 // App(fun: Term, arg: Term, span: Span)
+// TypeDef( params: List(#(String, Term)), constructors: List(#(String, #(List(String), Term, Term), Span)), span: Span, )
 // Match(arg: Term, cases: List(Case), span: Span)
 // Err(message: String, span: Span)

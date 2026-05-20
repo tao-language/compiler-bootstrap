@@ -40,8 +40,7 @@ pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
         None -> ast.vcall(name, args_val, [])
       }
     }
-    // Call(name: String, args: List(#(Term, Term)), return_type: Term, span: Span)
-    // Ann(term: Term, type_: Term, span: Span)
+    ast.Ann(term, _, _) -> eval(ffi, env, term)
     // Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )
     // Pi( implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span, )
     // Fix(name: String, body: Term, span: Span)
