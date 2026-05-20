@@ -306,7 +306,7 @@ pub fn infer_lam_two_implicits_test() {
       #(
         "pair",
         ast.RcdT(
-          [#("x", ast.Var(2, s4), None), #("y", ast.Var(1, s5), None)],
+          [#("x", ast.Var(1, s4), None), #("y", ast.Var(0, s5), None)],
           s3,
         ),
       ),
@@ -323,9 +323,9 @@ pub fn infer_lam_two_implicits_test() {
       [#("a", ast.VTyp(0)), #("b", ast.VTyp(1))],
       #(
         "pair",
-        ast.VRcdT([#("x", ast.vvar(2, []), None), #("y", ast.vvar(1, []), None)]),
+        ast.VRcdT([#("x", ast.vvar(1, []), None), #("y", ast.vvar(0, []), None)]),
       ),
-      ast.VRcd([#("xt", ast.VTyp(0)), #("yt", ast.VTyp(1))]),
+      ast.VRcdT([#("xt", ast.VTyp(0), None), #("yt", ast.VTyp(1), None)]),
     )
 }
 
