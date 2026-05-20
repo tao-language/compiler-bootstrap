@@ -249,6 +249,25 @@ fn infer_ann(
   #(term, type_val, state)
 }
 
+/// Infer a lambda term: $fn<implicits>(param: param_type) => body
+///
+/// DeBruijn management strategy (critical for soundness in dependent types):
+///
+/// 1. push_param_list / push_param: prepend each param to state.vars, and
+///    shift ALL existing vars' values by +1 so their DeBruijn levels stay
+///    correct relative to the new innermost binder.
+/// 2. infer(body): body type is inferred with params in scope; its DeBruijn
+///    levels are relative to the lambda's parameter block.
+/// 3. pop_params: drop the lambda's own params from the front of vars, then
+///    extract the captured environment from the remaining vars.
+///    — The env is extracted BEFORE the -delta shift, so env values retain
+///      the +delta offset from push_param. This is the key invariant:
+///      env levels are already correct for the VPi's binding context.
+///    — The -delta shift on the state restores original levels for the outer
+///      scope, but does NOT affect the env (which is already returned).
+///
+/// The body_type (codomain of VPi) needs no shifting: its levels were already
+/// computed inside the lambda's scope where params are at indices 0..n.
 fn infer_lam(
   state: State,
   implicits: List(#(String, ast.Term)),
@@ -272,7 +291,12 @@ fn push_param(
   param: #(String, ast.Term),
 ) -> #(#(String, ast.Term), #(String, ast.Value), State) {
   let #(name, param_type) = param
+  // Evaluate the param type in the current env (may reference earlier implicits)
   let param_type_val = eval(state.ffi, state_to_env(state), param_type)
+  // Shift ALL existing vars' values by +1 BEFORE prepending. This is critical:
+  // every var's value and type must be shifted so its DeBruijn levels remain
+  // correct relative to the new innermost binder (the param we're adding).
+  // Without this shift, existing vars' levels would be off by 1.
   let state = state.vars_shift(state, 1)
   let var = #(name, ast.vvar(0, []), param_type_val)
   #(
@@ -296,9 +320,22 @@ fn push_param_list(
   }
 }
 
+/// Remove the lambda's own params from the state and extract the captured env.
+///
+/// Key invariant: env is extracted BEFORE the -delta shift, so env values
+/// retain the +delta offset from push_param. This means env levels are
+/// already correct for the VPi's binding context (where lambda params occupy
+/// levels 0..n, and captured vars occupy levels n+1, n+2, ...).
+///
+/// The -delta shift on the state then restores the remaining vars to their
+/// original levels (relative to the outer scope), but the env is unaffected.
 fn pop_params(state: State, num_params: Int) -> #(ast.Env, State) {
+  // Drop the lambda's params (which are at the front of vars)
   let state = State(..state, vars: list.drop(state.vars, num_params))
+  // Extract captured env from remaining vars — these values have +num_params
+  // levels from push_param, which are exactly the levels needed for the VPi.
   let env = state_to_env(state)
+  // Restore the remaining vars to their original levels for the outer scope.
   let state = state.vars_shift(state, -num_params)
   #(env, state)
 }
