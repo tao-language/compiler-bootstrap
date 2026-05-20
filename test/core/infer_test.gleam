@@ -388,7 +388,234 @@ pub fn infer_lam_closure_shift_test() {
   let env = [ast.vvar(2, []), ast.vfloat(3.14)]
   assert type_ == ast.VPi(env, [], #("x", ast.vint_t), ast.vfloat_t)
 }
-//   Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )
+
+// --- Additional edge cases for infer_lam ---
+
+pub fn infer_lam_implicit_and_closure_test() {
+  // $let y = 3.14; $fn<a: $Type>(x: a) => y
+  // After pushing a (implicit) and x (param), vars = [x, a, y]
+  // Body Var(2) refers to y at index 2
+  let term =
+    ast.Lam(
+      [#("a", ast.Typ(0, s1))],
+      #("x", ast.Var(0, s2)),
+      ast.Var(2, s3),
+      s0,
+    )
+  let var_y = #("y", ast.vfloat(3.14), ast.vfloat_t)
+  let new_state = State(..new_state, vars: [var_y])
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  // env: [3.14], implicits: [a: $Type], param: (x: a), body_type: $Float
+  assert type_
+    == ast.VPi(
+        [ast.vfloat(3.14)],
+        [#("a", ast.VTyp(0))],
+        #("x", ast.vvar(0, [])),
+        ast.vfloat_t,
+      )
+}
+
+pub fn infer_lam_implicit_shadowing_test() {
+  // $fn<a: $Type>(x: a) => $fn<a: $Int>(y: a) => y
+  // Inner `a` shadows outer `a`
+  // Outer vars after push: [x, a_outer]
+  // Inner vars after push: [y, a_inner, x, a_outer]
+  // Body Var(0) refers to y; body type = a_inner's value = vvar(0, [])
+  let term =
+    ast.Lam(
+      [#("a", ast.Typ(0, s1))],
+      #("x", ast.Var(0, s2)),
+      ast.Lam(
+        [#("a", ast.int_t(s4))],
+        #("y", ast.Var(0, s5)),
+        ast.Var(0, s6),
+        s3,
+      ),
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  // Inner vars after full push: [y, a_inner, x, a_outer]
+  // Inner VPi context: y=0, a_inner=1, x=2, a_outer=3
+  // Inner env: [vvar(2), vvar(3)] = x at level 2, a_outer at level 3
+  assert type_
+    == ast.VPi(
+        [],
+        [#("a", ast.VTyp(0))],
+        #("x", ast.vvar(0, [])),
+        ast.VPi(
+          [ast.vvar(2, []), ast.vvar(3, [])],
+          [#("a", ast.vint_t)],
+          #("y", ast.vvar(0, [])),
+          ast.vvar(0, []),
+        ),
+      )
+}
+
+pub fn infer_lam_three_nests_test() {
+  // $fn(x: $Int) => $fn(y: $Float) => $fn(z: $Int) => x
+  // After outer push x: [x]
+  // After middle push y: [y, x]
+  // After inner push z: [z, y, x]
+  // Body Var(2) refers to x
+  let term =
+    ast.Lam(
+      [],
+      #("x", ast.int_t(s1)),
+      ast.Lam(
+        [],
+        #("y", ast.float_t(s3)),
+        ast.Lam(
+          [],
+          #("z", ast.int_t(s5)),
+          ast.Var(2, s6),
+          s4,
+        ),
+        s2,
+      ),
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  // Inner env: [vvar(1), vvar(2)] = captures y, x from inner VPi's context
+  // Middle env: [vvar(1)] = captures x from middle VPi's context
+  // Outer env: [] = captures nothing
+  assert type_
+    == ast.VPi(
+        [],
+        [],
+        #("x", ast.vint_t),
+        ast.VPi(
+          [ast.vvar(1, [])],
+          [],
+          #("y", ast.vfloat_t),
+          ast.VPi(
+            [ast.vvar(1, []), ast.vvar(2, [])],
+            [],
+            #("z", ast.vint_t),
+            ast.vint_t,
+          ),
+        ),
+      )
+}
+
+pub fn infer_lam_closure_deeper_test() {
+  // $let a = 1; $let b = 2; $fn(x: $Int) => a
+  // After push x: [x, b, a]
+  // Body Var(2) refers to a at index 2
+  let term = ast.Lam([], #("x", ast.int_t(s1)), ast.Var(2, s2), s0)
+  let var_a = #("a", ast.vint(1), ast.vint_t)
+  let var_b = #("b", ast.vint(2), ast.vint_t)
+  let new_state = State(..new_state, vars: [var_b, var_a])
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  // env: [vint(2), vint(1)] = [b's value, a's value] (order: innermost first)
+  assert type_
+    == ast.VPi(
+        [ast.vint(2), ast.vint(1)],
+        [],
+        #("x", ast.vint_t),
+        ast.vint_t,
+      )
+}
+
+pub fn infer_lam_hole_param_type_test() {
+  // $fn(x: ?) => x
+  // eval on Hole(0, _) returns vhole(0, []) without creating a new hole.
+  // So the hole_counter stays at 0.
+  let term = ast.Lam([], #("x", ast.Hole(0, s1)), ast.Var(0, s2), s0)
+  let #(result, type_, state) = infer(new_state, term)
+  // No new holes created during push_param (eval doesn't create holes)
+  assert state == new_state
+  assert result == term
+  // param type value = vhole(0, []), body type = x's type = vhole(0, [])
+  assert type_
+    == ast.VPi(
+        [],
+        [],
+        #("x", ast.vhole(0, [])),
+        ast.vhole(0, []),
+      )
+}
+
+pub fn infer_lam_implicit_and_nested_closure_test() {
+  // $let y = 3.14; $fn<a: $Type>(x: a) => $fn<b: $Type>(z: b) => y
+  // After outer push a, x: [x, a, y]
+  // After inner push b, z: [z, b, x, a, y]
+  // Body Var(4) refers to y at index 4
+  let term =
+    ast.Lam(
+      [#("a", ast.Typ(0, s1))],
+      #("x", ast.Var(0, s2)),
+      ast.Lam(
+        [#("b", ast.Typ(1, s3))],
+        #("z", ast.Var(0, s4)),
+        ast.Var(4, s5),
+        s6,
+      ),
+      s0,
+    )
+  let var_y = #("y", ast.vfloat(3.14), ast.vfloat_t)
+  let new_state = State(..new_state, vars: [var_y])
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  // Inner vars after full push: [z, b, x, a, y]
+  // Inner VPi context: z=0, b=1, x=2, a=3, y=4
+  // Inner env: [vvar(2), vvar(3), vfloat(3.14)] = x@2, a@3, y@4
+  // Outer env: [vfloat(3.14)] (captures y)
+  assert type_
+    == ast.VPi(
+        [ast.vfloat(3.14)],
+        [#("a", ast.VTyp(0))],
+        #("x", ast.vvar(0, [])),
+        ast.VPi(
+          [ast.vvar(2, []), ast.vvar(3, []), ast.vfloat(3.14)],
+          [#("b", ast.VTyp(1))],
+          #("z", ast.vvar(0, [])),
+          ast.vfloat_t,
+        ),
+      )
+}
+
+pub fn infer_lam_nested_with_both_implicits_test() {
+  // $fn<a: $Type>(x: a) => $fn(y: $Float) => x
+  let term =
+    ast.Lam(
+      [#("a", ast.Typ(0, s1))],
+      #("x", ast.Var(0, s2)),
+      ast.Lam(
+        [],
+        #("y", ast.float_t(s4)),
+        ast.Var(1, s5),
+        s3,
+      ),
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  // Inner: VPi([vvar(1), vvar(2)], [], (y: $Float), vvar(1))
+  // captures x (vvar(1)), a (vvar(2)) from inner VPi's context
+  // Outer: VPi([], [a: $Type], (x: a), inner)  — captures nothing
+  assert type_
+    == ast.VPi(
+        [],
+        [#("a", ast.VTyp(0))],
+        #("x", ast.vvar(0, [])),
+        ast.VPi(
+          [ast.vvar(1, []), ast.vvar(2, [])],
+          [],
+          #("y", ast.vfloat_t),
+          ast.vvar(1, []),
+        ),
+      )
+}
 
 //   Pi( implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span, )
 //   Fix(name: String, body: Term, span: Span)
