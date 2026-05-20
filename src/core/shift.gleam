@@ -1,4 +1,5 @@
 import core/ast
+import gleam/list
 
 /// Shift a Value's DeBruijn levels by delta.
 ///
@@ -44,7 +45,9 @@ fn shift_head(head: ast.Head, delta: Int) -> ast.Head {
     ast.HHole(id) -> ast.HHole(id)
     // HCall: would need recursive arg shifting — unimplemented
     ast.HCall(name, args) -> todo
-    ast.HFix(env, body) -> todo
+    // HFix: shift the captured env levels by delta
+    ast.HFix(env, body) ->
+      ast.HFix(list.map(env, fn(v) { shift_value(v, delta) }), body)
   }
 }
 

@@ -106,10 +106,6 @@ pub fn with_err_list(state: State, errors: List(Error)) -> State {
   State(..state, errors: list.append(state.errors, errors))
 }
 
-pub fn with_subst(state: State, id: Int, value: ast.Value) -> State {
-  State(..state, subst: [#(id, value), ..state.subst])
-}
-
 pub fn new_hole(state: State) -> #(Int, State) {
   let id = state.hole_counter
   #(id, State(..state, hole_counter: id + 1))

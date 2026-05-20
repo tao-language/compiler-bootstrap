@@ -410,11 +410,11 @@ pub fn infer_lam_implicit_and_closure_test() {
   // env: [3.14], implicits: [a: $Type], param: (x: a), body_type: $Float
   assert type_
     == ast.VPi(
-        [ast.vfloat(3.14)],
-        [#("a", ast.VTyp(0))],
-        #("x", ast.vvar(0, [])),
-        ast.vfloat_t,
-      )
+      [ast.vfloat(3.14)],
+      [#("a", ast.VTyp(0))],
+      #("x", ast.vvar(0, [])),
+      ast.vfloat_t,
+    )
 }
 
 pub fn infer_lam_implicit_shadowing_test() {
@@ -443,16 +443,16 @@ pub fn infer_lam_implicit_shadowing_test() {
   // Inner env: [vvar(2), vvar(3)] = x at level 2, a_outer at level 3
   assert type_
     == ast.VPi(
-        [],
-        [#("a", ast.VTyp(0))],
-        #("x", ast.vvar(0, [])),
-        ast.VPi(
-          [ast.vvar(2, []), ast.vvar(3, [])],
-          [#("a", ast.vint_t)],
-          #("y", ast.vvar(0, [])),
-          ast.vvar(0, []),
-        ),
-      )
+      [],
+      [#("a", ast.VTyp(0))],
+      #("x", ast.vvar(0, [])),
+      ast.VPi(
+        [ast.vvar(2, []), ast.vvar(3, [])],
+        [#("a", ast.vint_t)],
+        #("y", ast.vvar(0, [])),
+        ast.vvar(0, []),
+      ),
+    )
 }
 
 pub fn infer_lam_three_nests_test() {
@@ -468,12 +468,7 @@ pub fn infer_lam_three_nests_test() {
       ast.Lam(
         [],
         #("y", ast.float_t(s3)),
-        ast.Lam(
-          [],
-          #("z", ast.int_t(s5)),
-          ast.Var(2, s6),
-          s4,
-        ),
+        ast.Lam([], #("z", ast.int_t(s5)), ast.Var(2, s6), s4),
         s2,
       ),
       s0,
@@ -486,21 +481,21 @@ pub fn infer_lam_three_nests_test() {
   // Outer env: [] = captures nothing
   assert type_
     == ast.VPi(
+      [],
+      [],
+      #("x", ast.vint_t),
+      ast.VPi(
+        [ast.vvar(1, [])],
         [],
-        [],
-        #("x", ast.vint_t),
+        #("y", ast.vfloat_t),
         ast.VPi(
-          [ast.vvar(1, [])],
+          [ast.vvar(1, []), ast.vvar(2, [])],
           [],
-          #("y", ast.vfloat_t),
-          ast.VPi(
-            [ast.vvar(1, []), ast.vvar(2, [])],
-            [],
-            #("z", ast.vint_t),
-            ast.vint_t,
-          ),
+          #("z", ast.vint_t),
+          ast.vint_t,
         ),
-      )
+      ),
+    )
 }
 
 pub fn infer_lam_closure_deeper_test() {
@@ -516,12 +511,7 @@ pub fn infer_lam_closure_deeper_test() {
   assert result == term
   // env: [vint(2), vint(1)] = [b's value, a's value] (order: innermost first)
   assert type_
-    == ast.VPi(
-        [ast.vint(2), ast.vint(1)],
-        [],
-        #("x", ast.vint_t),
-        ast.vint_t,
-      )
+    == ast.VPi([ast.vint(2), ast.vint(1)], [], #("x", ast.vint_t), ast.vint_t)
 }
 
 pub fn infer_lam_hole_param_type_test() {
@@ -534,13 +524,7 @@ pub fn infer_lam_hole_param_type_test() {
   assert state == new_state
   assert result == term
   // param type value = vhole(0, []), body type = x's type = vhole(0, [])
-  assert type_
-    == ast.VPi(
-        [],
-        [],
-        #("x", ast.vhole(0, [])),
-        ast.vhole(0, []),
-      )
+  assert type_ == ast.VPi([], [], #("x", ast.vhole(0, [])), ast.vhole(0, []))
 }
 
 pub fn infer_lam_implicit_and_nested_closure_test() {
@@ -571,16 +555,16 @@ pub fn infer_lam_implicit_and_nested_closure_test() {
   // Outer env: [vfloat(3.14)] (captures y)
   assert type_
     == ast.VPi(
-        [ast.vfloat(3.14)],
-        [#("a", ast.VTyp(0))],
-        #("x", ast.vvar(0, [])),
-        ast.VPi(
-          [ast.vvar(2, []), ast.vvar(3, []), ast.vfloat(3.14)],
-          [#("b", ast.VTyp(1))],
-          #("z", ast.vvar(0, [])),
-          ast.vfloat_t,
-        ),
-      )
+      [ast.vfloat(3.14)],
+      [#("a", ast.VTyp(0))],
+      #("x", ast.vvar(0, [])),
+      ast.VPi(
+        [ast.vvar(2, []), ast.vvar(3, []), ast.vfloat(3.14)],
+        [#("b", ast.VTyp(1))],
+        #("z", ast.vvar(0, [])),
+        ast.vfloat_t,
+      ),
+    )
 }
 
 pub fn infer_lam_nested_with_both_implicits_test() {
@@ -589,12 +573,7 @@ pub fn infer_lam_nested_with_both_implicits_test() {
     ast.Lam(
       [#("a", ast.Typ(0, s1))],
       #("x", ast.Var(0, s2)),
-      ast.Lam(
-        [],
-        #("y", ast.float_t(s4)),
-        ast.Var(1, s5),
-        s3,
-      ),
+      ast.Lam([], #("y", ast.float_t(s4)), ast.Var(1, s5), s3),
       s0,
     )
   let #(result, type_, state) = infer(new_state, term)
@@ -605,16 +584,16 @@ pub fn infer_lam_nested_with_both_implicits_test() {
   // Outer: VPi([], [a: $Type], (x: a), inner)  — captures nothing
   assert type_
     == ast.VPi(
+      [],
+      [#("a", ast.VTyp(0))],
+      #("x", ast.vvar(0, [])),
+      ast.VPi(
+        [ast.vvar(1, []), ast.vvar(2, [])],
         [],
-        [#("a", ast.VTyp(0))],
-        #("x", ast.vvar(0, [])),
-        ast.VPi(
-          [ast.vvar(1, []), ast.vvar(2, [])],
-          [],
-          #("y", ast.vfloat_t),
-          ast.vvar(1, []),
-        ),
-      )
+        #("y", ast.vfloat_t),
+        ast.vvar(1, []),
+      ),
+    )
 }
 
 // --- Tests for infer_pi (Pi type inference) ---
@@ -635,12 +614,7 @@ pub fn infer_pi_dependent_ref_implicit_test() {
   // Codomain: Var(1) = a (implicit, at index 1 after pushing x)
   // DeBruijn: after push a then x: [x, a], so a is at index 1
   let term =
-    ast.Pi(
-      [#("a", ast.Typ(0, s1))],
-      #("x", ast.Var(0, s2)),
-      ast.Var(1, s3),
-      s0,
-    )
+    ast.Pi([#("a", ast.Typ(0, s1))], #("x", ast.Var(0, s2)), ast.Var(1, s3), s0)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -674,12 +648,7 @@ pub fn infer_pi_closure_capture_test() {
   // After push x: [x, a, T]
   // Codomain Var(2) = T (outer var at index 2)
   let term =
-    ast.Pi(
-      [#("a", ast.Typ(0, s1))],
-      #("x", ast.Var(0, s2)),
-      ast.Var(2, s3),
-      s0,
-    )
+    ast.Pi([#("a", ast.Typ(0, s1))], #("x", ast.Var(0, s2)), ast.Var(2, s3), s0)
   let var_t = #("T", ast.vvar(0, []), ast.VTyp(1))
   let new_state = State(..new_state, vars: [var_t])
   let #(result, type_, state) = infer(new_state, term)
@@ -695,20 +664,13 @@ pub fn infer_pi_two_implicits_test() {
   // After push pair: [pair, b, a]
   // Domain: RcdT with x: Var(1)=a, y: Var(0)=b
   // Codomain: Rcd with xt: Var(2)=a, yt: Var(1)=b
+  let rcd_t =
+    ast.RcdT([#("x", ast.Var(1, s4), None), #("y", ast.Var(0, s5), None)], s3)
   let term =
     ast.Pi(
       [#("a", ast.Typ(0, s1)), #("b", ast.Typ(1, s2))],
-      #(
-        "pair",
-        ast.RcdT(
-          [#("x", ast.Var(1, s4), None), #("y", ast.Var(0, s5), None)],
-          s3,
-        ),
-      ),
-      ast.Rcd(
-        [#("xt", ast.Var(2, s7)), #("yt", ast.Var(1, s8))],
-        s6,
-      ),
+      #("pair", rcd_t),
+      ast.Rcd([#("xt", ast.Var(2, s7)), #("yt", ast.Var(1, s8))], s6),
       s0,
     )
   let #(result, type_, state) = infer(new_state, term)
@@ -725,19 +687,9 @@ pub fn infer_pi_nested_test() {
   // Codomain: Var(3) = a, Var(2) = x, Var(1) = inner_b, Var(0) = inner_y
   let inner_codomain = ast.Typ(0, s6)
   let inner_pi =
-    ast.Pi(
-      [#("b", ast.Typ(1, s4))],
-      #("y", ast.Var(0, s5)),
-      inner_codomain,
-      s3,
-    )
+    ast.Pi([#("b", ast.Typ(1, s4))], #("y", ast.Var(0, s5)), inner_codomain, s3)
   let term =
-    ast.Pi(
-      [#("a", ast.Typ(0, s1))],
-      #("x", ast.Var(0, s2)),
-      inner_pi,
-      s0,
-    )
+    ast.Pi([#("a", ast.Typ(0, s1))], #("x", ast.Var(0, s2)), inner_pi, s0)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -748,12 +700,7 @@ pub fn infer_pi_hole_domain_test() {
   // $pi<<?>(x: a) -> $Int
   // Hole in implicit param type
   let term =
-    ast.Pi(
-      [#("a", ast.Hole(0, s1))],
-      #("x", ast.Var(0, s2)),
-      ast.int_t(s3),
-      s0,
-    )
+    ast.Pi([#("a", ast.Hole(0, s1))], #("x", ast.Var(0, s2)), ast.int_t(s3), s0)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -784,12 +731,7 @@ pub fn infer_pi_closure_and_implicits_test() {
   // After push x: [x, a, T]
   // Codomain Var(2) = T
   let term =
-    ast.Pi(
-      [#("a", ast.Typ(0, s1))],
-      #("x", ast.Var(0, s2)),
-      ast.Var(2, s3),
-      s0,
-    )
+    ast.Pi([#("a", ast.Typ(0, s1))], #("x", ast.Var(0, s2)), ast.Var(2, s3), s0)
   let var_t = #("T", ast.vvar(0, []), ast.VTyp(1))
   let new_state = State(..new_state, vars: [var_t])
   let #(result, type_, state) = infer(new_state, term)
@@ -802,24 +744,39 @@ pub fn infer_pi_implicit_shadowing_test() {
   // $pi<a: $Type>(x: a) -> $pi<a: $Int>(y: a) -> $Type<1>
   // Inner Pi's codomain: Var(1) = a_inner (the inner implicit)
   let inner_pi =
-    ast.Pi(
-      [#("a", ast.int_t(s4))],
-      #("y", ast.Var(0, s5)),
-      ast.Typ(1, s6),
-      s3,
-    )
+    ast.Pi([#("a", ast.int_t(s4))], #("y", ast.Var(0, s5)), ast.Typ(1, s6), s3)
   let term =
-    ast.Pi(
-      [#("a", ast.Typ(0, s1))],
-      #("x", ast.Var(0, s2)),
-      inner_pi,
-      s0,
-    )
+    ast.Pi([#("a", ast.Typ(0, s1))], #("x", ast.Var(0, s2)), inner_pi, s0)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
   assert type_ == ast.VTyp(0)
 }
+
+pub fn infer_fix_const_test() {
+  let term = ast.Fix("f", ast.int(42, s1), s0)
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == State(..new_state, subst: [#(0, ast.vint_t)], hole_counter: 1)
+  assert result == term
+  assert type_ == ast.vint_t
+}
+
+pub fn infer_fix_unsolved_test() {
+  let term = ast.Fix("f", ast.Var(0, s1), s0)
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == State(..new_state, subst: [], hole_counter: 1)
+  assert result == term
+  assert type_ == ast.vhole(0, [])
+}
+
+pub fn infer_fix_annotated_test() {
+  let term = ast.Fix("f", ast.Ann(ast.Var(0, s2), ast.int_t(s3), s1), s0)
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == State(..new_state, subst: [#(0, ast.vint_t)], hole_counter: 1)
+  assert result == ast.Fix("f", ast.Var(0, s2), s0)
+  assert type_ == ast.vint_t
+}
+//
 
 // pub fn infer_typedef_empty_test() {
 //   let term = ast.TypeDef([], [], s0)
@@ -832,3 +789,4 @@ pub fn infer_pi_implicit_shadowing_test() {
 
 //   Match(arg: Term, cases: List(Case), span: Span)
 //   Err(message: String, span: Span)
+// --- Tests for infer_fix (fix-point recursion) ---

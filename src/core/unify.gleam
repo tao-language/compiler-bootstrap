@@ -17,7 +17,8 @@
 /// The type checker calls this function at every place where two types
 /// must agree. All errors accumulate in state; no early returns.
 import core/ast
-import core/state.{type State, TypeMismatch, with_err, with_subst}
+import core/state.{type State, State, TypeMismatch, with_err}
+import core/utils
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
@@ -35,9 +36,18 @@ pub fn unify(
     ast.VLitT(v1), ast.VLitT(v2) if v1 == v2 -> state
     ast.VNeut(h1, spine1), ast.VNeut(h2, spine2) if h1 == h2 ->
       unify_spines(state, spine1, spine2)
-    _, ast.VNeut(ast.HHole(id), _) -> with_subst(state, id, value1)
-    ast.VNeut(ast.HHole(id), _), _ -> with_subst(state, id, value2)
+    _, ast.VNeut(ast.HHole(id), _) -> solve_hole(state, #(id, span2), a)
+    ast.VNeut(ast.HHole(id), _), _ -> solve_hole(state, #(id, span1), b)
     _, _ -> with_err(state, TypeMismatch(a, b))
+  }
+}
+
+fn solve_hole(state: State, a: #(Int, Span), b: #(ast.Value, Span)) -> State {
+  let #(hole_id, span1) = a
+  let #(value, span2) = b
+  case utils.list_lookup(state.subst, hole_id) {
+    Some(solution) -> unify(state, #(solution, span1), #(value, span2))
+    None -> State(..state, subst: [#(hole_id, value), ..state.subst])
   }
 }
 

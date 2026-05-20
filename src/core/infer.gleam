@@ -10,6 +10,7 @@ import core/shift.{shift_value}
 import core/state.{
   type FFI, type State, FfiEntry, State, env_to_state, state_to_env, with_err,
 }
+import core/subst
 import core/unify.{unify}
 import core/utils
 import gleam/list
@@ -39,7 +40,7 @@ pub fn infer(state: State, term: ast.Term) -> #(ast.Term, ast.Value, State) {
       infer_lam(state, implicits, param, body, span)
     ast.Pi(implicits, domain, codomain, span) ->
       infer_pi(state, implicits, domain, codomain, span)
-    // ast.Fix(name, body, span) -> infer_fix(state, name, body, span)
+    ast.Fix(name, body, span) -> infer_fix(state, name, body, span)
     // ast.App(fun, arg, span) -> infer_app(state, fun, arg, span)
     // ast.TypeDef(params, constructors, span) ->
     //   infer_type_def(state, params, constructors, span)
@@ -60,6 +61,7 @@ pub fn check(
 ) -> #(ast.Term, ast.Value, State) {
   let #(term, type_, state) = infer(state, term)
   let state = unify(state, #(type_, ast.get_span(term)), expected)
+  let type_ = subst.force_value(state.ffi, state.subst, type_)
   #(term, type_, state)
 }
 
@@ -293,17 +295,19 @@ fn push_param(
   let #(name, param_type) = param
   // Evaluate the param type in the current env (may reference earlier implicits)
   let param_type_val = eval(state.ffi, state_to_env(state), param_type)
+  let state = push_param_val(state, #(name, param_type_val))
+  #(#(name, param_type), #(name, param_type_val), state)
+}
+
+fn push_param_val(state: State, param: #(String, ast.Value)) -> State {
+  let #(name, param_type_val) = param
   // Shift ALL existing vars' values by +1 BEFORE prepending. This is critical:
   // every var's value and type must be shifted so its DeBruijn levels remain
   // correct relative to the new innermost binder (the param we're adding).
   // Without this shift, existing vars' levels would be off by 1.
   let state = state.vars_shift(state, 1)
   let var = #(name, ast.vvar(0, []), param_type_val)
-  #(
-    #(name, param_type),
-    #(name, param_type_val),
-    State(..state, vars: [var, ..state.vars]),
-  )
+  State(..state, vars: [var, ..state.vars])
 }
 
 fn push_param_list(
@@ -364,4 +368,19 @@ fn infer_pi(
   let #(codomain, _, state) = infer(state, codomain)
   let #(_, state) = pop_params(state, list.length(implicits) + 1)
   #(ast.Pi(implicits, domain, codomain, span), ast.VTyp(0), state)
+}
+
+fn infer_fix(
+  state: State,
+  name: String,
+  body: ast.Term,
+  span: Span,
+) -> #(ast.Term, ast.Value, State) {
+  let #(hole_id, state) = state.new_hole(state)
+  let type_hole = ast.vhole(hole_id, [])
+  let state = push_param_val(state, #(name, type_hole))
+  let #(body, body_type, state) = infer(state, body)
+  let #(_, state) = pop_params(state, 1)
+  let state = unify(state, #(type_hole, span), #(body_type, span))
+  #(ast.Fix(name, body, span), body_type, state)
 }
