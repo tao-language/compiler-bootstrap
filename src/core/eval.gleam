@@ -15,8 +15,7 @@ pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
         Some(value) -> value
         None -> ast.VErr
       }
-    // Var(index: Int, span: Span)
-    // Ctr(tag: String, arg: Term, span: Span)
+    ast.Ctr(tag, arg, _) -> ast.VCtr(tag, eval(ffi, env, arg))
     ast.Rcd(fields, _) ->
       ast.VRcd(
         list.map(fields, fn(field) {

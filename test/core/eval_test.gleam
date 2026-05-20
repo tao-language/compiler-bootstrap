@@ -48,7 +48,32 @@ pub fn eval_litt_test() {
   let result = eval([], [], term)
   assert result == ast.vint_t
 }
-// Var(index: Int, span: Span)
+
+pub fn eval_var_undefined_test() {
+  let term = ast.Var(0, s0)
+  let result = eval([], [], term)
+  assert result == ast.VErr
+}
+
+pub fn eval_var0_test() {
+  let term = ast.Var(0, s0)
+  let env = [ast.vint_t, ast.vfloat_t]
+  let result = eval([], env, term)
+  assert result == ast.vint_t
+}
+
+pub fn eval_var1_test() {
+  let term = ast.Var(1, s0)
+  let env = [ast.vint_t, ast.vfloat_t]
+  let result = eval([], env, term)
+  assert result == ast.vfloat_t
+}
+
+pub fn eval_ctr_test() {
+  let term = ast.Ctr("A", ast.int_t(s1), s0)
+  let result = eval([], [], term)
+  assert result == ast.VCtr("A", ast.vint_t)
+}
 // Ctr(tag: String, arg: Term, span: Span)
 // Rcd(fields: List(#(String, Term)), span: Span)
 // RcdT(fields: List(#(String, Term, Option(Term))), span: Span)
