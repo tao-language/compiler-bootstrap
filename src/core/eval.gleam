@@ -30,6 +30,20 @@ pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
           #(name, eval(ffi, env, term), option.map(default, eval(ffi, env, _)))
         }),
       )
+    ast.Call(name, args, _, _) -> {
+      let args_val =
+        list.map(args, fn(typed_arg) {
+          let #(arg, type_) = typed_arg
+          #(eval(ffi, env, arg), eval(ffi, env, type_))
+        })
+      let result =
+        utils.list_lookup(ffi, name)
+        |> option.then(fn(call) { call(args_val) })
+      case result {
+        Some(value) -> value
+        None -> ast.vcall(name, args_val, [])
+      }
+    }
     // Call(name: String, args: List(#(Term, Term)), return_type: Term, span: Span)
     // Ann(term: Term, type_: Term, span: Span)
     // Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )

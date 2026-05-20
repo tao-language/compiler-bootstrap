@@ -1,5 +1,6 @@
 import core/ast
 import core/eval.{eval}
+import gleam/option.{None, Some}
 import gleeunit
 import syntax/span.{Span}
 
@@ -74,10 +75,81 @@ pub fn eval_ctr_test() {
   let result = eval([], [], term)
   assert result == ast.VCtr("A", ast.vint_t)
 }
-// Ctr(tag: String, arg: Term, span: Span)
-// Rcd(fields: List(#(String, Term)), span: Span)
-// RcdT(fields: List(#(String, Term, Option(Term))), span: Span)
-// Call(name: String, args: List(#(Term, Term)), return_type: Term, span: Span)
+
+pub fn eval_rcd_empty_test() {
+  let term = ast.Rcd([], s0)
+  let result = eval([], [], term)
+  assert result == ast.VRcd([])
+}
+
+pub fn eval_rcd_fields_test() {
+  let term = ast.Rcd([#("x", ast.int_t(s1)), #("y", ast.float_t(s2))], s0)
+  let result = eval([], [], term)
+  assert result == ast.VRcd([#("x", ast.vint_t), #("y", ast.vfloat_t)])
+}
+
+pub fn eval_rcdt_empty_test() {
+  let term = ast.RcdT([], s0)
+  let result = eval([], [], term)
+  assert result == ast.VRcdT([])
+}
+
+pub fn eval_rcdt_fields_test() {
+  let term =
+    ast.RcdT(
+      [
+        #("x", ast.int_t(s1), Some(ast.int(42, s3))),
+        #("y", ast.float_t(s2), None),
+      ],
+      s0,
+    )
+  let result = eval([], [], term)
+  assert result
+    == ast.VRcdT([
+      #("x", ast.vint_t, Some(ast.vint(42))),
+      #("y", ast.vfloat_t, None),
+    ])
+}
+
+pub fn eval_call_undefined_test() {
+  let term = ast.Call("f", [], ast.int_t(s1), s0)
+  let result = eval([], [], term)
+  assert result == ast.vcall("f", [], [])
+}
+
+pub fn eval_call_return_none_test() {
+  let ffi = [#("f", fn(_) { None })]
+  let term = ast.Call("f", [], ast.int_t(s1), s0)
+  let result = eval(ffi, [], term)
+  assert result == ast.vcall("f", [], [])
+}
+
+pub fn eval_call_return_some_test() {
+  let ffi = [#("f", fn(_) { Some(ast.vint(42)) })]
+  let term = ast.Call("f", [], ast.int_t(s1), s0)
+  let result = eval(ffi, [], term)
+  assert result == ast.vint(42)
+}
+
+pub fn eval_call_args_test() {
+  let term =
+    ast.Call(
+      "f",
+      [
+        #(ast.int(42, s2), ast.int_t(s3)),
+        #(ast.float(3.14, s4), ast.float_t(s5)),
+      ],
+      ast.int_t(s1),
+      s0,
+    )
+  let result = eval([], [], term)
+  assert result
+    == ast.vcall(
+      "f",
+      [#(ast.vint(42), ast.vint_t), #(ast.vfloat(3.14), ast.vfloat_t)],
+      [],
+    )
+}
 // TypeDef(
 // Ann(term: Term, type_: Term, span: Span)
 // Lam(

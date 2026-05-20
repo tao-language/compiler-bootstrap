@@ -23,12 +23,8 @@ import syntax/span.{type Span, Span}
 /// The `impl` receives a list of #(value, type) pairs, where the type
 /// is the result of type-checking the argument. This enables operator
 /// overloading in Phase 5.
-pub type FfiEntry {
-  FfiEntry(fn_name: String, impl: fn(List(#(Value, Value))) -> Option(Value))
-}
-
 pub type FFI =
-  List(FfiEntry)
+  List(#(String, fn(List(#(Value, Value))) -> Option(Value)))
 
 // ============================================================================
 // STATE

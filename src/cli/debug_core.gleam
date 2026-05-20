@@ -23,7 +23,7 @@
 import core/ast
 import core/eval.{eval}
 import core/infer.{infer}
-import core/state.{type Error, type FfiEntry, type State, FfiEntry}
+import core/state.{type Error, type State}
 import core/syntax
 import gleam/int
 import gleam/io

@@ -8,7 +8,7 @@ import core/ast
 import core/eval.{eval}
 import core/shift.{shift_value}
 import core/state.{
-  type FFI, type State, FfiEntry, State, env_to_state, state_to_env, with_err,
+  type FFI, type State, State, env_to_state, state_to_env, with_err,
 }
 import core/subst
 import core/unify.{unify}
