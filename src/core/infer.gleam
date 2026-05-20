@@ -340,6 +340,18 @@ fn pop_params(state: State, num_params: Int) -> #(ast.Env, State) {
   #(env, state)
 }
 
+/// Infer a Pi type: $pi<implicits>(domain: param_type) -> codomain
+///
+/// Uses the same DeBruijn management strategy as infer_lam:
+///   1. push_param_list / push_param: shift existing vars' values by +1
+///   2. infer(codomain): codomain inferred with params in scope
+///   3. pop_params: drop params, extract env (discarded), shift state back
+///
+/// The Pi type doesn't have an env field like VPi. Captured variables from
+/// the outer scope are implicitly captured by the DeBruijn indices in the
+/// codomain term, which are relative to the Pi's params.
+///
+/// Pi types are types, so their type is $Type (VTyp(0)).
 fn infer_pi(
   state: State,
   implicits: List(#(String, ast.Term)),
