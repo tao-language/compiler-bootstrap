@@ -617,9 +617,209 @@ pub fn infer_lam_nested_with_both_implicits_test() {
       )
 }
 
-//   Pi( implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span, )
-//   Fix(name: String, body: Term, span: Span)
-//   App(fun: Term, arg: Term, span: Span)
+// --- Tests for infer_pi (Pi type inference) ---
+
+pub fn infer_pi_simple_test() {
+  // $pi<$Int>(x: $Int) -> $Int  (non-dependent)
+  let term = ast.Pi([], #("x", ast.int_t(s1)), ast.int_t(s2), s0)
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  // Pi types have type $Type (VTyp(0))
+  assert type_ == ast.VTyp(0)
+}
+
+pub fn infer_pi_dependent_ref_implicit_test() {
+  // $pi<a: $Type>(x: a) -> a
+  // Domain: Var(0) = a (implicit, at index 0 after push)
+  // Codomain: Var(1) = a (implicit, at index 1 after pushing x)
+  // DeBruijn: after push a then x: [x, a], so a is at index 1
+  let term =
+    ast.Pi(
+      [#("a", ast.Typ(0, s1))],
+      #("x", ast.Var(0, s2)),
+      ast.Var(1, s3),
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.VTyp(0)
+  // The Pi term's domain is the original term Var(0) (refers to a)
+  // The Pi term's codomain is the original term Var(1) (refers to a)
+}
+
+pub fn infer_pi_dependent_ref_domain_param_test() {
+  // $pi<a: $Type, b: $Type>(x: a) -> b
+  // After push a, b: [b, a]
+  // After push x: [x, b, a]
+  // Domain Var(1) = b (implicit at index 1 after push a)
+  // Codomain Var(2) = a (implicit at index 2 after push a, x)
+  let term =
+    ast.Pi(
+      [#("a", ast.Typ(0, s1)), #("b", ast.Typ(1, s2))],
+      #("x", ast.Var(1, s4)),
+      ast.Var(2, s5),
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.VTyp(0)
+}
+
+pub fn infer_pi_closure_capture_test() {
+  // $let T = $Type; $pi<a: $Type>(x: a) -> T
+  // After push a: [a, T]
+  // After push x: [x, a, T]
+  // Codomain Var(2) = T (outer var at index 2)
+  let term =
+    ast.Pi(
+      [#("a", ast.Typ(0, s1))],
+      #("x", ast.Var(0, s2)),
+      ast.Var(2, s3),
+      s0,
+    )
+  let var_t = #("T", ast.vvar(0, []), ast.VTyp(1))
+  let new_state = State(..new_state, vars: [var_t])
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.VTyp(0)
+}
+
+pub fn infer_pi_two_implicits_test() {
+  // $pi<a: $Type<0>, b: $Type<1>>(pair: ${x: a, y: b}) -> $Type
+  // After push a: [a]
+  // After push b: [b, a]
+  // After push pair: [pair, b, a]
+  // Domain: RcdT with x: Var(1)=a, y: Var(0)=b
+  // Codomain: Rcd with xt: Var(2)=a, yt: Var(1)=b
+  let term =
+    ast.Pi(
+      [#("a", ast.Typ(0, s1)), #("b", ast.Typ(1, s2))],
+      #(
+        "pair",
+        ast.RcdT(
+          [#("x", ast.Var(1, s4), None), #("y", ast.Var(0, s5), None)],
+          s3,
+        ),
+      ),
+      ast.Rcd(
+        [#("xt", ast.Var(2, s7)), #("yt", ast.Var(1, s8))],
+        s6,
+      ),
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.VTyp(0)
+}
+
+pub fn infer_pi_nested_test() {
+  // $pi<a: $Type>(x: a) -> $pi<b: $Type>(y: b) -> $Type<0>
+  // Outer Pi: [a] -> [x, a]
+  // Inner Pi (from outer's codomain): [b] -> [y, b]
+  // Then push inner's params: [inner_y, inner_b, x, a]
+  // Codomain: Var(3) = a, Var(2) = x, Var(1) = inner_b, Var(0) = inner_y
+  let inner_codomain = ast.Typ(0, s6)
+  let inner_pi =
+    ast.Pi(
+      [#("b", ast.Typ(1, s4))],
+      #("y", ast.Var(0, s5)),
+      inner_codomain,
+      s3,
+    )
+  let term =
+    ast.Pi(
+      [#("a", ast.Typ(0, s1))],
+      #("x", ast.Var(0, s2)),
+      inner_pi,
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.VTyp(0)
+}
+
+pub fn infer_pi_hole_domain_test() {
+  // $pi<<?>(x: a) -> $Int
+  // Hole in implicit param type
+  let term =
+    ast.Pi(
+      [#("a", ast.Hole(0, s1))],
+      #("x", ast.Var(0, s2)),
+      ast.int_t(s3),
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.VTyp(0)
+}
+
+pub fn infer_pi_hole_codomain_test() {
+  // $pi<a: $Type>(x: a) -> ?
+  // Hole in codomain
+  let new_state = State(..new_state, hole_counter: 0)
+  let term =
+    ast.Pi(
+      [#("a", ast.Typ(0, s1))],
+      #("x", ast.Var(0, s2)),
+      ast.Hole(0, s3),
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  // Hole creates a new hole for the codomain's type
+  assert state == State(..new_state, hole_counter: 1)
+  assert result == term
+  assert type_ == ast.VTyp(0)
+}
+
+pub fn infer_pi_closure_and_implicits_test() {
+  // $let T = $Type; $pi<a: $Type>(x: a) -> T
+  // After push a: [a, T]
+  // After push x: [x, a, T]
+  // Codomain Var(2) = T
+  let term =
+    ast.Pi(
+      [#("a", ast.Typ(0, s1))],
+      #("x", ast.Var(0, s2)),
+      ast.Var(2, s3),
+      s0,
+    )
+  let var_t = #("T", ast.vvar(0, []), ast.VTyp(1))
+  let new_state = State(..new_state, vars: [var_t])
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.VTyp(0)
+}
+
+pub fn infer_pi_implicit_shadowing_test() {
+  // $pi<a: $Type>(x: a) -> $pi<a: $Int>(y: a) -> $Type<1>
+  // Inner Pi's codomain: Var(1) = a_inner (the inner implicit)
+  let inner_pi =
+    ast.Pi(
+      [#("a", ast.int_t(s4))],
+      #("y", ast.Var(0, s5)),
+      ast.Typ(1, s6),
+      s3,
+    )
+  let term =
+    ast.Pi(
+      [#("a", ast.Typ(0, s1))],
+      #("x", ast.Var(0, s2)),
+      inner_pi,
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.VTyp(0)
+}
 
 // pub fn infer_typedef_empty_test() {
 //   let term = ast.TypeDef([], [], s0)
