@@ -72,7 +72,7 @@ pub type Term {
     span: Span,
   )
   Match(arg: Term, cases: List(Case), span: Span)
-  Err(message: String, span: Span)
+  Err(span: Span)
 }
 
 pub type Pattern {
@@ -172,12 +172,12 @@ pub type Head {
   HVar(level: Int)
   HHole(id: Int)
   HCall(name: String, args: List(Value))
-  HFix(env: Env, body: Term)
 }
 
 /// Eliminators form applied to a neutral term.
 pub type Elim {
   EApp(arg: Value, span: Span)
+  EFix(env: Env, body: Term)
   EMatch(env: Env, cases: List(Case), span: Span)
 }
 
@@ -189,10 +189,10 @@ pub type Value {
   VTyp(universe: Int)
   VLit(value: Literal)
   VLitT(t: LiteralType)
-  VNeut(head: Head, spine: List(Elim))
   VCtr(tag: String, arg: Value)
   VRcd(fields: List(#(String, Value)))
   VRcdT(fields: List(#(String, Value, Option(Value))))
+  VNeut(head: Head, spine: List(Elim))
   VLam(
     env: Env,
     implicits: List(#(String, Value)),
@@ -203,7 +203,7 @@ pub type Value {
     env: Env,
     implicits: List(#(String, Value)),
     domain: #(String, Value),
-    codomain: Value,
+    codomain: Term,
   )
   VTypeDef(
     params: List(#(String, Value)),
@@ -233,7 +233,7 @@ pub fn get_span(term: Term) -> Span {
     Fix(span: span, ..) -> span
     App(span: span, ..) -> span
     Match(span: span, ..) -> span
-    Err(span: span, ..) -> span
+    Err(span: span) -> span
   }
 }
 
@@ -318,10 +318,6 @@ pub fn vhole(id: Int, spine: List(Elim)) -> Value {
 
 pub fn vcall(name: String, args: List(Value), spine: List(Elim)) -> Value {
   VNeut(HCall(name, args), spine)
-}
-
-pub fn vfix(env: Env, body: Term, spine: List(Elim)) -> Value {
-  VNeut(HFix(env, body), spine)
 }
 
 pub fn vint(value: Int) -> Value {

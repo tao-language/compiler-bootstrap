@@ -143,6 +143,11 @@ pub fn eval_ann_test() {
   let result = eval([], [], term)
   assert result == ast.vint(42)
 }
+// pub fn eval_lam_const_test() {
+//   let term = ast.Lam([], #("x", ast.int_t(s1)), ast.int(42, s2), s0)
+//   let result = eval([], [], term)
+//   assert result == ast.VLam([], [], #("x", ast.vint_t), ast.int(42, s2))
+// }
 // Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )
 // Pi( implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span, )
 // Fix(name: String, body: Term, span: Span)

@@ -41,6 +41,9 @@ pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
       }
     }
     ast.Ann(term, _, _) -> eval(ffi, env, term)
+    ast.Lam(implicits, #(name, param_type), body, _) -> {
+      todo
+    }
     // Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )
     // Pi( implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span, )
     // Fix(name: String, body: Term, span: Span)

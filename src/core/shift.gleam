@@ -39,20 +39,15 @@ pub fn shift_value(value: ast.Value, delta: Int) -> ast.Value {
 
 fn shift_head(head: ast.Head, delta: Int) -> ast.Head {
   case head {
-    // HVar: DeBruijn level shifts by delta
     ast.HVar(lvl) -> ast.HVar(lvl + delta)
-    // HHole: hole IDs are stable identifiers, not DeBruijn levels
     ast.HHole(id) -> ast.HHole(id)
-    // HCall: would need recursive arg shifting — unimplemented
     ast.HCall(name, args) -> todo
-    // HFix: shift the captured env levels by delta
-    ast.HFix(env, body) ->
-      ast.HFix(list.map(env, fn(v) { shift_value(v, delta) }), body)
   }
 }
 
 fn shift_elim(elim: ast.Elim, delta: Int) -> ast.Elim {
   // EApp: arg value needs shifting
+  // EFix
   // EMatch: env in elim needs shifting
   todo
 }

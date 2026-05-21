@@ -6,6 +6,7 @@
 /// the expected type.
 import core/ast
 import core/eval.{eval}
+import core/quote.{quote}
 import core/shift.{shift_value}
 import core/state.{
   type FFI, type State, State, env_to_state, state_to_env, with_err,
@@ -41,7 +42,7 @@ pub fn infer(state: State, term: ast.Term) -> #(ast.Term, ast.Value, State) {
     ast.Pi(implicits, domain, codomain, span) ->
       infer_pi(state, implicits, domain, codomain, span)
     ast.Fix(name, body, span) -> infer_fix(state, name, body, span)
-    // ast.App(fun, arg, span) -> infer_app(state, fun, arg, span)
+    ast.App(fun, arg, span) -> infer_app(state, fun, arg, span)
     // ast.TypeDef(params, constructors, span) ->
     //   infer_type_def(state, params, constructors, span)
     // ast.Match(arg, cases, span) -> infer_match(state, arg, cases, span)
@@ -279,7 +280,9 @@ fn infer_lam(
 ) -> #(ast.Term, ast.Value, State) {
   let #(implicits, implicits_val, state) = push_param_list(state, implicits)
   let #(param_type, param_type_val, state) = push_param(state, param_type)
-  let #(body, body_type, state) = infer(state, body)
+  let #(body, body_type_val, state) = infer(state, body)
+  let lvl = list.length(state.vars)
+  let body_type = quote(state.ffi, lvl, body_type_val, ast.get_span(body))
   let #(env, state) = pop_params(state, list.length(implicits) + 1)
   #(
     ast.Lam(implicits, param_type, body, span),
@@ -383,4 +386,28 @@ fn infer_fix(
   let #(_, state) = pop_params(state, 1)
   let state = unify(state, #(type_hole, span), #(body_type, span))
   #(ast.Fix(name, body, span), body_type, state)
+}
+
+fn infer_app(
+  state: State,
+  fun: ast.Term,
+  arg: ast.Term,
+  span: Span,
+) -> #(ast.Term, ast.Value, State) {
+  let #(fun, fun_type, state) = infer(state, fun)
+  case fun_type {
+    ast.VPi(env, implicits, domain, codomain) -> todo
+    ast.VPi(env, [], #(name, domain_val), codomain) -> {
+      // TODO: should VPi store the domain span for better error messages?
+      let #(arg, arg_type, state) =
+        check(state, arg, #(domain_val, ast.get_span(fun)))
+      todo
+    }
+    _ -> {
+      // Still check the arg to report on any potential errors there.
+      let #(_, _, state) = infer(state, arg)
+      let state = with_err(state, state.NotAFunction(fun_type, span))
+      #(ast.Err(span), ast.VErr, state)
+    }
+  }
 }
