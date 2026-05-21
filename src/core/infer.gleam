@@ -396,13 +396,14 @@ fn infer_app(
 ) -> #(ast.Term, ast.Value, State) {
   let #(fun, fun_type, state) = infer(state, fun)
   case fun_type {
-    ast.VPi(env, implicits, domain, codomain) -> todo
     ast.VPi(env, [], #(name, domain_val), codomain) -> {
       // TODO: should VPi store the domain span for better error messages?
       let #(arg, arg_type, state) =
         check(state, arg, #(domain_val, ast.get_span(fun)))
-      todo
+      let codomain_val = eval(state.ffi, state_to_env(state), codomain)
+      #(ast.App(fun, arg, span), codomain_val, state)
     }
+    ast.VPi(env, implicits, domain, codomain) -> todo
     _ -> {
       // Still check the arg to report on any potential errors there.
       let #(_, _, state) = infer(state, arg)

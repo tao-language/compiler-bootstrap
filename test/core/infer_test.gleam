@@ -523,10 +523,15 @@ pub fn infer_app_simple_test() {
     #(
       "f",
       ast.vvar(0, []),
-      ast.VPi([], [], #("x", ast.vint_t), ast.float_t(s0)),
+      ast.VPi([], [], #("x", ast.vint_t), ast.float_t(s3)),
     ),
   ]
-  let term = ast.App
+  let new_state = State(..new_state, vars: vars)
+  let term = ast.App(ast.Var(0, s1), ast.int(42, s2), s0)
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.vfloat_t
 }
 //
 
