@@ -235,7 +235,7 @@ pub fn infer_ann_hole_type_test() {
   assert type_ == ast.vint_t
 }
 
-pub fn infer_lam_constant_test() {
+pub fn infer_lam_simple_test() {
   // $fn(x: $Float) => 42
   let term = ast.Lam([], #("x", ast.float_t(s1)), ast.int(42, s2), s0)
   let #(result, type_, state) = infer(new_state, term)
@@ -245,7 +245,7 @@ pub fn infer_lam_constant_test() {
   assert type_ == ast.VPi([], [], #("x", ast.vfloat_t), ast.int_t(s2))
 }
 
-pub fn infer_lam_identity_polymorphic_test() {
+pub fn infer_lam_identity_test() {
   // $fn<a: $Type>(x: a) => x
   let term =
     ast.Lam(
@@ -267,7 +267,7 @@ pub fn infer_lam_identity_polymorphic_test() {
     )
 }
 
-pub fn infer_lam_typeof_polymorphic_test() {
+pub fn infer_lam_typeof_test() {
   // $fn<a: $Type>(x: a) => a
   let term =
     ast.Lam(
@@ -289,7 +289,7 @@ pub fn infer_lam_typeof_polymorphic_test() {
     )
 }
 
-pub fn infer_lam_const_monomorphic_test() {
+pub fn infer_lam_nested_test() {
   // $fn(x: $Int) => $fn(y: $Float) => x
   let term_inner = ast.Lam([], #("y", ast.float_t(s3)), ast.Var(1, s4), s2)
   let term = ast.Lam([], #("x", ast.int_t(s1)), term_inner, s0)
@@ -306,7 +306,7 @@ pub fn infer_lam_const_monomorphic_test() {
     )
 }
 
-pub fn infer_lam_const_polymorphic_test() {
+pub fn infer_lam_const_test() {
   // $fn<a: $Int, b: $Float>(x: a) => $fn(y: b) => x
   let term_inner = ast.Lam([], #("y", ast.Var(1, s3)), ast.Var(1, s4), s2)
   let term =
@@ -344,8 +344,8 @@ pub fn infer_lam_closure_test() {
   assert type_ == ast.VPi(env, [], #("x", ast.vint_t), ast.float_t(s2))
 }
 
-pub fn infer_pi_constant_test() {
-  // $pi(x: $Float) => $Int
+pub fn infer_pi_simple_test() {
+  // $pi(x: $Float) -> $Int
   let term = ast.Pi([], #("x", ast.float_t(s1)), ast.int_t(s2), s0)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
@@ -353,71 +353,20 @@ pub fn infer_pi_constant_test() {
   assert type_ == ast.VTyp(0)
 }
 
-pub fn infer_pi_dependent_ref_implicit_test() {
+pub fn infer_pi_identity_test() {
+  // $pi<a: $Type>(x: a) -> x
+  let term =
+    ast.Pi([#("a", ast.Typ(0, s1))], #("x", ast.Var(0, s2)), ast.Var(0, s3), s0)
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.VTyp(0)
+}
+
+pub fn infer_pi_typeof_test() {
   // $pi<a: $Type>(x: a) -> a
-  // Domain: Var(0) = a (implicit, at index 0 after push)
-  // Codomain: Var(1) = a (implicit, at index 1 after pushing x)
-  // DeBruijn: after push a then x: [x, a], so a is at index 1
   let term =
     ast.Pi([#("a", ast.Typ(0, s1))], #("x", ast.Var(0, s2)), ast.Var(1, s3), s0)
-  let #(result, type_, state) = infer(new_state, term)
-  assert state == new_state
-  assert result == term
-  assert type_ == ast.VTyp(0)
-  // The Pi term's domain is the original term Var(0) (refers to a)
-  // The Pi term's codomain is the original term Var(1) (refers to a)
-}
-
-pub fn infer_pi_dependent_ref_domain_param_test() {
-  // $pi<a: $Type, b: $Type>(x: a) -> b
-  // After push a, b: [b, a]
-  // After push x: [x, b, a]
-  // Domain Var(1) = b (implicit at index 1 after push a)
-  // Codomain Var(2) = a (implicit at index 2 after push a, x)
-  let term =
-    ast.Pi(
-      [#("a", ast.Typ(0, s1)), #("b", ast.Typ(1, s2))],
-      #("x", ast.Var(1, s4)),
-      ast.Var(2, s5),
-      s0,
-    )
-  let #(result, type_, state) = infer(new_state, term)
-  assert state == new_state
-  assert result == term
-  assert type_ == ast.VTyp(0)
-}
-
-pub fn infer_pi_closure_capture_test() {
-  // $let T = $Type; $pi<a: $Type>(x: a) -> T
-  // After push a: [a, T]
-  // After push x: [x, a, T]
-  // Codomain Var(2) = T (outer var at index 2)
-  let term =
-    ast.Pi([#("a", ast.Typ(0, s1))], #("x", ast.Var(0, s2)), ast.Var(2, s3), s0)
-  let var_t = #("T", ast.vvar(0, []), ast.VTyp(1))
-  let new_state = State(..new_state, vars: [var_t])
-  let #(result, type_, state) = infer(new_state, term)
-  assert state == new_state
-  assert result == term
-  assert type_ == ast.VTyp(0)
-}
-
-pub fn infer_pi_two_implicits_test() {
-  // $pi<a: $Type<0>, b: $Type<1>>(pair: ${x: a, y: b}) -> $Type
-  // After push a: [a]
-  // After push b: [b, a]
-  // After push pair: [pair, b, a]
-  // Domain: RcdT with x: Var(1)=a, y: Var(0)=b
-  // Codomain: Rcd with xt: Var(2)=a, yt: Var(1)=b
-  let rcd_t =
-    ast.RcdT([#("x", ast.Var(1, s4), None), #("y", ast.Var(0, s5), None)], s3)
-  let term =
-    ast.Pi(
-      [#("a", ast.Typ(0, s1)), #("b", ast.Typ(1, s2))],
-      #("pair", rcd_t),
-      ast.Rcd([#("xt", ast.Var(2, s7)), #("yt", ast.Var(1, s8))], s6),
-      s0,
-    )
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -425,23 +374,45 @@ pub fn infer_pi_two_implicits_test() {
 }
 
 pub fn infer_pi_nested_test() {
-  // $pi<a: $Type>(x: a) -> $pi<b: $Type>(y: b) -> $Type<0>
-  // Outer Pi: [a] -> [x, a]
-  // Inner Pi (from outer's codomain): [b] -> [y, b]
-  // Then push inner's params: [inner_y, inner_b, x, a]
-  // Codomain: Var(3) = a, Var(2) = x, Var(1) = inner_b, Var(0) = inner_y
-  let inner_codomain = ast.Typ(0, s6)
-  let inner_pi =
-    ast.Pi([#("b", ast.Typ(1, s4))], #("y", ast.Var(0, s5)), inner_codomain, s3)
-  let term =
-    ast.Pi([#("a", ast.Typ(0, s1))], #("x", ast.Var(0, s2)), inner_pi, s0)
+  // $pi(x: $Int) -> $pi(y: $Float) -> x
+  let term_inner = ast.Pi([], #("y", ast.float_t(s3)), ast.Var(1, s4), s2)
+  let term = ast.Pi([], #("x", ast.int_t(s1)), term_inner, s0)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
   assert type_ == ast.VTyp(0)
 }
 
-pub fn infer_fix_const_test() {
+pub fn infer_pi_const_test() {
+  // $pi<a: $Int, b: $Float>(x: a) -> $pi(y: b) -> x
+  let term_inner = ast.Pi([], #("y", ast.Var(1, s3)), ast.Var(1, s4), s2)
+  let term =
+    ast.Pi(
+      [#("a", ast.int_t(s5)), #("b", ast.float_t(s6))],
+      #("x", ast.Var(1, s1)),
+      term_inner,
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.VTyp(0)
+}
+
+pub fn infer_pi_closure_test() {
+  // $let z = 3.14; $let y = z; $pi(x: $Int) -> y
+  let term = ast.Pi([], #("x", ast.int_t(s1)), ast.Var(1, s2), s0)
+  let var_y = #("y", ast.vvar(1, []), ast.vfloat_t)
+  let var_z = #("z", ast.vfloat(3.14), ast.vfloat_t)
+  let new_state = State(..new_state, vars: [var_y, var_z])
+  assert list.map(new_state.vars, fn(var) { var.0 }) == ["y", "z"]
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.VTyp(0)
+}
+
+pub fn infer_fix_constant_test() {
   let term = ast.Fix("f", ast.int(42, s1), s0)
   let #(result, type_, state) = infer(new_state, term)
   assert state == State(..new_state, subst: [#(0, ast.vint_t)], hole_counter: 1)
