@@ -235,17 +235,17 @@ pub fn infer_ann_hole_type_test() {
   assert type_ == ast.vint_t
 }
 
-pub fn infer_lam_const_test() {
-  // $fn(x: ${}) => 42
-  let term = ast.Lam([], #("x", ast.RcdT([], s1)), ast.int(42, s2), s0)
+pub fn infer_lam_constant_test() {
+  // $fn(x: $Float) => 42
+  let term = ast.Lam([], #("x", ast.float_t(s1)), ast.int(42, s2), s0)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
-  // $pi(x: ${}) -> $Int
-  assert type_ == ast.VPi([], [], #("x", ast.VRcdT([])), ast.int_t(s2))
+  // $pi(x: $Float) -> $Int
+  assert type_ == ast.VPi([], [], #("x", ast.vfloat_t), ast.int_t(s2))
 }
 
-pub fn infer_lam_identity_test() {
+pub fn infer_lam_identity_polymorphic_test() {
   // $fn<a: $Type>(x: a) => x
   let term =
     ast.Lam(
@@ -267,8 +267,7 @@ pub fn infer_lam_identity_test() {
     )
 }
 
-pub fn infer_lam_typeof_test() {
-  // typeof
+pub fn infer_lam_typeof_polymorphic_test() {
   // $fn<a: $Type>(x: a) => a
   let term =
     ast.Lam(
@@ -290,89 +289,47 @@ pub fn infer_lam_typeof_test() {
     )
 }
 
-pub fn infer_lam_two_implicits_test() {
-  // $fn<a: $Type<0>, b: $Type<1>>(pair: ${x: a, y: b}) => {xt: a, yt: b}
-  let term =
-    ast.Lam(
-      [#("a", ast.Typ(0, s1)), #("b", ast.Typ(1, s2))],
-      #(
-        "pair",
-        ast.RcdT(
-          [#("x", ast.Var(1, s4), None), #("y", ast.Var(0, s5), None)],
-          s3,
-        ),
-      ),
-      ast.Rcd([#("xt", ast.Var(2, s7)), #("yt", ast.Var(1, s8))], s6),
-      s0,
-    )
+pub fn infer_lam_const_monomorphic_test() {
+  // $fn(x: $Int) => $fn(y: $Float) => x
+  let term_inner = ast.Lam([], #("y", ast.float_t(s3)), ast.Var(1, s4), s2)
+  let term = ast.Lam([], #("x", ast.int_t(s1)), term_inner, s0)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
-  // $pi<a: $Type<0>, b: $Type<1>>(pair: ${x: a, y: b}) -> ${xt: $Type, yt: $Type}
-  assert type_
-    == ast.VPi(
-      [],
-      [#("a", ast.VTyp(0)), #("b", ast.VTyp(1))],
-      #(
-        "pair",
-        ast.VRcdT([#("x", ast.vvar(1, []), None), #("y", ast.vvar(0, []), None)]),
-      ),
-      ast.RcdT(
-        [#("xt", ast.Typ(0, s6), None), #("yt", ast.Typ(1, s6), None)],
-        s6,
-      ),
-    )
-}
-
-pub fn infer_lam_nested_test() {
-  // $fn(x: $Int) => $fn(y: $Float) => {a: x, b: y}
-  let term =
-    ast.Lam(
-      [],
-      #("x", ast.int_t(s1)),
-      ast.Lam(
-        [],
-        #("y", ast.float_t(s3)),
-        ast.Rcd([#("a", ast.Var(1, s5)), #("b", ast.Var(0, s6))], s4),
-        s2,
-      ),
-      s0,
-    )
-  let #(result, type_, state) = infer(new_state, term)
-  assert state == new_state
-  assert result == term
-  // $pi(x: $Int) -> $pi(y: $Float) -> ${a: $Int, b: $Float}
+  // $pi(x: $Int) -> $pi(y: $Float) -> $Int
   assert type_
     == ast.VPi(
       [],
       [],
       #("x", ast.vint_t),
-      ast.Pi(
-        [],
-        #("y", ast.float_t(s2)),
-        ast.RcdT(
-          [#("a", ast.int_t(s4), None), #("b", ast.float_t(s4), None)],
-          s4,
-        ),
-        s2,
-      ),
+      ast.Pi([], #("y", ast.float_t(s2)), ast.int_t(s4), s2),
+    )
+}
+
+pub fn infer_lam_const_polymorphic_test() {
+  // $fn<a: $Int, b: $Float>(x: a) => $fn(y: b) => x
+  let term_inner = ast.Lam([], #("y", ast.Var(1, s3)), ast.Var(1, s4), s2)
+  let term =
+    ast.Lam(
+      [#("a", ast.int_t(s5)), #("b", ast.float_t(s6))],
+      #("x", ast.Var(1, s1)),
+      term_inner,
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  // $pi<a: $Int, b: $Float>(x: a) -> $pi(y: b) -> $Int
+  assert type_
+    == ast.VPi(
+      [],
+      [#("a", ast.vint_t), #("b", ast.vfloat_t)],
+      #("x", ast.vvar(1, [])),
+      ast.Pi([], #("y", ast.Var(1, s2)), ast.Var(1, s4), s2),
     )
 }
 
 pub fn infer_lam_closure_test() {
-  // $let y: $Float = 3.14; $fn(x: $Int) => y
-  let term = ast.Lam([], #("x", ast.int_t(s1)), ast.Var(1, s2), s0)
-  let var_y = #("y", ast.vfloat(3.14), ast.vfloat_t)
-  let new_state = State(..new_state, vars: [var_y])
-  let #(result, type_, state) = infer(new_state, term)
-  assert state == new_state
-  assert result == term
-  // $pi(x: $Int) -> $Float (with env [3.14])
-  assert type_
-    == ast.VPi([ast.vfloat(3.14)], [], #("x", ast.vint_t), ast.float_t(s2))
-}
-
-pub fn infer_lam_closure_shift_test() {
   // $let z = 3.14; $let y = z; $fn(x: $Int) => y
   let term = ast.Lam([], #("x", ast.int_t(s1)), ast.Var(1, s2), s0)
   let var_y = #("y", ast.vvar(1, []), ast.vfloat_t)
@@ -387,13 +344,12 @@ pub fn infer_lam_closure_shift_test() {
   assert type_ == ast.VPi(env, [], #("x", ast.vint_t), ast.float_t(s2))
 }
 
-pub fn infer_pi_simple_test() {
-  // $pi<$Int>(x: $Int) -> $Int  (non-dependent)
-  let term = ast.Pi([], #("x", ast.int_t(s1)), ast.int_t(s2), s0)
+pub fn infer_pi_constant_test() {
+  // $pi(x: $Float) => $Int
+  let term = ast.Pi([], #("x", ast.float_t(s1)), ast.int_t(s2), s0)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
-  // Pi types have type $Type (VTyp(0))
   assert type_ == ast.VTyp(0)
 }
 

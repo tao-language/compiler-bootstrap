@@ -1,7 +1,6 @@
 import core/ast
 import core/quote.{quote}
 import core/state.{State, new_state, with_err}
-import gleam/list
 import gleam/option.{None, Some}
 import gleeunit
 import syntax/span.{Span}

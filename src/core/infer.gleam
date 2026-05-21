@@ -274,19 +274,19 @@ fn infer_ann(
 fn infer_lam(
   state: State,
   implicits: List(#(String, ast.Term)),
-  param_type: #(String, ast.Term),
+  param: #(String, ast.Term),
   body: ast.Term,
   span: Span,
 ) -> #(ast.Term, ast.Value, State) {
   let #(implicits, implicits_val, state) = push_param_list(state, implicits)
-  let #(param_type, param_type_val, state) = push_param(state, param_type)
+  let #(param, param_val, state) = push_param(state, param)
   let #(body, body_type_val, state) = infer(state, body)
   let lvl = list.length(state.vars)
   let body_type = quote(state.ffi, lvl, body_type_val, ast.get_span(body))
   let #(env, state) = pop_params(state, list.length(implicits) + 1)
   #(
-    ast.Lam(implicits, param_type, body, span),
-    ast.VPi(env, implicits_val, param_type_val, body_type),
+    ast.Lam(implicits, param, body, span),
+    ast.VPi(env, implicits_val, param_val, body_type),
     state,
   )
 }
@@ -320,9 +320,9 @@ fn push_param_list(
   case params {
     [] -> #([], [], state)
     [param, ..params] -> {
-      let #(param_type, param_type_val, state) = push_param(state, param)
+      let #(param, param_val, state) = push_param(state, param)
       let #(params, params_val, state) = push_param_list(state, params)
-      #([param_type, ..params], [param_type_val, ..params_val], state)
+      #([param, ..params], [param_val, ..params_val], state)
     }
   }
 }

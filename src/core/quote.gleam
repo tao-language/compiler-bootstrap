@@ -57,7 +57,7 @@ pub fn quote(ffi: FFI, lvl: Int, value: ast.Value, span: Span) -> ast.Term {
       ast.Pi(implicits, #(name, domain), codomain, span)
     }
     // VTypeDef( params: List(#(String, Value)), constructors: List(#(String, #(List(String), Value, Term))), )
-    // VErr
+    ast.VErr -> ast.Err(span)
     _ -> {
       echo value
       todo
