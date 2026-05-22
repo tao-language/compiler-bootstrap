@@ -35,6 +35,12 @@ pub type FFI =
 /// State is threaded through every phase of the compiler. Fields:
 ///
 /// * `vars`: Variable environment (name → #(value, type))
+///   - **Ordering**: Most-recently-pushed first (innermost binder at index 0).
+///   - When a binder is pushed, it is prepended to the front of the list.
+///   - This means De Bruijn **levels** (list positions) match De Bruijn
+///     **indices**: level 0 = index 0 = innermost binder.
+///   - Example: after pushing [a, b, x] (in that order), vars = [x, b, a],
+///     so x is at level 0, b at level 1, a at level 2.
 /// * `subst`: Hole substitutions (hole_id → value)
 /// * `errors`: Accumulated errors during type checking
 /// * `ffi`: FFI builtin definitions available at runtime

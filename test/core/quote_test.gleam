@@ -56,12 +56,16 @@ pub fn quote_vrcdt_test() {
 }
 
 pub fn quote_vneut_hvar_test() {
+  // De Bruijn levels map directly to De Bruijn indices:
+  // level 0 = innermost binder = index 0
+  // level 1 = next binder = index 1
+  // etc.
   assert quote([], 1, ast.vvar(0, []), s) == ast.Var(0, s)
-  assert quote([], 2, ast.vvar(0, []), s) == ast.Var(1, s)
-  assert quote([], 3, ast.vvar(0, []), s) == ast.Var(2, s)
-  assert quote([], 2, ast.vvar(1, []), s) == ast.Var(0, s)
+  assert quote([], 2, ast.vvar(0, []), s) == ast.Var(0, s)
+  assert quote([], 3, ast.vvar(0, []), s) == ast.Var(0, s)
+  assert quote([], 2, ast.vvar(1, []), s) == ast.Var(1, s)
   assert quote([], 3, ast.vvar(1, []), s) == ast.Var(1, s)
-  assert quote([], 4, ast.vvar(1, []), s) == ast.Var(2, s)
+  assert quote([], 4, ast.vvar(1, []), s) == ast.Var(1, s)
 }
 
 pub fn quote_vneut_hhole_test() {

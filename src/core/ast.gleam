@@ -3,8 +3,22 @@
 /// The core language is language-agnostic. It defines the fundamental
 /// terms and values that make up the compiler's internal representation.
 ///
-/// Terms use De Bruijn indices for variables. Values use De Bruijn
-/// levels for runtime representation.
+/// Terms use De Bruijn **indices** for variables. Values use De Bruijn
+/// **levels** for runtime representation.
+///
+/// De Bruijn **indices** (Term `Var(n)`): relative to binders. `Var(0)` is
+/// the innermost binder, `Var(1)` is the next one out, etc.
+///
+/// De Bruijn **levels** (Value `HVar(n)`): absolute positions in the
+/// environment (`state.vars`). Level 0 is the most-recently-pushed entry
+/// (innermost binder), level 1 is the next, etc.
+///
+/// Because `state.vars` is ordered innermost-first (see `state.gleam`),
+/// levels and indices use the **same** counting convention:
+///   level 0 = index 0 = innermost binder
+///   level 1 = index 1 = next binder out
+///   ...
+/// This means quoting a level to an index is the identity conversion.
 import gleam/option.{type Option}
 import syntax/span.{type Span}
 

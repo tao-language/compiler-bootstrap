@@ -1,4 +1,0 @@
-type T = A | B
-
-> A ~> A
-> B ~> B

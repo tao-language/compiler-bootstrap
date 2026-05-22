@@ -281,7 +281,6 @@ fn infer_lam(
   let #(implicits, state) = push_param_list(state, implicits)
   let #(param, state) = push_param(state, param)
   let #(body, body_type_val, state) = infer(state, body)
-  echo #(param.0, body, body_type_val)
   let lvl = list.length(state.vars)
   let body_type = quote(state.ffi, lvl, body_type_val, ast.get_span(body))
   let #(env, state) = pop_params(state, list.length(implicits) + 1)
@@ -310,7 +309,20 @@ fn push_param_val(state: State, param: #(String, ast.Value)) -> State {
   // correct relative to the new innermost binder (the param we're adding).
   // Without this shift, existing vars' levels would be off by 1.
   let state = state.vars_shift(state, 1)
-  let var = #(name, ast.vvar(0, []), param_type_val)
+  // Also shift param_type_val by +1 so the new param's type references
+  // the correct variables in the shifted environment.
+  //
+  // Why: param_type_val was evaluated in the pre-shift environment, where
+  // binder X was at level N. After the shift, X moves to level N+1. If we
+  // don't shift param_type_val, it still points to level N, which now
+  // refers to a DIFFERENT binder (the one that was at N-1 before the shift).
+  //
+  // Example: pushing x with type a, in env [b, a] (a at level 1):
+  //   - param_type_val = vvar(1, [])  (evaluated: a is at level 1)
+  //   - After shift: env = [b', a'] where b' is at level 1, a' at level 2
+  //   - Without shifting param_type_val: x's type = vvar(1, []) = b'  ✗
+  //   - With shifting: x's type = vvar(2, []) = a'  ✓
+  let var = #(name, ast.vvar(0, []), shift_value(param_type_val, 1))
   State(..state, vars: [var, ..state.vars])
 }
 

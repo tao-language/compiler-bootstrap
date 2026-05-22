@@ -61,8 +61,20 @@ pub fn quote(ffi: FFI, lvl: Int, value: ast.Value, span: Span) -> ast.Term {
 fn quote_head(ffi: FFI, lvl: Int, head: ast.Head, span: Span) -> ast.Term {
   case head {
     ast.HVar(absolute_level) -> {
-      // HVar uses absolute De Bruijn levels. Convert to relative Var index.
-      let index = lvl - absolute_level - 1
+      // Convert De Bruijn level (absolute env position) to De Bruijn index
+      // (relative binder count).
+      //
+      // Because state.vars is ordered innermost-first (most-recently-pushed
+      // at index 0), levels and indices use the same counting convention:
+      //   level 0 = env index 0 = innermost binder = Var(0)
+      //   level 1 = env index 1 = next binder out    = Var(1)
+      //   ...
+      //
+      // So the conversion is the identity: index = level.
+      //
+      // CAUTION: If the env ordering ever changes to outermost-first,
+      // this formula must change to: index = lvl - 1 - absolute_level
+      let index = absolute_level
       ast.Var(index, span)
     }
     ast.HHole(id) -> ast.Hole(id, span)
