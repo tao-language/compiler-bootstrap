@@ -47,15 +47,8 @@ pub fn quote(ffi: FFI, lvl: Int, value: ast.Value, span: Span) -> ast.Term {
       quote_spine(ffi, lvl, base, spine, span)
     }
     // VLam( env: Env, implicits: List(#(String, Value)), param: #(String, Value), body: Term, )
-    ast.VPi(_, implicits_val, #(name, domain_val), codomain) -> {
-      let implicits =
-        list.map(implicits_val, fn(param) {
-          let #(name, implicit_val) = param
-          #(name, quote(ffi, lvl, implicit_val, span))
-        })
-      let domain = quote(ffi, lvl, domain_val, span)
-      ast.Pi(implicits, #(name, domain), codomain, span)
-    }
+    ast.VPi(_, implicits, domain, codomain) ->
+      ast.Pi(implicits, domain, codomain, span)
     // VTypeDef( params: List(#(String, Value)), constructors: List(#(String, #(List(String), Value, Term))), )
     ast.VErr -> ast.Err(span)
     _ -> {

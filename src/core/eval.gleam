@@ -44,16 +44,23 @@ pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
     ast.Lam(implicits, #(name, param_type), body, _) -> {
       todo
     }
-    // Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )
-    // Pi( implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span, )
-    // Fix(name: String, body: Term, span: Span)
-    // App(fun: Term, arg: Term, span: Span)
-    // TypeDef( params: List(#(String, Term)), constructors: List(#(String, #(List(String), Term, Term), Span)), span: Span, )
-    // Match(arg: Term, cases: List(Case), span: Span)
-    // Err(message: String, span: Span)
-    _ -> {
-      echo term
+    ast.Pi(implicits, #(name, domain), codomain, _) -> {
+      let domain_val = eval(ffi, env, domain)
+      // ast.VPi(env, [], )
       todo
     }
+    ast.Fix(name, body, _) -> {
+      todo
+    }
+    ast.App(fun, arg, _) -> {
+      todo
+    }
+    ast.TypeDef(params, constructors, _) -> {
+      todo
+    }
+    ast.Match(arg, cases, _) -> {
+      todo
+    }
+    ast.Err(_) -> ast.VErr
   }
 }

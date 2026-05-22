@@ -195,14 +195,14 @@ pub type Value {
   VNeut(head: Head, spine: List(Elim))
   VLam(
     env: Env,
-    implicits: List(#(String, Value)),
-    param: #(String, Value),
+    implicits: List(#(String, Term)),
+    param: #(String, Term),
     body: Term,
   )
   VPi(
     env: Env,
-    implicits: List(#(String, Value)),
-    domain: #(String, Value),
+    implicits: List(#(String, Term)),
+    domain: #(String, Term),
     codomain: Term,
   )
   VTypeDef(

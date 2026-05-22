@@ -278,15 +278,16 @@ fn infer_lam(
   body: ast.Term,
   span: Span,
 ) -> #(ast.Term, ast.Value, State) {
-  let #(implicits, implicits_val, state) = push_param_list(state, implicits)
-  let #(param, param_val, state) = push_param(state, param)
+  let #(implicits, state) = push_param_list(state, implicits)
+  let #(param, state) = push_param(state, param)
   let #(body, body_type_val, state) = infer(state, body)
+  echo #(param.0, body, body_type_val)
   let lvl = list.length(state.vars)
   let body_type = quote(state.ffi, lvl, body_type_val, ast.get_span(body))
   let #(env, state) = pop_params(state, list.length(implicits) + 1)
   #(
     ast.Lam(implicits, param, body, span),
-    ast.VPi(env, implicits_val, param_val, body_type),
+    ast.VPi(env, implicits, param, body_type),
     state,
   )
 }
@@ -294,12 +295,12 @@ fn infer_lam(
 fn push_param(
   state: State,
   param: #(String, ast.Term),
-) -> #(#(String, ast.Term), #(String, ast.Value), State) {
+) -> #(#(String, ast.Term), State) {
   let #(name, param_type) = param
   // Evaluate the param type in the current env (may reference earlier implicits)
   let param_type_val = eval(state.ffi, state_to_env(state), param_type)
   let state = push_param_val(state, #(name, param_type_val))
-  #(#(name, param_type), #(name, param_type_val), state)
+  #(#(name, param_type), state)
 }
 
 fn push_param_val(state: State, param: #(String, ast.Value)) -> State {
@@ -316,13 +317,13 @@ fn push_param_val(state: State, param: #(String, ast.Value)) -> State {
 fn push_param_list(
   state: State,
   params: List(#(String, ast.Term)),
-) -> #(List(#(String, ast.Term)), List(#(String, ast.Value)), State) {
+) -> #(List(#(String, ast.Term)), State) {
   case params {
-    [] -> #([], [], state)
+    [] -> #([], state)
     [param, ..params] -> {
-      let #(param, param_val, state) = push_param(state, param)
-      let #(params, params_val, state) = push_param_list(state, params)
-      #([param, ..params], [param_val, ..params_val], state)
+      let #(param, state) = push_param(state, param)
+      let #(params, state) = push_param_list(state, params)
+      #([param, ..params], state)
     }
   }
 }
@@ -366,8 +367,8 @@ fn infer_pi(
   codomain: ast.Term,
   span: Span,
 ) -> #(ast.Term, ast.Value, State) {
-  let #(implicits, _, state) = push_param_list(state, implicits)
-  let #(domain, _, state) = push_param(state, domain)
+  let #(implicits, state) = push_param_list(state, implicits)
+  let #(domain, state) = push_param(state, domain)
   let #(codomain, _, state) = infer(state, codomain)
   let #(_, state) = pop_params(state, list.length(implicits) + 1)
   #(ast.Pi(implicits, domain, codomain, span), ast.VTyp(0), state)
@@ -396,10 +397,11 @@ fn infer_app(
 ) -> #(ast.Term, ast.Value, State) {
   let #(fun, fun_type, state) = infer(state, fun)
   case fun_type {
-    ast.VPi(env, [], #(name, domain_val), codomain) -> {
-      // TODO: should VPi store the domain span for better error messages?
+    ast.VPi(env, [], #(name, domain), codomain) -> {
+      let domain_val = eval(state.ffi, env, domain)
       let #(arg, arg_type, state) =
-        check(state, arg, #(domain_val, ast.get_span(fun)))
+        check(state, arg, #(domain_val, ast.get_span(domain)))
+      // TODO: add domain into state.vars
       let codomain_val = eval(state.ffi, state_to_env(state), codomain)
       #(ast.App(fun, arg, span), codomain_val, state)
     }

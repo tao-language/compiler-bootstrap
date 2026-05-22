@@ -236,13 +236,13 @@ pub fn infer_ann_hole_type_test() {
 }
 
 pub fn infer_lam_simple_test() {
-  // $fn(x: $Float) => 42
-  let term = ast.Lam([], #("x", ast.float_t(s1)), ast.int(42, s2), s0)
+  // $fn(x: $Int) => 3.14
+  let term = ast.Lam([], #("x", ast.int_t(s1)), ast.float(3.14, s2), s0)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
-  // $pi(x: $Float) -> $Int
-  assert type_ == ast.VPi([], [], #("x", ast.vfloat_t), ast.int_t(s2))
+  // $pi(x: $Int) -> $Float
+  assert type_ == ast.VPi([], [], #("x", ast.int_t(s1)), ast.float_t(s2))
 }
 
 pub fn infer_lam_identity_test() {
@@ -261,8 +261,8 @@ pub fn infer_lam_identity_test() {
   assert type_
     == ast.VPi(
       [],
-      [#("a", ast.VTyp(0))],
-      #("x", ast.vvar(0, [])),
+      [#("a", ast.Typ(0, s1))],
+      #("x", ast.Var(0, s2)),
       ast.Var(1, s3),
     )
 }
@@ -283,8 +283,8 @@ pub fn infer_lam_typeof_test() {
   assert type_
     == ast.VPi(
       [],
-      [#("a", ast.VTyp(0))],
-      #("x", ast.vvar(0, [])),
+      [#("a", ast.Typ(0, s1))],
+      #("x", ast.Var(0, s2)),
       ast.Typ(0, s3),
     )
 }
@@ -301,8 +301,8 @@ pub fn infer_lam_nested_test() {
     == ast.VPi(
       [],
       [],
-      #("x", ast.vint_t),
-      ast.Pi([], #("y", ast.float_t(s2)), ast.int_t(s4), s2),
+      #("x", ast.int_t(s1)),
+      ast.Pi([], #("y", ast.float_t(s3)), ast.int_t(s4), s2),
     )
 }
 
@@ -319,13 +319,13 @@ pub fn infer_lam_const_test() {
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
-  // $pi<a: $Int, b: $Float>(x: a) -> $pi(y: b) -> $Int
+  // $pi<a: $Int, b: $Float>(x: a) -> $pi(y: b) -> a
   assert type_
     == ast.VPi(
       [],
-      [#("a", ast.vint_t), #("b", ast.vfloat_t)],
-      #("x", ast.vvar(1, [])),
-      ast.Pi([], #("y", ast.Var(1, s2)), ast.Var(1, s4), s2),
+      [#("a", ast.int_t(s5)), #("b", ast.float_t(s6))],
+      #("x", ast.Var(1, s1)),
+      ast.Pi([], #("y", ast.Var(1, s3)), ast.Var(3, s4), s2),
     )
 }
 
@@ -341,12 +341,12 @@ pub fn infer_lam_closure_test() {
   assert result == term
   // $pi(x: $Int) -> $Float (with env [z, 3.14])
   let env = [ast.vvar(2, []), ast.vfloat(3.14)]
-  assert type_ == ast.VPi(env, [], #("x", ast.vint_t), ast.float_t(s2))
+  assert type_ == ast.VPi(env, [], #("x", ast.int_t(s1)), ast.float_t(s2))
 }
 
 pub fn infer_pi_simple_test() {
-  // $pi(x: $Float) -> $Int
-  let term = ast.Pi([], #("x", ast.float_t(s1)), ast.int_t(s2), s0)
+  // $pi(x: $Int) -> $Float
+  let term = ast.Pi([], #("x", ast.int_t(s1)), ast.float_t(s2), s0)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -384,7 +384,7 @@ pub fn infer_pi_nested_test() {
 }
 
 pub fn infer_pi_const_test() {
-  // $pi<a: $Int, b: $Float>(x: a) -> $pi(y: b) -> x
+  // $pi<a: $Int, b: $Float>(x: a) => $pi(y: b) => x
   let term_inner = ast.Pi([], #("y", ast.Var(1, s3)), ast.Var(1, s4), s2)
   let term =
     ast.Pi(
@@ -446,19 +446,76 @@ pub fn infer_app_not_a_function_test() {
 }
 
 pub fn infer_app_simple_test() {
-  let vars = [
-    #(
-      "f",
-      ast.vvar(0, []),
-      ast.VPi([], [], #("x", ast.vint_t), ast.float_t(s3)),
-    ),
-  ]
+  // f : $pi(x: $Int) -> $Float
+  let f_type = ast.VPi([], [], #("x", ast.int_t(s3)), ast.float_t(s4))
+  let vars = [#("f", ast.vvar(0, []), f_type)]
   let new_state = State(..new_state, vars: vars)
   let term = ast.App(ast.Var(0, s1), ast.int(42, s2), s0)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
   assert type_ == ast.vfloat_t
+}
+
+pub fn infer_app_identity_test() {
+  // f : $pi<a: $Type>(x: a) -> x
+  let f_type =
+    ast.VPi(
+      [],
+      [#("a", ast.Typ(0, s3))],
+      #("x", ast.Var(0, s4)),
+      ast.Var(0, s5),
+    )
+  let vars = [#("f", ast.vvar(0, []), f_type)]
+  let new_state = State(..new_state, vars: vars)
+  let term = ast.App(ast.Var(0, s1), ast.int(42, s2), s0)
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.vint(42)
+}
+
+pub fn infer_app_typeof_test() {
+  // f : $pi<a: $Type>(x: a) => a
+  let f_type =
+    ast.VPi(
+      [],
+      [#("a", ast.Typ(0, s3))],
+      #("x", ast.Var(0, s4)),
+      ast.Var(1, s5),
+    )
+  let vars = [#("f", ast.vvar(0, []), f_type)]
+  let new_state = State(..new_state, vars: vars)
+  let term = ast.App(ast.Var(0, s1), ast.int(42, s2), s0)
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.vint_t
+}
+
+pub fn infer_app_nested_test() {
+  // f : $pi(x: $Int) -> $pi(y: $Float) -> x
+  let f_type_inner = ast.Pi([], #("y", ast.float_t(s5)), ast.Var(1, s6), s4)
+  let f_type = ast.VPi([], [], #("x", ast.int_t(s3)), f_type_inner)
+  let vars = [#("f", ast.vvar(0, []), f_type)]
+  let new_state = State(..new_state, vars: vars)
+  // App 1 argument
+  let term = ast.App(ast.Var(0, s1), ast.int(42, s2), s0)
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.VTyp(0)
+  // App 2 arguments
+  let term =
+    ast.App(
+      ast.App(ast.Var(0, s1), ast.int(42, s2), s0),
+      ast.float(3.14, s0),
+      s0,
+    )
+  let #(result, type_, state) = infer(new_state, term)
+  assert state == new_state
+  assert result == term
+  assert type_ == ast.VTyp(0)
 }
 //
 
