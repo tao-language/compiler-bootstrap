@@ -1,5 +1,6 @@
 import core/ast
 import gleam/list
+import gleam/option
 
 /// Shift a Value's DeBruijn levels by delta.
 ///
@@ -26,13 +27,32 @@ pub fn shift_value(value: ast.Value, delta: Int) -> ast.Value {
     // Neutral terms have DeBruijn heads (HVar) that shift with delta
     ast.VNeut(head, spine) ->
       ast.VNeut(shift_head(head, delta), shift_spine(spine, delta))
-    // --- UNIMPLEMENTED (panic on todo) ---
-    ast.VCtr(tag, arg) -> todo
-    ast.VRcd(fields) -> todo
-    ast.VRcdT(fields) -> todo
-    ast.VLam(env, implicits, param, body) -> todo
-    ast.VPi(env, implicits, domain, codomain) -> todo
-    ast.VTypeDef(params, constructors) -> todo
+    // --- COMPOSITE VALUES ---
+    ast.VCtr(tag, arg) -> ast.VCtr(tag, shift_value(arg, delta))
+    ast.VRcd(fields) -> ast.VRcd(
+      list.map(fields, fn(field) { #(field.0, shift_value(field.1, delta)) }),
+    )
+    ast.VRcdT(fields) -> ast.VRcdT(
+      list.map(fields, fn(field) {
+        #(field.0, shift_value(field.1, delta), option.map(field.2, shift_value(_, delta)))
+      }),
+    )
+    ast.VLam(env, implicits, param, body) -> ast.VLam(
+      list.map(env, shift_value(_, delta)),
+      implicits,
+      param,
+      body,
+    )
+    ast.VPi(env, implicits, domain, codomain) -> ast.VPi(
+      list.map(env, shift_value(_, delta)),
+      implicits,
+      domain,
+      codomain,
+    )
+    ast.VTypeDef(params, constructors) -> ast.VTypeDef(
+      list.map(params, fn(p) { #(p.0, shift_value(p.1, delta)) }),
+      constructors,
+    )
     ast.VErr -> ast.VErr
   }
 }

@@ -44,10 +44,9 @@ pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
     ast.Lam(implicits, #(name, param_type), body, _) -> {
       todo
     }
-    ast.Pi(implicits, #(name, domain), codomain, _) -> {
-      let domain_val = eval(ffi, env, domain)
-      // ast.VPi(env, [], )
-      todo
+    ast.Pi(_implicits, #(_name, _domain), _codomain, _) -> {
+      // Pi types are types, so their type is $Type (VTyp(0))
+      ast.VTyp(0)
     }
     ast.Fix(name, body, _) -> {
       todo

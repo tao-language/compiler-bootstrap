@@ -215,7 +215,7 @@ pub type Value {
   )
   VPi(
     env: Env,
-    implicits: List(#(String, Term)),
+    implicit_env: List(#(String, Value, Value)),
     domain: #(String, Term),
     codomain: Term,
   )

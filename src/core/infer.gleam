@@ -261,7 +261,11 @@ fn infer_ann(
 ///    correct relative to the new innermost binder.
 /// 2. infer(body): body type is inferred with params in scope; its DeBruijn
 ///    levels are relative to the lambda's parameter block.
-/// 3. pop_params: drop the lambda's own params from the front of vars, then
+/// 3. build_implicit_env: extract implicit params from state.vars and build
+///    the implicit environment with holes. Each implicit's value is a hole
+///    (VNeut(HHole(n), [])) so unify can bind it to concrete types during
+///    application. This is how implicit parameters get "resolved".
+/// 4. pop_params: drop the lambda's own params from the front of vars, then
 ///    extract the captured environment from the remaining vars.
 ///    — The env is extracted BEFORE the -delta shift, so env values retain
 ///      the +delta offset from push_param. This is the key invariant:
@@ -283,10 +287,12 @@ fn infer_lam(
   let #(body, body_type_val, state) = infer(state, body)
   let lvl = list.length(state.vars)
   let body_type = quote(state.ffi, lvl, body_type_val, ast.get_span(body))
+  // Build implicit env from the implicit params' values (as holes for unify)
+  let implicit_env = build_implicit_env(state, list.length(implicits))
   let #(env, state) = pop_params(state, list.length(implicits) + 1)
   #(
     ast.Lam(implicits, param, body, span),
-    ast.VPi(env, implicits, param, body_type),
+    ast.VPi(env, implicit_env, param, body_type),
     state,
   )
 }
@@ -340,6 +346,37 @@ fn push_param_list(
   }
 }
 
+/// Build the implicit environment from the implicit params in state.vars.
+///
+/// Each implicit parameter's value is represented as a hole (VNeut(HHole(n), []))
+/// so that during application, unify can bind the hole to the argument's type.
+/// This is the mechanism by which implicit parameters get "resolved".
+///
+/// The implicit params are at the END of state.vars (outermost in DeBruijn order),
+/// after the explicit param. We drop the explicit param (1 element) and take
+/// the implicit params, then reverse to get innermost-first order.
+///
+/// The returned list is in innermost-first order, so DeBruijn indices in
+/// domain/codomain terms correctly reference the implicit params.
+fn build_implicit_env(
+  state: State,
+  num_implicits: Int,
+) -> List(#(String, ast.Value, ast.Value)) {
+  // Drop the explicit param (1 element at front), take implicit params,
+  // and reverse to get innermost-first order
+  list.drop(state.vars, 1)
+  |> list.take(num_implicits)
+  |> list.reverse
+  |> list.index_map(fn(var, i) {
+    let #(name, _, type_val) = var
+    #(
+      name,
+      ast.vhole(i, []),
+      type_val,
+    )
+  })
+}
+
 /// Remove the lambda's own params from the state and extract the captured env.
 ///
 /// Key invariant: env is extracted BEFORE the -delta shift, so env values
@@ -365,7 +402,8 @@ fn pop_params(state: State, num_params: Int) -> #(ast.Env, State) {
 /// Uses the same DeBruijn management strategy as infer_lam:
 ///   1. push_param_list / push_param: shift existing vars' values by +1
 ///   2. infer(codomain): codomain inferred with params in scope
-///   3. pop_params: drop params, extract env (discarded), shift state back
+///   3. build_implicit_env: extract implicit params with holes for unify
+///   4. pop_params: drop params, extract env (discarded), shift state back
 ///
 /// The Pi type doesn't have an env field like VPi. Captured variables from
 /// the outer scope are implicitly captured by the DeBruijn indices in the
@@ -382,6 +420,7 @@ fn infer_pi(
   let #(implicits, state) = push_param_list(state, implicits)
   let #(domain, state) = push_param(state, domain)
   let #(codomain, _, state) = infer(state, codomain)
+  let _implicit_env = build_implicit_env(state, list.length(implicits))
   let #(_, state) = pop_params(state, list.length(implicits) + 1)
   #(ast.Pi(implicits, domain, codomain, span), ast.VTyp(0), state)
 }
@@ -409,17 +448,46 @@ fn infer_app(
 ) -> #(ast.Term, ast.Value, State) {
   let #(fun, fun_type, state) = infer(state, fun)
   case fun_type {
-    ast.VPi(env, [], #(name, domain), codomain) -> {
-      let domain_val = eval(state.ffi, env, domain)
-      let #(arg, arg_type, state) =
-        check(state, arg, #(domain_val, ast.get_span(domain)))
-      // TODO: add domain into state.vars
-      let codomain_val = eval(state.ffi, state_to_env(state), codomain)
+    ast.VPi(_env, implicit_env, #(_name, domain), codomain) -> {
+      // 1. Infer the argument's type first (may contain holes to be resolved)
+      let #(arg, arg_type, state) = infer(state, arg)
+
+      // 2. Evaluate domain in the implicit environment
+      //    The implicit env contains holes for implicit parameters.
+      //    When domain references an implicit (e.g., `a`), it evaluates to a hole.
+      let implicit_env_values =
+        list.map(implicit_env, fn(imp) {
+          let #(_, value, _) = imp
+          value
+        })
+      let domain_val = eval(state.ffi, implicit_env_values, domain)
+
+      // 3. Unify arg_type with domain_val
+      //    This resolves implicit parameters:
+      //    - If domain is a hole (implicit param), it gets bound to arg_type
+      //    - If domain is concrete, arg_type must match
+      let state = unify(state, #(arg_type, ast.get_span(arg)), #(domain_val, span))
+
+      // 4. Force substitutions to resolve any holes
+      let arg_type = subst.force_value(state.ffi, state.subst, arg_type)
+
+      // 5. Build evaluation environment for codomain:
+      //    - Arg value at index 0
+      //    - Resolved implicit values at indices 1..n
+      //    - Captured env values at indices n+1..
+      let resolved_implicit_values =
+        list.map(implicit_env_values, fn(v) {
+          subst.force_value(state.ffi, state.subst, v)
+        })
+      let captured_env = state_to_env(state)
+      let eval_env = list.append([arg_type, ..resolved_implicit_values], captured_env)
+
+      // 6. Evaluate codomain in the constructed environment
+      let codomain_val = eval(state.ffi, eval_env, codomain)
+
       #(ast.App(fun, arg, span), codomain_val, state)
     }
-    ast.VPi(env, implicits, domain, codomain) -> todo
     _ -> {
-      // Still check the arg to report on any potential errors there.
       let #(_, _, state) = infer(state, arg)
       let state = with_err(state, state.NotAFunction(fun_type, span))
       #(ast.Err(span), ast.VErr, state)
