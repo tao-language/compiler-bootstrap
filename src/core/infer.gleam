@@ -253,28 +253,6 @@ fn infer_ann(
 }
 
 /// Infer a lambda term: $fn<implicits>(param: param_type) => body
-///
-/// DeBruijn management strategy (critical for soundness in dependent types):
-///
-/// 1. push_param_list / push_param: prepend each param to state.vars, and
-///    shift ALL existing vars' values by +1 so their DeBruijn levels stay
-///    correct relative to the new innermost binder.
-/// 2. infer(body): body type is inferred with params in scope; its DeBruijn
-///    levels are relative to the lambda's parameter block.
-/// 3. build_implicit_env: extract implicit params from state.vars and build
-///    the implicit environment with holes. Each implicit's value is a hole
-///    (VNeut(HHole(n), [])) so unify can bind it to concrete types during
-///    application. This is how implicit parameters get "resolved".
-/// 4. pop_params: drop the lambda's own params from the front of vars, then
-///    extract the captured environment from the remaining vars.
-///    — The implicits are extracted BEFORE the -delta shift, so they retain
-///      the +delta offset from push_param. This is the key invariant:
-///      implicit values are already correct for the VPi's binding context.
-///    — The -delta shift on the state restores original levels for the outer
-///      scope, but does NOT affect the implicits (which are already returned).
-///
-/// The body_type (codomain of VPi) needs no shifting: its levels were already
-/// computed inside the lambda's scope where params are at indices 0..n.
 fn infer_lam(
   state: State,
   implicits: List(#(String, ast.Term)),
@@ -282,137 +260,59 @@ fn infer_lam(
   body: ast.Term,
   span: Span,
 ) -> #(ast.Term, ast.Value, State) {
-  let #(implicits, _, state) = push_param_list(state, implicits)
-  let #(param, param_type_val, state) = push_param(state, param)
+  let #(implicits, implicits_val, state) = push_param_list(state, implicits)
+  let #(param, param_val, state) = push_param(state, param)
   let #(body, body_type_val, state) = infer(state, body)
-  // Build implicit values from the implicit params' values (as holes for unify)
-  let implicit_values = build_implicit_values(state, list.length(implicits))
-  // Domain is #(name, param_type_val)
-  let domain_val = #(param.0, param_type_val)
-  let #(_, _, state) = pop_params(state, list.length(implicits) + 1)
+  let state = pop_params(state, list.length(implicits) + 1)
   #(
     ast.Lam(implicits, param, body, span),
-    ast.VPi(implicit_values, domain_val, body_type_val),
+    ast.VPi(implicits_val, param_val, body_type_val),
     state,
   )
 }
 
-fn push_param(
-  state: State,
-  param: #(String, ast.Term),
-) -> #(#(String, ast.Term), ast.Value, State) {
-  let #(name, param_type) = param
-  // Evaluate the param type in the current env (may reference earlier implicits)
-  let param_type_val = eval(state.ffi, state_to_env(state), param_type)
-  let state = push_param_val(state, #(name, param_type_val))
-  #(#(name, param_type), param_type_val, state)
+/// Shift ALL existing vars' values by +1 BEFORE prepending. This is critical:
+/// every var's value and type must be shifted so its DeBruijn levels remain
+/// correct relative to the new innermost binder (the param we're adding).
+fn push_param_val(state: State, named_param: #(String, ast.Value)) -> State {
+  let #(name, param_val) = named_param
+  let state = state.vars_shift(state, 1)
+  let var = #(name, ast.vvar(0, []), shift_value(param_val, 1))
+  State(..state, vars: [var, ..state.vars])
 }
 
-fn push_param_val(state: State, param: #(String, ast.Value)) -> State {
-  let #(name, param_type_val) = param
-  // Shift ALL existing vars' values by +1 BEFORE prepending. This is critical:
-  // every var's value and type must be shifted so its DeBruijn levels remain
-  // correct relative to the new innermost binder (the param we're adding).
-  // Without this shift, existing vars' levels would be off by 1.
-  let state = state.vars_shift(state, 1)
-  // Also shift param_type_val by +1 so the new param's type references
-  // the correct variables in the shifted environment.
-  //
-  // Why: param_type_val was evaluated in the pre-shift environment, where
-  // binder X was at level N. After the shift, X moves to level N+1. If we
-  // don't shift param_type_val, it still points to level N, which now
-  // refers to a DIFFERENT binder (the one that was at N-1 before the shift).
-  //
-  // Example: pushing x with type a, in env [b, a] (a at level 1):
-  //   - param_type_val = vvar(1, [])  (evaluated: a is at level 1)
-  //   - After shift: env = [b', a'] where b' is at level 1, a' at level 2
-  //   - Without shifting param_type_val: x's type = vvar(1, []) = b'  ✗
-  //   - With shifting: x's type = vvar(2, []) = a'  ✓
-  let var = #(name, ast.vvar(0, []), shift_value(param_type_val, 1))
-  State(..state, vars: [var, ..state.vars])
+/// Evaluate the param type in the current env (may reference earlier implicits)
+fn push_param(
+  state: State,
+  named_param: #(String, ast.Term),
+) -> #(#(String, ast.Term), #(String, ast.Value), State) {
+  let #(name, param) = named_param
+  let param_val = eval(state.ffi, state_to_env(state), param)
+  let state = push_param_val(state, #(name, param_val))
+  #(#(name, param), #(name, param_val), state)
 }
 
 fn push_param_list(
   state: State,
-  params: List(#(String, ast.Term)),
-) -> #(List(#(String, ast.Term)), List(ast.Value), State) {
-  case params {
+  param_list: List(#(String, ast.Term)),
+) -> #(List(#(String, ast.Term)), List(#(String, ast.Value)), State) {
+  case param_list {
     [] -> #([], [], state)
-    [param, ..params] -> {
-      let #(param, param_type_val, state) = push_param(state, param)
-      let #(params, param_type_vals, state) = push_param_list(state, params)
-      #([param, ..params], [param_type_val, ..param_type_vals], state)
+    [param, ..param_list] -> {
+      let #(param, param_val, state) = push_param(state, param)
+      let #(param_list, param_val_list, state) =
+        push_param_list(state, param_list)
+      #([param, ..param_list], [param_val, ..param_val_list], state)
     }
   }
 }
 
-/// Build the implicit values from the implicit params in state.vars.
-///
-/// Each implicit parameter's value is represented as a hole (VNeut(HHole(n), []))
-/// so that during application, unify can bind the hole to the argument's type.
-/// This is the mechanism by which implicit parameters get "resolved".
-///
-/// The implicit params are at the END of state.vars (outermost in DeBruijn order),
-/// after the explicit param. We drop the explicit param (1 element) and take
-/// the implicit params, then reverse to get innermost-first order.
-///
-/// The returned list is in innermost-first order.
-fn build_implicit_values(
-  state: State,
-  num_implicits: Int,
-) -> List(#(String, ast.Value)) {
-  // Drop the explicit param (1 element at front), take implicit params,
-  // and reverse to get innermost-first order
-  list.drop(state.vars, 1)
-  |> list.take(num_implicits)
-  |> list.reverse
-  |> list.index_map(fn(var, i) {
-    let #(name, _, _) = var
-    #(name, ast.vhole(i, []))
-  })
-}
-
-/// Remove the lambda's own params from the state and extract the captured env.
-///
-/// Key invariant: env is extracted BEFORE the -delta shift, so env values
-/// retain the +delta offset from push_param. This means env levels are
-/// already correct for the VPi's binding context (where lambda params occupy
-/// levels 0..n, and captured vars occupy levels n+1, n+2, ...).
-///
-/// The -delta shift on the state then restores the remaining vars to their
-/// original levels (relative to the outer scope), but the env is unaffected.
-///
-/// Returns: #(param_type_value, env, state)
-fn pop_params(
-  state: State,
-  num_params: Int,
-) -> #(ast.Value, ast.Env, State) {
-  // Extract the explicit param's type value before dropping params.
-  // state.vars[0] = #(name, var_value, type_value)
-  let param_type_val =
-    case state.vars {
-      [#(_name, _var_val, type_val), .._] -> type_val
-      _ -> ast.VErr
-    }
-  // Drop the lambda's params (which are at the front of vars)
+fn pop_params(state: State, num_params: Int) -> State {
   let state = State(..state, vars: list.drop(state.vars, num_params))
-  // Extract captured env from remaining vars — these values have +num_params
-  // levels from push_param, which are exactly the levels needed for the VPi.
-  let env = state_to_env(state)
-  // Restore the remaining vars to their original levels for the outer scope.
-  let state = state.vars_shift(state, -num_params)
-  #(param_type_val, env, state)
+  state.vars_shift(state, -num_params)
 }
 
 /// Infer a Pi type: $pi<implicits>(domain: param_type) -> codomain
-///
-/// Uses the same DeBruijn management strategy as infer_lam:
-///   1. push_param_list / push_param: shift existing vars' values by +1
-///   2. infer(codomain): codomain inferred with params in scope
-///   3. build_implicit_values: extract implicit params with holes for unify
-///   4. pop_params: drop params, shift state back
-///
-/// Pi types are types, so their type is $Type (VTyp(0)).
 fn infer_pi(
   state: State,
   implicits: List(#(String, ast.Term)),
@@ -421,15 +321,10 @@ fn infer_pi(
   span: Span,
 ) -> #(ast.Term, ast.Value, State) {
   let #(implicits, _, state) = push_param_list(state, implicits)
-  let #(domain, domain_val, state) = push_param(state, domain)
-  let #(_, codomain_val, state) = infer(state, codomain)
-  let implicit_values = build_implicit_values(state, list.length(implicits))
-  let #(_, _, state) = pop_params(state, list.length(implicits) + 1)
-  #(
-    ast.Pi(implicits, domain, codomain, span),
-    ast.VTyp(0),
-    state,
-  )
+  let #(domain, _, state) = push_param(state, domain)
+  let #(codomain, _, state) = infer(state, codomain)
+  let state = pop_params(state, list.length(implicits) + 1)
+  #(ast.Pi(implicits, domain, codomain, span), ast.VTyp(0), state)
 }
 
 fn infer_fix(
@@ -442,7 +337,7 @@ fn infer_fix(
   let type_hole = ast.vhole(hole_id, [])
   let state = push_param_val(state, #(name, type_hole))
   let #(body, body_type, state) = infer(state, body)
-  let #(_, _, state) = pop_params(state, 1)
+  let state = pop_params(state, 1)
   let state = unify(state, #(type_hole, span), #(body_type, span))
   #(ast.Fix(name, body, span), body_type, state)
 }
@@ -455,33 +350,9 @@ fn infer_app(
 ) -> #(ast.Term, ast.Value, State) {
   let #(fun, fun_type, state) = infer(state, fun)
   case fun_type {
-    ast.VPi(implicit_values, domain, codomain) -> {
-      // 1. Infer the argument's type first (may contain holes to be resolved)
-      let #(arg, arg_type, state) = infer(state, arg)
-
-      // 2. Unify arg_type with domain's type value (already a Value)
-      //    This resolves implicit parameters:
-      //    - If domain is a hole (implicit param), it gets bound to arg_type
-      //    - If domain is concrete, arg_type must match
-      let state = unify(state, #(arg_type, ast.get_span(arg)), #(domain.1, span))
-
-      // 3. Force substitutions to resolve any holes
-      let arg_type = subst.force_value(state.ffi, state.subst, arg_type)
-      let resolved_implicit_values =
-        list.map(implicit_values, fn(v) {
-          subst.force_value(state.ffi, state.subst, v.1)
-        })
-
-      // 4. Build evaluation environment:
-      //    - Arg value at index 0
-      //    - Resolved implicit values at indices 1..n
-      let eval_env = list.append([arg_type], resolved_implicit_values)
-
-      // 5. Evaluate the codomain in the constructed environment
-      //    to resolve any De Bruijn level references
-      let codomain_val = eval.eval_value(state.ffi, eval_env, codomain)
-
-      #(ast.App(fun, arg, span), codomain_val, state)
+    ast.VPi([], #(_, domain), codomain) -> {
+      let #(arg, _, state) = check(state, arg, #(domain, ast.get_span(fun)))
+      todo
     }
     _ -> {
       let #(_, _, state) = infer(state, arg)

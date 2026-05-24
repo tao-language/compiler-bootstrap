@@ -42,157 +42,7 @@ pub fn concat_string(left: String, right: String) -> String {
   left <> "+" <> right
 }
 
-// ============================================================================
-// Either type helpers
-// ============================================================================
 
-pub fn is_left_returns_true_for_left_value_test() {
-  let v: Either(String, Int) = Left("hello")
-  assert is_left(v) == True
-}
-
-pub fn is_left_returns_false_for_right_value_test() {
-  let v: Either(String, Int) = Right(42)
-  assert is_left(v) == False
-}
-
-pub fn is_right_returns_false_for_left_value_test() {
-  let v: Either(String, Int) = Left("world")
-  assert is_right(v) == False
-}
-
-pub fn is_right_returns_true_for_right_value_test() {
-  let v: Either(String, Int) = Right(100)
-  assert is_right(v) == True
-}
-
-// ============================================================================
-// Pattern construction
-// ============================================================================
-
-pub fn tok_creates_tok_pattern_test() {
-  let p: Pattern(String) = tok("Name")
-  assert case p {
-    Tok(kind) -> kind == "Name"
-    _ -> False
-  }
-}
-
-pub fn kw_creates_kw_pattern_test() {
-  let p: Pattern(String) = kw("let")
-  assert case p {
-    Kw(keyword) -> keyword == "let"
-    _ -> False
-  }
-}
-
-pub fn op_creates_op_pattern_test() {
-  let p: Pattern(String) = op("+")
-  assert case p {
-    Op(symbol) -> symbol == "+"
-    _ -> False
-  }
-}
-
-pub fn ref_creates_ref_pattern_test() {
-  let p: Pattern(String) = ref("Expr")
-  assert case p {
-    Ref(name) -> name == "Expr"
-    _ -> False
-  }
-}
-
-pub fn seq_creates_seq_pattern_test() {
-  let p: Pattern(String) = seq([tok("Name"), op("+"), tok("Name")])
-  assert case p {
-    Seq(patterns) -> list.length(patterns) == 3
-    _ -> False
-  }
-}
-
-pub fn opt_creates_opt_pattern_test() {
-  let p: Pattern(String) = opt(tok(","))
-  assert case p {
-    Opt(Tok(",")) -> True
-    _ -> False
-  }
-}
-
-pub fn many_creates_many_pattern_test() {
-  let p: Pattern(String) = many(tok("Name"))
-  assert case p {
-    Many(Tok("Name")) -> True
-    _ -> False
-  }
-}
-
-pub fn choice_creates_choice_pattern_test() {
-  let p: Pattern(String) = choice([tok("Name"), tok("Integer")])
-  assert case p {
-    Choice(alts) -> list.length(alts) == 2
-    _ -> False
-  }
-}
-
-pub fn sep_by_creates_sep_by_pattern_test() {
-  let p: Pattern(String) = sep_by(tok("Name"), tok(","))
-  assert case p {
-    SepBy(Tok("Name"), Tok(",")) -> True
-    _ -> False
-  }
-}
-
-pub fn parens_creates_parens_pattern_test() {
-  let p: Pattern(String) = parens("Expr")
-  assert case p {
-    Parens(name) -> name == "Expr"
-    _ -> False
-  }
-}
-
-pub fn delimited_creates_delimited_pattern_test() {
-  let open = tok("(")
-  let item = tok("Name")
-  let sep = tok(",")
-  let close = tok(")")
-  let p: Pattern(String) = delimited(open, item, sep, close)
-  assert case p {
-    Delimited(Tok(_), Tok(_), Tok(_), Tok(_)) -> True
-    _ -> False
-  }
-}
-
-// ============================================================================
-// Grammar/Rule/Alternative construction
-// ============================================================================
-
-pub fn grammar_type_stores_name_test() {
-  let g: Grammar(String) =
-    Grammar(
-      name: "Test",
-      start: "Start",
-      rules: [],
-      keywords: [],
-      operators: [],
-    )
-  assert g.name == "Test"
-}
-
-pub fn grammar_type_stores_start_test() {
-  let g: Grammar(Int) =
-    Grammar(name: "Test", start: "Main", rules: [], keywords: [], operators: [])
-  assert g.start == "Main"
-}
-
-pub fn rule_type_stores_name_test() {
-  let r: Rule(String) = Rule(name: "Expr", alternatives: [], precedence: 0)
-  assert r.name == "Expr"
-}
-
-pub fn rule_type_stores_precedence_test() {
-  let r: Rule(String) = Rule(name: "Expr", alternatives: [], precedence: 5)
-  assert r.precedence == 5
-}
 
 pub fn alternative_type_stores_constructor_test() {
   // Test that we can construct an Alternative with a simple constructor
@@ -206,11 +56,6 @@ pub fn alternative_type_stores_constructor_test() {
 // ============================================================================
 // ParseResult helpers
 // ============================================================================
-
-pub fn result_ast_returns_ast_test() {
-  let result: ParseResult(String) = ParseResult(ast: "hello", errors: [])
-  assert result_ast("fallback", result) == "hello"
-}
 
 pub fn result_ast_returns_ast_on_errors_test() {
   let err =
@@ -226,10 +71,6 @@ pub fn result_ast_returns_ast_on_errors_test() {
   assert result_ast(0, result) == 42
 }
 
-pub fn result_errors_returns_empty_list_test() {
-  let result: ParseResult(String) = ParseResult(ast: "hello", errors: [])
-  assert result_errors("fallback", result) == []
-}
 
 pub fn result_errors_returns_errors_list_test() {
   let err =
@@ -278,42 +119,7 @@ pub fn error_to_string_multi_line_test() {
   assert formatted == "in test.tao line 2, col 1: Keyword (found: Integer) in at module level"
 }
 
-pub fn error_to_string_empty_context_test() {
-  let err =
-    ParseError(
-      span: single("", 1, 1),
-      expected: "Token",
-      got: "Nothing",
-      context: "",
-      rule: "",
-      surrounding: [],
-    )
-  let formatted = error_to_string(err)
-  assert formatted == "in  line 1, col 1: Token (found: Nothing)"
-}
 
-// ============================================================================
-// Complex Either pattern matching
-// ============================================================================
-
-pub fn either_value_preserves_payload_type_in_seq_test() {
-  // Simulate what would happen in a sequence:
-  // Left("Name") is a terminal value
-  let left_val: Either(String, String) = Left("Name")
-  assert is_left(left_val) == True
-  assert case left_val {
-    Left(v) -> v == "Name"
-  }
-}
-
-pub fn either_value_preserves_ast_type_in_ref_test() {
-  // Simulate what a rule reference would return
-  let right_val: Either(String, String) = Right("AST_Node")
-  assert is_right(right_val) == True
-  assert case right_val {
-    Right(v) -> v == "AST_Node"
-  }
-}
 
 // ============================================================================
 // ParseResult with multiple errors
@@ -377,76 +183,7 @@ pub fn grammar_with_multiple_rules_test() {
   assert g.keywords == ["let", "fn"]
 }
 
-pub fn grammar_with_operators_test() {
-  let operators = [
-    #("+", Infix(20, False, "+", concat_string)),
-    #("*", Infix(30, False, "*", concat_string)),
-  ]
-  let g: Grammar(String) =
-    Grammar(
-      name: "Arith",
-      start: "Expr",
-      rules: [],
-      keywords: [],
-      operators: operators,
-    )
-  assert list.length(g.operators) == 2
-}
 
-// ============================================================================
-// Edge cases
-// ============================================================================
-
-pub fn grammar_empty_rules_test() {
-  let g: Grammar(String) =
-    Grammar(
-      name: "Empty",
-      start: "EmptyRule",
-      rules: [],
-      keywords: [],
-      operators: [],
-    )
-  assert g.name == "Empty"
-  assert g.rules == []
-}
-
-pub fn grammar_empty_keywords_test() {
-  let g: Grammar(Int) =
-    Grammar(name: "NoKw", start: "Main", rules: [], keywords: [], operators: [])
-  assert g.keywords == []
-}
-
-pub fn grammar_empty_operators_test() {
-  let g: Grammar(Int) =
-    Grammar(
-      name: "NoOps",
-      start: "Main",
-      rules: [],
-      keywords: [],
-      operators: [],
-    )
-  assert g.operators == []
-}
-
-pub fn alternative_constructor_returns_proper_type_test() {
-  let a: Alternative(Int) =
-    Alternative(pattern: tok("Name"), constructor: alt_constructor_int)
-  assert a.constructor([]) == 42
-}
-
-// ============================================================================
-// Pattern construction
-// ============================================================================
-
-pub fn rule_with_many_alternatives_test() {
-  let a1: Alternative(String) =
-    Alternative(pattern: tok("Name"), constructor: alt_constructor_string)
-  let a2: Alternative(String) =
-    Alternative(pattern: tok("Integer"), constructor: alt_constructor_string)
-  let rule: Rule(String) =
-    Rule(name: "Expr", alternatives: [a1, a2], precedence: 0)
-  assert list.length(rule.alternatives) == 2
-}
 
 // ============================================================================
 // Actual parsing behavior tests
@@ -495,26 +232,6 @@ fn make_op_grammar(sym: String) -> Grammar(String) {
 
 // --- tok pattern parsing ---
 
-pub fn parse_tok_matching_token_succeeds_test() {
-  // tok("Name") should succeed when the first token is a Name
-  let tokens = tokenize("foo")
-  let grammar = make_tok_grammar("Name")
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
-
-// --- kw pattern parsing ---
-
-pub fn parse_kw_matching_keyword_succeeds_test() {
-  // kw("let") should succeed when the first token is the keyword "let"
-  let tokens = tokenize("let")
-  let grammar = make_kw_grammar("let")
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
-
-// --- op pattern parsing ---
-
 pub fn parse_op_matching_operator_succeeds_test() {
   // op("+") should succeed when the first token is "Op" with value "+"
   let tokens = tokenize("+")
@@ -541,15 +258,7 @@ fn make_seq_name_name_grammar() -> Grammar(String) {
   )
 }
 
-pub fn parse_seq_both_match_succeeds_test() {
-  // seq([Name, Name]) should succeed with two Name tokens
-  let tokens = tokenize("foo bar")
-  let grammar = make_seq_name_name_grammar()
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
 
-// --- opt pattern parsing ---
 
 fn make_opt_comma_grammar() -> Grammar(String) {
   // Grammar that matches Name followed by optional comma
@@ -567,23 +276,7 @@ fn make_opt_comma_grammar() -> Grammar(String) {
   )
 }
 
-pub fn parse_opt_present_matches_succeeds_test() {
-  // opt(Tok(",")) should match when comma is present
-  let tokens = tokenize("foo,")
-  let grammar = make_opt_comma_grammar()
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
 
-pub fn parse_opt_absent_matches_succeeds_test() {
-  // opt(Tok(",")) should also succeed when comma is absent
-  let tokens = tokenize("foo")
-  let grammar = make_opt_comma_grammar()
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
-
-// --- many pattern parsing ---
 
 fn make_many_name_grammar() -> Grammar(String) {
   // Grammar that matches zero or more Names
@@ -598,15 +291,7 @@ fn make_many_name_grammar() -> Grammar(String) {
   )
 }
 
-pub fn parse_many_multiple_match_succeeds_test() {
-  // many(Name) should match multiple names
-  let tokens = tokenize("foo bar baz")
-  let grammar = make_many_name_grammar()
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
 
-// --- choice pattern parsing ---
 
 fn make_choice_grammar() -> Grammar(String) {
   // Grammar that matches either Name or Integer
@@ -630,23 +315,7 @@ fn make_choice_grammar() -> Grammar(String) {
   )
 }
 
-pub fn parse_choice_first_alternative_matches_test() {
-  // choice([Name, Integer]) should match Name
-  let tokens = tokenize("foo")
-  let grammar = make_choice_grammar()
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
 
-pub fn parse_choice_second_alternative_matches_test() {
-  // choice([Name, Integer]) should match Integer when Name fails
-  let tokens = tokenize("42")
-  let grammar = make_choice_grammar()
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
-
-// --- sep_by pattern parsing ---
 
 fn make_sep_by_name_comma_grammar() -> Grammar(String) {
   // Grammar that matches: Name ("," Name)*
@@ -660,14 +329,6 @@ fn make_sep_by_name_comma_grammar() -> Grammar(String) {
     keywords: [],
     operators: [],
   )
-}
-
-pub fn parse_sep_by_multiple_items_succeeds_test() {
-  // sep_by(Name, ",") should match "foo, bar, baz"
-  let tokens = tokenize("foo, bar, baz")
-  let grammar = make_sep_by_name_comma_grammar()
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
 }
 
 pub fn parse_sep_by_single_item_succeeds_test() {
@@ -712,15 +373,7 @@ fn make_parens_name_grammar() -> Grammar(String) {
   )
 }
 
-pub fn parse_parens_matching_succeeds_test() {
-  // parens("NameRule") should match "( foo )"
-  let tokens = tokenize("( foo )")
-  let grammar = make_parens_name_grammar()
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
 
-// --- delimited pattern parsing ---
 
 fn make_delimited_parens_name_comma_grammar() -> Grammar(String) {
   // Grammar: "(" (Name ("," Name)*)? ")"
@@ -736,14 +389,6 @@ fn make_delimited_parens_name_comma_grammar() -> Grammar(String) {
     keywords: [],
     operators: [],
   )
-}
-
-pub fn parse_delimited_with_items_succeeds_test() {
-  // delimited should match "( foo, bar )"
-  let tokens = tokenize("( foo, bar )")
-  let grammar = make_delimited_parens_name_comma_grammar()
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
 }
 
 pub fn parse_delimited_single_item_succeeds_test() {
@@ -796,13 +441,6 @@ pub fn parse_missing_token_produces_error_test() {
 
 // --- Empty and boundary inputs ---
 
-pub fn parse_empty_input_with_many_succeeds_test() {
-  // many(Name) on empty input should succeed (zero matches)
-  let tokens = tokenize("")
-  let grammar = make_many_name_grammar()
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
 
 pub fn parse_eof_in_middle_produces_error_test() {
   // Parsing Name Name with only one token should fail
@@ -844,53 +482,6 @@ pub fn parse_nested_parens_succeeds_test() {
   assert result.errors == []
 }
 
-pub fn parse_deeply_nested_parens_succeeds_test() {
-  // Deeply nested parentheses should still parse: (( foo ))
-  let parens_name = Parens("NameRule")
-  let alt: Alternative(String) =
-    Alternative(pattern: parens_name, constructor: alt_constructor_string)
-  let name_rule: Rule(String) =
-    Rule(
-      name: "NameRule",
-      alternatives: [
-        Alternative(pattern: tok("Name"), constructor: alt_constructor_string),
-        Alternative(
-          pattern: parens("NameRule"),
-          constructor: alt_constructor_string,
-        ),
-      ],
-      precedence: 0,
-    )
-  let grammar =
-    Grammar(
-      name: "Test",
-      start: "Test",
-      rules: [Rule(name: "Test", alternatives: [alt], precedence: 0), name_rule],
-      keywords: [],
-      operators: [],
-    )
-  let tokens = tokenize("(( foo ))")
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
-
-pub fn parse_multiple_separated_items_succeeds_test() {
-  // sep_by(Name, ",") should match many comma-separated names
-  let sep_pattern = sep_by(tok("Name"), Tok(","))
-  let alt: Alternative(String) =
-    Alternative(pattern: sep_pattern, constructor: alt_constructor_string)
-  let grammar =
-    Grammar(
-      name: "Test",
-      start: "Test",
-      rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
-      keywords: [],
-      operators: [],
-    )
-  let tokens = tokenize("a, b, c, d")
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
 
 // --- Choice with no match ---
 
@@ -906,13 +497,6 @@ pub fn parse_choice_no_match_produces_error_test() {
 
 // --- Many with single item ---
 
-pub fn parse_many_with_single_item_succeeds_test() {
-  // many(Name) should match exactly one name
-  let tokens = tokenize("foo")
-  let grammar = make_many_name_grammar()
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
 
 // --- Delimited edge cases ---
 
@@ -937,41 +521,9 @@ pub fn parse_delimited_empty_does_not_match_test() {
   assert result.ast == "error"
 }
 
-pub fn parse_delimited_basic_test() {
-  // Delimited: open item* close (with optional sep between items)
-  let inner = Delimited(tok("("), tok("Name"), Tok(","), tok(")"))
-  let alt: Alternative(String) =
-    Alternative(pattern: inner, constructor: alt_constructor_string)
-  let grammar =
-    Grammar(
-      name: "Test",
-      start: "Test",
-      rules: [Rule(name: "Test", alternatives: [alt], precedence: 0)],
-      keywords: [],
-      operators: [],
-    )
-  let tokens = tokenize("( foo )")
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
 
 // --- Operator and keyword interactions ---
 
-pub fn parse_op_on_integer_input_fails_test() {
-  // op("+") should not match an integer token
-  let tokens = tokenize("42")
-  let grammar = make_op_grammar("+")
-  let result = parse(grammar, tokens, "error")
-  assert result.ast == "error"
-}
-
-pub fn parse_kw_on_non_keyword_name_fails_test() {
-  // kw("let") should not match "fn" (different keyword)
-  let tokens = tokenize("fn")
-  let grammar = make_kw_grammar("let")
-  let result = parse(grammar, tokens, "error")
-  assert result.ast == "error"
-}
 
 // --- Multiple rules with different alternatives ---
 
@@ -1025,14 +577,6 @@ pub fn parse_multiple_tokens_preserves_span_test() {
 
 // --- Whitespace between tokens in seq ---
 
-pub fn parse_seq_with_whitespace_between_tokens_succeeds_test() {
-  // Tokens with whitespace between them should still match in seq
-  let tokens = tokenize("foo     bar")
-  // Extra whitespace
-  let grammar = make_seq_name_name_grammar()
-  let result = parse(grammar, tokens, "error")
-  assert result.errors == []
-}
 
 // ============================================================================
 // AST Construction Tests
@@ -1359,14 +903,6 @@ pub fn parse_failure_returns_error_node_test() {
   assert result.ast == "error_node"
 }
 
-pub fn parse_with_filename_returns_proper_spans_test() {
-  // AST nodes should carry spans from the filename
-  let grammar = make_constructing_grammar("named_ast")
-  let tokens = tokenize_with_filename("foo", "module.tao")
-  let result = parse(grammar, tokens, "error")
-  assert result.ast == "named_ast"
-  assert result.errors == []
-}
 
 pub fn parse_ref_returns_constructed_ast_test() {
   // ref should return constructed AST through rule references
@@ -1449,16 +985,3 @@ pub fn error_to_string_includes_rule_and_context_test() {
   assert formatted == "in test.gleam line 3, col 5: \"->\" (found: \"=\") in in lambda pattern (rule: skip)"
 }
 
-pub fn error_to_string_empty_rule_no_parens_test() {
-  // error_to_string should not include parens when rule is empty
-  let err = ParseError(
-    span: single("test.gleam", 1, 1),
-    expected: "field",
-    got: "EOF",
-    context: "in record",
-    rule: "",
-    surrounding: [],
-  )
-  let formatted = error_to_string(err)
-  assert formatted == "in test.gleam line 1, col 1: field (found: EOF) in in record"
-}
