@@ -47,15 +47,14 @@ pub fn quote(ffi: FFI, lvl: Int, value: ast.Value, span: Span) -> ast.Term {
       quote_spine(ffi, lvl, base, spine, span)
     }
     // VLam( env: Env, implicits: List(#(String, Value)), param: #(String, Value), body: Term, )
-    ast.VPi(_, implicit_env, domain, codomain) -> {
-      // Convert implicit_env back to implicits for the Pi term.
-      // The type values in implicit_env need to be quoted to Terms.
+    ast.VPi(implicits, domain, codomain) -> {
+      // Convert implicit values back to implicits for the Pi term.
       let implicits =
-        list.map(implicit_env, fn(imp) {
-          let #(name, _, type_val) = imp
+        list.map(implicits, fn(p) {
+          let #(name, type_val) = p
           #(name, quote(ffi, lvl, type_val, span))
         })
-      ast.Pi(implicits, domain, codomain, span)
+      ast.Pi(implicits, #(domain.0, quote(ffi, lvl, domain.1, span)), quote(ffi, lvl, codomain, span), span)
     }
     // VTypeDef( params: List(#(String, Value)), constructors: List(#(String, #(List(String), Value, Term))), )
     ast.VErr -> ast.Err(span)

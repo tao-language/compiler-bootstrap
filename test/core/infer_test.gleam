@@ -242,7 +242,7 @@ pub fn infer_lam_simple_test() {
   assert state == new_state
   assert result == term
   // $pi(x: $Int) -> $Float
-  assert type_ == ast.VPi([], [], #("x", ast.int_t(s1)), ast.float_t(s2))
+  assert type_ == ast.VPi([], #("x", ast.vint_t), ast.vfloat_t)
 }
 
 pub fn infer_lam_identity_test() {
@@ -258,12 +258,14 @@ pub fn infer_lam_identity_test() {
   assert state == new_state
   assert result == term
   // $pi<a: $Type>(x: a) -> a
+  let inner = ast.VNeut(ast.HHole(0), [])
+  let domain = ast.VNeut(ast.HVar(0), [])
+  let codomain = ast.VNeut(ast.HVar(1), [])
   assert type_
     == ast.VPi(
-      [],
-      [#("a", ast.vhole(0, []), ast.VTyp(0))],
-      #("x", ast.Var(0, s2)),
-      ast.Var(1, s3),
+      [#("a", inner)],
+      #("x", domain),
+      codomain,
     )
 }
 
@@ -280,12 +282,13 @@ pub fn infer_lam_typeof_test() {
   assert state == new_state
   assert result == term
   // $pi<a: $Type>(x: a) -> $Type
+  let inner = ast.VNeut(ast.HHole(0), [])
+  let domain = ast.VNeut(ast.HVar(0), [])
   assert type_
     == ast.VPi(
-      [],
-      [#("a", ast.vhole(0, []), ast.VTyp(0))],
-      #("x", ast.Var(0, s2)),
-      ast.Typ(0, s3),
+      [#("a", inner)],
+      #("x", domain),
+      ast.VTyp(0),
     )
 }
 
@@ -297,12 +300,13 @@ pub fn infer_lam_nested_test() {
   assert state == new_state
   assert result == term
   // $pi(x: $Int) -> $pi(y: $Float) -> $Int
+  // The inner codomain is VLitT(IntT) because x: Int is its type
+  let inner_pi = ast.VPi([], #("y", ast.vfloat_t), ast.vint_t)
   assert type_
     == ast.VPi(
       [],
-      [],
-      #("x", ast.int_t(s1)),
-      ast.Pi([], #("y", ast.float_t(s3)), ast.int_t(s4), s2),
+      #("x", ast.vint_t),
+      inner_pi,
     )
 }
 
@@ -320,15 +324,20 @@ pub fn infer_lam_const_test() {
   assert state == new_state
   assert result == term
   // $pi<a: $Int, b: $Float>(x: a) -> $pi(y: b) -> a
+  let hole0 = ast.VNeut(ast.HHole(0), [])
+  let hole1 = ast.VNeut(ast.HHole(1), [])
+  let x_val = ast.VNeut(ast.HVar(1), [])
+  let y_val = ast.VNeut(ast.HVar(1), [])
+  let a_val = ast.VNeut(ast.HVar(3), [])
+  let inner_pi = ast.VPi([], #("y", y_val), a_val)
   assert type_
     == ast.VPi(
-      [],
       [
-        #("a", ast.vhole(0, []), ast.vint_t),
-        #("b", ast.vhole(1, []), ast.vfloat_t),
+        #("a", hole0),
+        #("b", hole1),
       ],
-      #("x", ast.Var(1, s1)),
-      ast.Pi([], #("y", ast.Var(1, s3)), ast.Var(3, s4), s2),
+      #("x", x_val),
+      inner_pi,
     )
 }
 
@@ -342,9 +351,8 @@ pub fn infer_lam_closure_test() {
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
-  // $pi(x: $Int) -> $Float (with env [z, 3.14])
-  let env = [ast.vvar(2, []), ast.vfloat(3.14)]
-  assert type_ == ast.VPi(env, [], #("x", ast.int_t(s1)), ast.float_t(s2))
+  // $pi(x: $Int) -> $Float (y's type is FloatT)
+  assert type_ == ast.VPi([], #("x", ast.vint_t), ast.vfloat_t)
 }
 
 pub fn infer_pi_simple_test() {
@@ -450,7 +458,7 @@ pub fn infer_app_not_a_function_test() {
 
 pub fn infer_app_simple_test() {
   // f : $pi(x: $Int) -> $Float
-  let f_type = ast.VPi([], [], #("x", ast.int_t(s3)), ast.float_t(s4))
+  let f_type = ast.VPi([], #("x", ast.vint_t), ast.vfloat_t)
   let vars = [#("f", ast.vvar(0, []), f_type)]
   let new_state = State(..new_state, vars: vars)
   let term = ast.App(ast.Var(0, s1), ast.int(42, s2), s0)
@@ -463,11 +471,13 @@ pub fn infer_app_simple_test() {
 // Application: f 42 should return 42 with type $Int (implicit resolved)
 pub fn infer_app_identity_test() {
   // f : $pi<a: $Type>(x: a) -> a
+  // domain is Var(0) = a, which evaluates to a hole at level 0
+  let domain = ast.VNeut(ast.HHole(0), [])
+  let codomain = ast.VNeut(ast.HVar(0), [])
   let f_type = ast.VPi(
-    [],
-    [#("a", ast.vhole(0, []), ast.VTyp(0))],
-    #("x", ast.Var(0, s3)),
-    ast.Var(0, s4),
+    [#("a", ast.VNeut(ast.HHole(0), []))],
+    #("x", domain),
+    codomain,
   )
   let vars = [#("f", ast.vvar(0, []), f_type)]
   let new_state = State(..new_state, vars: vars)
@@ -484,11 +494,12 @@ pub fn infer_app_identity_test() {
 // Application: f 42 should return $Int (the type of 42)
 pub fn infer_app_typeof_test() {
   // f : $pi<a: $Type>(x: a) -> a where codomain is the type (Var(1) = a)
+  let domain = ast.VNeut(ast.HHole(0), [])
+  let codomain = ast.VNeut(ast.HVar(1), [])
   let f_type = ast.VPi(
-    [],
-    [#("a", ast.vhole(0, []), ast.VTyp(0))],
-    #("x", ast.Var(0, s3)),
-    ast.Var(1, s4),
+    [#("a", ast.VNeut(ast.HHole(0), []))],
+    #("x", domain),
+    codomain,
   )
   let vars = [#("f", ast.vvar(0, []), f_type)]
   let new_state = State(..new_state, vars: vars)
@@ -507,9 +518,8 @@ pub fn infer_app_nested_test() {
   // f : $pi(x: $Int) -> $pi(y: $Float) -> $Int
   let f_type = ast.VPi(
     [],
-    [],
-    #("x", ast.int_t(s3)),
-    ast.Pi([], #("y", ast.float_t(s5)), ast.int_t(s6), s4),
+    #("x", ast.vint_t),
+    ast.VPi([], #("y", ast.vfloat_t), ast.vint_t),
   )
   let vars = [#("f", ast.vvar(0, []), f_type)]
   let new_state = State(..new_state, vars: vars)
@@ -520,23 +530,24 @@ pub fn infer_app_nested_test() {
   // Result type is $pi(y: $Float) -> $Int, which is a Pi type
   // When eval'd, a Pi term returns VTyp(0) (the type of types)
   // But for this test, we check the codomain is correctly preserved
-  assert type_ == ast.VTyp(0)
+  assert type_ == ast.VPi([], #("y", ast.vfloat_t), ast.vint_t)
 }
 
 // Multi-implicit: f : $pi<a: $Type, b: $Type>(x: a) -> a
 // Only the first implicit `a` is resolved by the argument.
 // The codomain references `a`, so it should resolve to $Int.
 pub fn infer_app_multi_implicit_test() {
-  // implicit_env: [a at 0, b at 1] in the implicit scope order
-  // domain Var(0) is `a`, codomain Var(0) is also `a`
+  // domain is Var(0) = a, which evaluates to a hole at level 0
+  let domain = ast.VNeut(ast.HHole(0), [])
+  // codomain is Var(0) = a, which evaluates to a variable at level 0
+  let codomain = ast.VNeut(ast.HVar(0), [])
   let f_type = ast.VPi(
-    [],
     [
-      #("a", ast.vhole(0, []), ast.VTyp(0)),
-      #("b", ast.vhole(1, []), ast.VTyp(0)),
+      #("a", ast.VTyp(0)),
+      #("b", ast.VTyp(0)),
     ],
-    #("x", ast.Var(0, s3)),
-    ast.Var(0, s4),
+    #("x", domain),
+    codomain,
   )
   let vars = [#("f", ast.vvar(0, []), f_type)]
   let new_state = State(..new_state, vars: vars)
@@ -553,11 +564,12 @@ pub fn infer_app_multi_implicit_test() {
 // The codomain depends on the implicit parameter.
 pub fn infer_app_dependent_implicit_test() {
   // Same as identity, but verifying the dependent codomain evaluation
+  let domain = ast.VNeut(ast.HHole(0), [])
+  let codomain = ast.VNeut(ast.HVar(0), [])
   let f_type = ast.VPi(
-    [],
-    [#("a", ast.vhole(0, []), ast.VTyp(0))],
-    #("x", ast.Var(0, s3)),
-    ast.Var(0, s4),
+    [#("a", ast.VNeut(ast.HHole(0), []))],
+    #("x", domain),
+    codomain,
   )
   let vars = [#("f", ast.vvar(0, []), f_type)]
   let new_state = State(..new_state, vars: vars)
@@ -573,7 +585,7 @@ pub fn infer_app_dependent_implicit_test() {
 // Error case: implicit mismatch when domain is concrete but arg type doesn't match
 pub fn infer_app_error_implicit_mismatch_test() {
   // f : $pi(x: $Int) -> $Float (no implicits, concrete domain)
-  let f_type = ast.VPi([], [], #("x", ast.int_t(s3)), ast.float_t(s4))
+  let f_type = ast.VPi([], #("x", ast.vint_t), ast.vfloat_t)
   let vars = [#("f", ast.vvar(0, []), f_type)]
   let new_state = State(..new_state, vars: vars)
   // Apply with a float argument where int is expected

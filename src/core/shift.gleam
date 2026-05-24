@@ -10,7 +10,7 @@ import gleam/option
 /// Universes, literals, and neutral terms are handled. The following Value
 /// variants are NOT yet implemented (will panic with todo):
 ///   - VCtr, VRcd, VRcdT: would need recursive field/arg shifting
-///   - VLam, VPi: would need recursive env and codomain shifting
+///   - VLam, VPi: would need recursive implicits, domain, and codomain shifting
 ///   - VTypeDef: would need recursive constructor value shifting
 ///   - VErr: propagates as-is
 ///
@@ -43,11 +43,10 @@ pub fn shift_value(value: ast.Value, delta: Int) -> ast.Value {
       param,
       body,
     )
-    ast.VPi(env, implicits, domain, codomain) -> ast.VPi(
-      list.map(env, shift_value(_, delta)),
-      implicits,
-      domain,
-      codomain,
+    ast.VPi(implicits, domain, codomain) -> ast.VPi(
+      list.map(implicits, fn(v) { #(v.0, shift_value(v.1, delta)) }),
+      #(domain.0, shift_value(domain.1, delta)),
+      shift_value(codomain, delta),
     )
     ast.VTypeDef(params, constructors) -> ast.VTypeDef(
       list.map(params, fn(p) { #(p.0, shift_value(p.1, delta)) }),
