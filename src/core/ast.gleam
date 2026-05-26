@@ -141,8 +141,8 @@ pub type Value {
   VNeut(head: Head, spine: List(Elim))
   VLam(
     env: Env,
-    implicits: List(#(String, Term)),
-    param: #(String, Term),
+    implicits: List(#(String, Value)),
+    param: #(String, Value),
     body: Term,
   )
   VPi(

@@ -143,6 +143,47 @@ pub fn eval_ann_test() {
   let result = eval([], [], term)
   assert result == ast.vint(42)
 }
+
+pub fn eval_lam_simple_test() {
+  // $fn(x: $Int) => 3.14
+  let term = ast.Lam([], #("x", ast.int_t(s1)), ast.float(3.14, s2), s0)
+  let result = eval([], [], term)
+  assert result == ast.VLam([], [], #("x", ast.vint_t), ast.float(3.14, s2))
+}
+
+pub fn eval_lam_identity_test() {
+  // $fn<a: $Type>(x: a) => x
+  let term =
+    ast.Lam([#("a", ast.Typ(0, s1))], #("x", ast.int_t(s2)), ast.Var(0, s3), s0)
+  let result = eval([], [], term)
+  assert result
+    == ast.VLam([], [#("a", ast.VTyp(0))], #("x", ast.vint_t), ast.Var(0, s3))
+}
+
+pub fn eval_lam_typeof_test() {
+  // $fn<a: $Type>(x: a) => a
+  let term =
+    ast.Lam([#("a", ast.Typ(0, s1))], #("x", ast.int_t(s2)), ast.Var(1, s3), s0)
+  let result = eval([], [], term)
+  assert result
+    == ast.VLam([], [#("a", ast.VTyp(0))], #("x", ast.vint_t), ast.Var(1, s3))
+}
+
+pub fn eval_lam_closure_test() {
+  // let t = $Type; $fn<a: t>(x: a) => x
+  let term =
+    ast.Lam([#("a", ast.Var(0, s1))], #("x", ast.int_t(s2)), ast.Var(0, s3), s0)
+  let result = eval([], [ast.VTyp(0)], term)
+  assert result
+    == ast.VLam(
+      [ast.VTyp(0)],
+      [#("a", ast.VTyp(0))],
+      #("x", ast.vint_t),
+      ast.Var(0, s3),
+    )
+}
+//
+
 // pub fn eval_lam_const_test() {
 //   let term = ast.Lam([], #("x", ast.int_t(s1)), ast.int(42, s2), s0)
 //   let result = eval([], [], term)

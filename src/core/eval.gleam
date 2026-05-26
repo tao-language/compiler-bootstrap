@@ -105,12 +105,13 @@ pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
       }
     }
     ast.Ann(term, _, _) -> eval(ffi, env, term)
-    ast.Lam(implicits, #(name, param_type), body, _) -> {
-      todo
+    ast.Lam(implicits, #(name, param), body, _) -> {
+      let implicits_val = eval_params(ffi, env, implicits)
+      let param_val = eval(ffi, env, param)
+      ast.VLam(env, implicits_val, #(name, param_val), body)
     }
-    ast.Pi(_implicits, #(_name, _domain), _codomain, _) -> {
-      // Pi types are types, so their type is $Type (VTyp(0))
-      ast.VTyp(0)
+    ast.Pi(implicits, #(name, domain), codomain, _) -> {
+      todo
     }
     ast.Fix(name, body, _) -> {
       todo
@@ -126,4 +127,15 @@ pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
     }
     ast.Err(_) -> ast.VErr
   }
+}
+
+fn eval_params(
+  ffi: FFI,
+  env: ast.Env,
+  params: List(#(String, ast.Term)),
+) -> List(#(String, ast.Value)) {
+  list.map(params, fn(param) {
+    let #(name, term) = param
+    #(name, eval(ffi, env, term))
+  })
 }
