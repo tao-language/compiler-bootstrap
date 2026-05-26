@@ -23,7 +23,11 @@ pub fn eval_value(ffi: FFI, env: ast.Env, value: ast.Value) -> ast.Value {
       ast.VRcdT(
         list.map(fields, fn(field) {
           let #(name, val, default) = field
-          #(name, eval_value(ffi, env, val), option.map(default, eval_value(ffi, env, _)))
+          #(
+            name,
+            eval_value(ffi, env, val),
+            option.map(default, eval_value(ffi, env, _)),
+          )
         }),
       )
     ast.VNeut(head, spine) ->
@@ -39,12 +43,14 @@ pub fn eval_value(ffi: FFI, env: ast.Env, value: ast.Value) -> ast.Value {
           ast.vcall(name, resolved_args, spine)
         }
       }
-    ast.VLam(..) -> value  // Skip lambda env evaluation for now
+    ast.VLam(..) -> value
+    // Skip lambda env evaluation for now
     ast.VPi(implicits, domain, codomain) -> {
-      let resolved_implicits = list.map(implicits, fn(imp) {
-        let #(name, val) = imp
-        #(name, eval_value(ffi, env, val))
-      })
+      let resolved_implicits =
+        list.map(implicits, fn(imp) {
+          let #(name, val) = imp
+          #(name, eval_value(ffi, env, val))
+        })
       let domain_val = eval_value(ffi, env, domain.1)
       let codomain_val = eval_value(ffi, env, codomain)
       ast.VPi(resolved_implicits, #(domain.0, domain_val), codomain_val)
@@ -89,9 +95,10 @@ pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
       )
     ast.Call(name, args, _, _) -> {
       let args_val = list.map(args, eval(ffi, env, _))
-      let result =
-        utils.list_lookup(ffi, name)
-        |> option.then(fn(call) { call(args_val) })
+      let result = case list.key_find(ffi, name) {
+        Ok(call) -> call(args_val)
+        Error(Nil) -> None
+      }
       case result {
         Some(value) -> value
         None -> ast.vcall(name, args_val, [])

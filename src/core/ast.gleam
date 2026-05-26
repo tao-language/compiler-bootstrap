@@ -110,6 +110,54 @@ pub type Case {
 }
 
 // ============================================================================
+// VALUES (Semantics level - De Bruijn levels)
+// ============================================================================
+
+/// Neutral term head - the start of a neutral spine.
+pub type Head {
+  HVar(level: Int)
+  HHole(id: Int)
+  HCall(name: String, args: List(Value))
+}
+
+/// Eliminators form applied to a neutral term.
+pub type Elim {
+  EApp(arg: Value, span: Span)
+  EFix(env: Env, body: Term)
+  EMatch(env: Env, cases: List(Case), span: Span)
+}
+
+/// Core values - normalized terms after evaluation.
+///
+/// Values use De Bruijn levels for variables (relative to their
+/// binding site), and De Bruijn indices for bodies.
+pub type Value {
+  VTyp(universe: Int)
+  VLit(value: Literal)
+  VLitT(t: LiteralType)
+  VCtr(tag: String, arg: Value)
+  VRcd(fields: List(#(String, Value)))
+  VRcdT(fields: List(#(String, Value, Option(Value))))
+  VNeut(head: Head, spine: List(Elim))
+  VLam(
+    env: Env,
+    implicits: List(#(String, Term)),
+    param: #(String, Term),
+    body: Term,
+  )
+  VPi(
+    implicits: List(#(String, Value)),
+    domain: #(String, Value),
+    codomain: Value,
+  )
+  VTypeDef(
+    params: List(#(String, Value)),
+    constructors: List(#(String, #(List(String), Value, Term))),
+  )
+  VErr
+}
+
+// ============================================================================
 // NAMED TERMS (Syntax level - Named variables, before De Bruijn conversion)
 // ============================================================================
 
@@ -175,54 +223,6 @@ pub type NamedCase {
     body: NamedTerm,
     span: Span,
   )
-}
-
-// ============================================================================
-// VALUES (Semantics level - De Bruijn levels)
-// ============================================================================
-
-/// Neutral term head - the start of a neutral spine.
-pub type Head {
-  HVar(level: Int)
-  HHole(id: Int)
-  HCall(name: String, args: List(Value))
-}
-
-/// Eliminators form applied to a neutral term.
-pub type Elim {
-  EApp(arg: Value, span: Span)
-  EFix(env: Env, body: Term)
-  EMatch(env: Env, cases: List(Case), span: Span)
-}
-
-/// Core values - normalized terms after evaluation.
-///
-/// Values use De Bruijn levels for variables (relative to their
-/// binding site), and De Bruijn indices for bodies.
-pub type Value {
-  VTyp(universe: Int)
-  VLit(value: Literal)
-  VLitT(t: LiteralType)
-  VCtr(tag: String, arg: Value)
-  VRcd(fields: List(#(String, Value)))
-  VRcdT(fields: List(#(String, Value, Option(Value))))
-  VNeut(head: Head, spine: List(Elim))
-  VLam(
-    env: Env,
-    implicits: List(#(String, Term)),
-    param: #(String, Term),
-    body: Term,
-  )
-  VPi(
-    implicits: List(#(String, Value)),
-    domain: #(String, Value),
-    codomain: Value,
-  )
-  VTypeDef(
-    params: List(#(String, Value)),
-    constructors: List(#(String, #(List(String), Value, Term))),
-  )
-  VErr
 }
 
 pub type Env =

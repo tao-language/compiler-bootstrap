@@ -25,7 +25,7 @@ import core/ast
 import core/eval
 import core/shift
 import core/state.{type FFI, type State, State, TypeMismatch, with_err}
-import core/subst
+import core/unwrap
 import core/utils
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -69,8 +69,8 @@ pub fn unify(
   let #(value2, span2) = b
 
   // Force-normalize both values to resolve any solved holes.
-  let value1 = subst.force_value(state.ffi, state.subst, value1)
-  let value2 = subst.force_value(state.ffi, state.subst, value2)
+  let value1 = unwrap.unwrap(state.ffi, state.subst, value1)
+  let value2 = unwrap.unwrap(state.ffi, state.subst, value2)
 
   unify_values(state, #(value1, span1), #(value2, span2))
 }
@@ -153,7 +153,11 @@ fn unify_rcd(
         False -> with_err(state, TypeMismatch(#(f1.1, span), #(f2.1, span)))
       }
     }
-    _, _ -> with_err(state, TypeMismatch(#(ast.VRcd(fields1), span), #(ast.VRcd(fields2), span)))
+    _, _ ->
+      with_err(
+        state,
+        TypeMismatch(#(ast.VRcd(fields1), span), #(ast.VRcd(fields2), span)),
+      )
   }
 }
 
@@ -176,7 +180,11 @@ fn unify_rcd_type(
         False -> with_err(state, TypeMismatch(#(f1.1, span), #(f2.1, span)))
       }
     }
-    _, _ -> with_err(state, TypeMismatch(#(ast.VRcdT(fields1), span), #(ast.VRcdT(fields2), span)))
+    _, _ ->
+      with_err(
+        state,
+        TypeMismatch(#(ast.VRcdT(fields1), span), #(ast.VRcdT(fields2), span)),
+      )
   }
 }
 
@@ -190,7 +198,14 @@ fn unify_option_value(
   case opt1, opt2 {
     Some(v1), Some(v2) -> unify_values(state, #(v1, span), #(v2, span))
     None, None -> state
-    _, _ -> with_err(state, TypeMismatch(#(ast.VRcdT([#("x", ast.VErr, opt1)]), span), #(ast.VRcdT([#("x", ast.VErr, opt2)]), span)))
+    _, _ ->
+      with_err(
+        state,
+        TypeMismatch(#(ast.VRcdT([#("x", ast.VErr, opt1)]), span), #(
+          ast.VRcdT([#("x", ast.VErr, opt2)]),
+          span,
+        )),
+      )
   }
 }
 
@@ -204,15 +219,18 @@ fn unify_constructors(
   case ctrs1, ctrs2 {
     [], [] -> state
     [#(ctr_name1, #(param_names1, param_type1, _body1)), ..rest1],
-       [#(ctr_name2, #(param_names2, param_type2, _body2)), ..rest2] -> {
+      [#(ctr_name2, #(param_names2, param_type2, _body2)), ..rest2]
+    -> {
       case ctr_name1 == ctr_name2 {
         True -> {
           // Unify the param types (single Value each)
-          let state = unify_values(state, #(param_type1, span), #(param_type2, span))
+          let state =
+            unify_values(state, #(param_type1, span), #(param_type2, span))
           let state = unify_constructors(state, rest1, rest2, span)
           state
         }
-        False -> with_err(state, TypeMismatch(#(ast.VErr, span), #(ast.VErr, span)))
+        False ->
+          with_err(state, TypeMismatch(#(ast.VErr, span), #(ast.VErr, span)))
       }
     }
     _, _ -> with_err(state, TypeMismatch(#(ast.VErr, span), #(ast.VErr, span)))
@@ -244,18 +262,23 @@ fn solve_hole(state: State, a: #(Int, Span), b: #(ast.Value, Span)) -> State {
   let #(value, span2) = b
 
   // First, force-normalize the value to resolve any inner holes.
-  let value = subst.force_value(state.ffi, state.subst, value)
+  let value = unwrap.unwrap(state.ffi, state.subst, value)
 
   // Check if the hole already has a substitution.
-  case utils.list_lookup(state.subst, hole_id) {
-    Some(solution) -> unify_values(state, #(solution, span1), b)
-
-    None -> {
+  case list.key_find(state.subst, hole_id) {
+    Ok(solution) -> unify_values(state, #(solution, span1), b)
+    Error(Nil) -> {
       // Occur-check: ensure the hole doesn't appear in the value.
       case occurs_in(hole_id, value) {
         True -> {
           // Cyclic reference detected; record an error instead of binding.
-          with_err(state, TypeMismatch(#(value, span2), #(ast.VNeut(ast.HHole(hole_id), []), span1)))
+          with_err(
+            state,
+            TypeMismatch(#(value, span2), #(
+              ast.VNeut(ast.HHole(hole_id), []),
+              span1,
+            )),
+          )
         }
         False -> {
           // Bind the hole to the normalized value.
@@ -278,29 +301,31 @@ fn occurs_in(hole_id: Int, value: ast.Value) -> Bool {
 
     ast.VCtr(_, arg) -> occurs_in(hole_id, arg)
 
-    ast.VRcd(fields) ->
-      list.any(fields, fn(f) { occurs_in(hole_id, f.1) })
+    ast.VRcd(fields) -> list.any(fields, fn(f) { occurs_in(hole_id, f.1) })
 
     ast.VRcdT(fields) ->
       list.any(fields, fn(f) {
-        occurs_in(hole_id, f.1) || case f.2 { None -> False Some(v) -> occurs_in(hole_id, v) }
+        occurs_in(hole_id, f.1)
+        || case f.2 {
+          None -> False
+          Some(v) -> occurs_in(hole_id, v)
+        }
       })
 
     ast.VPi(implicits, domain, codomain) -> {
-      list.any(implicits, fn(i) { occurs_in(hole_id, i.1) }) ||
-      occurs_in(hole_id, domain.1) ||
-      occurs_in(hole_id, codomain)
+      list.any(implicits, fn(i) { occurs_in(hole_id, i.1) })
+      || occurs_in(hole_id, domain.1)
+      || occurs_in(hole_id, codomain)
     }
 
-    ast.VLam(env, _, _, _) ->
-      list.any(env, fn(v) { occurs_in(hole_id, v) })
+    ast.VLam(env, _, _, _) -> list.any(env, fn(v) { occurs_in(hole_id, v) })
 
     ast.VTypeDef(params, _) ->
       list.any(params, fn(p) { occurs_in(hole_id, p.1) })
 
     ast.VNeut(head, spine) -> {
-      occurs_in_head(hole_id, head) ||
-      list.any(spine, fn(e) { occurs_in_elim(hole_id, e) })
+      occurs_in_head(hole_id, head)
+      || list.any(spine, fn(e) { occurs_in_elim(hole_id, e) })
     }
   }
 }
@@ -309,18 +334,15 @@ fn occurs_in_head(hole_id: Int, head: ast.Head) -> Bool {
   case head {
     ast.HVar(_) -> False
     ast.HHole(id) -> id == hole_id
-    ast.HCall(_, args) ->
-      list.any(args, fn(a) { occurs_in(hole_id, a) })
+    ast.HCall(_, args) -> list.any(args, fn(a) { occurs_in(hole_id, a) })
   }
 }
 
 fn occurs_in_elim(hole_id: Int, elim: ast.Elim) -> Bool {
   case elim {
     ast.EApp(arg, _) -> occurs_in(hole_id, arg)
-    ast.EMatch(env, _, _) ->
-      list.any(env, fn(v) { occurs_in(hole_id, v) })
-    ast.EFix(env, _) ->
-      list.any(env, fn(v) { occurs_in(hole_id, v) })
+    ast.EMatch(env, _, _) -> list.any(env, fn(v) { occurs_in(hole_id, v) })
+    ast.EFix(env, _) -> list.any(env, fn(v) { occurs_in(hole_id, v) })
   }
 }
 
@@ -346,7 +368,8 @@ fn unify_elim(state: State, elim1: ast.Elim, elim2: ast.Elim) -> State {
     ast.EApp(arg1, span1), ast.EApp(arg2, span2) ->
       unify_values(state, #(arg1, span1), #(arg2, span2))
 
-    ast.EMatch(env1, cases1, elim_span1), ast.EMatch(env2, cases2, elim_span2) -> {
+    ast.EMatch(env1, cases1, elim_span1), ast.EMatch(env2, cases2, elim_span2)
+    -> {
       // Unify match environments.
       let state = unify_value_list(state, list.zip(env1, env2), elim_span1)
 
@@ -395,8 +418,7 @@ fn unify_match_case(
 
   // Compare guards if both present.
   let state = case c1.guard, c2.guard {
-    Some(#(g1, _)), Some(#(g2, _)) ->
-      unify_terms(state, g1, g2, span)
+    Some(#(g1, _)), Some(#(g2, _)) -> unify_terms(state, g1, g2, span)
     None, None -> state
     _, _ -> with_err(state, TypeMismatch(#(ast.VErr, span), #(ast.VErr, span)))
   }
@@ -443,7 +465,8 @@ fn unify_rcd_patterns(
           let state = unify_patterns(state, f1.1, f2.1, span)
           unify_rcd_patterns(state, rest1, rest2, span)
         }
-        False -> with_err(state, TypeMismatch(#(ast.VErr, span), #(ast.VErr, span)))
+        False ->
+          with_err(state, TypeMismatch(#(ast.VErr, span), #(ast.VErr, span)))
       }
     }
     _, _ -> with_err(state, TypeMismatch(#(ast.VErr, span), #(ast.VErr, span)))
@@ -451,12 +474,7 @@ fn unify_rcd_patterns(
 }
 
 /// Unify two terms structurally (for comparing match bodies, guards, etc.).
-fn unify_terms(
-  state: State,
-  t1: ast.Term,
-  t2: ast.Term,
-  span: Span,
-) -> State {
+fn unify_terms(state: State, t1: ast.Term, t2: ast.Term, span: Span) -> State {
   case t1, t2 {
     ast.Typ(u1, s1), ast.Typ(u2, _) if u1 == u2 -> state
     ast.Lit(v1, s1), ast.Lit(v2, _) if v1 == v2 -> state
@@ -465,11 +483,12 @@ fn unify_terms(
     ast.Hole(id1, _), ast.Hole(id2, _) if id1 == id2 -> state
     ast.Ctr(tag1, arg1, _), ast.Ctr(tag2, arg2, _) if tag1 == tag2 ->
       unify_terms(state, arg1, arg2, span)
-    ast.Rcd(f1, _), ast.Rcd(f2, _) ->
-      unify_terms_rcd(state, f1, f2, span)
+    ast.Rcd(f1, _), ast.Rcd(f2, _) -> unify_terms_rcd(state, f1, f2, span)
     ast.RcdT(f1, _), ast.RcdT(f2, _) ->
       unify_terms_rcd_type(state, f1, f2, span)
-    ast.Call(n1, a1, r1, _), ast.Call(n2, a2, r2, _) if n1 == n2 && a1 == a2 && r1 == r2 -> state
+    ast.Call(n1, a1, r1, _), ast.Call(n2, a2, r2, _)
+      if n1 == n2 && a1 == a2 && r1 == r2
+    -> state
     ast.Ann(term1, type1, _), ast.Ann(term2, type2, _) -> {
       let state = unify_terms(state, term1, term2, span)
       unify_terms(state, type1, type2, span)
@@ -499,7 +518,14 @@ fn unify_terms(
       unify_terms_match_cases(state, cases1, cases2, span)
     }
     ast.Err(_), ast.Err(_) -> state
-    _, _ -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+    _, _ ->
+      with_err(
+        state,
+        TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+          ast.VNeut(ast.HVar(0), []),
+          span,
+        )),
+      )
   }
 }
 
@@ -517,10 +543,24 @@ fn unify_terms_rcd(
           let state = unify_terms(state, f1.1, f2.1, span)
           unify_terms_rcd(state, rest1, rest2, span)
         }
-        False -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+        False ->
+          with_err(
+            state,
+            TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+              ast.VNeut(ast.HVar(0), []),
+              span,
+            )),
+          )
       }
     }
-    _, _ -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+    _, _ ->
+      with_err(
+        state,
+        TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+          ast.VNeut(ast.HVar(0), []),
+          span,
+        )),
+      )
   }
 }
 
@@ -539,10 +579,24 @@ fn unify_terms_rcd_type(
           let state = unify_terms_option(state, f1.2, f2.2, span)
           unify_terms_rcd_type(state, rest1, rest2, span)
         }
-        False -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+        False ->
+          with_err(
+            state,
+            TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+              ast.VNeut(ast.HVar(0), []),
+              span,
+            )),
+          )
       }
     }
-    _, _ -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+    _, _ ->
+      with_err(
+        state,
+        TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+          ast.VNeut(ast.HVar(0), []),
+          span,
+        )),
+      )
   }
 }
 
@@ -555,7 +609,14 @@ fn unify_terms_option(
   case opt1, opt2 {
     Some(t1), Some(t2) -> unify_terms(state, t1, t2, span)
     None, None -> state
-    _, _ -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+    _, _ ->
+      with_err(
+        state,
+        TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+          ast.VNeut(ast.HVar(0), []),
+          span,
+        )),
+      )
   }
 }
 
@@ -573,10 +634,24 @@ fn unify_terms_lam_implicits(
           let state = unify_terms(state, a.1, b.1, span)
           unify_terms_lam_implicits(state, rest1, rest2, span)
         }
-        False -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+        False ->
+          with_err(
+            state,
+            TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+              ast.VNeut(ast.HVar(0), []),
+              span,
+            )),
+          )
       }
     }
-    _, _ -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+    _, _ ->
+      with_err(
+        state,
+        TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+          ast.VNeut(ast.HVar(0), []),
+          span,
+        )),
+      )
   }
 }
 
@@ -594,10 +669,24 @@ fn unify_terms_pi_implicits(
           let state = unify_terms(state, a.1, b.1, span)
           unify_terms_pi_implicits(state, rest1, rest2, span)
         }
-        False -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+        False ->
+          with_err(
+            state,
+            TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+              ast.VNeut(ast.HVar(0), []),
+              span,
+            )),
+          )
       }
     }
-    _, _ -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+    _, _ ->
+      with_err(
+        state,
+        TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+          ast.VNeut(ast.HVar(0), []),
+          span,
+        )),
+      )
   }
 }
 
@@ -615,10 +704,24 @@ fn unify_terms_type_def_params(
           let state = unify_terms(state, a.1, b.1, span)
           unify_terms_type_def_params(state, rest1, rest2, span)
         }
-        False -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+        False ->
+          with_err(
+            state,
+            TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+              ast.VNeut(ast.HVar(0), []),
+              span,
+            )),
+          )
       }
     }
-    _, _ -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+    _, _ ->
+      with_err(
+        state,
+        TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+          ast.VNeut(ast.HVar(0), []),
+          span,
+        )),
+      )
   }
 }
 
@@ -631,16 +734,31 @@ fn unify_terms_type_def_ctrs(
   case c1, c2 {
     [], [] -> state
     [#(ctr_name1, #(param_names1, param_type1, body1), _span1), ..rest1],
-       [#(ctr_name2, #(param_names2, param_type2, body2), _span2), ..rest2] -> {
+      [#(ctr_name2, #(param_names2, param_type2, body2), _span2), ..rest2]
+    -> {
       case ctr_name1 == ctr_name2 {
         True -> {
           let state = unify_terms(state, param_type1, param_type2, span)
           unify_terms_type_def_ctrs(state, rest1, rest2, span)
         }
-        False -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+        False ->
+          with_err(
+            state,
+            TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+              ast.VNeut(ast.HVar(0), []),
+              span,
+            )),
+          )
       }
     }
-    _, _ -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+    _, _ ->
+      with_err(
+        state,
+        TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+          ast.VNeut(ast.HVar(0), []),
+          span,
+        )),
+      )
   }
 }
 
@@ -656,7 +774,14 @@ fn unify_terms_match_cases(
       let state = unify_terms(state, a.body, b.body, span)
       unify_terms_match_cases(state, rest1, rest2, span)
     }
-    _, _ -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+    _, _ ->
+      with_err(
+        state,
+        TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+          ast.VNeut(ast.HVar(0), []),
+          span,
+        )),
+      )
   }
 }
 
@@ -672,7 +797,14 @@ fn unify_terms_list(
       let state = unify_terms(state, a, b, span)
       unify_terms_list(state, rest1, rest2, span)
     }
-    _, _ -> with_err(state, TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(ast.VNeut(ast.HVar(0), []), span)))
+    _, _ ->
+      with_err(
+        state,
+        TypeMismatch(#(ast.VNeut(ast.HVar(0), []), span), #(
+          ast.VNeut(ast.HVar(0), []),
+          span,
+        )),
+      )
   }
 }
 

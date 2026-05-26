@@ -11,8 +11,8 @@ import core/shift.{shift_value}
 import core/state.{
   type FFI, type State, State, env_to_state, state_to_env, with_err,
 }
-import core/subst
 import core/unify.{unify}
+import core/unwrap
 import core/utils
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -62,7 +62,7 @@ pub fn check(
 ) -> #(ast.Term, ast.Value, State) {
   let #(term, type_, state) = infer(state, term)
   let state = unify(state, #(type_, ast.get_span(term)), expected)
-  let type_ = subst.force_value(state.ffi, state.subst, type_)
+  let type_ = unwrap.unwrap(state.ffi, state.subst, type_)
   #(term, type_, state)
 }
 

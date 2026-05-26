@@ -7,11 +7,3 @@ pub fn list_at(list: List(a), index: Int) -> Option(a) {
     [] -> None
   }
 }
-
-pub fn list_lookup(list: List(#(k, v)), key: k) -> Option(v) {
-  case list {
-    [#(k, v), ..] if k == key -> Some(v)
-    [_, ..tail] -> list_lookup(tail, key)
-    [] -> None
-  }
-}

@@ -29,29 +29,33 @@ pub fn shift_value(value: ast.Value, delta: Int) -> ast.Value {
       ast.VNeut(shift_head(head, delta), shift_spine(spine, delta))
     // --- COMPOSITE VALUES ---
     ast.VCtr(tag, arg) -> ast.VCtr(tag, shift_value(arg, delta))
-    ast.VRcd(fields) -> ast.VRcd(
-      list.map(fields, fn(field) { #(field.0, shift_value(field.1, delta)) }),
-    )
-    ast.VRcdT(fields) -> ast.VRcdT(
-      list.map(fields, fn(field) {
-        #(field.0, shift_value(field.1, delta), option.map(field.2, shift_value(_, delta)))
-      }),
-    )
-    ast.VLam(env, implicits, param, body) -> ast.VLam(
-      list.map(env, shift_value(_, delta)),
-      implicits,
-      param,
-      body,
-    )
-    ast.VPi(implicits, domain, codomain) -> ast.VPi(
-      list.map(implicits, fn(v) { #(v.0, shift_value(v.1, delta)) }),
-      #(domain.0, shift_value(domain.1, delta)),
-      shift_value(codomain, delta),
-    )
-    ast.VTypeDef(params, constructors) -> ast.VTypeDef(
-      list.map(params, fn(p) { #(p.0, shift_value(p.1, delta)) }),
-      constructors,
-    )
+    ast.VRcd(fields) ->
+      ast.VRcd(
+        list.map(fields, fn(field) { #(field.0, shift_value(field.1, delta)) }),
+      )
+    ast.VRcdT(fields) ->
+      ast.VRcdT(
+        list.map(fields, fn(field) {
+          #(
+            field.0,
+            shift_value(field.1, delta),
+            option.map(field.2, shift_value(_, delta)),
+          )
+        }),
+      )
+    ast.VLam(env, implicits, param, body) ->
+      ast.VLam(list.map(env, shift_value(_, delta)), implicits, param, body)
+    ast.VPi(implicits, domain, codomain) ->
+      ast.VPi(
+        list.map(implicits, fn(v) { #(v.0, shift_value(v.1, delta)) }),
+        #(domain.0, shift_value(domain.1, delta)),
+        shift_value(codomain, delta),
+      )
+    ast.VTypeDef(params, constructors) ->
+      ast.VTypeDef(
+        list.map(params, fn(p) { #(p.0, shift_value(p.1, delta)) }),
+        constructors,
+      )
     ast.VErr -> ast.VErr
   }
 }
