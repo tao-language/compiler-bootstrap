@@ -65,6 +65,9 @@ pub fn quote(ffi: FFI, size: Int, value: ast.Value, span: Span) -> ast.Term {
       let body = quote(ffi, size, body_val, span)
       ast.Pi(implicit, #(name, param), body, span)
     }
+    ast.VFix(name, #(env, body)) -> {
+      todo
+    }
     ast.VTypeDef(params, constructors) -> {
       todo
     }

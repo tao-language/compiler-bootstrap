@@ -4,6 +4,7 @@ import core/utils
 import gleam/int
 import gleam/list
 import gleam/option.{None, Some}
+import syntax/span.{type Span}
 
 pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
   case term {
@@ -51,11 +52,11 @@ pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
       let domain_val = eval(ffi, env, domain)
       ast.VPi(implicit, #(name, domain_val), #(env, codomain))
     }
-    ast.Fix(name, body, _) -> {
-      todo
-    }
+    ast.Fix(name, body, _) -> ast.VFix(name, #(env, body))
     ast.App(fun, arg, _) -> {
-      todo
+      let fun_val = eval(ffi, env, fun)
+      let arg_val = eval(ffi, env, arg)
+      do_app(ffi, fun_val, arg_val)
     }
     ast.TypeDef(params, constructors, _) -> {
       todo
@@ -64,5 +65,22 @@ pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
       todo
     }
     ast.Err(_) -> ast.VErr
+  }
+}
+
+fn do_app(ffi: FFI, fun: ast.Value, arg: ast.Value) -> ast.Value {
+  case fun {
+    // Neutral application
+    ast.VNeut(neut_fun) -> ast.vapp(neut_fun, arg)
+    // Explicit parameter: β-reduction
+    ast.VLam(False, _, #(env, body)) -> eval(ffi, [arg, ..env], body)
+    // Implicit parameter: implicit expansion
+    ast.VLam(True, param, #(env, body)) -> {
+      // Implicit parameters are expanded and solved during elaboration,
+      // expand into an error since there's no additional information.
+      let fun = ast.VLam(False, param, #([ast.VErr, ..env], body))
+      do_app(ffi, do_app(ffi, fun, ast.VErr), arg)
+    }
+    _ -> ast.VErr
   }
 }

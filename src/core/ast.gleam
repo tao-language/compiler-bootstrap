@@ -117,6 +117,7 @@ pub type Value {
   VNeut(neutral: Neut)
   VLam(implicit: Bool, param: #(String, Value), body: #(Env, Term))
   VPi(implicit: Bool, domain: #(String, Value), codomain: #(Env, Term))
+  VFix(name: String, body: #(Env, Term))
   VTypeDef(
     params: List(#(String, Value)),
     constructors: List(#(String, #(List(String), Value, Term))),
@@ -128,13 +129,13 @@ pub type Neut {
   NVar(level: Int)
   NHole(id: Int)
   NApp(fun: Neut, arg: Value)
-  NFix(env: Env, name: String, body: Term, arg: Neut)
+  NFixApp(name: String, body: #(Env, Term), arg: Neut)
   NMatch(env: Env, arg: Neut, cases: List(Case))
   NCall(name: String, args: List(Value))
 }
 
 // ============================================================================
-// NAMED TERMS (Syntax level - Named variables, before De Bruijn conversion)
+// AST TERMS (Syntax level - Named variables, before De Bruijn conversion)
 // ============================================================================
 
 /// Named terms - AST produced by the parser with named variables.
@@ -144,61 +145,45 @@ pub type Neut {
 /// De Bruijn indices and desugaring syntax sugar like $let.
 ///
 /// This separates parsing from index calculation, making both simpler.
-pub type NamedTerm {
-  NamedTyp(universe: Int, span: Span)
-  NamedHole(id: Int, span: Span)
-  NamedLit(value: Literal, span: Span)
-  NamedLitT(t: LiteralType, span: Span)
-  NamedVar(name: String, span: Span)
-  NamedCtr(tag: String, arg: NamedTerm, span: Span)
-  NamedRcd(fields: List(#(String, NamedTerm)), span: Span)
-  NamedRcdT(fields: List(#(String, NamedTerm, Option(NamedTerm))), span: Span)
-  NamedCall(
-    name: String,
-    args: List(#(NamedTerm, NamedTerm)),
-    return_type: NamedTerm,
+pub type AST {
+  ATyp(universe: Int, span: Span)
+  AHole(id: Int, span: Span)
+  ALit(value: Literal, span: Span)
+  ALitT(t: LiteralType, span: Span)
+  AVar(name: String, span: Span)
+  ACtr(tag: String, arg: AST, span: Span)
+  ARcd(fields: List(#(String, AST)), span: Span)
+  ARcdT(fields: List(#(String, AST, Option(AST))), span: Span)
+  ACall(name: String, args: List(#(AST, AST)), return_type: AST, span: Span)
+  AAnn(term: AST, type_: AST, span: Span)
+  ALam(
+    implicits: List(#(String, AST)),
+    param: #(String, AST),
+    body: AST,
     span: Span,
   )
-  NamedAnn(term: NamedTerm, type_: NamedTerm, span: Span)
-  NamedLam(
-    implicits: List(#(String, NamedTerm)),
-    param: #(String, NamedTerm),
-    body: NamedTerm,
+  APi(
+    implicits: List(#(String, AST)),
+    domain: #(String, AST),
+    codomain: AST,
     span: Span,
   )
-  NamedPi(
-    implicits: List(#(String, NamedTerm)),
-    domain: #(String, NamedTerm),
-    codomain: NamedTerm,
+  AFix(name: String, body: AST, span: Span)
+  AApp(fun: AST, arg: AST, span: Span)
+  ATypeDef(
+    params: List(#(String, AST)),
+    constructors: List(#(String, #(List(String), AST, AST), Span)),
     span: Span,
   )
-  NamedFix(name: String, body: NamedTerm, span: Span)
-  NamedApp(fun: NamedTerm, arg: NamedTerm, span: Span)
-  NamedTypeDef(
-    params: List(#(String, NamedTerm)),
-    constructors: List(#(String, #(List(String), NamedTerm, NamedTerm), Span)),
-    span: Span,
-  )
-  NamedMatch(arg: NamedTerm, cases: List(NamedCase), span: Span)
-  NamedErr(message: String, span: Span)
+  AMatch(arg: AST, cases: List(ACase), span: Span)
+  AErr(message: String, span: Span)
   /// Syntax sugar: `let name = value; body`
   /// Desugars to App(Lam([], (name, param_type), body), value)
-  NamedLet(
-    name: String,
-    param_type: NamedTerm,
-    value: NamedTerm,
-    body: NamedTerm,
-    span: Span,
-  )
+  ALet(name: String, param_type: AST, value: AST, body: AST, span: Span)
 }
 
-pub type NamedCase {
-  NamedCase(
-    pattern: Pattern,
-    guard: Option(#(NamedTerm, Pattern)),
-    body: NamedTerm,
-    span: Span,
-  )
+pub type ACase {
+  ACase(pattern: Pattern, guard: Option(#(AST, Pattern)), body: AST, span: Span)
 }
 
 pub type Env =
@@ -303,6 +288,14 @@ pub fn vvar(level: Int) -> Value {
 
 pub fn vhole(id: Int) -> Value {
   VNeut(NHole(id))
+}
+
+pub fn vapp(fun: Neut, arg: Value) -> Value {
+  VNeut(NApp(fun, arg))
+}
+
+pub fn vfix_app(name: String, body: #(Env, Term), arg: Neut) -> Value {
+  VNeut(NFixApp(name, body, arg))
 }
 
 pub fn vcall(name: String, args: List(Value)) -> Value {

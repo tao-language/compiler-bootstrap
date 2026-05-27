@@ -171,17 +171,48 @@ pub fn eval_pi_closure_test() {
   let result = eval([], env, term)
   assert result == ast.VPi(False, #("x", ast.vint_t), #(env, ast.Var(1, s)))
 }
+
+pub fn eval_fix_test() {
+  let term = ast.Fix("f", ast.int(42, s), s)
+  let result = eval([], [], term)
+  assert result == ast.VFix("f", #([], ast.int(42, s)))
+}
+
+pub fn eval_app_not_a_function_test() {
+  let fun = ast.Typ(0, s)
+  let term = ast.App(fun, ast.int(42, s), s)
+  let result = eval([], [], term)
+  assert result == ast.VErr
+}
+
+pub fn eval_app_beta_reduction_test() {
+  // ($fn(x: $Int) => x) 42 ~> 42
+  let fun = ast.Lam(False, #("x", ast.int_t(s)), ast.Var(0, s), s)
+  let term = ast.App(fun, ast.int(42, s), s)
+  let result = eval([], [], term)
+  assert result == ast.vint(42)
+}
+
+pub fn eval_app_neutral_test() {
+  // ?10 42 ~> ?10 42
+  let fun = ast.Hole(10, s)
+  let term = ast.App(fun, ast.int(42, s), s)
+  let result = eval([], [], term)
+  assert result == ast.vapp(ast.NHole(10), ast.vint(42))
+}
+
+pub fn eval_app_implicit_expansion_test() {
+  // ($fn<x: $Type> => ?10 x) 42
+  // ~> (?10 $error) 42
+  let inner = ast.App(ast.Hole(10, s), ast.Var(0, s), s)
+  let fun = ast.Lam(True, #("x", ast.Typ(0, s)), inner, s)
+  let term = ast.App(fun, ast.int(42, s), s)
+  let result = eval([], [], term)
+  assert result == ast.vapp(ast.NApp(ast.NHole(10), ast.VErr), ast.vint(42))
+}
+// App(fun: Term, arg: Term, span: Span)
 //
 
-// pub fn eval_lam_const_test() {
-//   let term = ast.Lam([], #("x", ast.int_t(s)), ast.int(42, s), s)
-//   let result = eval([], [], term)
-//   assert result == ast.VLam([], [], #("x", ast.vint_t), ast.int(42, s))
-// }
-// Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )
-// Pi( implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span, )
-// Fix(name: String, body: Term, span: Span)
-// App(fun: Term, arg: Term, span: Span)
 // TypeDef( params: List(#(String, Term)), constructors: List(#(String, #(List(String), Term, Term), Span)), span: Span, )
 // Match(arg: Term, cases: List(Case), span: Span)
 // Err(message: String, span: Span)
