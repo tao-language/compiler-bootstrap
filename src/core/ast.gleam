@@ -66,23 +66,13 @@ pub type Term {
   RcdT(fields: List(#(String, Term, Option(Term))), span: Span)
   Call(name: String, args: List(Term), return_type: Term, span: Span)
   Ann(term: Term, type_: Term, span: Span)
-  Lam(
-    implicits: List(#(String, Term)),
-    param: #(String, Term),
-    body: Term,
-    span: Span,
-  )
-  Pi(
-    implicits: List(#(String, Term)),
-    domain: #(String, Term),
-    codomain: Term,
-    span: Span,
-  )
+  Lam(implicit: Bool, param: #(String, Term), body: Term, span: Span)
+  Pi(implicit: Bool, domain: #(String, Term), codomain: Term, span: Span)
   Fix(name: String, body: Term, span: Span)
   App(fun: Term, arg: Term, span: Span)
   TypeDef(
     params: List(#(String, Term)),
-    constructors: List(#(String, #(List(String), Term, Term), Span)),
+    variants: List(#(String, #(List(String), Term, Term), Span)),
     span: Span,
   )
   Match(arg: Term, cases: List(Case), span: Span)
@@ -113,48 +103,34 @@ pub type Case {
 // VALUES (Semantics level - De Bruijn levels)
 // ============================================================================
 
-/// Neutral term head - the start of a neutral spine.
-pub type Head {
-  HVar(level: Int)
-  HHole(id: Int)
-  HCall(name: String, args: List(Value))
-}
-
-/// Eliminators form applied to a neutral term.
-pub type Elim {
-  EApp(arg: Value, span: Span)
-  EFix(env: Env, body: Term)
-  EMatch(env: Env, cases: List(Case), span: Span)
-}
-
 /// Core values - normalized terms after evaluation.
 ///
 /// Values use De Bruijn levels for variables (relative to their
 /// binding site), and De Bruijn indices for bodies.
 pub type Value {
   VTyp(universe: Int)
-  VLit(value: Literal)
-  VLitT(t: LiteralType)
+  VLit(literal: Literal)
+  VLitT(literal: LiteralType)
   VCtr(tag: String, arg: Value)
   VRcd(fields: List(#(String, Value)))
   VRcdT(fields: List(#(String, Value, Option(Value))))
-  VNeut(head: Head, spine: List(Elim))
-  VLam(
-    env: Env,
-    implicits: List(#(String, Value)),
-    param: #(String, Value),
-    body: Term,
-  )
-  VPi(
-    implicits: List(#(String, Value)),
-    domain: #(String, Value),
-    codomain: Value,
-  )
+  VNeut(neutral: Neut)
+  VLam(implicit: Bool, param: #(String, Value), body: #(Env, Term))
+  VPi(implicit: Bool, domain: #(String, Value), codomain: #(Env, Term))
   VTypeDef(
     params: List(#(String, Value)),
     constructors: List(#(String, #(List(String), Value, Term))),
   )
   VErr
+}
+
+pub type Neut {
+  NVar(level: Int)
+  NHole(id: Int)
+  NApp(fun: Neut, arg: Value)
+  NFix(env: Env, name: String, body: Term, arg: Neut)
+  NMatch(env: Env, arg: Neut, cases: List(Case))
+  NCall(name: String, args: List(Value))
 }
 
 // ============================================================================
@@ -321,16 +297,16 @@ pub fn f64(span: Span) -> Term {
   LitT(F64, span)
 }
 
-pub fn vvar(level: Int, spine: List(Elim)) -> Value {
-  VNeut(HVar(level), spine)
+pub fn vvar(level: Int) -> Value {
+  VNeut(NVar(level))
 }
 
-pub fn vhole(id: Int, spine: List(Elim)) -> Value {
-  VNeut(HHole(id), spine)
+pub fn vhole(id: Int) -> Value {
+  VNeut(NHole(id))
 }
 
-pub fn vcall(name: String, args: List(Value), spine: List(Elim)) -> Value {
-  VNeut(HCall(name, args), spine)
+pub fn vcall(name: String, args: List(Value)) -> Value {
+  VNeut(NCall(name, args))
 }
 
 pub fn vint(value: Int) -> Value {

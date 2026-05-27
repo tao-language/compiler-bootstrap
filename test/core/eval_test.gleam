@@ -8,88 +8,72 @@ pub fn main() {
   gleeunit.main()
 }
 
-const s0 = Span("eval_test", 0, 0, 0, 0)
-
-const s1 = Span("eval_test", 1, 1, 1, 1)
-
-const s2 = Span("eval_test", 2, 2, 2, 2)
-
-const s3 = Span("eval_test", 3, 3, 3, 3)
-
-const s4 = Span("eval_test", 4, 4, 4, 4)
-
-const s5 = Span("eval_test", 5, 5, 5, 5)
-
-const s6 = Span("eval_test", 6, 6, 6, 6)
-
-const s7 = Span("eval_test", 7, 7, 7, 7)
-
-const s8 = Span("eval_test", 8, 8, 8, 8)
+const s = Span("eval_test", 0, 0, 0, 0)
 
 pub fn eval_typ_test() {
-  let term = ast.Typ(0, s0)
+  let term = ast.Typ(0, s)
   let result = eval([], [], term)
   assert result == ast.VTyp(0)
 }
 
 pub fn eval_hole_test() {
-  let term = ast.Hole(0, s0)
+  let term = ast.Hole(0, s)
   let result = eval([], [], term)
-  assert result == ast.vhole(0, [])
+  assert result == ast.vhole(0)
 }
 
 pub fn eval_lit_test() {
-  let term = ast.Lit(ast.Int(1), s0)
+  let term = ast.Lit(ast.Int(1), s)
   let result = eval([], [], term)
   assert result == ast.vint(1)
 }
 
 pub fn eval_litt_test() {
-  let term = ast.LitT(ast.IntT, s0)
+  let term = ast.LitT(ast.IntT, s)
   let result = eval([], [], term)
   assert result == ast.vint_t
 }
 
 pub fn eval_var_undefined_test() {
-  let term = ast.Var(0, s0)
+  let term = ast.Var(0, s)
   let result = eval([], [], term)
   assert result == ast.VErr
 }
 
 pub fn eval_var0_test() {
-  let term = ast.Var(0, s0)
+  let term = ast.Var(0, s)
   let env = [ast.vint_t, ast.vfloat_t]
   let result = eval([], env, term)
   assert result == ast.vint_t
 }
 
 pub fn eval_var1_test() {
-  let term = ast.Var(1, s0)
+  let term = ast.Var(1, s)
   let env = [ast.vint_t, ast.vfloat_t]
   let result = eval([], env, term)
   assert result == ast.vfloat_t
 }
 
 pub fn eval_ctr_test() {
-  let term = ast.Ctr("A", ast.int_t(s1), s0)
+  let term = ast.Ctr("A", ast.int_t(s), s)
   let result = eval([], [], term)
   assert result == ast.VCtr("A", ast.vint_t)
 }
 
 pub fn eval_rcd_empty_test() {
-  let term = ast.Rcd([], s0)
+  let term = ast.Rcd([], s)
   let result = eval([], [], term)
   assert result == ast.VRcd([])
 }
 
 pub fn eval_rcd_fields_test() {
-  let term = ast.Rcd([#("x", ast.int_t(s1)), #("y", ast.float_t(s2))], s0)
+  let term = ast.Rcd([#("x", ast.int_t(s)), #("y", ast.float_t(s))], s)
   let result = eval([], [], term)
   assert result == ast.VRcd([#("x", ast.vint_t), #("y", ast.vfloat_t)])
 }
 
 pub fn eval_rcdt_empty_test() {
-  let term = ast.RcdT([], s0)
+  let term = ast.RcdT([], s)
   let result = eval([], [], term)
   assert result == ast.VRcdT([])
 }
@@ -98,10 +82,10 @@ pub fn eval_rcdt_fields_test() {
   let term =
     ast.RcdT(
       [
-        #("x", ast.int_t(s1), Some(ast.int(42, s3))),
-        #("y", ast.float_t(s2), None),
+        #("x", ast.int_t(s), Some(ast.int(42, s))),
+        #("y", ast.float_t(s), None),
       ],
-      s0,
+      s,
     )
   let result = eval([], [], term)
   assert result
@@ -112,82 +96,87 @@ pub fn eval_rcdt_fields_test() {
 }
 
 pub fn eval_call_undefined_test() {
-  let term = ast.Call("f", [], ast.int_t(s1), s0)
+  let term = ast.Call("f", [], ast.int_t(s), s)
   let result = eval([], [], term)
-  assert result == ast.vcall("f", [], [])
+  assert result == ast.vcall("f", [])
 }
 
 pub fn eval_call_return_none_test() {
   let ffi = [#("f", fn(_) { None })]
-  let term = ast.Call("f", [], ast.int_t(s1), s0)
+  let term = ast.Call("f", [], ast.int_t(s), s)
   let result = eval(ffi, [], term)
-  assert result == ast.vcall("f", [], [])
+  assert result == ast.vcall("f", [])
 }
 
 pub fn eval_call_return_some_test() {
   let ffi = [#("f", fn(_) { Some(ast.vint(42)) })]
-  let term = ast.Call("f", [], ast.int_t(s1), s0)
+  let term = ast.Call("f", [], ast.int_t(s), s)
   let result = eval(ffi, [], term)
   assert result == ast.vint(42)
 }
 
 pub fn eval_call_args_test() {
   let term =
-    ast.Call("f", [ast.int(42, s2), ast.float(3.14, s4)], ast.int_t(s1), s0)
+    ast.Call("f", [ast.int(42, s), ast.float(3.14, s)], ast.int_t(s), s)
   let result = eval([], [], term)
-  assert result == ast.vcall("f", [ast.vint(42), ast.vfloat(3.14)], [])
+  assert result == ast.vcall("f", [ast.vint(42), ast.vfloat(3.14)])
 }
 
 pub fn eval_ann_test() {
-  let term = ast.Ann(ast.int(42, s1), ast.int_t(s2), s0)
+  let term = ast.Ann(ast.int(42, s), ast.int_t(s), s)
   let result = eval([], [], term)
   assert result == ast.vint(42)
 }
 
-pub fn eval_lam_simple_test() {
-  // $fn(x: $Int) => 3.14
-  let term = ast.Lam([], #("x", ast.int_t(s1)), ast.float(3.14, s2), s0)
+pub fn eval_lam_explicit_test() {
+  // $fn(x: $Int) => x
+  let term = ast.Lam(False, #("x", ast.int_t(s)), ast.Var(0, s), s)
   let result = eval([], [], term)
-  assert result == ast.VLam([], [], #("x", ast.vint_t), ast.float(3.14, s2))
+  assert result == ast.VLam(False, #("x", ast.vint_t), #([], ast.Var(0, s)))
 }
 
-pub fn eval_lam_identity_test() {
-  // $fn<a: $Type>(x: a) => x
-  let term =
-    ast.Lam([#("a", ast.Typ(0, s1))], #("x", ast.int_t(s2)), ast.Var(0, s3), s0)
+pub fn eval_lam_implicit_test() {
+  // $fn<x: $Type> => x
+  let term = ast.Lam(True, #("x", ast.int_t(s)), ast.Var(0, s), s)
   let result = eval([], [], term)
-  assert result
-    == ast.VLam([], [#("a", ast.VTyp(0))], #("x", ast.vint_t), ast.Var(0, s3))
-}
-
-pub fn eval_lam_typeof_test() {
-  // $fn<a: $Type>(x: a) => a
-  let term =
-    ast.Lam([#("a", ast.Typ(0, s1))], #("x", ast.int_t(s2)), ast.Var(1, s3), s0)
-  let result = eval([], [], term)
-  assert result
-    == ast.VLam([], [#("a", ast.VTyp(0))], #("x", ast.vint_t), ast.Var(1, s3))
+  assert result == ast.VLam(True, #("x", ast.vint_t), #([], ast.Var(0, s)))
 }
 
 pub fn eval_lam_closure_test() {
-  // let t = $Type; $fn<a: t>(x: a) => x
-  let term =
-    ast.Lam([#("a", ast.Var(0, s1))], #("x", ast.int_t(s2)), ast.Var(0, s3), s0)
-  let result = eval([], [ast.VTyp(0)], term)
-  assert result
-    == ast.VLam(
-      [ast.VTyp(0)],
-      [#("a", ast.VTyp(0))],
-      #("x", ast.vint_t),
-      ast.Var(0, s3),
-    )
+  // let a = $Int; $fn(x: a) => a
+  let term = ast.Lam(False, #("x", ast.Var(0, s)), ast.Var(1, s), s)
+  let env = [ast.vint_t]
+  let result = eval([], env, term)
+  assert result == ast.VLam(False, #("x", ast.vint_t), #(env, ast.Var(1, s)))
+}
+
+pub fn eval_pi_explicit_test() {
+  // $pi(x: $Int) => x
+  let term = ast.Pi(False, #("x", ast.int_t(s)), ast.Var(0, s), s)
+  let result = eval([], [], term)
+  assert result == ast.VPi(False, #("x", ast.vint_t), #([], ast.Var(0, s)))
+}
+
+pub fn eval_pi_implicit_test() {
+  // $pi<x: $Int> => x
+  let term = ast.Pi(True, #("x", ast.int_t(s)), ast.Var(0, s), s)
+  let result = eval([], [], term)
+  assert result == ast.VPi(True, #("x", ast.vint_t), #([], ast.Var(0, s)))
+}
+
+pub fn eval_pi_closure_test() {
+  // let a = $Int; $pi(x: a) => a
+  let term = ast.Pi(False, #("x", ast.Var(0, s)), ast.Var(1, s), s)
+  let env = [ast.vint_t]
+  let result = eval([], env, term)
+  assert result == ast.VPi(False, #("x", ast.vint_t), #(env, ast.Var(1, s)))
 }
 //
 
 // pub fn eval_lam_const_test() {
-//   let term = ast.Lam([], #("x", ast.int_t(s1)), ast.int(42, s2), s0)
+//   let term = ast.Lam([], #("x", ast.int_t(s)), ast.int(42, s), s)
 //   let result = eval([], [], term)
-//   assert result == ast.VLam([], [], #("x", ast.vint_t), ast.int(42, s2))
+//   assert result == ast.VLam([], [], #("x", ast.vint_t), ast.int(42, s))
 // }
 // Lam( implicits: List(#(String, Term)), param: #(String, Term), body: Term, span: Span, )
 // Pi( implicits: List(#(String, Term)), domain: #(String, Term), codomain: Term, span: Span, )

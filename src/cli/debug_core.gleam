@@ -30,8 +30,6 @@ import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
-import syntax/base_lexer.{type Token, Token as TokenCtor, tokenize}
-import syntax/grammar.{type ParseError}
 
 /// Run the debug-core command with the given expression string.
 ///

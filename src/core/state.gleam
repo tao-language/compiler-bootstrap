@@ -7,7 +7,6 @@
 /// Errors accumulate as the type checker progresses, allowing
 /// recovery after type errors.
 import core/ast.{type Value, VTyp}
-import core/shift.{shift_value}
 import core/utils
 import gleam/int
 import gleam/list
@@ -62,8 +61,6 @@ pub type Subst =
 pub type Error {
   VarUndefined(level: Int, span: Span)
   TypeMismatch(#(Value, Span), #(Value, Span))
-  SpineArityMismatch(List(ast.Elim), List(ast.Elim))
-  SpineElimMismatch(ast.Elim, ast.Elim)
   HoleUnsolved(id: Int, span: Span)
   NotAFunction(fun_type: Value, span: Span)
   CtrUndefined(tag: String, span: Span)
@@ -94,7 +91,7 @@ pub fn state_to_env(state: State) -> List(Value) {
 pub fn env_to_state(env: List(Value), ffi: FFI) -> State {
   let vars =
     list.index_map(env, fn(value, i) {
-      let name = ast.value_to_string(ast.vvar(i, []))
+      let name = ast.value_to_string(ast.vvar(i))
       #(name, value, VTyp(i))
     })
   State(..new_state, vars: vars, ffi: ffi)
@@ -111,14 +108,4 @@ pub fn with_err_list(state: State, errors: List(Error)) -> State {
 pub fn new_hole(state: State) -> #(Int, State) {
   let id = state.hole_counter
   #(id, State(..state, hole_counter: id + 1))
-}
-
-pub fn vars_shift(state: State, delta: Int) -> State {
-  State(
-    ..state,
-    vars: list.map(state.vars, fn(var) {
-      let #(name, value, type_val) = var
-      #(name, shift_value(value, delta), shift_value(type_val, delta))
-    }),
-  )
 }
