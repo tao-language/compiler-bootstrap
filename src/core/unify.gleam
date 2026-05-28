@@ -30,19 +30,20 @@ pub fn unify(
   state: State,
   a: #(ast.Value, Span),
   b: #(ast.Value, Span),
-) -> State {
+) -> #(ast.Value, State) {
   let #(value1, s1) = a
   let #(value2, s2) = b
   case value1, value2 {
-    ast.VTyp(u1), ast.VTyp(u2) if u1 == u2 -> state
-    ast.VLit(v1), ast.VLit(v2) if v1 == v2 -> state
-    ast.VLitT(v1), ast.VLitT(v2) if v1 == v2 -> state
+    ast.VTyp(u1), ast.VTyp(u2) if u1 == u2 -> #(value1, state)
+    ast.VLit(v1), ast.VLit(v2) if v1 == v2 -> #(value1, state)
+    ast.VLitT(v1), ast.VLitT(v2) if v1 == v2 -> #(value1, state)
     ast.VCtr(t1, a1), ast.VCtr(t2, a2) if t1 == t2 ->
       unify(state, #(a1, s1), #(a2, s2))
-    ast.VRcd(fields1), ast.VRcd(fields2) ->
-      unify_rcd(state, fields1, fields2, s1)
-    ast.VRcdT(fields1), ast.VRcdT(fields2) ->
-      unify_rcd_type(state, fields1, fields2, s1)
+    // ast.VRcd(fields1), ast.VRcd(fields2) ->
+    //   unify_rcd(state, fields1, fields2, s1)
+    // ast.VRcdT(fields1), ast.VRcdT(fields2) ->
+    //   unify_rcd_type(state, fields1, fields2, s1)
+    ast.VNeut(n1), ast.VNeut(n2) -> unify_neut(state, #(n1, s1), #(n2, s2))
     ast.VLam(i1, #(_, a1), #(env1, b1)), ast.VLam(i2, #(_, a2), #(env2, b2)) -> {
       // // Evaluate both bodies with their respective environments to get Values,
       // // then unify the resulting values.
@@ -67,90 +68,89 @@ pub fn unify(
     ast.VUnion(vars1), ast.VUnion(vars2) -> {
       todo
     }
-    ast.VNeut(n1), ast.VNeut(n2) -> unify_neut(state, #(n1, s1), #(n2, s2))
-    ast.VErr, ast.VErr -> state
-    _, _ -> with_err(state, TypeMismatch(a, b))
+    ast.VErr, ast.VErr -> #(value1, state)
+    _, _ -> #(ast.VErr, with_err(state, TypeMismatch(a, b)))
   }
 }
 
-/// Unify two record field lists by name and type.
-fn unify_rcd(
-  state: State,
-  fields1: List(#(String, ast.Value)),
-  fields2: List(#(String, ast.Value)),
-  span: Span,
-) -> State {
-  case fields1, fields2 {
-    [], [] -> state
-    [f1, ..rest1], [f2, ..rest2] -> {
-      case f1.0 == f2.0 {
-        True -> {
-          let state = unify(state, #(f1.1, span), #(f2.1, span))
-          unify_rcd(state, rest1, rest2, span)
-        }
-        False -> with_err(state, TypeMismatch(#(f1.1, span), #(f2.1, span)))
-      }
-    }
-    _, _ ->
-      with_err(
-        state,
-        TypeMismatch(#(ast.VRcd(fields1), span), #(ast.VRcd(fields2), span)),
-      )
-  }
-}
+// /// Unify two record field lists by name and type.
+// fn unify_rcd(
+//   state: State,
+//   fields1: List(#(String, ast.Value)),
+//   fields2: List(#(String, ast.Value)),
+//   span: Span,
+// ) -> #(ast.Value, State) {
+//   case fields1, fields2 {
+//     [], [] -> state
+//     [f1, ..rest1], [f2, ..rest2] -> {
+//       case f1.0 == f2.0 {
+//         True -> {
+//           let state = unify(state, #(f1.1, span), #(f2.1, span))
+//           unify_rcd(state, rest1, rest2, span)
+//         }
+//         False -> with_err(state, TypeMismatch(#(f1.1, span), #(f2.1, span)))
+//       }
+//     }
+//     _, _ ->
+//       with_err(
+//         state,
+//         TypeMismatch(#(ast.VRcd(fields1), span), #(ast.VRcd(fields2), span)),
+//       )
+//   }
+// }
 
-/// Unify two record type field lists by name and type.
-fn unify_rcd_type(
-  state: State,
-  fields1: List(#(String, ast.Value, Option(ast.Value))),
-  fields2: List(#(String, ast.Value, Option(ast.Value))),
-  span: Span,
-) -> State {
-  case fields1, fields2 {
-    [], [] -> state
-    [f1, ..rest1], [f2, ..rest2] -> {
-      case f1.0 == f2.0 {
-        True -> {
-          let state = unify(state, #(f1.1, span), #(f2.1, span))
-          let state = unify_option_value(state, f1.2, f2.2, span)
-          unify_rcd_type(state, rest1, rest2, span)
-        }
-        False -> with_err(state, TypeMismatch(#(f1.1, span), #(f2.1, span)))
-      }
-    }
-    _, _ ->
-      with_err(
-        state,
-        TypeMismatch(#(ast.VRcdT(fields1), span), #(ast.VRcdT(fields2), span)),
-      )
-  }
-}
+// /// Unify two record type field lists by name and type.
+// fn unify_rcd_type(
+//   state: State,
+//   fields1: List(#(String, ast.Value, Option(ast.Value))),
+//   fields2: List(#(String, ast.Value, Option(ast.Value))),
+//   span: Span,
+// ) -> #(ast.Value, State) {
+//   case fields1, fields2 {
+//     [], [] -> state
+//     [f1, ..rest1], [f2, ..rest2] -> {
+//       case f1.0 == f2.0 {
+//         True -> {
+//           let state = unify(state, #(f1.1, span), #(f2.1, span))
+//           let state = unify_option_value(state, f1.2, f2.2, span)
+//           unify_rcd_type(state, rest1, rest2, span)
+//         }
+//         False -> with_err(state, TypeMismatch(#(f1.1, span), #(f2.1, span)))
+//       }
+//     }
+//     _, _ ->
+//       with_err(
+//         state,
+//         TypeMismatch(#(ast.VRcdT(fields1), span), #(ast.VRcdT(fields2), span)),
+//       )
+//   }
+// }
 
-/// Unify two optional values.
-fn unify_option_value(
-  state: State,
-  opt1: Option(ast.Value),
-  opt2: Option(ast.Value),
-  span: Span,
-) -> State {
-  case opt1, opt2 {
-    Some(v1), Some(v2) -> unify(state, #(v1, span), #(v2, span))
-    None, None -> state
-    _, _ ->
-      with_err(
-        state,
-        TypeMismatch(#(ast.VRcdT([#("x", ast.VErr, opt1)]), span), #(
-          ast.VRcdT([#("x", ast.VErr, opt2)]),
-          span,
-        )),
-      )
-  }
-}
+// /// Unify two optional values.
+// fn unify_option_value(
+//   state: State,
+//   opt1: Option(ast.Value),
+//   opt2: Option(ast.Value),
+//   span: Span,
+// ) -> State {
+//   case opt1, opt2 {
+//     Some(v1), Some(v2) -> unify(state, #(v1, span), #(v2, span))
+//     None, None -> state
+//     _, _ ->
+//       with_err(
+//         state,
+//         TypeMismatch(#(ast.VRcdT([#("x", ast.VErr, opt1)]), span), #(
+//           ast.VRcdT([#("x", ast.VErr, opt2)]),
+//           span,
+//         )),
+//       )
+//   }
+// }
 
 fn unify_neut(
   state: State,
   a: #(ast.Neut, Span),
   b: #(ast.Neut, Span),
-) -> State {
+) -> #(ast.Value, State) {
   todo
 }

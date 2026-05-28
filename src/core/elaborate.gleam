@@ -56,8 +56,7 @@ pub fn check(
   expected: #(ast.Value, Span),
 ) -> #(ast.Term, ast.Value, State) {
   let #(term, type_, state) = infer(state, term)
-  let state = unify(state, #(type_, ast.get_span(term)), expected)
-  let type_ = unwrap(state.subst, type_)
+  let #(type_, state) = unify(state, #(type_, ast.get_span(term)), expected)
   #(term, type_, state)
 }
 
