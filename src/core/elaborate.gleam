@@ -5,7 +5,7 @@
 /// thin wrapper that synthesizes the term then unifies its type with
 /// the expected type.
 import core/ast
-import core/evaluate.{evaluate}
+import core/eval.{eval}
 import core/state.{type State, state_to_env, with_err}
 import core/unify.{unify}
 import core/unwrap.{unwrap}
@@ -67,14 +67,14 @@ fn check_on_term(
 ) -> #(ast.Term, #(ast.Term, ast.Value), State) {
   let env = state_to_env(state)
   let #(type_, _, state) = infer(state, type_)
-  let type_val = evaluate(state.ffi, env, type_)
+  let type_val = eval(state.ffi, env, type_)
   let #(term, type_val, state) =
     check(state, term, #(type_val, ast.get_span(type_)))
   #(term, #(type_, type_val), state)
 }
 
 /// Infer a type universe ($Type<n>).
-/// $Type<n> evaluateuates to VTyp(n), with type VTyp(n+1).
+/// $Type<n> evaluates to VTyp(n), with type VTyp(n+1).
 fn infer_typ(
   state: State,
   level: Int,
@@ -219,7 +219,7 @@ fn infer_call(
   let #(args, state) = check_call_args(state, args)
   let #(return_type, _, state) = infer(state, return_type)
   let env = state_to_env(state)
-  let return_type_val = evaluate(state.ffi, env, return_type)
+  let return_type_val = eval(state.ffi, env, return_type)
   #(ast.Call(name, args, return_type, span), return_type_val, state)
 }
 

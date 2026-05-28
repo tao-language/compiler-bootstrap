@@ -3,7 +3,7 @@
 /// Usage: gleam run debug-core "expression"
 ///
 /// This command takes a Core expression string and runs the entire
-/// pipeline (tokenize → parse → infer → evaluate), printing structured
+/// pipeline (tokenize → parse → infer → eval), printing structured
 /// debug information at each stage.
 ///
 /// ## Output Format
@@ -18,11 +18,11 @@
 /// 4. PARSE_ERRORS — Any parse errors (empty if none)
 /// 5. DEBRUIJN — The de Bruijn-converted Term (via term_to_debruijn)
 /// 6. INFERENCE — Inferred value, type, and final state
-/// 7. EVALUATION — Evaluated result value
+/// 7. EVALUATION — evald result value
 /// 8. ERRORS — Type checking errors (empty if none)
 import core/ast
 import core/elaborate.{infer}
-import core/evaluate.{evaluate}
+import core/eval.{eval}
 import core/state.{type Error, type State}
 import core/syntax
 import gleam/int
@@ -77,8 +77,8 @@ pub fn run(expression: String, trace_parser: Bool, trace_infer: Bool) -> Nil {
   // let state = initial_state(ffi_entries())
   // let #(result_term, inferred_type, final_state) = infer(state, term)
 
-  // // Step 6: Evaluate (normalize) with FFI
-  // let eval_result = evaluate([], ffi_entries(), result_term)
+  // // Step 6: eval (normalize) with FFI
+  // let eval_result = eval([], ffi_entries(), result_term)
   // io.println("\n=== EVALUATION ===")
   // io.println("  Result: " <> eval_value_to_string(eval_result))
 
@@ -259,24 +259,24 @@ pub fn run(expression: String, trace_parser: Bool, trace_infer: Bool) -> Nil {
 //   }
 // }
 
-// /// Recursively evaluate and print each App step.
+// /// Recursively eval and print each App step.
 // fn debug_eval(state: State, term: Term, depth: Int) -> Value {
 //   let env = list.map(state.vars, fn(v) { v.1.0 })
 //   let ffi = state.ffi
 //   let indent = string.repeat("  ", depth)
-//   io.println(indent <> "evaluate: " <> term_short(term))
+//   io.println(indent <> "eval: " <> term_short(term))
 
 //   case term {
 //     App(fun, arg, _) -> {
-//       let fun_val = evaluate(env, ffi, fun)
+//       let fun_val = eval(env, ffi, fun)
 //       io.println(indent <> "  fun => " <> eval_value_to_string(fun_val))
-//       let arg_val = evaluate(env, ffi, arg)
+//       let arg_val = eval(env, ffi, arg)
 //       io.println(indent <> "  arg => " <> eval_value_to_string(arg_val))
 //       let result = do_app(env, ffi, fun_val, arg_val)
 //       io.println(indent <> "  => " <> eval_value_to_string(result))
 //       result
 //     }
-//     _ -> evaluate(env, ffi, term)
+//     _ -> eval(env, ffi, term)
 //   }
 // }
 
