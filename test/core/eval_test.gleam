@@ -218,7 +218,39 @@ pub fn eval_match_empty_test() {
   let result = eval([], [], term)
   assert result == ast.VErr
 }
-// Match(arg: Term, cases: List(Case), span: Span)
-//
 
-// Err(message: String, span: Span)
+pub fn eval_match_first_test() {
+  // Match first case with no bindings, base test
+  todo
+}
+
+pub fn eval_match_second_test() {
+  // Match second case with no bindings, inductive test
+  todo
+}
+
+pub fn eval_match_bindings_test() {
+  // Match case with 2 bindings, DeBruijn/env test
+  todo
+}
+
+pub fn eval_match_guard_fail_test() {
+  // Match case pattern but fail guard pattern
+  todo
+}
+
+pub fn eval_match_guard_pass_test() {
+  // Match both case and guard patterns
+  todo
+}
+
+pub fn eval_match_guard_bindings_test() {
+  // Match case with 1 binding and guard with 2 bindings
+  todo
+}
+
+pub fn eval_err_test() {
+  let term = ast.Err(s)
+  let result = eval([], [], term)
+  assert result == ast.VErr
+}

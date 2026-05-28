@@ -90,13 +90,24 @@ fn do_match(
   arg: ast.Value,
   cases: List(ast.Case),
 ) -> ast.Value {
-  case arg, cases {
-    ast.VNeut(arg_neut), _ -> ast.vmatch(env, arg_neut, cases)
-    _, [] -> ast.VErr
-    _, [case_, ..cases] ->
+  case arg {
+    ast.VNeut(arg_neut) -> ast.vmatch(env, arg_neut, cases)
+    _ -> do_match_case_list(ffi, env, arg, cases)
+  }
+}
+
+fn do_match_case_list(
+  ffi: FFI,
+  env: ast.Env,
+  arg: ast.Value,
+  cases: List(ast.Case),
+) -> ast.Value {
+  case cases {
+    [] -> ast.VErr
+    [case_, ..cases] ->
       case do_match_case(ffi, env, arg, case_) {
         Some(env) -> eval(ffi, env, case_.body)
-        None -> do_match(ffi, env, arg, cases)
+        None -> do_match_case_list(ffi, env, arg, cases)
       }
   }
 }
@@ -107,7 +118,7 @@ fn do_match_case(
   arg: ast.Value,
   case_: ast.Case,
 ) -> Option(ast.Env) {
-  case do_match_pattern(case_.pattern, arg) {
+  case match_pattern(case_.pattern, arg) {
     Some(bindings) -> {
       let env = list.append(bindings, env)
       case case_.guard {
@@ -126,13 +137,13 @@ fn do_match_guard(
 ) -> Option(ast.Env) {
   let #(guard_term, guard_pattern) = guard
   let guard_value = eval(ffi, env, guard_term)
-  case do_match_pattern(guard_pattern, guard_value) {
+  case match_pattern(guard_pattern, guard_value) {
     Some(bindings) -> Some(list.append(bindings, env))
     None -> None
   }
 }
 
-fn do_match_pattern(
+pub fn match_pattern(
   pattern: ast.Pattern,
   value: ast.Value,
 ) -> Option(List(ast.Value)) {
@@ -142,14 +153,22 @@ fn do_match_pattern(
     ast.PLit(k1, _), ast.VLit(k2) if k1 == k2 -> Some([])
     ast.PLitT(k1, _), ast.VLitT(k2) if k1 == k2 -> Some([])
     ast.PAlias(_, pattern, _), _ ->
-      case do_match_pattern(pattern, value) {
+      case match_pattern(pattern, value) {
         Some(bindings) -> Some([value, ..bindings])
         None -> None
       }
     ast.PCtr(tag1, pattern, _), ast.VCtr(tag2, arg) if tag1 == tag2 ->
-      do_match_pattern(pattern, arg)
-    ast.PRcd(pfields, _), ast.VRcd(vfields) -> todo
+      match_pattern(pattern, arg)
+    ast.PRcd(pfields, _), ast.VRcd(vfields) ->
+      match_pattern_rcd(pfields, vfields)
     ast.PError(_), ast.VErr -> Some([])
     _, _ -> None
   }
+}
+
+fn match_pattern_rcd(
+  pfields: List(#(String, ast.Pattern)),
+  vfields: List(#(String, ast.Value)),
+) -> Option(List(ast.Value)) {
+  todo
 }
