@@ -185,20 +185,20 @@ pub fn eval_app_not_a_function_test() {
   assert result == ast.VErr
 }
 
-pub fn eval_app_beta_reduction_test() {
-  // ($fn(x: $Int) => x) 42 ~> 42
-  let fun = ast.Lam(False, #("x", ast.int_t(s)), ast.Var(0, s), s)
-  let term = ast.App(fun, ast.int(42, s), s)
-  let result = eval([], [], term)
-  assert result == ast.vint(42)
-}
-
 pub fn eval_app_neutral_test() {
   // ?10 42 ~> ?10 42
   let fun = ast.Hole(10, s)
   let term = ast.App(fun, ast.int(42, s), s)
   let result = eval([], [], term)
   assert result == ast.vapp(ast.NHole(10), ast.vint(42))
+}
+
+pub fn eval_app_beta_reduction_test() {
+  // ($fn(x: $Int) => x) 42 ~> 42
+  let fun = ast.Lam(False, #("x", ast.int_t(s)), ast.Var(0, s), s)
+  let term = ast.App(fun, ast.int(42, s), s)
+  let result = eval([], [], term)
+  assert result == ast.vint(42)
 }
 
 pub fn eval_app_implicit_expansion_test() {
@@ -210,9 +210,15 @@ pub fn eval_app_implicit_expansion_test() {
   let result = eval([], [], term)
   assert result == ast.vapp(ast.NApp(ast.NHole(10), ast.VErr), ast.vint(42))
 }
-// App(fun: Term, arg: Term, span: Span)
-//
 
 // TypeDef( params: List(#(String, Term)), constructors: List(#(String, #(List(String), Term, Term), Span)), span: Span, )
+
+pub fn eval_match_empty_test() {
+  let term = ast.Match(ast.int(42, s), [], s)
+  let result = eval([], [], term)
+  assert result == ast.VErr
+}
 // Match(arg: Term, cases: List(Case), span: Span)
+//
+
 // Err(message: String, span: Span)

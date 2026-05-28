@@ -298,6 +298,10 @@ pub fn vcall(name: String, args: List(Value)) -> Value {
   VNeut(NCall(name, args))
 }
 
+pub fn vmatch(env: Env, arg: Neut, cases: List(Case)) -> Value {
+  VNeut(NMatch(env, arg, cases))
+}
+
 pub fn vint(value: Int) -> Value {
   VLit(Int(value))
 }
