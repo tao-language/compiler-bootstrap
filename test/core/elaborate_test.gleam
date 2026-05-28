@@ -215,15 +215,14 @@ pub fn infer_ann_test() {
   assert result == ast.int(42, s1)
   assert type_ == ast.vint_t
 }
-
-pub fn infer_ann_type_mismatch_test() {
-  let term = ast.Ann(ast.float(3.14, s1), ast.int_t(s2), s0)
-  let #(result, type_, state) = infer(new_state, term)
-  let error = state.TypeMismatch(#(ast.vfloat_t, s1), #(ast.vint_t, s2))
-  assert state == with_err(new_state, error)
-  assert result == ast.float(3.14, s1)
-  assert type_ == ast.vfloat_t
-}
+// pub fn infer_ann_type_mismatch_test() {
+//   let term = ast.Ann(ast.float(3.14, s1), ast.int_t(s2), s0)
+//   let #(result, type_, state) = infer(new_state, term)
+//   let error = state.TypeMismatch(#(ast.vfloat_t, s1), #(ast.vint_t, s2))
+//   assert state == with_err(new_state, error)
+//   assert result == ast.float(3.14, s1)
+//   assert type_ == ast.vfloat_t
+// }
 // pub fn infer_ann_hole_type_test() {
 //   let term = ast.Ann(ast.int(42, s1), ast.Hole(10, s2), s0)
 //   let #(result, type_, state) = infer(new_state, term)

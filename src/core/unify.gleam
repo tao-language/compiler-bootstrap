@@ -37,32 +37,21 @@ pub fn unify(
     ast.VTyp(u1), ast.VTyp(u2) if u1 == u2 -> #(value1, state)
     ast.VLit(v1), ast.VLit(v2) if v1 == v2 -> #(value1, state)
     ast.VLitT(v1), ast.VLitT(v2) if v1 == v2 -> #(value1, state)
-    ast.VCtr(t1, a1), ast.VCtr(t2, a2) if t1 == t2 ->
-      unify(state, #(a1, s1), #(a2, s2))
-    // ast.VRcd(fields1), ast.VRcd(fields2) ->
-    //   unify_rcd(state, fields1, fields2, s1)
-    // ast.VRcdT(fields1), ast.VRcdT(fields2) ->
-    //   unify_rcd_type(state, fields1, fields2, s1)
+    ast.VCtr(t1, a1), ast.VCtr(t2, a2) if t1 == t2 -> {
+      let #(arg, state) = unify(state, #(a1, s1), #(a2, s2))
+      #(ast.VCtr(t1, arg), state)
+    }
+    ast.VRcd(fields1), ast.VRcd(fields2) ->
+      // unify_rcd(state, fields1, fields2, s1)
+      todo
+    ast.VRcdT(fields1), ast.VRcdT(fields2) ->
+      // unify_rcd_type(state, fields1, fields2, s1)
+      todo
     ast.VNeut(n1), ast.VNeut(n2) -> unify_neut(state, #(n1, s1), #(n2, s2))
     ast.VLam(i1, #(_, a1), #(env1, b1)), ast.VLam(i2, #(_, a2), #(env2, b2)) -> {
-      // // Evaluate both bodies with their respective environments to get Values,
-      // // then unify the resulting values.
-      // // The param gets a dummy value of vvar(0, []), shifted to account for
-      // // the env's existing binders.
-      // let param_val = ast.vvar(0, [])
-      // let shifted_param = shift.shift_value(param_val, list.length(env1))
-      // let env1_with_param = list.append(env1, [shifted_param])
-      // let body_val1 = eval_vlam_body(state.ffi, env1_with_param, body1)
-      // let shifted_param2 = shift.shift_value(param_val, list.length(env2))
-      // let env2_with_param = list.append(env2, [shifted_param2])
-      // let body_val2 = eval_vlam_body(state.ffi, env2_with_param, body2)
-      // unify_values(state, #(body_val1, span1), #(body_val2, span2))
       todo
     }
     ast.VPi(i1, #(_, a1), #(env1, b1)), ast.VPi(i2, #(_, a2), #(env2, b2)) -> {
-      // let state = unify_string_value_pairs(state, imp1, imp2, span1)
-      // let state = unify_values(state, #(dom1.1, span1), #(dom2.1, span2))
-      // unify_values(state, #(cod1, span1), #(cod2, span2))
       todo
     }
     ast.VUnion(vars1), ast.VUnion(vars2) -> {
