@@ -173,19 +173,16 @@ fn match_pattern_rcd(
   case pfields {
     [] -> Some([])
     [#(pname, p), ..rest] -> {
-      case list.find(vfields, fn(field) {
-        let #(vname, _) = field
-        vname == pname
-      }) {
+      case list.key_find(vfields, pname) {
         Error(_) -> None
-        Ok(#(_, v)) ->
-          case match_pattern(p, v) {
-            Some(bindings) ->
-              case match_pattern_rcd(rest, vfields) {
-                Some(rest_bindings) -> Some(list.append(bindings, rest_bindings))
-                None -> None
-              }
-            None -> None
+        Ok(v) ->
+          case match_pattern(p, v), match_pattern_rcd(rest, vfields) {
+            // Prepend to respect DeBruijn index ordering.
+            // For example, in `{x: a, y: b, z: c}`
+            //    a is #2, b is #1, c is #0
+            // So they should bind like `[c, b, a]`
+            Some(xs), Some(ys) -> Some(list.append(ys, xs))
+            _, _ -> None
           }
       }
     }

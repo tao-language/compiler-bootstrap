@@ -217,11 +217,6 @@ pub fn value_to_string(value: Value) -> String {
 
 // SYNTAX SUGAR
 
-/// Syntax sugar for `_@name`.
-pub fn pvar(name: String, span: Span) -> Pattern {
-  PAlias(name, PAny(span), span)
-}
-
 pub fn int(value: Int, span: Span) -> Term {
   Lit(Int(value), span)
 }
@@ -333,3 +328,16 @@ pub const vu64 = VLitT(U64)
 pub const vf32 = VLitT(F32)
 
 pub const vf64 = VLitT(F64)
+
+/// Syntax sugar for `_@name`.
+pub fn pvar(name: String, span: Span) -> Pattern {
+  PAlias(name, PAny(span), span)
+}
+
+pub fn pint(value: Int, span: Span) -> Pattern {
+  PLit(Int(value), span)
+}
+
+pub fn pfloat(value: Float, span: Span) -> Pattern {
+  PLit(Float(value), span)
+}
