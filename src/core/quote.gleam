@@ -1,84 +1,61 @@
 /// Quote — Convert Values back to Terms
-///
-/// The `quote` module reifies evaluated values (De Bruijn levels) back into
-/// syntax terms (De Bruijn indices). This is used for:
-/// - Displaying inferred types as readable terms
-/// - Normalization by evaluation results
-/// - Error message generation
-///
-/// ## How Quoting Works
-///
-/// Values use De Bruijn levels where `HVar(0)` is the innermost binder.
-/// Terms use De Bruijn indices where `Var(0)` is the innermost binder.
-///
-/// When quoting a value, we need to know the number of binders above the
-/// value's scope to convert levels to indices correctly.
-///
-/// Because both values and terms use **innermost-first** ordering, the
-/// conversion is: `index = lvl - 1 - absolute_level`.
-///
-/// `lvl` tracks the depth of binders in the quoting context. When entering
-/// a lambda body or Pi codomain, `lvl` is incremented by 1.
-import core/ast
 import core/eval.{eval}
 import core/state.{type FFI}
-import gleam/int
+import core/term.{type Term} as tm
+import core/value.{type Neut, type Value} as v
 import gleam/list
 import gleam/option
-import syntax/span.{type Span}
 
-pub fn quote(ffi: FFI, size: Int, value: ast.Value, span: Span) -> ast.Term {
+pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
   case value {
-    ast.VTyp(universe) -> ast.Typ(universe, span)
-    ast.VLit(lit) -> ast.Lit(lit, span)
-    ast.VLitT(lit) -> ast.LitT(lit, span)
-    ast.VCtr(tag, arg_val) ->
-      ast.Ctr(tag, quote(ffi, size, arg_val, span), span)
-    ast.VRcd(fields_val) -> {
+    v.Typ(universe) -> tm.Typ(universe)
+    v.Lit(lit) -> tm.Lit(lit)
+    v.LitT(lit) -> tm.LitT(lit)
+    v.Ctr(tag, arg_val) -> tm.Ctr(tag, quote(ffi, size, arg_val))
+    v.Rcd(fields_val) -> {
       let fields =
         list.map(fields_val, fn(field) {
           let #(name, value) = field
-          #(name, quote(ffi, size, value, span))
+          #(name, quote(ffi, size, value))
         })
-      ast.Rcd(fields, span)
+      tm.Rcd(fields)
     }
-    ast.VRcdT(fields_val) -> {
+    v.RcdT(fields_val) -> {
       let fields =
         list.map(fields_val, fn(field) {
           let #(name, value, default_val) = field
-          let default =
-            option.map(default_val, fn(v) { quote(ffi, size, v, span) })
-          #(name, quote(ffi, size, value, span), default)
+          let default = option.map(default_val, fn(v) { quote(ffi, size, v) })
+          #(name, quote(ffi, size, value), default)
         })
-      ast.RcdT(fields, span)
+      tm.RcdT(fields)
     }
-    ast.VNeut(neut) -> quote_neut(ffi, size, neut, span)
-    ast.VLam(implicit, #(name, param_val), #(env, body)) -> {
-      let param = quote(ffi, size, param_val, span)
+    v.Neut(neut) -> quote_neut(ffi, size, neut)
+    v.Lam(implicit, #(name, param_val), #(env, body)) -> {
+      let param = quote(ffi, size, param_val)
       let body_val = eval(ffi, [param_val, ..env], body)
-      let body = quote(ffi, size, body_val, span)
-      ast.Lam(implicit, #(name, param), body, span)
+      let body = quote(ffi, size, body_val)
+      tm.Lam(implicit, #(name, param), body)
     }
-    ast.VPi(implicit, #(name, param_val), #(env, body)) -> {
-      let param = quote(ffi, size, param_val, span)
+    v.Pi(implicit, #(name, param_val), #(env, body)) -> {
+      let param = quote(ffi, size, param_val)
       let body_val = eval(ffi, [param_val, ..env], body)
-      let body = quote(ffi, size, body_val, span)
-      ast.Pi(implicit, #(name, param), body, span)
+      let body = quote(ffi, size, body_val)
+      tm.Pi(implicit, #(name, param), body)
     }
-    ast.VFix(name, #(env, body)) -> {
+    v.Fix(name, #(env, body)) -> {
       todo
     }
-    ast.VUnion(variants) -> {
+    v.Union(variants) -> {
       todo
     }
-    ast.VErr -> ast.Err(span)
+    v.Err -> tm.Err
   }
 }
 
-fn quote_neut(ffi: FFI, size: Int, neut: ast.Neut, span: Span) -> ast.Term {
+fn quote_neut(ffi: FFI, size: Int, neut: Neut) -> Term {
   case neut {
-    ast.NVar(level) -> ast.Var(size - level - 1, span)
-    ast.NHole(id) -> ast.Hole(id, span)
+    v.NVar(level) -> tm.Var(size - level - 1)
+    v.NHole(id) -> tm.Hole(id)
     _ -> {
       echo neut
       todo

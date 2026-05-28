@@ -1,36 +1,37 @@
-import core/ast
 import core/state.{type FFI}
+import core/term.{type Case, type Pattern, type Term} as tm
 import core/utils
+import core/value.{type Env, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
 
-pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
+pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
   case term {
-    ast.Typ(universe, _) -> ast.VTyp(universe)
-    ast.Hole(id, _) -> ast.vhole(id)
-    ast.Lit(value, _) -> ast.VLit(value)
-    ast.LitT(value, _) -> ast.VLitT(value)
-    ast.Var(index, _) ->
+    tm.Typ(universe) -> v.Typ(universe)
+    tm.Hole(id) -> v.hole(id)
+    tm.Lit(value) -> v.Lit(value)
+    tm.LitT(value) -> v.LitT(value)
+    tm.Var(index) ->
       case utils.list_at(env, index) {
         Some(value) -> value
-        None -> ast.VErr
+        None -> v.Err
       }
-    ast.Ctr(tag, arg, _) -> ast.VCtr(tag, eval(ffi, env, arg))
-    ast.Rcd(fields, _) ->
-      ast.VRcd(
+    tm.Ctr(tag, arg) -> v.Ctr(tag, eval(ffi, env, arg))
+    tm.Rcd(fields) ->
+      v.Rcd(
         list.map(fields, fn(field) {
           let #(name, term) = field
           #(name, eval(ffi, env, term))
         }),
       )
-    ast.RcdT(fields, _) ->
-      ast.VRcdT(
+    tm.RcdT(fields) ->
+      v.RcdT(
         list.map(fields, fn(field) {
           let #(name, term, default) = field
           #(name, eval(ffi, env, term), option.map(default, eval(ffi, env, _)))
         }),
       )
-    ast.Call(name, args, _, _) -> {
+    tm.Call(name, args, _) -> {
       let args_val = list.map(args, eval(ffi, env, _))
       let result = case list.key_find(ffi, name) {
         Ok(call) -> call(args_val)
@@ -38,72 +39,67 @@ pub fn eval(ffi: FFI, env: ast.Env, term: ast.Term) -> ast.Value {
       }
       case result {
         Some(value) -> value
-        None -> ast.vcall(name, args_val)
+        None -> v.call(name, args_val)
       }
     }
-    ast.Ann(term, _, _) -> eval(ffi, env, term)
-    ast.Lam(implicit, #(name, param), body, _) -> {
+    tm.Ann(term, _) -> eval(ffi, env, term)
+    tm.Lam(implicit, #(name, param), body) -> {
       let param_val = eval(ffi, env, param)
-      ast.VLam(implicit, #(name, param_val), #(env, body))
+      v.Lam(implicit, #(name, param_val), #(env, body))
     }
-    ast.Pi(implicit, #(name, domain), codomain, _) -> {
+    tm.Pi(implicit, #(name, domain), codomain) -> {
       let domain_val = eval(ffi, env, domain)
-      ast.VPi(implicit, #(name, domain_val), #(env, codomain))
+      v.Pi(implicit, #(name, domain_val), #(env, codomain))
     }
-    ast.Fix(name, body, _) -> ast.VFix(name, #(env, body))
-    ast.App(fun, arg, _) -> {
+    tm.Fix(name, body) -> v.Fix(name, #(env, body))
+    tm.App(fun, arg) -> {
       let fun_val = eval(ffi, env, fun)
       let arg_val = eval(ffi, env, arg)
       do_app(ffi, fun_val, arg_val)
     }
-    ast.Union(variants, _) -> {
+    tm.Union(variants) -> {
       todo
     }
-    ast.Match(arg, cases, _) -> {
+    tm.Match(arg, cases) -> {
       let arg_val = eval(ffi, env, arg)
       do_match(ffi, env, arg_val, cases)
     }
-    ast.Err(_) -> ast.VErr
+    tm.Err -> v.Err
   }
 }
 
-fn do_app(ffi: FFI, fun: ast.Value, arg: ast.Value) -> ast.Value {
+fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value {
   case fun {
     // Neutral application
-    ast.VNeut(neut_fun) -> ast.vapp(neut_fun, arg)
+    v.Neut(neut_fun) -> v.app(neut_fun, arg)
     // Explicit parameter: β-reduction
-    ast.VLam(False, _, #(env, body)) -> eval(ffi, [arg, ..env], body)
+    v.Lam(False, _, #(env, body)) -> eval(ffi, [arg, ..env], body)
     // Implicit parameter: implicit expansion
-    ast.VLam(True, param, #(env, body)) -> {
+    v.Lam(True, param, #(env, body)) -> {
       // Implicit parameters are expanded and solved during elaboration,
       // expand into an error since there's no additional information.
-      let fun = ast.VLam(False, param, #([ast.VErr, ..env], body))
-      do_app(ffi, do_app(ffi, fun, ast.VErr), arg)
+      let fun = v.Lam(False, param, #([v.Err, ..env], body))
+      do_app(ffi, do_app(ffi, fun, v.Err), arg)
     }
-    _ -> ast.VErr
+    _ -> v.Err
   }
 }
 
-fn do_match(
-  ffi: FFI,
-  env: ast.Env,
-  arg: ast.Value,
-  cases: List(ast.Case),
-) -> ast.Value {
+fn do_match(ffi: FFI, env: Env, arg: Value, cases: List(Case)) -> Value {
   case arg {
-    ast.VNeut(arg_neut) -> ast.vmatch(env, arg_neut, cases)
+    v.Neut(arg_neut) -> v.match(env, arg_neut, cases)
     _ -> do_match_case_list(ffi, env, arg, cases)
   }
 }
 
 fn do_match_case_list(
   ffi: FFI,
-  env: ast.Env,
-  arg: ast.Value,
-  cases: List(ast.Case),
-) -> ast.Value {
+  env: Env,
+  arg: Value,
+  cases: List(Case),
+) -> Value {
   case cases {
-    [] -> ast.VErr
+    [] -> v.Err
     [case_, ..cases] ->
       case do_match_case(ffi, env, arg, case_) {
         Some(env) -> eval(ffi, env, case_.body)
@@ -112,12 +108,7 @@ fn do_match_case_list(
   }
 }
 
-fn do_match_case(
-  ffi: FFI,
-  env: ast.Env,
-  arg: ast.Value,
-  case_: ast.Case,
-) -> Option(ast.Env) {
+fn do_match_case(ffi: FFI, env: Env, arg: Value, case_: Case) -> Option(Env) {
   case match_pattern(case_.pattern, arg) {
     Some(bindings) -> {
       let env = list.append(bindings, env)
@@ -130,11 +121,7 @@ fn do_match_case(
   }
 }
 
-fn do_match_guard(
-  ffi: FFI,
-  env: ast.Env,
-  guard: #(ast.Term, ast.Pattern),
-) -> Option(ast.Env) {
+fn do_match_guard(ffi: FFI, env: Env, guard: #(Term, Pattern)) -> Option(Env) {
   let #(guard_term, guard_pattern) = guard
   let guard_value = eval(ffi, env, guard_term)
   case match_pattern(guard_pattern, guard_value) {
@@ -143,33 +130,29 @@ fn do_match_guard(
   }
 }
 
-pub fn match_pattern(
-  pattern: ast.Pattern,
-  value: ast.Value,
-) -> Option(List(ast.Value)) {
+pub fn match_pattern(pattern: Pattern, value: Value) -> Option(List(Value)) {
   case pattern, value {
-    ast.PAny(_), _ -> Some([])
-    ast.PTyp(u1, _), ast.VTyp(u2) if u1 == u2 -> Some([])
-    ast.PLit(k1, _), ast.VLit(k2) if k1 == k2 -> Some([])
-    ast.PLitT(k1, _), ast.VLitT(k2) if k1 == k2 -> Some([])
-    ast.PAlias(_, pattern, _), _ ->
+    tm.PAny, _ -> Some([])
+    tm.PTyp(u1), v.Typ(u2) if u1 == u2 -> Some([])
+    tm.PLit(k1), v.Lit(k2) if k1 == k2 -> Some([])
+    tm.PLitT(k1), v.LitT(k2) if k1 == k2 -> Some([])
+    tm.PAlias(_, pattern), _ ->
       case match_pattern(pattern, value) {
         Some(bindings) -> Some([value, ..bindings])
         None -> None
       }
-    ast.PCtr(tag1, pattern, _), ast.VCtr(tag2, arg) if tag1 == tag2 ->
+    tm.PCtr(tag1, pattern), v.Ctr(tag2, arg) if tag1 == tag2 ->
       match_pattern(pattern, arg)
-    ast.PRcd(pfields, _), ast.VRcd(vfields) ->
-      match_pattern_rcd(pfields, vfields)
-    ast.PError(_), ast.VErr -> Some([])
+    tm.PRcd(pfields), v.Rcd(vfields) -> match_pattern_rcd(pfields, vfields)
+    tm.PError, v.Err -> Some([])
     _, _ -> None
   }
 }
 
 fn match_pattern_rcd(
-  pfields: List(#(String, ast.Pattern)),
-  vfields: List(#(String, ast.Value)),
-) -> Option(List(ast.Value)) {
+  pfields: List(#(String, Pattern)),
+  vfields: List(#(String, Value)),
+) -> Option(List(Value)) {
   case pfields {
     [] -> Some([])
     [#(pname, p), ..rest] -> {

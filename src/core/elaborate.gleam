@@ -4,44 +4,47 @@
 /// language. Every term can be synthesized (inferred), and `check` is a
 /// thin wrapper that synthesizes the term then unifies its type with
 /// the expected type.
-import core/ast
+import core/ast.{type AST}
+import core/context.{type Context}
 import core/eval.{eval}
-import core/state.{type State, state_to_env, with_err}
+import core/literals.{type Literal, type LiteralType} as lit
+import core/term.{type Term} as tm
 import core/unify.{unify}
 import core/unwrap.{unwrap}
 import core/utils
+import core/value.{type Env, type Value} as v
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
 /// Infer the type of a term (synthesis).
 ///
-/// Returns #(result_term, type_value, state) where:
+/// Returns #(result_term, type_value, ctx) where:
 /// - result_term is the original term with holes filled and implicit args expanded
 /// - type_value is the inferred type (a Value)
-/// - state is the updated state with any new bindings
-pub fn infer(state: State, term: ast.Term) -> #(ast.Term, ast.Value, State) {
-  case term {
-    ast.Typ(level, span) -> infer_typ(state, level, span)
-    ast.Hole(id, span) -> infer_hole(state, id, span)
-    ast.Lit(value, span) -> infer_lit(state, value, span)
-    ast.LitT(t, span) -> infer_litt(state, t, span)
-    ast.Var(index, span) -> infer_var(state, index, span)
-    ast.Ctr(tag, arg, span) -> infer_ctr(state, tag, arg, span)
-    ast.Rcd(fields, span) -> infer_rcd(state, fields, span)
-    ast.RcdT(fields, span) -> infer_rcd_type(state, fields, span)
-    ast.Call(name, args, return_type, span) ->
-      infer_call(state, name, args, return_type, span)
-    ast.Ann(inner, type_, _) -> infer_ann(state, inner, type_)
-    ast.Lam(implicit, param, body, span) ->
-      infer_lam(state, implicit, param, body, span)
-    ast.Pi(implicit, domain, codomain, span) ->
-      infer_pi(state, implicit, domain, codomain, span)
-    ast.Fix(name, body, span) -> infer_fix(state, name, body, span)
-    ast.App(fun, arg, span) -> infer_app(state, fun, arg, span)
-    // ast.TypeDef(params, constructors, span) ->
-    //   infer_type_def(state, params, constructors, span)
-    // ast.Match(arg, cases, span) -> infer_match(state, arg, cases, span)
-    // ast.Err(message, span) -> infer_err(state, message, span)
+/// - ctx is the updated ctx with any new bindings
+pub fn infer(ctx: Context, node: AST) -> #(Term, Value, Context) {
+  case node.data {
+    ast.Typ(level) -> infer_typ(ctx, level)
+    ast.Hole(id) -> infer_hole(ctx, id)
+    ast.Lit(value) -> infer_lit(ctx, value)
+    ast.LitT(t) -> infer_litt(ctx, t)
+    ast.Var(name) -> infer_var(ctx, name, node.span)
+    ast.Ctr(tag, arg) -> infer_ctr(ctx, tag, arg)
+    ast.Rcd(fields) -> infer_rcd(ctx, fields)
+    ast.RcdT(fields) -> infer_rcd_type(ctx, fields)
+    ast.Call(name, args, return_type) ->
+      infer_call(ctx, name, args, return_type, node.span)
+    ast.Ann(inner, type_) -> infer_ann(ctx, inner, type_)
+    ast.Lam(implicit, param, body) ->
+      infer_lam(ctx, implicit, param, body, node.span)
+    ast.Pi(implicit, domain, codomain) ->
+      infer_pi(ctx, implicit, domain, codomain, node.span)
+    ast.Fix(name, body) -> infer_fix(ctx, name, body, node.span)
+    ast.App(fun, arg) -> infer_app(ctx, fun, arg, node.span)
+    // ast.TypeDef(params, constructors) ->
+    //   infer_type_def(ctx, params, constructors, span)
+    // ast.Match(arg, cases) -> infer_match(ctx, arg, cases, span)
+    // ast.Err -> infer_err(ctx, message, span)
     _ -> todo
   }
 }
@@ -51,268 +54,226 @@ pub fn infer(state: State, term: ast.Term) -> #(ast.Term, ast.Value, State) {
 /// This is a thin wrapper: infer the term, then fill in any missing
 /// record defaults at the value level before unifying.
 pub fn check(
-  state: State,
-  term: ast.Term,
-  expected: #(ast.Value, Span),
-) -> #(ast.Term, ast.Value, State) {
-  let #(term, type_, state) = infer(state, term)
-  let #(type_, state) = unify(state, #(type_, ast.get_span(term)), expected)
-  #(term, type_, state)
+  ctx: Context,
+  node: AST,
+  expected: #(Value, Span),
+) -> #(Term, Value, Context) {
+  let #(term, type_, ctx) = infer(ctx, node)
+  let #(type_, ctx) = unify(ctx, #(type_, node.span), expected)
+  #(term, type_, ctx)
 }
 
-fn check_on_term(
-  state: State,
-  term: ast.Term,
-  type_: ast.Term,
-) -> #(ast.Term, #(ast.Term, ast.Value), State) {
-  let env = state_to_env(state)
-  let #(type_, _, state) = infer(state, type_)
-  let type_val = eval(state.ffi, env, type_)
-  let #(term, type_val, state) =
-    check(state, term, #(type_val, ast.get_span(type_)))
-  #(term, #(type_, type_val), state)
+fn check_on_ast(
+  ctx: Context,
+  node: AST,
+  type_: AST,
+) -> #(Term, #(Term, Value), Context) {
+  let #(type_term, _, ctx) = infer(ctx, type_)
+  let type_val = eval(ctx.ffi, ctx.env, type_term)
+  let #(term, type_val, ctx) = check(ctx, node, #(type_val, type_.span))
+  #(term, #(type_term, type_val), ctx)
 }
 
-/// Infer a type universe ($Type<n>).
-/// $Type<n> evaluates to VTyp(n), with type VTyp(n+1).
-fn infer_typ(
-  state: State,
-  level: Int,
-  span: Span,
-) -> #(ast.Term, ast.Value, State) {
-  #(ast.Typ(level, span), ast.VTyp(level + 1), state)
+fn infer_typ(ctx: Context, level: Int) -> #(Term, Value, Context) {
+  #(tm.Typ(level), v.Typ(level + 1), ctx)
 }
 
-fn infer_hole(
-  state: State,
-  id: Int,
-  span: Span,
-) -> #(ast.Term, ast.Value, State) {
+fn infer_hole(ctx: Context, id: Int) -> #(Term, Value, Context) {
   case id >= 0 {
     True -> {
       // Concrete hole, create a new hole for its type.
-      let #(type_id, state) = state.new_hole(state)
-      #(ast.Hole(id, span), ast.vhole(type_id), state)
+      let #(type_id, ctx) = context.new_hole(ctx)
+      #(tm.Hole(id), v.hole(type_id), ctx)
     }
     False -> {
       // Unknown hole, instantiate a fresh new hole.
-      let #(id, state) = state.new_hole(state)
-      infer_hole(state, id, span)
+      let #(id, ctx) = context.new_hole(ctx)
+      infer_hole(ctx, id)
     }
   }
 }
 
-fn infer_lit(
-  state: State,
-  value: ast.Literal,
-  span: Span,
-) -> #(ast.Term, ast.Value, State) {
+fn infer_lit(ctx: Context, value: Literal) -> #(Term, Value, Context) {
   let type_ = case value {
-    ast.Int(_) -> ast.VLitT(ast.IntT)
-    ast.Float(_) -> ast.VLitT(ast.FloatT)
+    lit.Int(_) -> v.int_t
+    lit.Float(_) -> v.float_t
   }
-  #(ast.Lit(value, span), type_, state)
+  #(tm.Lit(value), type_, ctx)
 }
 
-/// Infer a literal type annotation ($Int, $Float, $I32, etc.).
-/// The value is the literal type itself (e.g., $Int), and its type is $Type<0>.
-fn infer_litt(
-  state: State,
-  value: ast.LiteralType,
-  span: Span,
-) -> #(ast.Term, ast.Value, State) {
-  #(ast.LitT(value, span), ast.VTyp(0), state)
+fn infer_litt(ctx: Context, value: LiteralType) -> #(Term, Value, Context) {
+  #(tm.LitT(value), v.Typ(0), ctx)
 }
 
 fn infer_var(
-  state: State,
-  index: Int,
+  ctx: Context,
+  name: String,
   span: Span,
-) -> #(ast.Term, ast.Value, State) {
-  case utils.list_at(state.vars, index) {
-    Some(#(_name, _value, type_)) -> #(ast.Var(index, span), type_, state)
+) -> #(Term, Value, Context) {
+  case context.lookup(ctx, name) {
+    Some(#(index, type_)) -> #(tm.Var(index), type_, ctx)
     None -> {
-      let state = with_err(state, state.VarUndefined(index, span))
-      #(ast.Var(index, span), ast.VErr, state)
+      let ctx = context.with_err(ctx, context.VarUndefined(name, span))
+      #(tm.Err, v.Err, ctx)
     }
   }
 }
 
-fn infer_ctr(
-  state: State,
-  tag: String,
-  arg: ast.Term,
-  span: Span,
-) -> #(ast.Term, ast.Value, State) {
-  let #(arg, arg_type, state) = infer(state, arg)
-  #(ast.Ctr(tag, arg, span), ast.VCtr(tag, arg_type), state)
+fn infer_ctr(ctx: Context, tag: String, arg: AST) -> #(Term, Value, Context) {
+  let #(arg, arg_type, ctx) = infer(ctx, arg)
+  #(tm.Ctr(tag, arg), v.Ctr(tag, arg_type), ctx)
 }
 
 fn infer_rcd(
-  state: State,
-  fields: List(#(String, ast.Term)),
-  span: Span,
-) -> #(ast.Term, ast.Value, State) {
-  let #(fields, field_types, state) = infer_rcd_fields(state, fields)
-  #(ast.Rcd(fields, span), ast.VRcdT(field_types), state)
+  ctx: Context,
+  fields: List(#(String, AST)),
+) -> #(Term, Value, Context) {
+  let #(fields, field_types, ctx) = infer_rcd_fields(ctx, fields)
+  #(tm.Rcd(fields), v.RcdT(field_types), ctx)
 }
 
 fn infer_rcd_fields(
-  state: State,
-  fields: List(#(String, ast.Term)),
-) -> #(
-  List(#(String, ast.Term)),
-  List(#(String, ast.Value, Option(ast.Value))),
-  State,
-) {
+  ctx: Context,
+  fields: List(#(String, AST)),
+) -> #(List(#(String, Term)), List(#(String, Value, Option(Value))), Context) {
   case fields {
-    [] -> #([], [], state)
+    [] -> #([], [], ctx)
     [#(name, term), ..fields] -> {
-      let #(term, type_, state) = infer(state, term)
-      let #(fields, field_types, state) = infer_rcd_fields(state, fields)
-      #([#(name, term), ..fields], [#(name, type_, None), ..field_types], state)
+      let #(term, type_, ctx) = infer(ctx, term)
+      let #(fields, field_types, ctx) = infer_rcd_fields(ctx, fields)
+      #([#(name, term), ..fields], [#(name, type_, None), ..field_types], ctx)
     }
   }
 }
 
 fn infer_rcd_type(
-  state: State,
-  fields: List(#(String, ast.Term, option.Option(ast.Term))),
-  span: Span,
-) -> #(ast.Term, ast.Value, State) {
-  let #(fields, state) = infer_rcd_type_fields(state, fields)
-  #(ast.RcdT(fields, span), ast.VTyp(0), state)
+  ctx: Context,
+  fields: List(#(String, AST, option.Option(AST))),
+) -> #(Term, Value, Context) {
+  let #(fields, ctx) = infer_rcd_type_fields(ctx, fields)
+  #(tm.RcdT(fields), v.Typ(0), ctx)
 }
 
 fn infer_rcd_type_fields(
-  state: State,
-  fields: List(#(String, ast.Term, option.Option(ast.Term))),
-) -> #(List(#(String, ast.Term, option.Option(ast.Term))), State) {
+  ctx: Context,
+  fields: List(#(String, AST, option.Option(AST))),
+) -> #(List(#(String, Term, option.Option(Term))), Context) {
   case fields {
-    [] -> #([], state)
+    [] -> #([], ctx)
     [#(name, type_, default), ..fields] -> {
-      let #(field, state) = case default {
-        Some(term) -> {
-          let #(term, #(type_, _), state) = check_on_term(state, term, type_)
-          let field = #(name, type_, Some(term))
-          #(field, state)
+      let #(field, ctx) = case default {
+        Some(default) -> {
+          let #(default, #(type_, _), ctx) = check_on_ast(ctx, default, type_)
+          let field = #(name, type_, Some(default))
+          #(field, ctx)
         }
         None -> {
-          let #(type_, _, state) = infer(state, type_)
+          let #(type_, _, ctx) = infer(ctx, type_)
           let field = #(name, type_, None)
-          #(field, state)
+          #(field, ctx)
         }
       }
-      let #(fields, state) = infer_rcd_type_fields(state, fields)
-      #([field, ..fields], state)
+      let #(fields, ctx) = infer_rcd_type_fields(ctx, fields)
+      #([field, ..fields], ctx)
     }
   }
 }
 
 fn infer_call(
-  state: State,
+  ctx: Context,
   name: String,
-  args: List(ast.Term),
-  return_type: ast.Term,
-  span: Span,
-) -> #(ast.Term, ast.Value, State) {
-  let #(args, state) = check_call_args(state, args)
-  let #(return_type, _, state) = infer(state, return_type)
-  let env = state_to_env(state)
-  let return_type_val = eval(state.ffi, env, return_type)
-  #(ast.Call(name, args, return_type, span), return_type_val, state)
+  args: List(AST),
+  return_type: AST,
+) -> #(Term, Value, Context) {
+  let #(args, ctx) = check_call_args(ctx, args)
+  let #(return_type, _, ctx) = infer(ctx, return_type)
+  let return_type_val = eval(ctx.ffi, ctx.env, return_type)
+  #(tm.Call(name, args, return_type), return_type_val, ctx)
 }
 
-fn check_call_args(
-  state: State,
-  args: List(ast.Term),
-) -> #(List(ast.Term), State) {
+fn check_call_args(ctx: Context, args: List(AST)) -> #(List(Term), Context) {
   case args {
-    [] -> #([], state)
+    [] -> #([], ctx)
     [arg, ..args] -> {
-      let #(arg, _, state) = infer(state, arg)
-      let #(args, state) = check_call_args(state, args)
-      #([arg, ..args], state)
+      let #(arg, _, ctx) = infer(ctx, arg)
+      let #(args, ctx) = check_call_args(ctx, args)
+      #([arg, ..args], ctx)
     }
   }
 }
 
-fn infer_ann(
-  state: State,
-  term: ast.Term,
-  type_: ast.Term,
-) -> #(ast.Term, ast.Value, State) {
-  let #(term, #(_, type_val), state) = check_on_term(state, term, type_)
-  #(term, type_val, state)
+fn infer_ann(ctx: Context, term: AST, type_: AST) -> #(Term, Value, Context) {
+  let #(term, #(_, type_val), ctx) = check_on_ast(ctx, term, type_)
+  #(term, type_val, ctx)
 }
 
 fn infer_lam(
-  state: State,
+  ctx: Context,
   implicit: Bool,
-  param: #(String, ast.Term),
-  body: ast.Term,
+  param: #(String, AST),
+  body: AST,
   span: Span,
-) -> #(ast.Term, ast.Value, State) {
-  // let #(implicits, implicits_val, state) = push_param_list(state, implicits)
-  // let #(param, param_val, state) = push_param(state, param)
-  // let #(body, body_type_val, state) = infer(state, body)
-  // let state = pop_params(state, list.length(implicits) + 1)
+) -> #(Term, Value, Context) {
+  // let #(implicits, implicits_val, ctx) = push_param_list(ctx, implicits)
+  // let #(param, param_val, ctx) = push_param(ctx, param)
+  // let #(body, body_type_val, ctx) = infer(ctx, body)
+  // let ctx = pop_params(ctx, list.length(implicits) + 1)
   // #(
   //   ast.Lam(implicits, param, body, span),
   //   ast.VPi(implicits_val, param_val, body_type_val),
-  //   state,
+  //   ctx,
   // )
   todo
 }
 
 /// Infer a Pi type: $pi<implicits>(domain: param_type) -> codomain
 fn infer_pi(
-  state: State,
+  ctx: Context,
   implicit: Bool,
-  domain: #(String, ast.Term),
-  codomain: ast.Term,
+  domain: #(String, AST),
+  codomain: AST,
   span: Span,
-) -> #(ast.Term, ast.Value, State) {
-  // let #(implicits, _, state) = push_param_list(state, implicits)
-  // let #(domain, _, state) = push_param(state, domain)
-  // let #(codomain, _, state) = infer(state, codomain)
-  // let state = pop_params(state, list.length(implicits) + 1)
-  // #(ast.Pi(implicits, domain, codomain, span), ast.VTyp(0), state)
+) -> #(Term, Value, Context) {
+  // let #(implicits, _, ctx) = push_param_list(ctx, implicits)
+  // let #(domain, _, ctx) = push_param(ctx, domain)
+  // let #(codomain, _, ctx) = infer(ctx, codomain)
+  // let ctx = pop_params(ctx, list.length(implicits) + 1)
+  // #(ast.Pi(implicits, domain, codomain, span), ast.VTyp(0), ctx)
   todo
 }
 
 fn infer_fix(
-  state: State,
+  ctx: Context,
   name: String,
-  body: ast.Term,
+  body: AST,
   span: Span,
-) -> #(ast.Term, ast.Value, State) {
-  // let #(hole_id, state) = state.new_hole(state)
+) -> #(Term, Value, Context) {
+  // let #(hole_id, ctx) = ctx.new_hole(ctx)
   // let type_hole = ast.vhole(hole_id, [])
-  // let state = push_param_val(state, #(name, type_hole))
-  // let #(body, body_type, state) = infer(state, body)
-  // let state = pop_params(state, 1)
-  // let state = unify(state, #(type_hole, span), #(body_type, span))
-  // #(ast.Fix(name, body, span), body_type, state)
+  // let ctx = push_param_val(ctx, #(name, type_hole))
+  // let #(body, body_type, ctx) = infer(ctx, body)
+  // let ctx = pop_params(ctx, 1)
+  // let ctx = unify(ctx, #(type_hole, span), #(body_type, span))
+  // #(ast.Fix(name, body, span), body_type, ctx)
   todo
 }
 
 fn infer_app(
-  state: State,
-  fun: ast.Term,
-  arg: ast.Term,
+  ctx: Context,
+  fun: AST,
+  arg: AST,
   span: Span,
-) -> #(ast.Term, ast.Value, State) {
-  let #(fun, fun_type, state) = infer(state, fun)
+) -> #(Term, Value, Context) {
+  let #(fun_term, fun_type, ctx) = infer(ctx, fun)
   case fun_type {
-    ast.VPi(False, #(_, domain_val), #(env, codomain)) -> {
-      let #(arg, _, state) = check(state, arg, #(domain_val, ast.get_span(fun)))
+    v.Pi(False, #(_, domain_val), #(env, codomain)) -> {
+      let #(arg, _, ctx) = check(ctx, arg, #(domain_val, fun.span))
       todo
     }
     _ -> {
-      let #(_, _, state) = infer(state, arg)
-      let state = with_err(state, state.NotAFunction(fun_type, span))
-      #(ast.Err(span), ast.VErr, state)
+      let #(_, _, ctx) = infer(ctx, arg)
+      let ctx = context.with_err(ctx, context.NotAFunction(fun_type, span))
+      #(tm.Err, v.Err, ctx)
     }
   }
 }

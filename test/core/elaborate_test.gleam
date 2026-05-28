@@ -11,7 +11,7 @@ pub fn main() {
 }
 
 // Helper span constants to verify error reporting.
-const s0 = Span("infer_test", 0, 0, 0, 0)
+const s = Span("infer_test", 0, 0, 0, 0)
 
 const s1 = Span("infer_test", 1, 1, 1, 1)
 
@@ -30,7 +30,7 @@ const s7 = Span("infer_test", 7, 7, 7, 7)
 const s8 = Span("infer_test", 8, 8, 8, 8)
 
 pub fn infer_typ0_test() {
-  let term = ast.Typ(0, s0)
+  let term = ast.Typ(0, s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -38,7 +38,7 @@ pub fn infer_typ0_test() {
 }
 
 pub fn infer_typ1_test() {
-  let term = ast.Typ(1, s0)
+  let term = ast.Typ(1, s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -47,7 +47,7 @@ pub fn infer_typ1_test() {
 
 pub fn infer_hole_concrete_test() {
   let new_state = State(..new_state, hole_counter: 1)
-  let term = ast.Hole(0, s0)
+  let term = ast.Hole(0, s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == State(..new_state, hole_counter: 2)
   assert result == term
@@ -56,15 +56,15 @@ pub fn infer_hole_concrete_test() {
 
 pub fn infer_hole_unknown_test() {
   let new_state = State(..new_state, hole_counter: 10)
-  let term = ast.Hole(-1, s0)
+  let term = ast.Hole(-1, s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == State(..new_state, hole_counter: 12)
-  assert result == ast.Hole(10, s0)
+  assert result == ast.Hole(10, s)
   assert type_ == ast.vhole(11)
 }
 
 pub fn infer_lit_int_test() {
-  let term = ast.int(42, s0)
+  let term = ast.int(42, s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -72,7 +72,7 @@ pub fn infer_lit_int_test() {
 }
 
 pub fn infer_lit_float_test() {
-  let term = ast.float(3.14, s0)
+  let term = ast.float(3.14, s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -80,7 +80,7 @@ pub fn infer_lit_float_test() {
 }
 
 pub fn infer_litt_intt_test() {
-  let term = ast.int_t(s0)
+  let term = ast.int_t(s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -88,7 +88,7 @@ pub fn infer_litt_intt_test() {
 }
 
 pub fn infer_floatt_intt_test() {
-  let term = ast.float_t(s0)
+  let term = ast.float_t(s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -96,9 +96,9 @@ pub fn infer_floatt_intt_test() {
 }
 
 pub fn infer_var_undefined_test() {
-  let term = ast.Var(1, s0)
+  let term = ast.Var(1, s)
   let #(result, type_, state) = infer(new_state, term)
-  assert state == with_err(new_state, state.VarUndefined(1, s0))
+  assert state == with_err(new_state, state.VarUndefined(1, s))
   assert result == term
   assert type_ == ast.VErr
 }
@@ -106,7 +106,7 @@ pub fn infer_var_undefined_test() {
 pub fn infer_var0_test() {
   let vars = [#("x", ast.vint(42), ast.vint_t)]
   let new_state = State(..new_state, vars: vars)
-  let term = ast.Var(0, s0)
+  let term = ast.Var(0, s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -119,7 +119,7 @@ pub fn infer_var1_test() {
     #("y", ast.vfloat(3.14), ast.vfloat_t),
   ]
   let new_state = State(..new_state, vars: vars)
-  let term = ast.Var(1, s0)
+  let term = ast.Var(1, s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -127,7 +127,7 @@ pub fn infer_var1_test() {
 }
 
 pub fn infer_ctr_test() {
-  let term = ast.Ctr("A", ast.Typ(0, s0), s1)
+  let term = ast.Ctr("A", ast.Typ(0, s), s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -135,7 +135,7 @@ pub fn infer_ctr_test() {
 }
 
 pub fn infer_rcd0_test() {
-  let term = ast.Rcd([], s0)
+  let term = ast.Rcd([], s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -143,7 +143,7 @@ pub fn infer_rcd0_test() {
 }
 
 pub fn infer_rcd1_test() {
-  let term = ast.Rcd([#("x", ast.int(42, s1))], s0)
+  let term = ast.Rcd([#("x", ast.int(42, s))], s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -151,7 +151,7 @@ pub fn infer_rcd1_test() {
 }
 
 pub fn infer_rcd2_test() {
-  let term = ast.Rcd([#("x", ast.int(42, s1)), #("y", ast.float(3.14, s2))], s0)
+  let term = ast.Rcd([#("x", ast.int(42, s)), #("y", ast.float(3.14, s2))], s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -160,7 +160,7 @@ pub fn infer_rcd2_test() {
 }
 
 pub fn infer_rcdt0_test() {
-  let term = ast.RcdT([], s0)
+  let term = ast.RcdT([], s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -168,7 +168,7 @@ pub fn infer_rcdt0_test() {
 }
 
 pub fn infer_rcdt1_test() {
-  let term = ast.RcdT([#("x", ast.int_t(s1), None)], s0)
+  let term = ast.RcdT([#("x", ast.int_t(s), None)], s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -177,7 +177,7 @@ pub fn infer_rcdt1_test() {
 
 pub fn infer_rcdt2_test() {
   let term =
-    ast.RcdT([#("x", ast.int_t(s1), None), #("y", ast.float_t(s2), None)], s0)
+    ast.RcdT([#("x", ast.int_t(s), None), #("y", ast.float_t(s2), None)], s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -185,15 +185,15 @@ pub fn infer_rcdt2_test() {
 }
 
 pub fn infer_rcdt_from_default_value_test() {
-  let term = ast.RcdT([#("x", ast.int_t(s1), Some(ast.int(42, s2)))], s0)
+  let term = ast.RcdT([#("x", ast.int_t(s1), Some(ast.int(42, s2)))], s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
-  assert result == ast.RcdT([#("x", ast.int_t(s1), Some(ast.int(42, s2)))], s0)
+  assert result == ast.RcdT([#("x", ast.int_t(s1), Some(ast.int(42, s2)))], s)
   assert type_ == ast.VTyp(0)
 }
 
 pub fn infer_call_test() {
-  let term = ast.Call("f", [], ast.int_t(s1), s0)
+  let term = ast.Call("f", [], ast.int_t(s1), s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -201,7 +201,7 @@ pub fn infer_call_test() {
 }
 
 pub fn infer_call_args_test() {
-  let term = ast.Call("f", [ast.float(3.14, s1)], ast.int_t(s1), s0)
+  let term = ast.Call("f", [ast.float(3.14, s1)], ast.int_t(s1), s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == term
@@ -209,7 +209,7 @@ pub fn infer_call_args_test() {
 }
 
 pub fn infer_ann_test() {
-  let term = ast.Ann(ast.int(42, s1), ast.int_t(s2), s0)
+  let term = ast.Ann(ast.int(42, s1), ast.int_t(s2), s)
   let #(result, type_, state) = infer(new_state, term)
   assert state == new_state
   assert result == ast.int(42, s1)
