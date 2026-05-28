@@ -1,6 +1,6 @@
 /// Tests for the Infer module (Bidirectional Type Checking)
 import core/ast
-import core/infer.{infer}
+import core/elaborate.{infer}
 import core/state.{State, new_state, with_err}
 import gleam/option.{None, Some}
 import gleeunit

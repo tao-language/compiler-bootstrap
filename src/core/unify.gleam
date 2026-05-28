@@ -22,11 +22,9 @@
 /// The type checker calls this function at every place where two types
 /// must agree. All errors accumulate in state; no early returns.
 import core/ast
-import core/eval
-import core/state.{type FFI, type State, State, TypeMismatch, with_err}
-import core/unwrap.{unwrap}
+import core/state.{type State, TypeMismatch, with_err}
 import gleam/option.{type Option, None, Some}
-import syntax/span.{type Span, Span}
+import syntax/span.{type Span}
 
 pub fn unify(
   state: State,
@@ -66,7 +64,7 @@ pub fn unify(
       // unify_values(state, #(cod1, span1), #(cod2, span2))
       todo
     }
-    ast.VTypeDef(params1, ctrs1), ast.VTypeDef(params2, ctrs2) -> {
+    ast.VUnion(vars1), ast.VUnion(vars2) -> {
       todo
     }
     ast.VNeut(n1), ast.VNeut(n2) -> unify_neut(state, #(n1, s1), #(n2, s2))

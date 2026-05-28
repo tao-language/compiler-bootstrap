@@ -1,9 +1,9 @@
 /// Quote — Convert Values back to Terms
 ///
-/// The `quote` module reifies evaluated values (De Bruijn levels) back into
+/// The `quote` module reifies evaluateuated values (De Bruijn levels) back into
 /// syntax terms (De Bruijn indices). This is used for:
 /// - Displaying inferred types as readable terms
-/// - Normalization by evaluation results
+/// - Normalization by evaluateuation results
 /// - Error message generation
 ///
 /// ## How Quoting Works
@@ -20,7 +20,7 @@
 /// `lvl` tracks the depth of binders in the quoting context. When entering
 /// a lambda body or Pi codomain, `lvl` is incremented by 1.
 import core/ast
-import core/eval.{eval}
+import core/evaluate.{evaluate}
 import core/state.{type FFI}
 import gleam/int
 import gleam/list
@@ -55,20 +55,20 @@ pub fn quote(ffi: FFI, size: Int, value: ast.Value, span: Span) -> ast.Term {
     ast.VNeut(neut) -> quote_neut(ffi, size, neut, span)
     ast.VLam(implicit, #(name, param_val), #(env, body)) -> {
       let param = quote(ffi, size, param_val, span)
-      let body_val = eval(ffi, [param_val, ..env], body)
+      let body_val = evaluate(ffi, [param_val, ..env], body)
       let body = quote(ffi, size, body_val, span)
       ast.Lam(implicit, #(name, param), body, span)
     }
     ast.VPi(implicit, #(name, param_val), #(env, body)) -> {
       let param = quote(ffi, size, param_val, span)
-      let body_val = eval(ffi, [param_val, ..env], body)
+      let body_val = evaluate(ffi, [param_val, ..env], body)
       let body = quote(ffi, size, body_val, span)
       ast.Pi(implicit, #(name, param), body, span)
     }
     ast.VFix(name, #(env, body)) -> {
       todo
     }
-    ast.VTypeDef(params, constructors) -> {
+    ast.VUnion(variants) -> {
       todo
     }
     ast.VErr -> ast.Err(span)

@@ -21,8 +21,8 @@
 /// 7. EVALUATION — Evaluated result value
 /// 8. ERRORS — Type checking errors (empty if none)
 import core/ast
-import core/eval.{eval}
-import core/infer.{infer}
+import core/elaborate.{infer}
+import core/evaluate.{evaluate}
 import core/state.{type Error, type State}
 import core/syntax
 import gleam/int
@@ -264,7 +264,7 @@ pub fn run(expression: String, trace_parser: Bool, trace_infer: Bool) -> Nil {
 //   let env = list.map(state.vars, fn(v) { v.1.0 })
 //   let ffi = state.ffi
 //   let indent = string.repeat("  ", depth)
-//   io.println(indent <> "EVAL: " <> term_short(term))
+//   io.println(indent <> "evaluate: " <> term_short(term))
 
 //   case term {
 //     App(fun, arg, _) -> {

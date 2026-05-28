@@ -70,8 +70,7 @@ pub type Term {
   Pi(implicit: Bool, domain: #(String, Term), codomain: Term, span: Span)
   Fix(name: String, body: Term, span: Span)
   App(fun: Term, arg: Term, span: Span)
-  TypeDef(
-    params: List(#(String, Term)),
+  Union(
     variants: List(#(String, #(List(String), Term, Term), Span)),
     span: Span,
   )
@@ -118,10 +117,7 @@ pub type Value {
   VLam(implicit: Bool, param: #(String, Value), body: #(Env, Term))
   VPi(implicit: Bool, domain: #(String, Value), codomain: #(Env, Term))
   VFix(name: String, body: #(Env, Term))
-  VTypeDef(
-    params: List(#(String, Value)),
-    constructors: List(#(String, #(List(String), Value, Term))),
-  )
+  VUnion(variants: List(#(String, #(List(String), Value, Term))))
   VErr
 }
 
@@ -200,7 +196,7 @@ pub fn get_span(term: Term) -> Span {
     Rcd(span: span, ..) -> span
     RcdT(span: span, ..) -> span
     Call(span: span, ..) -> span
-    TypeDef(span: span, ..) -> span
+    Union(span: span, ..) -> span
     Ann(span: span, ..) -> span
     Lam(span: span, ..) -> span
     Pi(span: span, ..) -> span
