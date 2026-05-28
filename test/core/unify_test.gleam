@@ -9,9 +9,8 @@
 /// - Force-value integration (holes resolved before comparison)
 /// - EMatch unification
 import core/ast
-import core/state.{State, TypeMismatch, new_state, with_err}
+import core/state.{State, TypeMismatch, new_state}
 import core/unify.{unify}
-import gleam/option.{None, Some}
 import gleeunit
 import syntax/span.{Span}
 
