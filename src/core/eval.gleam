@@ -170,5 +170,24 @@ fn match_pattern_rcd(
   pfields: List(#(String, ast.Pattern)),
   vfields: List(#(String, ast.Value)),
 ) -> Option(List(ast.Value)) {
-  todo
+  case pfields {
+    [] -> Some([])
+    [#(pname, p), ..rest] -> {
+      case list.find(vfields, fn(field) {
+        let #(vname, _) = field
+        vname == pname
+      }) {
+        Error(_) -> None
+        Ok(#(_, v)) ->
+          case match_pattern(p, v) {
+            Some(bindings) ->
+              case match_pattern_rcd(rest, vfields) {
+                Some(rest_bindings) -> Some(list.append(bindings, rest_bindings))
+                None -> None
+              }
+            None -> None
+          }
+      }
+    }
+  }
 }

@@ -1,5 +1,5 @@
 import core/ast
-import core/eval.{eval}
+import core/eval.{eval, match_pattern}
 import gleam/option.{None, Some}
 import gleeunit
 import syntax/span.{Span}
@@ -221,36 +221,384 @@ pub fn eval_match_empty_test() {
 
 pub fn eval_match_first_test() {
   // Match first case with no bindings, base test
-  todo
+  // Match {x: 1, y: 2} { | {x: 1, y: _} => 0 }
+  let term =
+    ast.Match(
+      ast.Rcd([#("x", ast.int(1, s)), #("y", ast.int(2, s))], s),
+      [
+        ast.Case(
+          ast.PRcd([#("x", ast.PLit(ast.Int(1), s)), #("y", ast.PAny(s))], s),
+          None,
+          ast.int(0, s),
+          s,
+        ),
+      ],
+      s,
+    )
+  let result = eval([], [], term)
+  assert result == ast.vint(0)
 }
 
 pub fn eval_match_second_test() {
   // Match second case with no bindings, inductive test
-  todo
+  // Match #Some(42) { | #None(_) => 0 | #Some(x) => x }
+  let term =
+    ast.Match(
+      ast.Ctr("Some", ast.int(42, s), s),
+      [
+        ast.Case(
+          ast.PCtr("None", ast.PAny(s), s),
+          None,
+          ast.int(0, s),
+          s,
+        ),
+        ast.Case(
+          ast.PCtr("Some", ast.PAlias("x", ast.PAny(s), s), s),
+          None,
+          ast.Var(0, s),
+          s,
+        ),
+      ],
+      s,
+    )
+  let result = eval([], [], term)
+  assert result == ast.vint(42)
 }
 
 pub fn eval_match_bindings_test() {
   // Match case with 2 bindings, DeBruijn/env test
-  todo
+  // Match {x: 1, y: 2} { | {x: x, y: y} => x + y ... but no +, so just return x via Var(0) }
+  let term =
+    ast.Match(
+      ast.Rcd([#("x", ast.int(1, s)), #("y", ast.int(2, s))], s),
+      [
+        ast.Case(
+          ast.PRcd(
+            [
+              #("x", ast.PAlias("x", ast.PAny(s), s)),
+              #("y", ast.PAlias("y", ast.PAny(s), s)),
+            ],
+            s,
+          ),
+          None,
+          ast.Var(0, s),
+          s,
+        ),
+      ],
+      s,
+    )
+  let result = eval([], [], term)
+  assert result == ast.vint(1)
 }
 
 pub fn eval_match_guard_fail_test() {
   // Match case pattern but fail guard pattern
-  todo
+  // Match #Some(42) { | #Some(x) ? #None(_) ~ #None(_) => 0 | _ => 1 }
+  // First case: pattern matches #Some(42), bound x=42, guard: 42 ~ #None(_) -> fails
+  // Falls through to wildcard: matches, returns 1
+  let term =
+    ast.Match(
+      ast.Ctr("Some", ast.int(42, s), s),
+      [
+        ast.Case(
+          ast.PCtr("Some", ast.PAlias("x", ast.PAny(s), s), s),
+          Some(#(ast.Var(0, s), ast.PCtr("None", ast.PAny(s), s))),
+          ast.int(0, s),
+          s,
+        ),
+        ast.Case(ast.PAny(s), None, ast.int(1, s), s),
+      ],
+      s,
+    )
+  let result = eval([], [], term)
+  assert result == ast.vint(1)
 }
 
 pub fn eval_match_guard_pass_test() {
   // Match both case and guard patterns
-  todo
+  // Match 42 { | x ? x ~ 42 => 100 | _ => -1 }
+  let term =
+    ast.Match(
+      ast.int(42, s),
+      [
+        ast.Case(
+          ast.PAlias("x", ast.PAny(s), s),
+          Some(#(ast.Var(0, s), ast.PLit(ast.Int(42), s))),
+          ast.int(100, s),
+          s,
+        ),
+        ast.Case(ast.PAny(s), None, ast.int(-1, s), s),
+      ],
+      s,
+    )
+  let result = eval([], [], term)
+  assert result == ast.vint(100)
 }
 
 pub fn eval_match_guard_bindings_test() {
   // Match case with 1 binding and guard with 2 bindings
-  todo
+  // Match #Some({x: 1, y: 2}) { | #Some(z) ? z ~ {x: a, y: b} => a + b ... no +, so return a via Var(1)
+  // The bindings order: guard bindings first, then main env.
+  // z = {x: 1, y: 2}, guard term evaluates to {x: 1, y: 2}, guard pattern {x: a, y: b} matches.
+  // Bindings from guard: a=1, b=2, prepended to env.
+  // Body: Var(1) -> a = 1
+  let guard_case =
+    ast.Case(
+      ast.PCtr("Some", ast.PAlias("z", ast.PAny(s), s), s),
+      Some(
+        #(
+          ast.Var(0, s),
+          ast.PRcd(
+            [
+              #("x", ast.PAlias("a", ast.PAny(s), s)),
+              #("y", ast.PAlias("b", ast.PAny(s), s)),
+            ],
+            s,
+          ),
+        ),
+      ),
+      ast.Var(0, s),
+      s,
+    )
+  let term =
+    ast.Match(
+      ast.Ctr(
+        "Some",
+        ast.Rcd([#("x", ast.int(1, s)), #("y", ast.int(2, s))], s),
+        s,
+      ),
+      [guard_case],
+      s,
+    )
+  let result = eval([], [], term)
+  assert result == ast.vint(1)
 }
 
 pub fn eval_err_test() {
   let term = ast.Err(s)
   let result = eval([], [], term)
   assert result == ast.VErr
+}
+
+// ============================================================================
+// match_pattern tests
+// ============================================================================
+
+pub fn match_pattern_any_test() {
+  // PAny matches any value
+  let result = match_pattern(ast.PAny(s), ast.vint(42))
+  assert result == Some([])
+}
+
+pub fn match_pattern_any_mismatch_test() {
+  // PAny still matches even when value doesn't exist (returns None is wrong, PAny always matches)
+  let result = match_pattern(ast.PAny(s), ast.vfloat(3.14))
+  assert result == Some([])
+}
+
+pub fn match_pattern_typ_test() {
+  // PTyp matches VTyp with same universe
+  let result = match_pattern(ast.PTyp(0, s), ast.VTyp(0))
+  assert result == Some([])
+}
+
+pub fn match_pattern_typ_mismatch_test() {
+  // PTyp doesn't match VTyp with different universe
+  let result = match_pattern(ast.PTyp(1, s), ast.VTyp(0))
+  assert result == None
+}
+
+pub fn match_pattern_typ_wrong_value_test() {
+  // PTyp doesn't match non-VTyp values
+  let result = match_pattern(ast.PTyp(0, s), ast.vint(42))
+  assert result == None
+}
+
+pub fn match_pattern_lit_int_test() {
+  // PLit matches VLit with same Int literal
+  let result = match_pattern(ast.PLit(ast.Int(42), s), ast.vint(42))
+  assert result == Some([])
+}
+
+pub fn match_pattern_lit_int_mismatch_test() {
+  // PLit doesn't match VLit with different Int
+  let result = match_pattern(ast.PLit(ast.Int(1), s), ast.vint(42))
+  assert result == None
+}
+
+pub fn match_pattern_lit_float_test() {
+  // PLit matches VLit with same Float literal
+  let result = match_pattern(ast.PLit(ast.Float(3.14), s), ast.vfloat(3.14))
+  assert result == Some([])
+}
+
+pub fn match_pattern_lit_wrong_value_test() {
+  // PLit doesn't match non-VLit values
+  let result = match_pattern(ast.PLit(ast.Int(42), s), ast.vint(43))
+  assert result == None
+}
+
+pub fn match_pattern_litt_int_test() {
+  // PLitT matches VLitT with same literal type
+  let result = match_pattern(ast.PLitT(ast.IntT, s), ast.vint_t)
+  assert result == Some([])
+}
+
+pub fn match_pattern_litt_int_mismatch_test() {
+  // PLitT(IntT) doesn't match VLitT(FloatT)
+  let result = match_pattern(ast.PLitT(ast.IntT, s), ast.vfloat_t)
+  assert result == None
+}
+
+pub fn match_pattern_litt_wrong_value_test() {
+  // PLitT doesn't match non-VLitT values
+  let result = match_pattern(ast.PLitT(ast.IntT, s), ast.vint(42))
+  assert result == None
+}
+
+pub fn match_pattern_alias_test() {
+  // PAlias binds the value and matches the inner pattern
+  let result = match_pattern(
+    ast.PAlias("x", ast.PAny(s), s),
+    ast.vint(42),
+  )
+  assert result == Some([ast.vint(42)])
+}
+
+pub fn match_pattern_alias_nested_test() {
+  // PAlias wrapping another PAlias, each alias binds the value, so 2 copies
+  let result = match_pattern(
+    ast.PAlias("outer", ast.PAlias("inner", ast.PAny(s), s), s),
+    ast.vfloat(3.14),
+  )
+  // Each PAlias prepends the value: inner binds it, then outer binds it again
+  assert result == Some([ast.vfloat(3.14), ast.vfloat(3.14)])
+}
+
+pub fn match_pattern_alias_fail_test() {
+  // PAlias fails if inner pattern fails
+  let result = match_pattern(
+    ast.PAlias("x", ast.PCtr("A", ast.PAny(s), s), s),
+    ast.vint(42),
+  )
+  assert result == None
+}
+
+pub fn match_pattern_ctr_test() {
+  // PCtr matches VCtr with same tag, recurses into inner pattern
+  let result = match_pattern(
+    ast.PCtr("Some", ast.PAny(s), s),
+    ast.VCtr("Some", ast.vint(42)),
+  )
+  assert result == Some([])
+}
+
+pub fn match_pattern_ctr_tag_mismatch_test() {
+  // PCtr doesn't match VCtr with different tag
+  let result = match_pattern(
+    ast.PCtr("None", ast.PAny(s), s),
+    ast.VCtr("Some", ast.vint(42)),
+  )
+  assert result == None
+}
+
+pub fn match_pattern_ctr_wrong_value_test() {
+  // PCtr doesn't match non-VCtr values
+  let result = match_pattern(
+    ast.PCtr("Some", ast.PAny(s), s),
+    ast.vint(42),
+  )
+  assert result == None
+}
+
+pub fn match_pattern_ctr_nested_test() {
+  // Nested PCtr: #Some(#Int(42))
+  let inner = ast.PCtr("Int", ast.PLit(ast.Int(42), s), s)
+  let result = match_pattern(
+    ast.PCtr("Some", inner, s),
+    ast.VCtr("Some", ast.VCtr("Int", ast.VLit(ast.Int(42)))),
+  )
+  assert result == Some([])
+}
+
+pub fn match_pattern_ctr_nested_fail_test() {
+  // Nested PCtr where inner literal doesn't match
+  let inner = ast.PCtr("Int", ast.PLit(ast.Int(99), s), s)
+  let result = match_pattern(
+    ast.PCtr("Some", inner, s),
+    ast.VCtr("Some", ast.VCtr("Int", ast.VLit(ast.Int(42)))),
+  )
+  assert result == None
+}
+
+pub fn match_pattern_rcd_test() {
+  // PRcd matches VRcd with same fields and matching values
+  let result = match_pattern(
+    ast.PRcd([#("x", ast.PLit(ast.Int(1), s)), #("y", ast.PAny(s))], s),
+    ast.VRcd([#("x", ast.vint(1)), #("y", ast.vfloat(2.0))]),
+  )
+  assert result == Some([])
+}
+
+pub fn match_pattern_rcd_extra_field_in_pattern_test() {
+  // PRcd fails if pattern has field not in value
+  let result = match_pattern(
+    ast.PRcd([#("x", ast.PAny(s)), #("y", ast.PAny(s)), #("z", ast.PAny(s))], s),
+    ast.VRcd([#("x", ast.vint(1)), #("y", ast.vint(2))]),
+  )
+  assert result == None
+}
+
+pub fn match_pattern_rcd_fewer_fields_test() {
+  // PRcd succeeds with fewer pattern fields than value fields
+  let result = match_pattern(
+    ast.PRcd([#("x", ast.PAny(s))], s),
+    ast.VRcd([#("x", ast.vint(1)), #("y", ast.vint(2))]),
+  )
+  assert result == Some([])
+}
+
+pub fn match_pattern_rcd_with_bindings_test() {
+  // PRcd with alias bindings
+  let result = match_pattern(
+    ast.PRcd(
+      [
+        #("x", ast.PAlias("x_val", ast.PAny(s), s)),
+        #("y", ast.PAlias("y_val", ast.PAny(s), s)),
+      ],
+      s,
+    ),
+    ast.VRcd([#("x", ast.vint(1)), #("y", ast.vint(2))]),
+  )
+  assert result == Some([ast.vint(1), ast.vint(2)])
+}
+
+pub fn match_pattern_rcd_wrong_field_name_test() {
+  // PRcd fails if pattern field name doesn't match value field name
+  let result = match_pattern(
+    ast.PRcd([#("x", ast.PAny(s))], s),
+    ast.VRcd([#("y", ast.vint(1))]),
+  )
+  assert result == None
+}
+
+pub fn match_pattern_rcd_value_field_mismatch_test() {
+  // PRcd fails if a field value doesn't match the pattern
+  let result = match_pattern(
+    ast.PRcd([#("x", ast.PLit(ast.Int(99), s))], s),
+    ast.VRcd([#("x", ast.vint(42))]),
+  )
+  assert result == None
+}
+
+pub fn match_pattern_error_test() {
+  // PError matches VErr
+  let result = match_pattern(ast.PError(s), ast.VErr)
+  assert result == Some([])
+}
+
+pub fn match_pattern_error_wrong_value_test() {
+  // PError doesn't match non-error values
+  let result = match_pattern(ast.PError(s), ast.vint(42))
+  assert result == None
 }
