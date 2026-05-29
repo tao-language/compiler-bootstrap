@@ -1,10 +1,10 @@
-/// Tests for the `unwrap` module — unwrap and hole resolution.
+/// Tests for the `unwrap` module — hole resolution through substitutions.
 ///
-/// These tests verify that `unwrap` correctly propagates hole
-/// substitutions through all value constructors.
+/// These tests verify that `unwrap` correctly follows the substitution chain
+/// to find the concrete underlying value.
 import core/context.{type Subst}
 import core/unwrap.{unwrap}
-import core/value.{type Value} as v
+import core/value as v
 import gleeunit
 
 pub fn main() {

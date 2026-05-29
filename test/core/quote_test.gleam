@@ -2,27 +2,24 @@
 ///
 /// These tests verify:
 /// - Basic value constructors (VTyp, VLit, VLitT, VCtr, VRcd, VRcdT)
-/// - Neutral terms (HVar, HHole, HCall)
-/// - Eliminators (EApp, EFix, EMatch)
-/// - Lambda and Pi quoting with correct binder depth
+/// - Neutral term (HVar) quoting with correct binder depth adjustment
 /// - VTypeDef quoting
 /// - Level→index conversion correctness
-import core/term.{type Term} as tm
-import core/literals.{type Literal} as lit
+import core/term as tm
+import core/literals as lit
 import core/quote.{quote}
-import core/value.{type Value} as v
+import core/value as v
 import gleam/option.{None, Some}
 import gleeunit
-import syntax/span.{Span}
 
 pub fn main() {
   gleeunit.main()
 }
 
-const s = Span("quote_test", 0, 0, 0, 0)
+// No Span needed — tests only check Term equality
 
 // ============================================================================
-// Existing tests (unchanged)
+// Basic value constructors
 // ============================================================================
 
 pub fn quote_vtyp_test() {
@@ -46,31 +43,33 @@ pub fn quote_vlitt_test() {
 pub fn quote_vctr_test() {
   let value = v.Ctr("A", v.int(42))
   let term = quote([], 0, value)
-  assert term == tm.Ctr("A", tm.int(42))
+  assert term == tm.Ctr("A", tm.Lit(lit.Int(42)))
 }
 
 pub fn quote_vrcd_test() {
   let value = v.Rcd([#("x", v.int_t), #("y", v.float_t)])
   let term = quote([], 0, value)
-  assert term == tm.Rcd([#("x", tm.int_t), #("y", tm.float_t)])
+  assert term == tm.Rcd([#("x", tm.LitT(lit.IntT)), #("y", tm.LitT(lit.FloatT))])
 }
 
 pub fn quote_vrcdt_test() {
-  let value =
-    v.RcdT([
-      #("x", v.int_t, Some(v.int(42))),
-      #("y", v.float_t, None),
-    ])
+  let value = v.RcdT([
+    #("x", v.int_t, Some(v.int(42))),
+    #("y", v.float_t, None),
+  ])
   let term = quote([], 0, value)
-  assert term
-    == tm.RcdT([
-      #("x", tm.int_t, Some(tm.int(42))),
-      #("y", tm.float_t, None),
-    ])
-
+  assert term == tm.RcdT([
+    #("x", tm.LitT(lit.IntT), Some(tm.Lit(lit.Int(42)))),
+    #("y", tm.LitT(lit.FloatT), None),
+  ])
 }
 
+// ============================================================================
+// Neutral term quoting — tests DeBruijn index adjustment logic
+// ============================================================================
+
 pub fn quote_vneut_nvar_test() {
+  // DeBruijn adjustment: term level = size - level - 1
   assert quote([], 1, v.var(0)) == tm.Var(0)
   assert quote([], 2, v.var(0)) == tm.Var(1)
   assert quote([], 3, v.var(0)) == tm.Var(2)
