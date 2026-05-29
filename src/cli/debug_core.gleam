@@ -23,7 +23,7 @@
 import core/ast
 import core/elaborate.{infer}
 import core/eval.{eval}
-import core/state.{type Error, type State}
+import core/context.{type Error, type Context, with_err} as ctx
 import core/syntax
 import gleam/int
 import gleam/io

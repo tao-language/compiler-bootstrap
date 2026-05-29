@@ -2,8 +2,9 @@
 ///
 /// These tests verify that `unwrap` correctly propagates hole
 /// substitutions through all value constructors.
-import core/ast
+import core/context.{type Subst}
 import core/unwrap.{unwrap}
+import core/value.{type Value} as v
 import gleeunit
 
 pub fn main() {
@@ -11,18 +12,18 @@ pub fn main() {
 }
 
 pub fn unwrap_no_solution_test() {
-  let solution = unwrap([], ast.vhole(10))
-  assert solution == ast.vhole(10)
+  let solution = unwrap([], v.hole(10))
+  assert solution == v.hole(10)
 }
 
 pub fn unwrap_direct_solution_test() {
-  let subst = [#(10, ast.vint_t)]
-  let solution = unwrap(subst, ast.vhole(10))
-  assert solution == ast.vint_t
+  let subst: Subst = [#(10, v.int_t)]
+  let solution = unwrap(subst, v.hole(10))
+  assert solution == v.int_t
 }
 
 pub fn unwrap_indirect_solution_test() {
-  let subst = [#(10, ast.vhole(20)), #(20, ast.vint_t)]
-  let solution = unwrap(subst, ast.vhole(10))
-  assert solution == ast.vint_t
+  let subst: Subst = [#(10, v.hole(20)), #(20, v.int_t)]
+  let solution = unwrap(subst, v.hole(10))
+  assert solution == v.int_t
 }

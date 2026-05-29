@@ -10,9 +10,7 @@ import core/eval.{eval}
 import core/literals.{type Literal, type LiteralType} as lit
 import core/term.{type Term} as tm
 import core/unify.{unify}
-import core/unwrap.{unwrap}
-import core/utils
-import core/value.{type Env, type Value} as v
+import core/value.{type Value} as v
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
@@ -33,7 +31,7 @@ pub fn infer(ctx: Context, node: AST) -> #(Term, Value, Context) {
     ast.Rcd(fields) -> infer_rcd(ctx, fields)
     ast.RcdT(fields) -> infer_rcd_type(ctx, fields)
     ast.Call(name, args, return_type) ->
-      infer_call(ctx, name, args, return_type, node.span)
+      infer_call(ctx, name, args, return_type)
     ast.Ann(inner, type_) -> infer_ann(ctx, inner, type_)
     ast.Lam(implicit, param, body) ->
       infer_lam(ctx, implicit, param, body, node.span)

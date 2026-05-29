@@ -7,8 +7,10 @@
 /// - Lambda and Pi quoting with correct binder depth
 /// - VTypeDef quoting
 /// - Level→index conversion correctness
-import core/ast
+import core/term.{type Term} as tm
+import core/literals.{type Literal} as lit
 import core/quote.{quote}
+import core/value.{type Value} as v
 import gleam/option.{None, Some}
 import gleeunit
 import syntax/span.{Span}
@@ -24,63 +26,64 @@ const s = Span("quote_test", 0, 0, 0, 0)
 // ============================================================================
 
 pub fn quote_vtyp_test() {
-  let value = ast.VTyp(0)
-  let term = quote([], 0, value, s)
-  assert term == ast.Typ(0, s)
+  let value = v.Typ(0)
+  let term = quote([], 0, value)
+  assert term == tm.Typ(0)
 }
 
 pub fn quote_vlit_test() {
-  let value = ast.VLit(ast.Int(42))
-  let term = quote([], 0, value, s)
-  assert term == ast.Lit(ast.Int(42), s)
+  let value = v.Lit(lit.Int(42))
+  let term = quote([], 0, value)
+  assert term == tm.Lit(lit.Int(42))
 }
 
 pub fn quote_vlitt_test() {
-  let value = ast.VLitT(ast.IntT)
-  let term = quote([], 0, value, s)
-  assert term == ast.LitT(ast.IntT, s)
+  let value = v.LitT(lit.IntT)
+  let term = quote([], 0, value)
+  assert term == tm.LitT(lit.IntT)
 }
 
 pub fn quote_vctr_test() {
-  let value = ast.VCtr("A", ast.vint(42))
-  let term = quote([], 0, value, s)
-  assert term == ast.Ctr("A", ast.int(42, s), s)
+  let value = v.Ctr("A", v.int(42))
+  let term = quote([], 0, value)
+  assert term == tm.Ctr("A", tm.int(42))
 }
 
 pub fn quote_vrcd_test() {
-  let value = ast.VRcd([#("x", ast.vint_t), #("y", ast.vfloat_t)])
-  let term = quote([], 0, value, s)
-  assert term == ast.Rcd([#("x", ast.int_t(s)), #("y", ast.float_t(s))], s)
+  let value = v.Rcd([#("x", v.int_t), #("y", v.float_t)])
+  let term = quote([], 0, value)
+  assert term == tm.Rcd([#("x", tm.int_t), #("y", tm.float_t)])
 }
 
 pub fn quote_vrcdt_test() {
   let value =
-    ast.VRcdT([
-      #("x", ast.vint_t, Some(ast.vint(42))),
-      #("y", ast.vfloat_t, None),
+    v.RcdT([
+      #("x", v.int_t, Some(v.int(42))),
+      #("y", v.float_t, None),
     ])
-  let term = quote([], 0, value, s)
+  let term = quote([], 0, value)
   assert term
-    == ast.RcdT(
-      [#("x", ast.int_t(s), Some(ast.int(42, s))), #("y", ast.float_t(s), None)],
-      s,
-    )
+    == tm.RcdT([
+      #("x", tm.int_t, Some(tm.int(42))),
+      #("y", tm.float_t, None),
+    ])
+
 }
 
 pub fn quote_vneut_nvar_test() {
-  assert quote([], 1, ast.vvar(0), s) == ast.Var(0, s)
-  assert quote([], 2, ast.vvar(0), s) == ast.Var(1, s)
-  assert quote([], 3, ast.vvar(0), s) == ast.Var(2, s)
-  assert quote([], 2, ast.vvar(1), s) == ast.Var(0, s)
-  assert quote([], 3, ast.vvar(1), s) == ast.Var(1, s)
-  assert quote([], 4, ast.vvar(1), s) == ast.Var(2, s)
-  assert quote([], 3, ast.vvar(2), s) == ast.Var(0, s)
-  assert quote([], 4, ast.vvar(2), s) == ast.Var(1, s)
-  assert quote([], 5, ast.vvar(2), s) == ast.Var(2, s)
+  assert quote([], 1, v.var(0)) == tm.Var(0)
+  assert quote([], 2, v.var(0)) == tm.Var(1)
+  assert quote([], 3, v.var(0)) == tm.Var(2)
+  assert quote([], 2, v.var(1)) == tm.Var(0)
+  assert quote([], 3, v.var(1)) == tm.Var(1)
+  assert quote([], 4, v.var(1)) == tm.Var(2)
+  assert quote([], 3, v.var(2)) == tm.Var(0)
+  assert quote([], 4, v.var(2)) == tm.Var(1)
+  assert quote([], 5, v.var(2)) == tm.Var(2)
 }
 
 pub fn quote_vneut_nhole_test() {
-  let value = ast.vhole(42)
-  let term = quote([], 0, value, s)
-  assert term == ast.Hole(42, s)
+  let value = v.hole(42)
+  let term = quote([], 0, value)
+  assert term == tm.Hole(42)
 }
