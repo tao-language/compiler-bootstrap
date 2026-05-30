@@ -57,7 +57,7 @@ pub fn check(
   expected: #(Value, Span),
 ) -> #(Term, Value, Context) {
   let #(term, type_, ctx) = infer(ctx, node)
-  let #(type_, ctx) = unify(ctx, #(type_, node.span), expected)
+  let ctx = unify(ctx, #(type_, node.span), expected)
   #(term, type_, ctx)
 }
 

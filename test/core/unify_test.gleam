@@ -4,7 +4,7 @@
 /// - Basic type/literal unification
 /// - Error handling for mismatches
 /// - Constructor tag and argument unification
-import core/context.{TypeMismatch, with_err} as ctx
+import core/context.{TypeMismatch, new_ctx} as ctx
 import core/unify.{unify}
 import core/value as v
 import gleeunit
@@ -25,21 +25,18 @@ const s2 = span.Span("unify_test", 2, 2, 2, 2)
 pub fn unify_vtyp_same_universe_test() {
   let a = v.Typ(0)
   let b = v.Typ(0)
-  let ctx0 = ctx.new_ctx
-  let #(value, state) = unify(ctx0, #(a, s1), #(b, s2))
-  assert state == ctx0
-  assert value == v.Typ(0)
+  let ctx0 = new_ctx
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx == ctx0
 }
 
 pub fn unify_vtyp_type_mismatch_test() {
   let a = v.Typ(0)
   let b = v.Typ(1)
-  let ctx0 = ctx.new_ctx
-  let #(value, state) = unify(ctx0, #(a, s1), #(b, s2))
+  let ctx0 = new_ctx
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
   let error = TypeMismatch(#(a, s1), #(b, s2))
-  let expected = with_err(ctx0, error)
-  assert state == expected
-  assert value == v.Err
+  assert ctx == ctx.with_err(ctx0, error)
 }
 
 // ============================================================================
@@ -49,21 +46,18 @@ pub fn unify_vtyp_type_mismatch_test() {
 pub fn unify_vlit_same_int_test() {
   let a = v.int(42)
   let b = v.int(42)
-  let ctx0 = ctx.new_ctx
-  let #(value, state) = unify(ctx0, #(a, s1), #(b, s2))
-  assert state == ctx0
-  assert value == v.int(42)
+  let ctx0 = new_ctx
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx == ctx0
 }
 
 pub fn unify_vlit_type_mismatch_test() {
   let a = v.int(1)
   let b = v.int(2)
-  let ctx0 = ctx.new_ctx
-  let #(value, state) = unify(ctx0, #(a, s1), #(b, s2))
+  let ctx0 = new_ctx
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
   let error = TypeMismatch(#(a, s1), #(b, s2))
-  let expected = with_err(ctx0, error)
-  assert state == expected
-  assert value == v.Err
+  assert ctx == ctx.with_err(ctx0, error)
 }
 
 // ============================================================================
@@ -73,21 +67,18 @@ pub fn unify_vlit_type_mismatch_test() {
 pub fn unify_litt_same_test() {
   let a = v.int_t
   let b = v.int_t
-  let ctx0 = ctx.new_ctx
-  let #(value, state) = unify(ctx0, #(a, s1), #(b, s2))
-  assert state == ctx0
-  assert value == v.int_t
+  let ctx0 = new_ctx
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx == ctx0
 }
 
 pub fn unify_litt_type_mismatch_test() {
   let a = v.int_t
   let b = v.float_t
-  let ctx0 = ctx.new_ctx
-  let #(value, state) = unify(ctx0, #(a, s1), #(b, s2))
+  let ctx0 = new_ctx
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
   let error = TypeMismatch(#(a, s1), #(b, s2))
-  let expected = with_err(ctx0, error)
-  assert state == expected
-  assert value == v.Err
+  assert ctx == ctx.with_err(ctx0, error)
 }
 
 // ============================================================================
@@ -97,30 +88,72 @@ pub fn unify_litt_type_mismatch_test() {
 pub fn unify_ctr_same_test() {
   let a = v.Ctr("A", v.int_t)
   let b = v.Ctr("A", v.int_t)
-  let ctx0 = ctx.new_ctx
-  let #(value, state) = unify(ctx0, #(a, s1), #(b, s2))
-  assert state == ctx0
-  assert value == a
+  let ctx0 = new_ctx
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx == ctx0
 }
 
 pub fn unify_ctr_tag_mismatch_test() {
   let a = v.Ctr("A", v.int_t)
   let b = v.Ctr("B", v.int_t)
-  let ctx0 = ctx.new_ctx
-  let #(value, state) = unify(ctx0, #(a, s1), #(b, s2))
+  let ctx0 = new_ctx
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
   let error = TypeMismatch(#(a, s1), #(b, s2))
-  let expected = with_err(ctx0, error)
-  assert state == expected
-  assert value == v.Err
+  assert ctx == ctx.with_err(ctx0, error)
 }
 
 pub fn unify_ctr_arg_mismatch_test() {
   let a = v.Ctr("A", v.int_t)
   let b = v.Ctr("A", v.float_t)
-  let ctx0 = ctx.new_ctx
-  let #(value, state) = unify(ctx0, #(a, s1), #(b, s2))
+  let ctx0 = new_ctx
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
   let error = TypeMismatch(#(v.int_t, s1), #(v.float_t, s2))
-  let expected = with_err(ctx0, error)
-  assert state == expected
-  assert value == v.Ctr("A", v.Err)
+  assert ctx == ctx.with_err(ctx0, error)
 }
+// ============================================================================
+// Record unification
+// ============================================================================
+
+// ============================================================================
+// Record type unification
+// ============================================================================
+
+// ============================================================================
+// Neutral variable unification
+// ============================================================================
+
+// ============================================================================
+// Neutral hole unification
+// ============================================================================
+
+// ============================================================================
+// Neutral application unification
+// ============================================================================
+
+// ============================================================================
+// Neutral match unification
+// ============================================================================
+
+// ============================================================================
+// Neutral call unification
+// ============================================================================
+
+// ============================================================================
+// Lambda unification
+// ============================================================================
+
+// ============================================================================
+// Pi type unification
+// ============================================================================
+
+// ============================================================================
+// Fix-point unification
+// ============================================================================
+
+// ============================================================================
+// Type definition unification
+// ============================================================================
+
+// ============================================================================
+// Error unification
+// ============================================================================
