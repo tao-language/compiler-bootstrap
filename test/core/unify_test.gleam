@@ -110,45 +110,134 @@ pub fn unify_ctr_arg_mismatch_test() {
   let error = TypeMismatch(#(v.int_t, s1), #(v.float_t, s2))
   assert ctx == ctx.with_err(ctx0, error)
 }
+
 // ============================================================================
 // Record unification
 // ============================================================================
+
+pub fn unify_rcd_empty_test() {
+  todo
+}
+
+pub fn unify_rcd_fields_mismatch_test() {
+  todo
+}
+
+pub fn unify_rcd_different_order_test() {
+  todo
+}
 
 // ============================================================================
 // Record type unification
 // ============================================================================
 
+pub fn unify_rcdt_empty_test() {
+  todo
+}
+
+pub fn unify_rcdt_fields_mismatch_test() {
+  todo
+}
+
+pub fn unify_rcdt_different_order_test() {
+  todo
+}
+
 // ============================================================================
 // Neutral variable unification
 // ============================================================================
+
+pub fn unify_neut_nvar_same_test() {
+  todo
+}
+
+pub fn unify_neut_nvar_different_test() {
+  todo
+}
 
 // ============================================================================
 // Neutral hole unification
 // ============================================================================
 
+pub fn unify_neut_nhole_same_test() {
+  todo
+}
+
+pub fn unify_neut_nhole_solve_test() {
+  todo
+}
+
+pub fn unify_neut_nhole_infinite_type_test() {
+  todo
+}
+
 // ============================================================================
 // Neutral application unification
 // ============================================================================
+
+pub fn unify_neut_napp_test() {
+  todo
+}
 
 // ============================================================================
 // Neutral match unification
 // ============================================================================
 
+pub fn unify_neut_nmatch_empty_cases_test() {
+  todo
+}
+
+pub fn unify_neut_nmatch_case_without_bindings_test() {
+  todo
+}
+
+pub fn unify_neut_nmatch_case_with_bindings_test() {
+  todo
+}
+
 // ============================================================================
 // Neutral call unification
 // ============================================================================
+
+pub fn unify_neut_ncall_empty_args_test() {
+  todo
+}
+
+pub fn unify_neut_ncall_name_mismatch_test() {
+  todo
+}
 
 // ============================================================================
 // Lambda unification
 // ============================================================================
 
+pub fn unify_lam_identity_test() {
+  todo
+}
+
+pub fn unify_lam_different_env_closure_test() {
+  todo
+}
+
 // ============================================================================
 // Pi type unification
 // ============================================================================
 
+pub fn unify_pi_identity_test() {
+  todo
+}
+
+pub fn unify_pi_different_env_closure_test() {
+  todo
+}
+
 // ============================================================================
 // Fix-point unification
 // ============================================================================
+
+pub fn unify_fix_test() {
+  todo
+}
 
 // ============================================================================
 // Type definition unification
@@ -157,3 +246,11 @@ pub fn unify_ctr_arg_mismatch_test() {
 // ============================================================================
 // Error unification
 // ============================================================================
+
+pub fn unify_err_test() {
+  let a = v.Err
+  let b = v.Err
+  let ctx0 = new_ctx
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx == ctx0
+}

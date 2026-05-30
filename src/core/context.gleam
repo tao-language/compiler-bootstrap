@@ -6,7 +6,7 @@
 ///
 /// Errors accumulate as the type checker progresses, allowing
 /// recovery after type errors.
-import core/value.{type Env, type Value}
+import core/value.{type Env, type Neut, type Value}
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
@@ -55,6 +55,9 @@ pub type Subst =
 pub type Error {
   VarUndefined(name: String, span: Span)
   TypeMismatch(#(Value, Span), #(Value, Span))
+  NeutralTypeMismatch(#(Neut, Span), #(Neut, Span))
+  CallArityMismatch(#(Int, Span), #(Int, Span))
+  InfiniteType(hole_id: Int, type_: Value, span: Span)
   HoleUnsolved(id: Int, span: Span)
   NotAFunction(fun_type: Value, span: Span)
   CtrUndefined(tag: String, span: Span)
