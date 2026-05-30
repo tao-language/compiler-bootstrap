@@ -4,11 +4,11 @@
 /// - `lookup`: finding variables by name and returning their DeBruijn index + type
 /// - `with_err` / `with_err_list`: accumulating errors in context
 /// - `new_hole`: generating fresh hole IDs
-import core/context.{lookup, with_err, with_err_list, new_hole} as ctx
+import core/context.{Context, lookup, new_ctx, new_hole, with_err, with_err_list} as ctx
 import core/value as v
 import gleam/option.{None, Some}
 import gleeunit
-import syntax/span as span
+import syntax/span
 
 pub fn main() {
   gleeunit.main()
@@ -21,22 +21,22 @@ const s = span.Span("context_test", 0, 0, 0, 0)
 // ============================================================================
 
 pub fn lookup_finds_first_variable_test() {
-  let ctx0 = ctx.new_ctx(["x", "y"], [], [v.int_t, v.float_t], [], [], [], 0)
+  let ctx0 = Context(..new_ctx, types: [#("x", v.int_t), #("y", v.float_t)])
   assert lookup(ctx0, "x") == Some(#(0, v.int_t))
 }
 
 pub fn lookup_finds_second_variable_test() {
-  let ctx0 = ctx.new_ctx(["x", "y"], [], [v.int_t, v.float_t], [], [], [], 0)
+  let ctx0 = Context(..new_ctx, types: [#("x", v.int_t), #("y", v.float_t)])
   assert lookup(ctx0, "y") == Some(#(1, v.float_t))
 }
 
 pub fn lookup_undefined_variable_test() {
-  let ctx0 = ctx.new_ctx(["x", "y"], [], [v.int_t, v.float_t], [], [], [], 0)
+  let ctx0 = Context(..new_ctx, types: [#("x", v.int_t), #("y", v.float_t)])
   assert lookup(ctx0, "z") == None
 }
 
 pub fn lookup_empty_context_test() {
-  let ctx0 = ctx.new_ctx([], [], [], [], [], [], 0)
+  let ctx0 = new_ctx
   assert lookup(ctx0, "x") == None
 }
 
@@ -45,42 +45,43 @@ pub fn lookup_empty_context_test() {
 // ============================================================================
 
 pub fn with_err_accumulates_single_error_test() {
-  let ctx0 = ctx.new_ctx([], [], [], [], [], [], 0)
-  let ctx1 = with_err(ctx0, ctx.TypeMismatch(
-    #(v.int_t, s),
-    #(v.float_t, s),
-  ))
+  let ctx0 = new_ctx
+  let ctx1 = with_err(ctx0, ctx.TypeMismatch(#(v.int_t, s), #(v.float_t, s)))
   let ctx2 = with_err(ctx1, ctx.VarUndefined("x", s))
   // Errors accumulate: both errors should be present
-  assert ctx2.errors == [
-    ctx.TypeMismatch(#(v.int_t, s), #(v.float_t, s)),
-    ctx.VarUndefined("x", s),
-  ]
+  assert ctx2.errors
+    == [
+      ctx.TypeMismatch(#(v.int_t, s), #(v.float_t, s)),
+      ctx.VarUndefined("x", s),
+    ]
 }
 
 pub fn with_err_list_accumulates_multiple_errors_test() {
-  let ctx0 = ctx.new_ctx([], [], [], [], [], [], 0)
-  let ctx1 = with_err_list(ctx0, [
-    ctx.TypeMismatch(#(v.int_t, s), #(v.float_t, s)),
-    ctx.VarUndefined("x", s),
-    ctx.HoleUnsolved(42, s),
-  ])
-  assert ctx1.errors == [
-    ctx.TypeMismatch(#(v.int_t, s), #(v.float_t, s)),
-    ctx.VarUndefined("x", s),
-    ctx.HoleUnsolved(42, s),
-  ]
+  let ctx0 = new_ctx
+  let ctx1 =
+    with_err_list(ctx0, [
+      ctx.TypeMismatch(#(v.int_t, s), #(v.float_t, s)),
+      ctx.VarUndefined("x", s),
+      ctx.HoleUnsolved(42, s),
+    ])
+  assert ctx1.errors
+    == [
+      ctx.TypeMismatch(#(v.int_t, s), #(v.float_t, s)),
+      ctx.VarUndefined("x", s),
+      ctx.HoleUnsolved(42, s),
+    ]
 }
 
 pub fn with_err_appends_to_existing_errors_test() {
-  let ctx0 = ctx.new_ctx([], [], [], [], [], [], 0)
+  let ctx0 = new_ctx
   let ctx1 = with_err(ctx0, ctx.VarUndefined("a", s))
   let ctx2 = with_err(ctx1, ctx.VarUndefined("b", s))
   // Should have 2 errors, not replace the first
-  assert ctx2.errors == [
-    ctx.VarUndefined("a", s),
-    ctx.VarUndefined("b", s),
-  ]
+  assert ctx2.errors
+    == [
+      ctx.VarUndefined("a", s),
+      ctx.VarUndefined("b", s),
+    ]
 }
 
 // ============================================================================
@@ -88,7 +89,7 @@ pub fn with_err_appends_to_existing_errors_test() {
 // ============================================================================
 
 pub fn new_hole_fresh_id_test() {
-  let ctx0 = ctx.new_ctx([], [], [], [], [], [], 0)
+  let ctx0 = new_ctx
   let #(id1, ctx1) = new_hole(ctx0)
   let #(id2, ctx2) = new_hole(ctx1)
   assert id1 == 0
@@ -99,7 +100,7 @@ pub fn new_hole_fresh_id_test() {
 }
 
 pub fn new_hole_increments_monotonically_test() {
-  let ctx0 = ctx.new_ctx([], [], [], [], [], [], 100)
+  let ctx0 = Context(..new_ctx, hole_counter: 100)
   let #(id1, ctx1) = new_hole(ctx0)
   let #(id2, ctx2) = new_hole(ctx1)
   let #(id3, ctx3) = new_hole(ctx2)

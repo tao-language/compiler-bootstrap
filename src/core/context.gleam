@@ -31,7 +31,6 @@ pub type FFI =
 ///
 /// Context is threaded through every phase of the compiler. Fields:
 ///
-/// * `names`: Variable names
 /// * `env`: Values environment, used for eval
 /// * `types`: Types environment, used for type inference and checking
 /// * `subst`: Hole substitutions (hole_id → value)
@@ -40,9 +39,8 @@ pub type FFI =
 /// * `hole_counter`: Next fresh hole ID
 pub type Context {
   Context(
-    names: List(String),
     env: Env,
-    types: Env,
+    types: List(#(String, Value)),
     subst: Subst,
     errors: List(Error),
     ffi: FFI,
@@ -72,16 +70,22 @@ pub type Error {
   CtorNotFound(tag: String, span: Span)
 }
 
-pub const new_ctx = Context
+pub const new_ctx = Context([], [], [], [], [], 0)
 
 pub fn lookup(ctx: Context, name: String) -> Option(#(Int, Value)) {
-  list.zip(ctx.names, ctx.types)
-  |> list.index_map(fn(entry, index) {
-    let #(name, type_) = entry
-    #(name, #(index, type_))
-  })
-  |> list.key_find(name)
-  |> option.from_result
+  lookup_loop(ctx.types, name, 0)
+}
+
+fn lookup_loop(
+  types: List(#(String, Value)),
+  name: String,
+  index: Int,
+) -> Option(#(Int, Value)) {
+  case types {
+    [] -> None
+    [#(x, value), ..] if x == name -> Some(#(index, value))
+    [_, ..types] -> lookup_loop(types, name, index + 1)
+  }
 }
 
 pub fn with_err(ctx: Context, error: Error) -> Context {
