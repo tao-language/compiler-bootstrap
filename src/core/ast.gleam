@@ -25,7 +25,7 @@ pub type Data {
   Var(name: String)
   Ctr(tag: String, arg: AST)
   Rcd(fields: List(#(String, AST)))
-  RcdT(fields: List(#(String, AST, Option(AST))))
+  RcdT(fields: List(#(String, #(AST, Option(AST)))))
   Call(name: String, args: List(AST), return_type: AST)
   Ann(term: AST, type_: AST)
   Lam(implicit: Bool, param: #(String, AST), body: AST)

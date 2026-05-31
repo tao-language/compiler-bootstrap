@@ -16,7 +16,7 @@ pub type Value {
   LitT(literal: LiteralType)
   Ctr(tag: String, arg: Value)
   Rcd(fields: List(#(String, Value)))
-  RcdT(fields: List(#(String, Value, Option(Value))))
+  RcdT(fields: List(#(String, #(Value, Option(Value)))))
   Neut(neutral: Neut)
   Lam(env: Env, implicit: Bool, param: #(String, Value), body: Term)
   Pi(env: Env, implicit: Bool, domain: #(String, Value), codomain: Term)

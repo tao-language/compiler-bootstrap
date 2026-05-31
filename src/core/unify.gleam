@@ -114,10 +114,46 @@ fn unify_rcd_fields(
 
 fn unify_rcd_type(
   ctx: Context,
-  a: #(List(#(String, Value, Option(Value))), Span),
-  b: #(List(#(String, Value, Option(Value))), Span),
+  a: #(List(#(String, #(Value, Option(Value)))), Span),
+  b: #(List(#(String, #(Value, Option(Value)))), Span),
 ) -> Context {
-  todo as "unify RcdT"
+  let #(fields1, s1) = a
+  let #(fields2, s2) = b
+  let sorted_names = fn(kvs: List(#(String, #(Value, Option(Value))))) {
+    list.map(kvs, fn(kv) { kv.0 })
+    |> list.sort(by: string.compare)
+  }
+  let ctx = case sorted_names(fields1), sorted_names(fields2) {
+    names1, names2 if names1 != names2 ->
+      with_err(ctx, RcdFieldsMismatch(#(names1, s1), #(names2, s2)))
+    _, _ -> ctx
+  }
+  unify_rcd_type_fields(ctx, #(fields1, s1), #(fields2, s2))
+}
+
+fn unify_rcd_type_fields(
+  ctx: Context,
+  a: #(List(#(String, #(Value, Option(Value)))), Span),
+  b: #(List(#(String, #(Value, Option(Value)))), Span),
+) -> Context {
+  let #(fields1, s1) = a
+  let #(fields2, s2) = b
+  case fields1 {
+    [] -> ctx
+    [#(name, #(value1, maybe_default)), ..fields1] ->
+      case list.key_find(fields2, name) {
+        Error(Nil) -> ctx
+        Ok(#(value2, maybe_default2)) -> {
+          let ctx = unify(ctx, #(value1, s1), #(value2, s2))
+          let ctx = case maybe_default, maybe_default2 {
+            Some(default1), Some(default2) ->
+              unify(ctx, #(default1, s1), #(default2, s2))
+            _, _ -> ctx
+          }
+          unify_rcd_type_fields(ctx, #(fields1, s1), #(fields2, s2))
+        }
+      }
+  }
 }
 
 fn unify_neut(ctx: Context, a: #(Neut, Span), b: #(Neut, Span)) -> Context {

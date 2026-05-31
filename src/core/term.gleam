@@ -38,7 +38,7 @@ pub type Term {
   Var(index: Int)
   Ctr(tag: String, arg: Term)
   Rcd(fields: List(#(String, Term)))
-  RcdT(fields: List(#(String, Term, Option(Term))))
+  RcdT(fields: List(#(String, #(Term, Option(Term)))))
   Call(name: String, args: List(Term))
   Ann(term: Term, type_: Term)
   Lam(implicit: Bool, param: #(String, Term), body: Term)

@@ -133,20 +133,24 @@ fn infer_rcd(
 fn infer_rcd_fields(
   ctx: Context,
   fields: List(#(String, AST)),
-) -> #(List(#(String, Term)), List(#(String, Value, Option(Value))), Context) {
+) -> #(List(#(String, Term)), List(#(String, #(Value, Option(Value)))), Context) {
   case fields {
     [] -> #([], [], ctx)
     [#(name, term), ..fields] -> {
       let #(term, type_, ctx) = infer(ctx, term)
       let #(fields, field_types, ctx) = infer_rcd_fields(ctx, fields)
-      #([#(name, term), ..fields], [#(name, type_, None), ..field_types], ctx)
+      #(
+        [#(name, term), ..fields],
+        [#(name, #(type_, None)), ..field_types],
+        ctx,
+      )
     }
   }
 }
 
 fn infer_rcd_type(
   ctx: Context,
-  fields: List(#(String, AST, option.Option(AST))),
+  fields: List(#(String, #(AST, option.Option(AST)))),
 ) -> #(Term, Value, Context) {
   let #(fields, ctx) = infer_rcd_type_fields(ctx, fields)
   #(tm.RcdT(fields), v.Typ(0), ctx)
@@ -154,20 +158,20 @@ fn infer_rcd_type(
 
 fn infer_rcd_type_fields(
   ctx: Context,
-  fields: List(#(String, AST, option.Option(AST))),
-) -> #(List(#(String, Term, option.Option(Term))), Context) {
+  fields: List(#(String, #(AST, option.Option(AST)))),
+) -> #(List(#(String, #(Term, option.Option(Term)))), Context) {
   case fields {
     [] -> #([], ctx)
-    [#(name, type_, default), ..fields] -> {
+    [#(name, #(type_, default)), ..fields] -> {
       let #(field, ctx) = case default {
         Some(default) -> {
           let #(default, #(type_, _), ctx) = check_on_ast(ctx, default, type_)
-          let field = #(name, type_, Some(default))
+          let field = #(name, #(type_, Some(default)))
           #(field, ctx)
         }
         None -> {
           let #(type_, _, ctx) = infer(ctx, type_)
-          let field = #(name, type_, None)
+          let field = #(name, #(type_, None))
           #(field, ctx)
         }
       }

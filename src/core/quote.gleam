@@ -23,9 +23,9 @@ pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
     v.RcdT(fields_val) -> {
       let fields =
         list.map(fields_val, fn(field) {
-          let #(name, value, default_val) = field
+          let #(name, #(value, default_val)) = field
           let default = option.map(default_val, fn(v) { quote(ffi, size, v) })
-          #(name, quote(ffi, size, value), default)
+          #(name, #(quote(ffi, size, value), default))
         })
       tm.RcdT(fields)
     }

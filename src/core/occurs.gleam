@@ -17,7 +17,7 @@ pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
       })
     v.RcdT(fields) ->
       list.any(fields, fn(field) {
-        let #(_, type_val, maybe_default_val) = field
+        let #(_, #(type_val, maybe_default_val)) = field
         occurs(ctx, hole_id, type_val)
         || case maybe_default_val {
           Some(default_val) -> occurs(ctx, hole_id, default_val)
