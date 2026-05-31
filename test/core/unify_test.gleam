@@ -169,7 +169,7 @@ pub fn unify_ctr_gadt_bool_test() {
 pub fn unify_ctr_gadt_option_test() {
   let option = fn(a) { v.Ctr("Option", a) }
   let none = v.ctr("None", [])
-  let some = fn(a) { v.Ctr("Some", a) }
+  let some = fn(x) { v.Ctr("Some", x) }
   // let Option = $type<a: $Type> {
   // | #None {} -> #Option #0  // a is #0
   // | #Some #0 -> #Option #0  // a is #0
@@ -199,6 +199,43 @@ pub fn unify_ctr_gadt_option_test() {
       errors: [TypeMismatch(#(v.int_t, s1), #(v.float_t, s1))],
       hole_counter: 1,
     )
+}
+
+pub fn unify_ctr_gadt_vec_test() {
+  let vec = fn(n, a) { v.ctr("Vec", [#("n", n), #("a", a)]) }
+  let nil = v.ctr("Nil", [])
+  let cons = fn(x, xs) { v.ctr("Cons", [#("x", x), #("xs", xs)]) }
+  // let Vec = $type<n: $Int, a: $Type> {
+  // | #Nil        {}                            -> #Vec {n: 0,     a: a}  // n is #1, a is #0
+  // | #Cons<m: ?> {x: a, xs: #Vec {n: m, a: a}} -> #Vec {n: m + 1, a: a}  // n is #2, a is #1, m is #0
+  // }
+  let a = tm.Var(0)
+  let nil_ret = tm.ctr("Vec", [#("n", tm.int(0)), #("a", a)])
+  let #(a, m) = #(tm.Var(1), tm.Var(0))
+  let cons_arg = tm.Rcd([#("n", m), #("a", a)])
+  let cons_ret =
+    tm.ctr("Vec", [#("n", tm.Call("+", [m, tm.int(1)])), #("a", a)])
+  let tdef =
+    v.TypeDef([], [#("n", v.int_t), #("a", v.Typ(0))], [
+      #("Nil", #([], tm.Rcd([]), nil_ret)),
+      #("Cons", #([], cons_arg, cons_ret)),
+    ])
+  let ctx0 = ctx.push_var(new_ctx, #("Vec", tdef, v.Typ(0)))
+  // Check Nil constructor
+  let a = vec(v.int(0), v.float_t)
+  let b = nil
+  assert unify(ctx0, #(a, s1), #(b, s2))
+    == Context(..ctx0, subst: [#(1, v.float_t)], hole_counter: 2)
+  assert unify(ctx0, #(b, s2), #(a, s1))
+    == Context(..ctx0, subst: [#(1, v.float_t)], hole_counter: 2)
+  // Check Cons constructor
+  let a = vec(v.int(1), v.float_t)
+  let b = cons(v.float_t, nil)
+  assert unify(ctx0, #(a, s1), #(b, s2))
+    == Context(..ctx0, subst: [#(1, v.float_t)], hole_counter: 2)
+  assert unify(ctx0, #(b, s2), #(a, s1))
+    == Context(..ctx0, subst: [#(1, v.float_t)], hole_counter: 2)
+  // Check nested Cons constructors
 }
 
 // ============================================================================

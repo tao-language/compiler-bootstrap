@@ -5,9 +5,7 @@ import core/context.{
 }
 import core/eval.{eval}
 import core/occurs.{occurs}
-import core/term.{type Term}
-import core/utils
-import core/value.{type Env, type Neut, type TypeDefinition, type Value} as v
+import core/value.{type Neut, type TypeDefinition, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
@@ -67,6 +65,7 @@ fn unify_gadt(
       let env = list.append(vars, env)
       let def_arg_val = eval(ctx.ffi, env, def_arg)
       let ctx = unify(ctx, #(ctr_arg, s1), #(def_arg_val, s2))
+      // TODO: eval(ctx.ffi, resolve_env(env), resolve(ret_type)) ?
       let ret_type_val = eval(ctx.ffi, env, ret_type)
       let ctx = unify(ctx, #(ret_type_val, s2), #(expected, s2))
       context.pop_vars(ctx, list.length(params))

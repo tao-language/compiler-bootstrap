@@ -31,7 +31,7 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
           #(name, eval(ffi, env, term), option.map(default, eval(ffi, env, _)))
         }),
       )
-    tm.Call(name, args, _) -> {
+    tm.Call(name, args) -> {
       let args_val = list.map(args, eval(ffi, env, _))
       let result = case list.key_find(ffi, name) {
         Ok(call) -> call(args_val)

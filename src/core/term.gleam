@@ -39,7 +39,7 @@ pub type Term {
   Ctr(tag: String, arg: Term)
   Rcd(fields: List(#(String, Term)))
   RcdT(fields: List(#(String, Term, Option(Term))))
-  Call(name: String, args: List(Term), return_type: Term)
+  Call(name: String, args: List(Term))
   Ann(term: Term, type_: Term)
   Lam(implicit: Bool, param: #(String, Term), body: Term)
   Pi(implicit: Bool, domain: #(String, Term), codomain: Term)

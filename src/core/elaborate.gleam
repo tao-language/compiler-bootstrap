@@ -186,7 +186,7 @@ fn infer_call(
   let #(args, ctx) = check_call_args(ctx, args)
   let #(return_type, _, ctx) = infer(ctx, return_type)
   let return_type_val = eval(ctx.ffi, ctx.env, return_type)
-  #(tm.Call(name, args, return_type), return_type_val, ctx)
+  #(tm.Call(name, args), return_type_val, ctx)
 }
 
 fn check_call_args(ctx: Context, args: List(AST)) -> #(List(Term), Context) {
