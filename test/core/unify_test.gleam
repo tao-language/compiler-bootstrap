@@ -17,9 +17,9 @@ pub fn main() {
   gleeunit.main()
 }
 
-const s1 = span.Span("unify_test", 1, 1, 1, 1)
+const s1 = span.Span("", 1, 1, 1, 1)
 
-const s2 = span.Span("unify_test", 2, 2, 2, 2)
+const s2 = span.Span("", 2, 2, 2, 2)
 
 // ============================================================================
 // Typ (universe level) unification
@@ -136,7 +136,7 @@ pub fn unify_ctr_gadt_undefined_type_test() {
 pub fn unify_ctr_gadt_undefined_variant_test() {
   let a = v.Ctr("A", v.int_t)
   let b = v.Ctr("T", v.float_t)
-  let tdef = v.TypeDef([], [])
+  let tdef = v.TypeDef([], [], [])
   let ctx0 = ctx.push_var(new_ctx, #("T", tdef, v.Typ(0)))
   assert unify(ctx0, #(a, s1), #(b, s2))
     == with_err(ctx0, TypeVariantUndefined(#("A", s1), #([], s2)))
@@ -148,16 +148,46 @@ pub fn unify_ctr_gadt_bool_test() {
   let bool = v.ctr("Bool", [])
   let true_ = v.ctr("True", [])
   let false_ = v.ctr("False", [])
+  // let Bool = $type {
+  // | #True {} -> #Bool {}
+  // | #False {} -> #Bool {}
+  // }
   let tdef =
-    v.TypeDef([], [
-      #("True", #([], v.Rcd([]), tm.ctr("Bool", []))),
-      #("False", #([], v.Rcd([]), tm.ctr("Bool", []))),
+    v.TypeDef([], [], [
+      #("True", #([], tm.Rcd([]), tm.ctr("Bool", []))),
+      #("False", #([], tm.Rcd([]), tm.ctr("Bool", []))),
     ])
   let ctx0 = ctx.push_var(new_ctx, #("Bool", tdef, v.Typ(0)))
+  // Check True constructor
   assert unify(ctx0, #(bool, s1), #(true_, s2)) == ctx0
   assert unify(ctx0, #(true_, s2), #(bool, s1)) == ctx0
+  // Check False constructor
   assert unify(ctx0, #(bool, s1), #(false_, s2)) == ctx0
   assert unify(ctx0, #(false_, s2), #(bool, s1)) == ctx0
+}
+
+pub fn unify_ctr_gadt_option_test() {
+  let option = fn(a) { v.Ctr("Option", a) }
+  let none = v.ctr("None", [])
+  let some = fn(a) { v.Ctr("Some", a) }
+  // let Option = $type<a: $Type> {
+  // | #None {} -> #Option #0  // a is #0
+  // | #Some #0 -> #Option #0  // a is #0
+  // }
+  let tdef =
+    v.TypeDef([], [#("a", v.Typ(0))], [
+      #("None", #([], tm.Rcd([]), tm.Ctr("Option", tm.Var(0)))),
+      #("Some", #([], tm.Var(0), tm.Ctr("Option", tm.Var(0)))),
+    ])
+  let ctx0 = ctx.push_var(new_ctx, #("Option", tdef, v.Typ(0)))
+  // Check None constructor
+  assert unify(ctx0, #(option(v.int_t), s1), #(none, s2))
+    == Context(..ctx0, subst: [#(0, v.int_t)], hole_counter: 1)
+  assert unify(ctx0, #(none, s2), #(option(v.int_t), s1))
+    == Context(..ctx0, subst: [#(0, v.int_t)], hole_counter: 1)
+  // Check Some constructor
+  assert unify(ctx0, #(option(v.int_t), s1), #(some(v.int_t), s2))
+    == Context(..ctx0, subst: [#(0, v.int_t)], hole_counter: 1)
 }
 
 // ============================================================================

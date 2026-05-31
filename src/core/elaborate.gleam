@@ -76,12 +76,12 @@ fn infer_typ(ctx: Context, level: Int) -> #(Term, Value, Context) {
   #(tm.Typ(level), v.Typ(level + 1), ctx)
 }
 
-fn infer_hole(ctx: Context, id: Int) -> #(Term, Value, Context) {
-  case id >= 0 {
+fn infer_hole(ctx: Context, hole_id: Int) -> #(Term, Value, Context) {
+  case hole_id >= 0 {
     True -> {
       // Concrete hole, create a new hole for its type.
       let #(type_id, ctx) = context.new_hole(ctx)
-      #(tm.Hole(id), v.hole(type_id), ctx)
+      #(tm.Hole(hole_id), v.hole(type_id), ctx)
     }
     False -> {
       // Unknown hole, instantiate a fresh new hole.
@@ -264,7 +264,7 @@ fn infer_app(
 ) -> #(Term, Value, Context) {
   let #(fun_term, fun_type, ctx) = infer(ctx, fun)
   case fun_type {
-    v.Pi(False, #(_, domain_val), #(env, codomain)) -> {
+    v.Pi(env, False, #(_, domain_val), codomain) -> {
       let #(arg, _, ctx) = check(ctx, arg, #(domain_val, fun.span))
       todo
     }

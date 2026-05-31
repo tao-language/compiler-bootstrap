@@ -18,15 +18,18 @@ pub type Value {
   Rcd(fields: List(#(String, Value)))
   RcdT(fields: List(#(String, Value, Option(Value))))
   Neut(neutral: Neut)
-  Lam(implicit: Bool, param: #(String, Value), body: #(Env, Term))
-  Pi(implicit: Bool, domain: #(String, Value), codomain: #(Env, Term))
+  Lam(env: Env, implicit: Bool, param: #(String, Value), body: Term)
+  Pi(env: Env, implicit: Bool, domain: #(String, Value), codomain: Term)
   Fix(name: String, body: #(Env, Term))
-  TypeDef(params: List(#(String, Value)), variants: List(TypeVariant))
+  TypeDef(env: Env, params: List(#(String, Value)), variants: List(TypeVariant))
   Err
 }
 
 pub type TypeVariant =
-  #(String, #(List(#(String, Value)), Value, Term))
+  #(String, #(List(#(String, Value)), Term, Term))
+
+pub type TypeDefinition =
+  #(Env, List(#(String, Value)), List(TypeVariant))
 
 pub type Neut {
   NVar(level: Int)

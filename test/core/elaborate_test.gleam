@@ -22,11 +22,11 @@ pub fn main() {
   gleeunit.main()
 }
 
-const s = span.Span("elaborate_test", 0, 0, 0, 0)
+const s = span.Span("", 0, 0, 0, 0)
 
-const s1 = span.Span("elaborate_test", 1, 1, 1, 1)
+const s1 = span.Span("", 1, 1, 1, 1)
 
-const s2 = span.Span("elaborate_test", 2, 2, 2, 2)
+const s2 = span.Span("", 2, 2, 2, 2)
 
 // ============================================================================
 // Variable lookup — tests context.lookup logic

@@ -8,7 +8,9 @@
 /// recovery after type errors.
 import core/term.{type Term}
 import core/utils
-import core/value.{type Env, type Neut, type TypeVariant, type Value} as v
+import core/value.{
+  type Env, type Neut, type TypeDefinition, type TypeVariant, type Value,
+} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
@@ -84,23 +86,6 @@ pub fn lookup(ctx: Context, name: String) -> Option(#(Int, Value)) {
   lookup_loop(ctx.types, name, 0)
 }
 
-pub fn lookup_type_def(
-  ctx: Context,
-  name: String,
-) -> Option(#(List(#(String, Value)), List(TypeVariant))) {
-  case lookup_in_env(ctx, name) {
-    Some(v.TypeDef(params, variants)) -> Some(#(params, variants))
-    _ -> None
-  }
-}
-
-fn lookup_in_env(ctx: Context, name: String) -> Option(Value) {
-  case lookup(ctx, name) {
-    Some(#(index, _)) -> utils.list_at(ctx.env, index)
-    None -> None
-  }
-}
-
 fn lookup_loop(
   types: List(#(String, Value)),
   name: String,
@@ -110,6 +95,20 @@ fn lookup_loop(
     [] -> None
     [#(x, value), ..] if x == name -> Some(#(index, value))
     [_, ..types] -> lookup_loop(types, name, index + 1)
+  }
+}
+
+pub fn lookup_type_def(ctx: Context, name: String) -> Option(TypeDefinition) {
+  case lookup_in_env(ctx, name) {
+    Some(v.TypeDef(env, params, variants)) -> Some(#(env, params, variants))
+    _ -> None
+  }
+}
+
+fn lookup_in_env(ctx: Context, name: String) -> Option(Value) {
+  case lookup(ctx, name) {
+    Some(#(index, _)) -> utils.list_at(ctx.env, index)
+    None -> None
   }
 }
 
@@ -124,6 +123,17 @@ pub fn with_err_list(ctx: Context, errors: List(Error)) -> Context {
 pub fn new_hole(ctx: Context) -> #(Int, Context) {
   let id = ctx.hole_counter
   #(id, Context(..ctx, hole_counter: id + 1))
+}
+
+pub fn new_hole_list(ctx: Context, num_holes: Int) -> #(List(Int), Context) {
+  case num_holes > 0 {
+    True -> {
+      let #(hole_id, ctx) = new_hole(ctx)
+      let #(holes, ctx) = new_hole_list(ctx, num_holes - 1)
+      #([hole_id, ..holes], ctx)
+    }
+    False -> #([], ctx)
+  }
 }
 
 pub fn push_var(ctx: Context, var: #(String, Value, Value)) -> Context {
@@ -144,15 +154,23 @@ pub fn push_var_list(
   )
 }
 
-pub fn push_var_parameters(
+pub fn push_var_param(ctx: Context, param: #(String, Value)) -> Context {
+  let #(name, type_) = param
+  let #(hole_id, ctx) = new_hole(ctx)
+  push_var(ctx, #(name, v.hole(hole_id), type_))
+}
+
+pub fn push_var_param_list(
   ctx: Context,
   params: List(#(String, Value)),
 ) -> Context {
-  list.index_map(params, fn(param, index) {
-    let #(name, type_) = param
-    #(name, v.var(index), type_)
-  })
-  |> push_var_list(ctx, _)
+  case params {
+    [] -> ctx
+    [param, ..params] -> {
+      let ctx = push_var_param_list(ctx, params)
+      push_var_param(ctx, param)
+    }
+  }
 }
 
 pub fn pop_vars(ctx: Context, num_vars: Int) -> Context {

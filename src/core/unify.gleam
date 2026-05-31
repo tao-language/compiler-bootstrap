@@ -6,7 +6,8 @@ import core/context.{
 import core/eval.{eval}
 import core/occurs.{occurs}
 import core/term.{type Term}
-import core/value.{type Neut, type TypeVariant, type Value} as v
+import core/utils
+import core/value.{type Env, type Neut, type TypeDefinition, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
@@ -30,14 +31,17 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       unify_rcd(ctx, #(fields1, s1), #(fields2, s2))
     v.RcdT(fields1), v.RcdT(fields2) ->
       unify_rcd_type(ctx, #(fields1, s1), #(fields2, s2))
+    v.Neut(v.NHole(id1)), v.Neut(v.NHole(id2)) if id1 == id2 -> ctx
+    _, v.Neut(v.NHole(id)) -> solve_hole(ctx, id, value1, s1)
+    v.Neut(v.NHole(id)), _ -> solve_hole(ctx, id, value2, s2)
     v.Neut(n1), v.Neut(n2) -> unify_neut(ctx, #(n1, s1), #(n2, s2))
-    v.Lam(i1, #(_, a1), #(env1, b1)), v.Lam(i2, #(_, a2), #(env2, b2)) -> {
+    v.Lam(env1, i1, #(_, a1), b1), v.Lam(env2, i2, #(_, a2), b2) -> {
       todo as "unify Lam"
     }
-    v.Pi(i1, #(_, a1), #(env1, b1)), v.Pi(i2, #(_, a2), #(env2, b2)) -> {
+    v.Pi(env1, i1, #(_, a1), b1), v.Pi(env2, i2, #(_, a2), b2) -> {
       todo as "unify Pi"
     }
-    v.TypeDef(params1, variants1), v.TypeDef(params2, variants2) -> {
+    v.TypeDef(env1, params1, variants1), v.TypeDef(env2, params2, variants2) -> {
       todo as "unify TypeDef"
     }
     v.Err, v.Err -> ctx
@@ -48,18 +52,22 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
 fn unify_gadt(
   ctx: Context,
   a: #(String, Value, Span),
-  b: #(Value, #(List(#(String, Value)), List(TypeVariant)), Span),
+  b: #(Value, TypeDefinition, Span),
 ) -> Context {
   let #(ctr_tag, ctr_arg, s1) = a
-  let #(expected, #(type_params, variants), s2) = b
+  let #(expected, type_def, s2) = b
+  let #(env, type_params, variants) = type_def
   case list.key_find(variants, ctr_tag) {
     Error(Nil) ->
       with_err(ctx, TypeVariantUndefined(#(ctr_tag, s1), #(variants, s2)))
     Ok(#(bindings, def_arg, ret_type)) -> {
       let params = list.reverse(list.append(type_params, bindings))
-      let ctx = context.push_var_parameters(ctx, params)
-      let ctx = unify(ctx, #(ctr_arg, s1), #(def_arg, s2))
-      let ret_type_val = eval(ctx.ffi, ctx.env, ret_type)
+      let ctx = context.push_var_param_list(ctx, params)
+      let vars = list.take(ctx.env, list.length(params))
+      let env = list.append(vars, env)
+      let def_arg_val = eval(ctx.ffi, env, def_arg)
+      let ctx = unify(ctx, #(ctr_arg, s1), #(def_arg_val, s2))
+      let ret_type_val = eval(ctx.ffi, env, ret_type)
       let ctx = unify(ctx, #(ret_type_val, s2), #(expected, s2))
       context.pop_vars(ctx, list.length(params))
     }
@@ -118,9 +126,6 @@ fn unify_neut(ctx: Context, a: #(Neut, Span), b: #(Neut, Span)) -> Context {
   let #(n2, s2) = b
   case n1, n2 {
     v.NVar(lv1), v.NVar(lv2) if lv1 == lv2 -> ctx
-    v.NHole(id1), v.NHole(id2) if id1 == id2 -> ctx
-    v.NHole(id), _ -> solve_hole(ctx, id, v.Neut(n2), s2)
-    _, v.NHole(id) -> solve_hole(ctx, id, v.Neut(n1), s1)
     v.NApp(fun1, arg1), v.NApp(fun2, arg2) -> {
       let ctx = unify_neut(ctx, #(fun1, s1), #(fun2, s2))
       unify(ctx, #(arg1, s1), #(arg2, s2))
@@ -157,8 +162,22 @@ fn unify_args(
 }
 
 fn solve_hole(ctx: Context, hole_id: Int, value: Value, span: Span) -> Context {
-  case occurs(ctx, hole_id, value) {
-    True -> with_err(ctx, InfiniteType(hole_id, value, span))
-    False -> Context(..ctx, subst: [#(hole_id, value), ..ctx.subst])
+  case hole_id >= 0 {
+    True ->
+      // Concrete hole, do occurs check and solve with a substitution
+      case occurs(ctx, hole_id, value) {
+        True -> with_err(ctx, InfiniteType(hole_id, value, span))
+        False ->
+          case list.key_find(ctx.subst, hole_id) {
+            Error(Nil) ->
+              Context(..ctx, subst: [#(hole_id, value), ..ctx.subst])
+            Ok(existing) -> unify(ctx, #(value, span), #(existing, span))
+          }
+      }
+    False -> {
+      // Unknown hole, instantiate a fresh new hole.
+      let #(hole_id, ctx) = context.new_hole(ctx)
+      solve_hole(ctx, hole_id, value, span)
+    }
   }
 }

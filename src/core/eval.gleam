@@ -45,11 +45,11 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
     tm.Ann(term, _) -> eval(ffi, env, term)
     tm.Lam(implicit, #(name, param), body) -> {
       let param_val = eval(ffi, env, param)
-      v.Lam(implicit, #(name, param_val), #(env, body))
+      v.Lam(env, implicit, #(name, param_val), body)
     }
     tm.Pi(implicit, #(name, domain), codomain) -> {
       let domain_val = eval(ffi, env, domain)
-      v.Pi(implicit, #(name, domain_val), #(env, codomain))
+      v.Pi(env, implicit, #(name, domain_val), codomain)
     }
     tm.Fix(name, body) -> v.Fix(name, #(env, body))
     tm.App(fun, arg) -> {
@@ -74,13 +74,11 @@ fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value {
     // Neutral application
     v.Neut(neut_fun) -> v.app(neut_fun, arg)
     // Explicit parameter: β-reduction
-    v.Lam(False, _, #(env, body)) -> eval(ffi, [arg, ..env], body)
+    v.Lam(env, False, _, body) -> eval(ffi, [arg, ..env], body)
     // Implicit parameter: implicit expansion
-    v.Lam(True, param, #(env, body)) -> {
-      // Implicit parameters are expanded and solved during elaboration,
-      // expand into an error since there's no additional information.
-      let fun = v.Lam(False, param, #([v.Err, ..env], body))
-      do_app(ffi, do_app(ffi, fun, v.Err), arg)
+    v.Lam(env, True, param, body) -> {
+      // Implicit parameters are expanded and solved during elaboration.
+      todo as "Remove implicit from term.Lam and value.Lam"
     }
     _ -> v.Err
   }

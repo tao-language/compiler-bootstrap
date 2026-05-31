@@ -25,10 +25,10 @@ pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
         }
       })
     v.Neut(neut) -> occurs_neut(ctx, hole_id, neut)
-    v.Lam(_, #(_, param), body) -> todo
-    v.Pi(_, #(_, domain), codomain) -> todo
+    v.Lam(env, _, #(_, param), body) -> todo
+    v.Pi(env, _, #(_, domain), codomain) -> todo
     v.Fix(_, body) -> todo
-    v.TypeDef(params, variants) -> todo
+    v.TypeDef(env, params, variants) -> todo
     v.Err -> False
   }
 }

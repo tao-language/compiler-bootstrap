@@ -5,9 +5,9 @@
 /// - Neutral term (HVar) quoting with correct binder depth adjustment
 /// - VTypeDef quoting
 /// - Level→index conversion correctness
-import core/term as tm
 import core/literals as lit
 import core/quote.{quote}
+import core/term as tm
 import core/value as v
 import gleam/option.{None, Some}
 import gleeunit
@@ -15,8 +15,6 @@ import gleeunit
 pub fn main() {
   gleeunit.main()
 }
-
-// No Span needed — tests only check Term equality
 
 // ============================================================================
 // Basic value constructors
@@ -49,19 +47,22 @@ pub fn quote_vctr_test() {
 pub fn quote_vrcd_test() {
   let value = v.Rcd([#("x", v.int_t), #("y", v.float_t)])
   let term = quote([], 0, value)
-  assert term == tm.Rcd([#("x", tm.LitT(lit.IntT)), #("y", tm.LitT(lit.FloatT))])
+  assert term
+    == tm.Rcd([#("x", tm.LitT(lit.IntT)), #("y", tm.LitT(lit.FloatT))])
 }
 
 pub fn quote_vrcdt_test() {
-  let value = v.RcdT([
-    #("x", v.int_t, Some(v.int(42))),
-    #("y", v.float_t, None),
-  ])
+  let value =
+    v.RcdT([
+      #("x", v.int_t, Some(v.int(42))),
+      #("y", v.float_t, None),
+    ])
   let term = quote([], 0, value)
-  assert term == tm.RcdT([
-    #("x", tm.LitT(lit.IntT), Some(tm.Lit(lit.Int(42)))),
-    #("y", tm.LitT(lit.FloatT), None),
-  ])
+  assert term
+    == tm.RcdT([
+      #("x", tm.LitT(lit.IntT), Some(tm.Lit(lit.Int(42)))),
+      #("y", tm.LitT(lit.FloatT), None),
+    ])
 }
 
 // ============================================================================
