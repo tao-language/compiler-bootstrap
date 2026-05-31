@@ -171,7 +171,9 @@ fn solve_hole(ctx: Context, hole_id: Int, value: Value, span: Span) -> Context {
           case list.key_find(ctx.subst, hole_id) {
             Error(Nil) ->
               Context(..ctx, subst: [#(hole_id, value), ..ctx.subst])
-            Ok(existing) -> unify(ctx, #(value, span), #(existing, span))
+            Ok(existing) ->
+              // TODO: save spans in ctx.types for better error reporting
+              unify(ctx, #(value, span), #(existing, span))
           }
       }
     False -> {

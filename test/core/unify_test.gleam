@@ -188,6 +188,17 @@ pub fn unify_ctr_gadt_option_test() {
   // Check Some constructor
   assert unify(ctx0, #(option(v.int_t), s1), #(some(v.int_t), s2))
     == Context(..ctx0, subst: [#(0, v.int_t)], hole_counter: 1)
+  assert unify(ctx0, #(some(v.int_t), s2), #(option(v.int_t), s1))
+    == Context(..ctx0, subst: [#(0, v.int_t)], hole_counter: 1)
+  // Errors
+  // TODO: save spans in ctx.types for better error reporting
+  assert unify(ctx0, #(option(v.int_t), s1), #(some(v.float_t), s2))
+    == Context(
+      ..ctx0,
+      subst: [#(0, v.float_t)],
+      errors: [TypeMismatch(#(v.int_t, s1), #(v.float_t, s1))],
+      hole_counter: 1,
+    )
 }
 
 // ============================================================================
