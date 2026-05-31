@@ -6,7 +6,9 @@
 ///
 /// Errors accumulate as the type checker progresses, allowing
 /// recovery after type errors.
-import core/value.{type Env, type Neut, type Value}
+import core/term.{type Term}
+import core/utils
+import core/value.{type Env, type Neut, type TypeVariant, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
@@ -56,11 +58,14 @@ pub type Error {
   VarUndefined(name: String, span: Span)
   TypeMismatch(#(Value, Span), #(Value, Span))
   NeutralTypeMismatch(#(Neut, Span), #(Neut, Span))
+  RcdFieldsMismatch(#(List(String), Span), #(List(String), Span))
   CallArityMismatch(#(Int, Span), #(Int, Span))
   InfiniteType(hole_id: Int, type_: Value, span: Span)
-  HoleUnsolved(id: Int, span: Span)
   NotAFunction(fun_type: Value, span: Span)
-  CtrUndefined(tag: String, span: Span)
+  TypeVariantUndefined(
+    tag: #(String, Span),
+    variants: #(List(TypeVariant), Span),
+  )
   MatchMissing(patterns: List(String), covered: List(String), span: Span)
   MatchRedundant(span: Span)
   StepLimitExceeded(steps: Int, span: Span)
@@ -77,6 +82,23 @@ pub const new_ctx = Context([], [], [], [], [], 0)
 
 pub fn lookup(ctx: Context, name: String) -> Option(#(Int, Value)) {
   lookup_loop(ctx.types, name, 0)
+}
+
+pub fn lookup_type_def(
+  ctx: Context,
+  name: String,
+) -> Option(#(List(#(String, Value)), List(TypeVariant))) {
+  case lookup_in_env(ctx, name) {
+    Some(v.TypeDef(params, variants)) -> Some(#(params, variants))
+    _ -> None
+  }
+}
+
+fn lookup_in_env(ctx: Context, name: String) -> Option(Value) {
+  case lookup(ctx, name) {
+    Some(#(index, _)) -> utils.list_at(ctx.env, index)
+    None -> None
+  }
 }
 
 fn lookup_loop(
@@ -102,4 +124,41 @@ pub fn with_err_list(ctx: Context, errors: List(Error)) -> Context {
 pub fn new_hole(ctx: Context) -> #(Int, Context) {
   let id = ctx.hole_counter
   #(id, Context(..ctx, hole_counter: id + 1))
+}
+
+pub fn push_var(ctx: Context, var: #(String, Value, Value)) -> Context {
+  let #(name, value, type_) = var
+  Context(..ctx, env: [value, ..ctx.env], types: [#(name, type_), ..ctx.types])
+}
+
+pub fn push_var_list(
+  ctx: Context,
+  vars: List(#(String, Value, Value)),
+) -> Context {
+  let vars_env = list.map(vars, fn(var) { var.1 })
+  let vars_types = list.map(vars, fn(var) { #(var.0, var.2) })
+  Context(
+    ..ctx,
+    env: list.append(vars_env, ctx.env),
+    types: list.append(vars_types, ctx.types),
+  )
+}
+
+pub fn push_var_parameters(
+  ctx: Context,
+  params: List(#(String, Value)),
+) -> Context {
+  list.index_map(params, fn(param, index) {
+    let #(name, type_) = param
+    #(name, v.var(index), type_)
+  })
+  |> push_var_list(ctx, _)
+}
+
+pub fn pop_vars(ctx: Context, num_vars: Int) -> Context {
+  Context(
+    ..ctx,
+    env: list.drop(ctx.env, num_vars),
+    types: list.drop(ctx.types, num_vars),
+  )
 }

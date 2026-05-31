@@ -1,12 +1,15 @@
 /// Unification — Higher-order unification for Core values.
 import core/context.{
   type Context, CallArityMismatch, Context, InfiniteType, NeutralTypeMismatch,
-  TypeMismatch, with_err,
+  RcdFieldsMismatch, TypeMismatch, TypeVariantUndefined, with_err,
 }
+import core/eval.{eval}
 import core/occurs.{occurs}
-import core/value.{type Neut, type Value} as v
+import core/term.{type Term}
+import core/value.{type Neut, type TypeVariant, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/string
 import syntax/span.{type Span}
 
 pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
@@ -17,22 +20,49 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     v.Lit(v1), v.Lit(v2) if v1 == v2 -> ctx
     v.LitT(v1), v.LitT(v2) if v1 == v2 -> ctx
     v.Ctr(t1, a1), v.Ctr(t2, a2) if t1 == t2 -> unify(ctx, #(a1, s1), #(a2, s2))
+    v.Ctr(t1, a1), v.Ctr(t2, a2) ->
+      case context.lookup_type_def(ctx, t1), context.lookup_type_def(ctx, t2) {
+        _, Some(tdef) -> unify_gadt(ctx, #(t1, a1, s1), #(value2, tdef, s2))
+        Some(tdef), _ -> unify_gadt(ctx, #(t2, a2, s2), #(value1, tdef, s1))
+        None, None -> with_err(ctx, TypeMismatch(a, b))
+      }
     v.Rcd(fields1), v.Rcd(fields2) ->
       unify_rcd(ctx, #(fields1, s1), #(fields2, s2))
     v.RcdT(fields1), v.RcdT(fields2) ->
       unify_rcd_type(ctx, #(fields1, s1), #(fields2, s2))
     v.Neut(n1), v.Neut(n2) -> unify_neut(ctx, #(n1, s1), #(n2, s2))
     v.Lam(i1, #(_, a1), #(env1, b1)), v.Lam(i2, #(_, a2), #(env2, b2)) -> {
-      todo
+      todo as "unify Lam"
     }
     v.Pi(i1, #(_, a1), #(env1, b1)), v.Pi(i2, #(_, a2), #(env2, b2)) -> {
-      todo
+      todo as "unify Pi"
     }
-    v.Union(vars1), v.Union(vars2) -> {
-      todo
+    v.TypeDef(params1, variants1), v.TypeDef(params2, variants2) -> {
+      todo as "unify TypeDef"
     }
     v.Err, v.Err -> ctx
-    _, _ -> context.with_err(ctx, TypeMismatch(a, b))
+    _, _ -> with_err(ctx, TypeMismatch(a, b))
+  }
+}
+
+fn unify_gadt(
+  ctx: Context,
+  a: #(String, Value, Span),
+  b: #(Value, #(List(#(String, Value)), List(TypeVariant)), Span),
+) -> Context {
+  let #(ctr_tag, ctr_arg, s1) = a
+  let #(expected, #(type_params, variants), s2) = b
+  case list.key_find(variants, ctr_tag) {
+    Error(Nil) ->
+      with_err(ctx, TypeVariantUndefined(#(ctr_tag, s1), #(variants, s2)))
+    Ok(#(bindings, def_arg, ret_type)) -> {
+      let params = list.reverse(list.append(type_params, bindings))
+      let ctx = context.push_var_parameters(ctx, params)
+      let ctx = unify(ctx, #(ctr_arg, s1), #(def_arg, s2))
+      let ret_type_val = eval(ctx.ffi, ctx.env, ret_type)
+      let ctx = unify(ctx, #(ret_type_val, s2), #(expected, s2))
+      context.pop_vars(ctx, list.length(params))
+    }
   }
 }
 
@@ -41,7 +71,38 @@ fn unify_rcd(
   a: #(List(#(String, Value)), Span),
   b: #(List(#(String, Value)), Span),
 ) -> Context {
-  todo
+  let #(fields1, s1) = a
+  let #(fields2, s2) = b
+  let sorted_names = fn(kvs: List(#(String, Value))) {
+    list.map(kvs, fn(kv) { kv.0 })
+    |> list.sort(by: string.compare)
+  }
+  let ctx = case sorted_names(fields1), sorted_names(fields2) {
+    names1, names2 if names1 != names2 ->
+      with_err(ctx, RcdFieldsMismatch(#(names1, s1), #(names2, s2)))
+    _, _ -> ctx
+  }
+  unify_rcd_fields(ctx, #(fields1, s1), #(fields2, s2))
+}
+
+fn unify_rcd_fields(
+  ctx: Context,
+  a: #(List(#(String, Value)), Span),
+  b: #(List(#(String, Value)), Span),
+) -> Context {
+  let #(fields1, s1) = a
+  let #(fields2, s2) = b
+  case fields1 {
+    [] -> ctx
+    [#(name, value1), ..fields1] ->
+      case list.key_find(fields2, name) {
+        Error(Nil) -> ctx
+        Ok(value2) -> {
+          let ctx = unify(ctx, #(value1, s1), #(value2, s2))
+          unify_rcd_fields(ctx, #(fields1, s1), #(fields2, s2))
+        }
+      }
+  }
 }
 
 fn unify_rcd_type(
@@ -49,7 +110,7 @@ fn unify_rcd_type(
   a: #(List(#(String, Value, Option(Value))), Span),
   b: #(List(#(String, Value, Option(Value))), Span),
 ) -> Context {
-  todo
+  todo as "unify RcdT"
 }
 
 fn unify_neut(ctx: Context, a: #(Neut, Span), b: #(Neut, Span)) -> Context {

@@ -21,9 +21,12 @@ pub type Value {
   Lam(implicit: Bool, param: #(String, Value), body: #(Env, Term))
   Pi(implicit: Bool, domain: #(String, Value), codomain: #(Env, Term))
   Fix(name: String, body: #(Env, Term))
-  Union(variants: List(#(String, #(List(String), Value, Term))))
+  TypeDef(params: List(#(String, Value)), variants: List(TypeVariant))
   Err
 }
+
+pub type TypeVariant =
+  #(String, #(List(#(String, Value)), Value, Term))
 
 pub type Neut {
   NVar(level: Int)
@@ -89,3 +92,7 @@ pub const u64 = LitT(lit.U64)
 pub const f32 = LitT(lit.F32)
 
 pub const f64 = LitT(lit.F64)
+
+pub fn ctr(tag: String, args: List(#(String, Value))) -> Value {
+  Ctr(tag, Rcd(args))
+}

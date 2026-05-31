@@ -1,6 +1,6 @@
 /// Quote — Convert Values back to Terms
-import core/eval.{eval}
 import core/context.{type FFI}
+import core/eval.{eval}
 import core/term.{type Term} as tm
 import core/value.{type Neut, type Value} as v
 import gleam/list
@@ -45,7 +45,7 @@ pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
     v.Fix(name, #(env, body)) -> {
       todo
     }
-    v.Union(variants) -> {
+    v.TypeDef(params, variants) -> {
       todo
     }
     v.Err -> tm.Err

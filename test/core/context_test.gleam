@@ -56,22 +56,6 @@ pub fn with_err_accumulates_single_error_test() {
     ]
 }
 
-pub fn with_err_list_accumulates_multiple_errors_test() {
-  let ctx0 = new_ctx
-  let ctx1 =
-    with_err_list(ctx0, [
-      ctx.TypeMismatch(#(v.int_t, s), #(v.float_t, s)),
-      ctx.VarUndefined("x", s),
-      ctx.HoleUnsolved(42, s),
-    ])
-  assert ctx1.errors
-    == [
-      ctx.TypeMismatch(#(v.int_t, s), #(v.float_t, s)),
-      ctx.VarUndefined("x", s),
-      ctx.HoleUnsolved(42, s),
-    ]
-}
-
 pub fn with_err_appends_to_existing_errors_test() {
   let ctx0 = new_ctx
   let ctx1 = with_err(ctx0, ctx.VarUndefined("a", s))

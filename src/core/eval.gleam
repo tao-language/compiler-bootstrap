@@ -57,7 +57,8 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       let arg_val = eval(ffi, env, arg)
       do_app(ffi, fun_val, arg_val)
     }
-    tm.Union(variants) -> {
+    tm.TypeDef(params, variants) -> {
+      echo term
       todo
     }
     tm.Match(arg, cases) -> {

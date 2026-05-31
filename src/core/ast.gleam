@@ -123,6 +123,10 @@ pub fn f64(span: Span) {
   AST(LitT(lit.F64), span)
 }
 
+pub fn ctr(tag: String, args: List(#(String, AST)), span: Span) {
+  AST(Ctr(tag, AST(Rcd(args), span)), span)
+}
+
 /// Syntax sugar for `_@name`.
 pub fn pvar(name: String, span: Span) -> Pattern {
   PAlias(name, PAny(span), span)

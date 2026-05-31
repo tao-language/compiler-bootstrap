@@ -28,7 +28,7 @@ pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
     v.Lam(_, #(_, param), body) -> todo
     v.Pi(_, #(_, domain), codomain) -> todo
     v.Fix(_, body) -> todo
-    v.Union(variants) -> todo
+    v.TypeDef(params, variants) -> todo
     v.Err -> False
   }
 }

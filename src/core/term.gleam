@@ -45,7 +45,10 @@ pub type Term {
   Pi(implicit: Bool, domain: #(String, Term), codomain: Term)
   Fix(name: String, body: Term)
   App(fun: Term, arg: Term)
-  Union(variants: List(#(String, #(List(String), Term, Term))))
+  TypeDef(
+    params: List(#(String, Term)),
+    variants: List(#(String, #(List(#(String, Term)), Term, Term))),
+  )
   Match(arg: Term, cases: List(Case))
   Err
 }
@@ -98,6 +101,10 @@ pub const u64 = LitT(lit.U64)
 pub const f32 = LitT(lit.F32)
 
 pub const f64 = LitT(lit.F64)
+
+pub fn ctr(tag: String, args: List(#(String, Term))) -> Term {
+  Ctr(tag, Rcd(args))
+}
 
 /// Syntax sugar for `_@name`.
 pub fn pvar(name: String) -> Pattern {
