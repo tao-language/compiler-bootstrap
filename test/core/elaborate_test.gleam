@@ -83,12 +83,12 @@ pub fn infer_rcdt_default_value_checked_test() {
   let ctx0 = new_ctx
   let type_int = ast.AST(ast.LitT(lit.IntT), s1)
   let default_val = ast.AST(ast.Lit(lit.Int(42)), s2)
-  let term = ast.AST(ast.RcdT([#("x", type_int, Some(default_val))]), s)
+  let term = ast.AST(ast.RcdT([#("x", #(type_int, Some(default_val)))]), s)
   let #(result, type_, ctx) = infer(ctx0, term)
   assert ctx == ctx0
   assert result
     == tm.RcdT([
-      #("x", tm.LitT(lit.IntT), Some(tm.Lit(lit.Int(42)))),
+      #("x", #(tm.LitT(lit.IntT), Some(tm.Lit(lit.Int(42))))),
     ])
   assert type_ == v.Typ(0)
 }

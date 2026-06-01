@@ -54,14 +54,14 @@ pub fn quote_vrcd_test() {
 pub fn quote_vrcdt_test() {
   let value =
     v.RcdT([
-      #("x", v.int_t, Some(v.int(42))),
-      #("y", v.float_t, None),
+      #("x", #(v.int_t, Some(v.int(42)))),
+      #("y", #(v.float_t, None)),
     ])
   let term = quote([], 0, value)
   assert term
     == tm.RcdT([
-      #("x", tm.LitT(lit.IntT), Some(tm.Lit(lit.Int(42)))),
-      #("y", tm.LitT(lit.FloatT), None),
+      #("x", #(tm.LitT(lit.IntT), Some(tm.Lit(lit.Int(42))))),
+      #("y", #(tm.LitT(lit.FloatT), None)),
     ])
 }
 
