@@ -20,16 +20,22 @@ pub type Value {
   Neut(neutral: Neut)
   Lam(env: Env, implicit: Bool, param: #(String, Value), body: Term)
   Pi(env: Env, implicit: Bool, domain: #(String, Value), codomain: Term)
-  Fix(name: String, body: #(Env, Term))
-  TypeDef(env: Env, params: List(#(String, Value)), variants: List(TypeVariant))
+  Fix(env: Env, name: String, body: Term)
+  TypeDef(env: Env, type_def: TypeDefinition)
   Err
 }
 
-pub type TypeVariant =
-  #(String, #(List(#(String, Value)), Term, Term))
+pub type TypeDefinition {
+  TypeDefinition(
+    params: List(#(String, Value)),
+    arg: Term,
+    variants: List(#(String, Variant)),
+  )
+}
 
-pub type TypeDefinition =
-  #(Env, List(#(String, Value)), List(TypeVariant))
+pub type Variant {
+  Variant(params: List(#(String, Value)), arg: Term, return_type: Term)
+}
 
 pub type Neut {
   NVar(level: Int)

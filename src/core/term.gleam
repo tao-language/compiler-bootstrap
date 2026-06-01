@@ -45,12 +45,21 @@ pub type Term {
   Pi(implicit: Bool, domain: #(String, Term), codomain: Term)
   Fix(name: String, body: Term)
   App(fun: Term, arg: Term)
-  TypeDef(
-    params: List(#(String, Term)),
-    variants: List(#(String, #(List(#(String, Term)), Term, Term))),
-  )
+  TypeDef(type_def: TypeDefinition)
   Match(arg: Term, cases: List(Case))
   Err
+}
+
+pub type TypeDefinition {
+  TypeDefinition(
+    params: List(#(String, Term)),
+    arg: Term,
+    variants: List(#(String, Variant)),
+  )
+}
+
+pub type Variant {
+  Variant(params: List(#(String, Term)), arg: Term, return_type: Term)
 }
 
 pub type Pattern {

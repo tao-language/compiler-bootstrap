@@ -5,7 +5,8 @@ import core/context.{
 }
 import core/eval.{eval}
 import core/occurs.{occurs}
-import core/value.{type Neut, type TypeDefinition, type Value} as v
+import core/term.{type Term}
+import core/value.{type Env, type Neut, type TypeDefinition, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
@@ -21,8 +22,10 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     v.Ctr(t1, a1), v.Ctr(t2, a2) if t1 == t2 -> unify(ctx, #(a1, s1), #(a2, s2))
     v.Ctr(t1, a1), v.Ctr(t2, a2) ->
       case context.lookup_type_def(ctx, t1), context.lookup_type_def(ctx, t2) {
-        _, Some(tdef) -> unify_gadt(ctx, #(t1, a1, s1), #(value2, tdef, s2))
-        Some(tdef), _ -> unify_gadt(ctx, #(t2, a2, s2), #(value1, tdef, s1))
+        _, Some(#(env, tdef)) ->
+          unify_gadt(ctx, #(t1, a1, s1), #(env, tdef, t2, a2, s2))
+        Some(#(env, tdef)), _ ->
+          unify_gadt(ctx, #(t2, a2, s2), #(env, tdef, t1, a1, s1))
         None, None -> with_err(ctx, TypeMismatch(a, b))
       }
     v.Rcd(fields1), v.Rcd(fields2) ->
@@ -39,7 +42,7 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     v.Pi(env1, i1, #(_, a1), b1), v.Pi(env2, i2, #(_, a2), b2) -> {
       todo as "unify Pi"
     }
-    v.TypeDef(env1, params1, variants1), v.TypeDef(env2, params2, variants2) -> {
+    v.TypeDef(env1, tdef1), v.TypeDef(env2, tdef2) -> {
       todo as "unify TypeDef"
     }
     v.Err, v.Err -> ctx
@@ -47,30 +50,38 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   }
 }
 
+fn unify_with_term(
+  ctx: Context,
+  a: #(Value, Span),
+  b: #(Env, Term, Span),
+) -> Context {
+  let #(env, term2, s2) = b
+  let value2 = eval(ctx.ffi, env, term2)
+  unify(ctx, a, #(value2, s2))
+}
+
 fn unify_gadt(
   ctx: Context,
   a: #(String, Value, Span),
-  b: #(Value, TypeDefinition, Span),
+  b: #(Env, TypeDefinition, String, Value, Span),
 ) -> Context {
   let #(ctr_tag, ctr_arg, s1) = a
-  let #(expected, type_def, s2) = b
-  let #(env, type_params, variants) = type_def
-  case list.key_find(variants, ctr_tag) {
+  let #(env, tdef, type_tag, type_arg, s2) = b
+  let #(env, ctx) = instantiate(ctx, env, tdef.params)
+  let ctx = unify_with_term(ctx, #(type_arg, s2), #(env, tdef.arg, s2))
+  let ctx = case list.key_find(tdef.variants, ctr_tag) {
     Error(Nil) ->
-      with_err(ctx, TypeVariantUndefined(#(ctr_tag, s1), #(variants, s2)))
-    Ok(#(bindings, def_arg, ret_type)) -> {
-      let params = list.reverse(list.append(type_params, bindings))
-      let ctx = context.push_var_param_list(ctx, params)
-      let vars = list.take(ctx.env, list.length(params))
-      let env = list.append(vars, env)
-      let def_arg_val = eval(ctx.ffi, env, def_arg)
-      let ctx = unify(ctx, #(ctr_arg, s1), #(def_arg_val, s2))
-      // TODO: eval(ctx.ffi, resolve_env(env), resolve(ret_type)) ?
-      let ret_type_val = eval(ctx.ffi, env, ret_type)
-      let ctx = unify(ctx, #(ret_type_val, s2), #(expected, s2))
-      context.pop_vars(ctx, list.length(params))
+      with_err(ctx, TypeVariantUndefined(#(ctr_tag, s1), #(tdef.variants, s2)))
+    Ok(variant) -> {
+      let #(env, ctx) = instantiate(ctx, env, variant.params)
+      let ctx = unify_with_term(ctx, #(ctr_arg, s1), #(env, variant.arg, s2))
+      let expected = v.Ctr(type_tag, type_arg)
+      let ctx =
+        unify_with_term(ctx, #(expected, s2), #(env, variant.return_type, s2))
+      context.pop_vars(ctx, list.length(variant.params))
     }
   }
+  context.pop_vars(ctx, list.length(tdef.params))
 }
 
 fn unify_rcd(
@@ -217,4 +228,14 @@ fn solve_hole(ctx: Context, hole_id: Int, value: Value, span: Span) -> Context {
       solve_hole(ctx, hole_id, value, span)
     }
   }
+}
+
+fn instantiate(
+  ctx: Context,
+  env: Env,
+  params: List(#(String, Value)),
+) -> #(Env, Context) {
+  let ctx = context.push_var_param_list(ctx, params)
+  let vars = list.take(ctx.env, list.length(params))
+  #(list.append(vars, env), ctx)
 }

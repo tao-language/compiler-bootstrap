@@ -9,7 +9,7 @@
 import core/term.{type Term}
 import core/utils
 import core/value.{
-  type Env, type Neut, type TypeDefinition, type TypeVariant, type Value,
+  type Env, type Neut, type TypeDefinition, type Value, type Variant,
 } as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -66,7 +66,7 @@ pub type Error {
   NotAFunction(fun_type: Value, span: Span)
   TypeVariantUndefined(
     tag: #(String, Span),
-    variants: #(List(TypeVariant), Span),
+    variants: #(List(#(String, Variant)), Span),
   )
   MatchMissing(patterns: List(String), covered: List(String), span: Span)
   MatchRedundant(span: Span)
@@ -98,9 +98,12 @@ fn lookup_loop(
   }
 }
 
-pub fn lookup_type_def(ctx: Context, name: String) -> Option(TypeDefinition) {
+pub fn lookup_type_def(
+  ctx: Context,
+  name: String,
+) -> Option(#(Env, TypeDefinition)) {
   case lookup_in_env(ctx, name) {
-    Some(v.TypeDef(env, params, variants)) -> Some(#(env, params, variants))
+    Some(v.TypeDef(env, type_def)) -> Some(#(env, type_def))
     _ -> None
   }
 }
@@ -167,8 +170,8 @@ pub fn push_var_param_list(
   case params {
     [] -> ctx
     [param, ..params] -> {
-      let ctx = push_var_param_list(ctx, params)
-      push_var_param(ctx, param)
+      let ctx = push_var_param(ctx, param)
+      push_var_param_list(ctx, params)
     }
   }
 }

@@ -32,14 +32,22 @@ pub type Data {
   Pi(implicit: Bool, domain: #(String, AST), codomain: AST)
   Fix(name: String, body: AST)
   App(fun: AST, arg: AST)
-  TypeDef(
-    params: List(#(String, AST)),
-    constructors: List(#(String, #(List(String), AST, AST), Span)),
-    span: Span,
-  )
+  TypeDef(type_def: TypeDefinition)
   Let(name: String, param_type: AST, value: AST, body: AST)
   Match(arg: AST, cases: List(Case))
   Err(message: String)
+}
+
+pub type TypeDefinition {
+  TypeDefinition(
+    params: List(#(String, AST)),
+    arg: AST,
+    variants: List(#(String, Variant)),
+  )
+}
+
+pub type Variant {
+  Variant(params: List(#(String, AST)), arg: AST, return_type: AST)
 }
 
 pub type Pattern {

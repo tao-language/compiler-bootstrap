@@ -5,19 +5,14 @@
 /// - Error handling for mismatches
 /// - Constructor tag and argument unification
 import core/context.{
-  CallArityMismatch,
-  Context,
-  InfiniteType,
-  RcdFieldsMismatch,
-  TypeMismatch,
-  TypeVariantUndefined,
-  new_ctx,
-  with_err,
-} as ctx
-import gleam/option.{None, Some}
+  CallArityMismatch, Context, InfiniteType, RcdFieldsMismatch, TypeMismatch,
+  TypeVariantUndefined, new_ctx, with_err,
+}
+import core/literals as lit
 import core/term as tm
 import core/unify.{unify}
 import core/value as v
+import gleam/option.{None, Some}
 import gleeunit
 import syntax/span
 
@@ -144,8 +139,8 @@ pub fn unify_ctr_gadt_undefined_type_test() {
 pub fn unify_ctr_gadt_undefined_variant_test() {
   let a = v.Ctr("A", v.int_t)
   let b = v.Ctr("T", v.float_t)
-  let tdef = v.TypeDef([], [], [])
-  let ctx0 = ctx.push_var(new_ctx, #("T", tdef, v.Typ(0)))
+  let tdef = v.TypeDefinition([], tm.Rcd([]), [])
+  let ctx0 = context.push_var(new_ctx, #("T", v.TypeDef([], tdef), v.Typ(0)))
   assert unify(ctx0, #(a, s1), #(b, s2))
     == with_err(ctx0, TypeVariantUndefined(#("A", s1), #([], s2)))
   assert unify(ctx0, #(b, s2), #(a, s1))
@@ -156,16 +151,16 @@ pub fn unify_ctr_gadt_bool_test() {
   let bool = v.ctr("Bool", [])
   let true_ = v.ctr("True", [])
   let false_ = v.ctr("False", [])
-  // let Bool = $type {
+  // let Bool = $type {} {
   // | #True {} -> #Bool {}
   // | #False {} -> #Bool {}
   // }
   let tdef =
-    v.TypeDef([], [], [
-      #("True", #([], tm.Rcd([]), tm.ctr("Bool", []))),
-      #("False", #([], tm.Rcd([]), tm.ctr("Bool", []))),
+    v.TypeDefinition(params: [], arg: tm.Rcd([]), variants: [
+      #("True", v.Variant([], tm.Rcd([]), tm.ctr("Bool", []))),
+      #("False", v.Variant([], tm.Rcd([]), tm.ctr("Bool", []))),
     ])
-  let ctx0 = ctx.push_var(new_ctx, #("Bool", tdef, v.Typ(0)))
+  let ctx0 = context.push_var(new_ctx, #("Bool", v.TypeDef([], tdef), v.Typ(0)))
   // Check True constructor
   assert unify(ctx0, #(bool, s1), #(true_, s2)) == ctx0
   assert unify(ctx0, #(true_, s2), #(bool, s1)) == ctx0
@@ -178,16 +173,17 @@ pub fn unify_ctr_gadt_option_test() {
   let option = fn(a) { v.Ctr("Option", a) }
   let none = v.ctr("None", [])
   let some = fn(x) { v.Ctr("Some", x) }
-  // let Option = $type<a: $Type> {
+  // let Option = $type<a: $Type> a {
   // | #None {} -> #Option #0  // a is #0
   // | #Some #0 -> #Option #0  // a is #0
   // }
   let tdef =
-    v.TypeDef([], [#("a", v.Typ(0))], [
-      #("None", #([], tm.Rcd([]), tm.Ctr("Option", tm.Var(0)))),
-      #("Some", #([], tm.Var(0), tm.Ctr("Option", tm.Var(0)))),
+    v.TypeDefinition(params: [#("a", v.Typ(0))], arg: tm.Var(0), variants: [
+      #("None", v.Variant([], tm.Rcd([]), tm.Ctr("Option", tm.Var(0)))),
+      #("Some", v.Variant([], tm.Var(0), tm.Ctr("Option", tm.Var(0)))),
     ])
-  let ctx0 = ctx.push_var(new_ctx, #("Option", tdef, v.Typ(0)))
+  let ctx0 =
+    context.push_var(new_ctx, #("Option", v.TypeDef([], tdef), v.Typ(0)))
   // Check None constructor
   assert unify(ctx0, #(option(v.int_t), s1), #(none, s2))
     == Context(..ctx0, subst: [#(0, v.int_t)], hole_counter: 1)
@@ -213,39 +209,52 @@ pub fn unify_ctr_gadt_vec_test() {
   let vec = fn(n, a) { v.ctr("Vec", [#("n", n), #("a", a)]) }
   let nil = v.ctr("Nil", [])
   let cons = fn(x, xs) { v.ctr("Cons", [#("x", x), #("xs", xs)]) }
-  // let Vec = $type<n: $Int, a: $Type> {
+  // let Vec = $type<n: $Int, a: $Type> {n: n, a: a} {
   // | #Nil        {}                            -> #Vec {n: 0,     a: a}  // n is #1, a is #0
   // | #Cons<m: ?> {x: a, xs: #Vec {n: m, a: a}} -> #Vec {n: m + 1, a: a}  // n is #2, a is #1, m is #0
   // }
   let a = tm.Var(0)
   let nil_ret = tm.ctr("Vec", [#("n", tm.int(0)), #("a", a)])
-  let #(a, m) = #(tm.Var(1), tm.Var(0))
-  let cons_arg = tm.Rcd([#("n", m), #("a", a)])
+  let #(_n, a, m) = #(tm.Var(2), tm.Var(1), tm.Var(0))
+  let cons_arg =
+    tm.Rcd([#("x", a), #("xs", tm.ctr("Vec", [#("n", m), #("a", a)]))])
   let cons_ret =
     tm.ctr("Vec", [#("n", tm.Call("+", [m, tm.int(1)])), #("a", a)])
   let tdef =
-    v.TypeDef([], [#("n", v.int_t), #("a", v.Typ(0))], [
-      #("Nil", #([], tm.Rcd([]), nil_ret)),
-      #("Cons", #([], cons_arg, cons_ret)),
-    ])
-  let ctx0 = ctx.push_var(new_ctx, #("Vec", tdef, v.Typ(0)))
+    v.TypeDefinition(
+      params: [#("n", v.int_t), #("a", v.Typ(0))],
+      arg: tm.Rcd([#("n", tm.Var(1)), #("a", tm.Var(0))]),
+      variants: [
+        #("Nil", v.Variant([], tm.Rcd([]), nil_ret)),
+        #("Cons", v.Variant([#("m", v.hole(-1))], cons_arg, cons_ret)),
+      ],
+    )
+  let ctx0 =
+    Context(
+      ..context.push_var(new_ctx, #("Vec", v.TypeDef([], tdef), v.Typ(0))),
+      ffi: [
+        #("+", fn(args) {
+          case args {
+            [v.Lit(lit.Int(x)), v.Lit(lit.Int(y))] -> Some(v.int(x + y))
+            _ -> None
+          }
+        }),
+      ],
+    )
   // Check Nil constructor
   let a = vec(v.int(0), v.float_t)
   let b = nil
-  assert unify(ctx0, #(a, s1), #(b, s2))
-    == Context(..ctx0, subst: [#(1, v.float_t)], hole_counter: 2)
-  assert unify(ctx0, #(b, s2), #(a, s1))
-    == Context(..ctx0, subst: [#(1, v.float_t)], hole_counter: 2)
-  // Check Cons constructor
-  // NOTE: GADT field-name matching between constructor arg names and
-  // GADT param names means this only works when they align. The vec
-  // type uses field names ("n", "a") in def_arg, but the test's cons
-  // helper uses ("x", "xs"), so GADT unify currently fails.
-  // Re-enable when GADT field-name matching is fixed.
-  // let a = vec(v.int(1), v.float_t)
-  // let b = cons(v.float_t, nil)
   // assert unify(ctx0, #(a, s1), #(b, s2))
   //   == Context(..ctx0, subst: [#(1, v.float_t)], hole_counter: 2)
+  // assert unify(ctx0, #(b, s2), #(a, s1))
+  //   == Context(..ctx0, subst: [#(1, v.float_t)], hole_counter: 2)
+  // Check Cons constructor
+  let a = vec(v.int(1), v.float_t)
+  let b = cons(v.float_t, nil)
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx.errors == []
+  assert ctx.subst == []
+  assert ctx.hole_counter == 2
   // Check nested Cons constructors
   // let a = vec(v.int(2), v.float_t)
   // let b = cons(v.float_t, cons(v.float_t, nil))
@@ -269,13 +278,7 @@ pub fn unify_rcd_fields_mismatch_test() {
   let b = v.Rcd([#("y", v.int_t)])
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(
-      ctx0,
-      RcdFieldsMismatch(
-        #(["x"], s1),
-        #(["y"], s2),
-      ),
-    )
+    == with_err(ctx0, RcdFieldsMismatch(#(["x"], s1), #(["y"], s2)))
 }
 
 pub fn unify_rcd_different_order_test() {
@@ -287,14 +290,16 @@ pub fn unify_rcd_different_order_test() {
 
 pub fn unify_rcd_nested_same_test() {
   let inner = v.Rcd([#("x", v.int(42))])
-  let a = v.Rcd([
-    #("name", v.int(1)),
-    #("value", inner),
-  ])
-  let b = v.Rcd([
-    #("value", inner),
-    #("name", v.int(1)),
-  ])
+  let a =
+    v.Rcd([
+      #("name", v.int(1)),
+      #("value", inner),
+    ])
+  let b =
+    v.Rcd([
+      #("value", inner),
+      #("name", v.int(1)),
+    ])
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
@@ -315,24 +320,20 @@ pub fn unify_rcdt_fields_mismatch_test() {
   let b = v.RcdT([#("y", #(v.int_t, None))])
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(
-      ctx0,
-      RcdFieldsMismatch(
-        #(["x"], s1),
-        #(["y"], s2),
-      ),
-    )
+    == with_err(ctx0, RcdFieldsMismatch(#(["x"], s1), #(["y"], s2)))
 }
 
 pub fn unify_rcdt_different_order_test() {
-  let a = v.RcdT([
-    #("b", #(v.int_t, None)),
-    #("a", #(v.float_t, None)),
-  ])
-  let b = v.RcdT([
-    #("a", #(v.float_t, None)),
-    #("b", #(v.int_t, None)),
-  ])
+  let a =
+    v.RcdT([
+      #("b", #(v.int_t, None)),
+      #("a", #(v.float_t, None)),
+    ])
+  let b =
+    v.RcdT([
+      #("a", #(v.float_t, None)),
+      #("b", #(v.int_t, None)),
+    ])
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
@@ -349,10 +350,7 @@ pub fn unify_rcdt_default_mismatch_test() {
   let b = v.RcdT([#("x", #(v.int_t, Some(v.int(1))))])
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(
-      ctx0,
-      TypeMismatch(#(v.int(0), s1), #(v.int(1), s2)),
-    )
+    == with_err(ctx0, TypeMismatch(#(v.int(0), s1), #(v.int(1), s2)))
 }
 
 // ============================================================================
@@ -408,9 +406,10 @@ pub fn unify_neut_nhole_infinite_type_test() {
   // the occurs check path: NHole(0) unified with a Neut(NHole(0)).
   let deep = v.Neut(v.NApp(v.NHole(0), v.int_t))
   let ctx = unify(ctx0, #(a, s1), #(deep, s2))
-  assert ctx.errors == [
-    InfiniteType(0, v.Neut(v.NApp(v.NHole(0), v.int_t)), s2),
-  ]
+  assert ctx.errors
+    == [
+      InfiniteType(0, v.Neut(v.NApp(v.NHole(0), v.int_t)), s2),
+    ]
 }
 
 pub fn unify_neut_nhole_solve_twice_test() {

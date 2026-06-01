@@ -53,13 +53,13 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       let domain_val = eval(ffi, env, domain)
       v.Pi(env, implicit, #(name, domain_val), codomain)
     }
-    tm.Fix(name, body) -> v.Fix(name, #(env, body))
+    tm.Fix(name, body) -> v.Fix(env, name, body)
     tm.App(fun, arg) -> {
       let fun_val = eval(ffi, env, fun)
       let arg_val = eval(ffi, env, arg)
       do_app(ffi, fun_val, arg_val)
     }
-    tm.TypeDef(params, variants) -> {
+    tm.TypeDef(tm.TypeDefinition(params, arg, variants)) -> {
       echo term
       todo
     }

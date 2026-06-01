@@ -42,10 +42,10 @@ pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
       let body = quote(ffi, size, body_val)
       tm.Pi(implicit, #(name, param), body)
     }
-    v.Fix(name, #(env, body)) -> {
+    v.Fix(env, name, body) -> {
       todo
     }
-    v.TypeDef(env, params, variants) -> {
+    v.TypeDef(env, v.TypeDefinition(params, arg, variants)) -> {
       todo
     }
     v.Err -> tm.Err
