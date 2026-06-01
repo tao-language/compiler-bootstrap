@@ -5,7 +5,9 @@ import core/context.{
 }
 import core/eval.{eval}
 import core/occurs.{occurs}
+import core/resolve.{resolve}
 import core/term.{type Term}
+import core/unwrap.{unwrap}
 import core/value.{type Env, type Neut, type TypeDefinition, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -15,7 +17,13 @@ import syntax/span.{type Span}
 pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   let #(value1, s1) = a
   let #(value2, s2) = b
-  case value1, value2 {
+  case unwrap(ctx.ffi, ctx.subst, value1), unwrap(ctx.ffi, ctx.subst, value2) {
+    // Try to solve holes before unifying any concrete values
+    v.Neut(v.NHole(id1)), v.Neut(v.NHole(id2)) if id1 == id2 -> ctx
+    _, v.Neut(v.NHole(id)) -> solve_hole(ctx, id, value1, s1)
+    v.Neut(v.NHole(id)), _ -> solve_hole(ctx, id, value2, s2)
+    v.Neut(n1), v.Neut(n2) -> unify_neut(ctx, #(n1, s1), #(n2, s2))
+    // Unify concrete values
     v.Typ(u1), v.Typ(u2) if u1 == u2 -> ctx
     v.Lit(v1), v.Lit(v2) if v1 == v2 -> ctx
     v.LitT(v1), v.LitT(v2) if v1 == v2 -> ctx
@@ -32,10 +40,6 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       unify_rcd(ctx, #(fields1, s1), #(fields2, s2))
     v.RcdT(fields1), v.RcdT(fields2) ->
       unify_rcd_type(ctx, #(fields1, s1), #(fields2, s2))
-    v.Neut(v.NHole(id1)), v.Neut(v.NHole(id2)) if id1 == id2 -> ctx
-    _, v.Neut(v.NHole(id)) -> solve_hole(ctx, id, value1, s1)
-    v.Neut(v.NHole(id)), _ -> solve_hole(ctx, id, value2, s2)
-    v.Neut(n1), v.Neut(n2) -> unify_neut(ctx, #(n1, s1), #(n2, s2))
     v.Lam(env1, i1, #(_, a1), b1), v.Lam(env2, i2, #(_, a2), b2) -> {
       todo as "unify Lam"
     }
@@ -55,9 +59,10 @@ fn unify_with_term(
   a: #(Value, Span),
   b: #(Env, Term, Span),
 ) -> Context {
-  let #(env, term2, s2) = b
-  let value2 = eval(ctx.ffi, env, term2)
-  unify(ctx, a, #(value2, s2))
+  let #(env, term, s) = b
+  let term = resolve(ctx.subst, term)
+  let value = eval(ctx.ffi, env, term)
+  unify(ctx, a, #(value, s))
 }
 
 fn unify_gadt(

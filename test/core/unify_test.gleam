@@ -12,6 +12,7 @@ import core/literals as lit
 import core/term as tm
 import core/unify.{unify}
 import core/value as v
+import gleam/list
 import gleam/option.{None, Some}
 import gleeunit
 import syntax/span
@@ -161,10 +162,10 @@ pub fn unify_ctr_gadt_bool_test() {
       #("False", v.Variant([], tm.Rcd([]), tm.ctr("Bool", []))),
     ])
   let ctx0 = context.push_var(new_ctx, #("Bool", v.TypeDef([], tdef), v.Typ(0)))
-  // Check True constructor
+  // Check: True constructor
   assert unify(ctx0, #(bool, s1), #(true_, s2)) == ctx0
   assert unify(ctx0, #(true_, s2), #(bool, s1)) == ctx0
-  // Check False constructor
+  // Check: False constructor
   assert unify(ctx0, #(bool, s1), #(false_, s2)) == ctx0
   assert unify(ctx0, #(false_, s2), #(bool, s1)) == ctx0
 }
@@ -184,17 +185,17 @@ pub fn unify_ctr_gadt_option_test() {
     ])
   let ctx0 =
     context.push_var(new_ctx, #("Option", v.TypeDef([], tdef), v.Typ(0)))
-  // Check None constructor
+  // Check: None constructor
   assert unify(ctx0, #(option(v.int_t), s1), #(none, s2))
     == Context(..ctx0, subst: [#(0, v.int_t)], hole_counter: 1)
   assert unify(ctx0, #(none, s2), #(option(v.int_t), s1))
     == Context(..ctx0, subst: [#(0, v.int_t)], hole_counter: 1)
-  // Check Some constructor
+  // Check: Some constructor
   assert unify(ctx0, #(option(v.int_t), s1), #(some(v.int_t), s2))
     == Context(..ctx0, subst: [#(0, v.int_t)], hole_counter: 1)
   assert unify(ctx0, #(some(v.int_t), s2), #(option(v.int_t), s1))
     == Context(..ctx0, subst: [#(0, v.int_t)], hole_counter: 1)
-  // Errors
+  // Error: type mismatch
   // TODO: save spans in ctx.types for better error reporting
   assert unify(ctx0, #(option(v.int_t), s1), #(some(v.float_t), s2))
     == Context(
@@ -241,25 +242,37 @@ pub fn unify_ctr_gadt_vec_test() {
         }),
       ],
     )
-  // Check Nil constructor
+  // Check: Nil constructor
   let a = vec(v.int(0), v.float_t)
   let b = nil
-  // assert unify(ctx0, #(a, s1), #(b, s2))
-  //   == Context(..ctx0, subst: [#(1, v.float_t)], hole_counter: 2)
-  // assert unify(ctx0, #(b, s2), #(a, s1))
-  //   == Context(..ctx0, subst: [#(1, v.float_t)], hole_counter: 2)
-  // Check Cons constructor
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx.env == ctx0.env
+  assert ctx.types == ctx0.types
+  assert ctx.errors == []
+  // Check: Cons constructor
   let a = vec(v.int(1), v.float_t)
   let b = cons(v.float_t, nil)
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx.env == ctx0.env
+  assert ctx.types == ctx0.types
   assert ctx.errors == []
-  assert ctx.subst == []
-  assert ctx.hole_counter == 2
-  // Check nested Cons constructors
-  // let a = vec(v.int(2), v.float_t)
-  // let b = cons(v.float_t, cons(v.float_t, nil))
-  // assert unify(ctx0, #(a, s1), #(b, s2))
-  //   == Context(..ctx0, subst: [#(1, v.float_t)], hole_counter: 2)
+  // Check: nested Cons constructors
+  let a = vec(v.int(2), v.float_t)
+  let b = cons(v.float_t, cons(v.float_t, nil))
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx.errors == []
+  // Error: Nil as non-zero Vec
+  // TODO: improve spans for error reporting
+  let a = vec(v.int(1), v.float_t)
+  let b = nil
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx.errors == [TypeMismatch(#(v.int(1), s1), #(v.int(0), s1))]
+  // Error: nested Cons with type mismatch
+  let a = vec(v.int(2), v.float_t)
+  let b = cons(v.int_t, cons(v.float_t, nil))
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx.errors == [TypeMismatch(#(v.int_t, s2), #(v.hole(1), s1))]
+  assert list.key_find(ctx.subst, 1) == Ok(v.float_t)
 }
 
 // ============================================================================

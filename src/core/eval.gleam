@@ -35,14 +35,7 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       )
     tm.Call(name, args) -> {
       let args_val = list.map(args, eval(ffi, env, _))
-      let result = case list.key_find(ffi, name) {
-        Ok(call) -> call(args_val)
-        Error(Nil) -> None
-      }
-      case result {
-        Some(value) -> value
-        None -> v.call(name, args_val)
-      }
+      do_call(ffi, name, args_val)
     }
     tm.Ann(term, _) -> eval(ffi, env, term)
     tm.Lam(implicit, #(name, param), body) -> {
@@ -71,7 +64,7 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
   }
 }
 
-fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value {
+pub fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value {
   case fun {
     // Neutral application
     v.Neut(neut_fun) -> v.app(neut_fun, arg)
@@ -86,7 +79,18 @@ fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value {
   }
 }
 
-fn do_match(ffi: FFI, env: Env, arg: Value, cases: List(Case)) -> Value {
+pub fn do_call(ffi: FFI, name: String, args: List(Value)) -> Value {
+  let result = case list.key_find(ffi, name) {
+    Ok(call) -> call(args)
+    Error(Nil) -> None
+  }
+  case result {
+    Some(value) -> value
+    None -> v.call(name, args)
+  }
+}
+
+pub fn do_match(ffi: FFI, env: Env, arg: Value, cases: List(Case)) -> Value {
   case arg {
     v.Neut(arg_neut) -> v.match(env, arg_neut, cases)
     _ -> do_match_case_list(ffi, env, arg, cases)

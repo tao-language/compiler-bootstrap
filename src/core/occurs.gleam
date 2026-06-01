@@ -5,7 +5,7 @@ import gleam/list
 import gleam/option.{None, Some}
 
 pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
-  case unwrap(ctx.subst, value) {
+  case unwrap(ctx.ffi, ctx.subst, value) {
     v.Typ(_) -> False
     v.Lit(_) -> False
     v.LitT(_) -> False

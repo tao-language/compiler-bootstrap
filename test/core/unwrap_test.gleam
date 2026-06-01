@@ -12,18 +12,18 @@ pub fn main() {
 }
 
 pub fn unwrap_no_solution_test() {
-  let solution = unwrap([], v.hole(10))
+  let solution = unwrap([], [], v.hole(10))
   assert solution == v.hole(10)
 }
 
 pub fn unwrap_direct_solution_test() {
   let subst: Subst = [#(10, v.int_t)]
-  let solution = unwrap(subst, v.hole(10))
+  let solution = unwrap([], subst, v.hole(10))
   assert solution == v.int_t
 }
 
 pub fn unwrap_indirect_solution_test() {
   let subst: Subst = [#(10, v.hole(20)), #(20, v.int_t)]
-  let solution = unwrap(subst, v.hole(10))
+  let solution = unwrap([], subst, v.hole(10))
   assert solution == v.int_t
 }
