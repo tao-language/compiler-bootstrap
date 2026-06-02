@@ -1,0 +1,13 @@
+// All definitions are public by default.
+// This makes everything available and easy to use.
+// However, when defining a public interface like a library,
+// you might want to hide the internals and only expose a specific API.
+
+// Definitions starting with underscore (_) are private.
+fn public_function() => "This can be imported"
+
+fn _private_function() => "This cannot be imported"
+
+// Files and directories starting with underscore (_) are private too.
+// All definitions in a file starting with underscore are private.
+// All files in a directory starting with underscore are prvate, recursively.

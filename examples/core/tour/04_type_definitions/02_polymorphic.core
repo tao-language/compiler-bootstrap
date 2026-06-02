@@ -1,0 +1,8 @@
+// Polymorphic (generic) types have type parameters.
+
+$let Option = $type<a: $Type> {
+| #Some(a) -> #Option(a)
+| #None({}) -> #Option(a)
+}
+
+#Some(42) : #Option($Int)

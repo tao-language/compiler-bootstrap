@@ -1,290 +1,168 @@
-// ============================================================================
-// CORE AST - Abstract Syntax Tree
-// ============================================================================
-/// Terms represent the raw Abstract Syntax Tree (AST) as written by the
-/// programmer. They use De Bruijn INDICES for variables.
-import gleam/list
+import core/literals.{type Literal, type LiteralType} as lit
 import gleam/option.{type Option}
-import syntax/grammar.{type Span}
+import syntax/span.{type Span}
 
 // ============================================================================
-// LITERALS
+// AST TERMS (Syntax level - Named variables, before De Bruijn conversion)
 // ============================================================================
 
-pub type Literal {
-  I32(value: Int)
-  I64(value: Int)
-  U32(value: Int)
-  U64(value: Int)
-  F32(value: Float)
-  F64(value: Float)
-  /// Overloaded integer literal — resolves to any integer or float type during type checking.
-  IntLit(value: Int)
-  /// Overloaded float literal — resolves to any float type during type checking.
-  FloatLit(value: Float)
+/// Named terms - AST produced by the parser with named variables.
+///
+/// Variables use names instead of De Bruijn indices. A separate conversion
+/// pass (term_to_debruijn) converts NamedTerm to Term, calculating
+/// De Bruijn indices and desugaring syntax sugar like $let.
+///
+/// This separates parsing from index calculation, making both simpler.
+pub type AST {
+  AST(data: Data, span: Span)
 }
 
-pub type LiteralType {
-  I32T
-  I64T
-  U32T
-  U64T
-  F32T
-  F64T
-  /// Unresolved integer type — compatible with all integer and float LiteralTypes.
-  ILitT
-  /// Unresolved float type — compatible with all float LiteralTypes.
-  FLitT
+pub type Data {
+  Typ(universe: Int)
+  Hole(id: Int)
+  Lit(value: Literal)
+  LitT(t: LiteralType)
+  Var(name: String)
+  Ctr(tag: String, arg: AST)
+  Rcd(fields: List(#(String, AST)))
+  RcdT(fields: List(#(String, #(AST, Option(AST)))))
+  Call(name: String, args: List(AST), return_type: AST)
+  Ann(term: AST, type_: AST)
+  Lam(implicit: Bool, param: #(String, AST), body: AST)
+  Pi(implicit: Bool, domain: #(String, AST), codomain: AST)
+  Fix(name: String, body: AST)
+  App(fun: AST, arg: AST)
+  TypeDef(type_def: TypeDefinition)
+  Let(name: String, param_type: AST, value: AST, body: AST)
+  Match(arg: AST, cases: List(Case))
+  Err(message: String)
 }
 
-// ============================================================================
-// TERMS
-// ============================================================================
-
-pub type Term {
-  Typ(universe: Int, span: Span)
-  Lit(value: Literal, span: Span)
-  LitT(typ: LiteralType, span: Span)
-  Var(index: Int, span: Span)
-  Hole(id: Int, span: Span)
-  Err(message: String, span: Span)
-  Rcd(fields: List(#(String, Term)), span: Span)
-  Ctr(tag: String, arg: Term, span: Span)
-  Unit(span: Span)
-  Dot(arg: Term, field: String, span: Span)
-  Ann(term: Term, typ: Term, span: Span)
-  Lam(implicit: List(String), param: #(String, Term), body: Term, span: Span)
-  Pi(
-    implicit: List(String),
-    name: String,
-    in_term: Term,
-    out_term: Term,
-    span: Span,
+pub type TypeDefinition {
+  TypeDefinition(
+    params: List(#(String, AST)),
+    arg: AST,
+    variants: List(#(String, Variant)),
   )
-  App(fun: Term, implicit: List(Term), arg: Term, span: Span)
-  Match(arg: Term, motive: Term, cases: List(Case), span: Span)
-  // Typed builtin call: %call name(x: T1, y: T2) -> R
-  Call(
-    name: String,
-    args: List(#(Term, Term)),  // #(arg_term, arg_type)
-    ret: Term,                   // return type
-    span: Span,
-  )
-  Comptime(term: Term, span: Span)
-  Fix(name: String, body: Term, span: Span)
-  Let(name: String, value: Term, body: Term, span: Span)
 }
 
-pub fn get_span(term: Term) -> Span {
-  case term {
-    Typ(_, span) -> span
-    Lit(_, span) -> span
-    LitT(_, span) -> span
-    Var(_, span) -> span
-    Hole(_, span) -> span
-    Err(_, span) -> span
-    Rcd(_, span) -> span
-    Ctr(_, _, span) -> span
-    Unit(span) -> span
-    Dot(_, _, span) -> span
-    Ann(_, _, span) -> span
-    Lam(_, _, _, span) -> span
-    Pi(_, _, _, _, span) -> span
-    App(_, _, _, span) -> span
-    Match(_, _, _, span) -> span
-    Call(_, _, _, span) -> span
-    Comptime(_, span) -> span
-    Fix(_, _, span) -> span
-    Let(_, _, _, span) -> span
-  }
+pub type Variant {
+  Variant(params: List(#(String, AST)), arg: AST, return_type: AST)
 }
-
-// ============================================================================
-// PATTERNS
-// ============================================================================
 
 pub type Pattern {
   PAny(span: Span)
-  PAs(pattern: Pattern, name: String, span: Span)
   PTyp(universe: Int, span: Span)
   PLit(value: Literal, span: Span)
-  PLitT(value: LiteralType, span: Span)
+  PLitT(lit_type: LiteralType, span: Span)
+  PAlias(name: String, pattern: Pattern, span: Span)
+  PCtr(tag: String, pattern: Pattern, span: Span)
   PRcd(fields: List(#(String, Pattern)), span: Span)
-  PCtr(tag: String, arg: Pattern, span: Span)
-  PUnit(span: Span)
+  PError(span: Span)
 }
 
 pub type Case {
-  Case(pattern: Pattern, body: Term, guard: Option(Term), span: Span)
+  Case(pattern: Pattern, guard: Option(#(AST, Pattern)), body: AST, span: Span)
 }
 
-// ============================================================================
-// NEUTRAL TERMS
-// ============================================================================
+// Syntax sugar
 
-pub type Head {
-  HVar(level: Int)
-  HHole(id: Int)
-  HStepLimit
+pub fn typ(universe: Int, span: Span) -> AST {
+  AST(Typ(universe), span)
 }
 
-pub type Elim {
-  EDot(name: String)
-  EApp(arg: Value)
-  EAppImplicit(value: Value)
-  EMatch(env: Env, motive: Value, cases: List(Case))
+pub fn hole(id: Int, span: Span) -> AST {
+  AST(Hole(id), span)
 }
 
-// ============================================================================
-// VALUES
-// ============================================================================
-
-pub type Value {
-  VTyp(universe: Int)
-  VLit(value: Literal)
-  VLitT(typ: LiteralType)
-  VNeut(head: Head, spine: List(Elim))
-  VRcd(fields: List(#(String, Value)))
-  VLam(implicit: List(String), name: String, env: Env, body: Term)
-  VPi(
-    implicit: List(String),
-    name: String,
-    env: Env,
-    in_val: Value,
-    out_term: Term,
-  )
-  VRecord(fields: List(#(String, Value)))
-  // Runtime value of a builtin call with typed args and return type
-  VCall(
-    name: String,
-    args: List(Value),
-    ret: Value,  // evaluated return type
-  )
-  VFix(name: String, env: Env, body: Term)
-  VCtrValue(CtrValue)
-  VUnit
-  VErr
+pub fn int(value: Int, span: Span) -> AST {
+  AST(Lit(lit.Int(value)), span)
 }
 
-pub type CtrValue {
-  VCtr(tag: String, arg: Value)
+pub fn float(value: Float, span: Span) -> AST {
+  AST(Lit(lit.Float(value)), span)
 }
 
-// ============================================================================
-// TYPE ALIASES
-// ============================================================================
-
-pub type Type = Value
-
-pub type Env = List(Value)
-
-pub type Context = List(#(String, #(Value, Type)))
-
-pub type Subst = List(#(Int, Value))
-
-/// Constructor definition for type checking and desugaring.
-pub type CtrDef {
-  CtrDef(params: List(String), arg_ty: Term, ret_ty: Term)
+pub fn int_t(span: Span) {
+  AST(LitT(lit.IntT), span)
 }
 
-pub type CtrEnv = List(#(String, CtrDef))
-
-pub type CtrIndex = List(#(String, String))
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-pub fn make_neut(head: Head) -> Value {
-  VNeut(head, [])
+pub fn float_t(span: Span) {
+  AST(LitT(lit.FloatT), span)
 }
 
-pub fn make_hole_neut(id: Int) -> Value {
-  VNeut(HHole(id), [])
+pub fn i8(span: Span) {
+  AST(LitT(lit.I8), span)
 }
 
-pub fn make_var_neut(level: Int) -> Value {
-  VNeut(HVar(level), [])
+pub fn i16(span: Span) {
+  AST(LitT(lit.I16), span)
 }
 
-/// Create an error term (helper to avoid conflict with Gleam's built-in Err).
-pub fn error_term(message: String, span: Span) -> Term {
-  Err(message, span)
+pub fn i32(span: Span) {
+  AST(LitT(lit.I32), span)
 }
 
-// ============================================================================
-// TERM SHIFTING
-// ============================================================================
-
-pub fn shift_term(term: Term, shift: Int) -> Term {
-  case term {
-    Var(i, span) -> Var(i + shift, span)
-    Lam(implicit, param, body, span) ->
-      Lam(implicit, param, shift_term(body, shift), span)
-    Pi(implicit, name, in_term, out_term, span) ->
-      Pi(
-        implicit,
-        name,
-        shift_term(in_term, shift),
-        shift_term(out_term, shift),
-        span,
-      )
-    App(fun, implicit, arg, span) ->
-      App(shift_term(fun, shift), implicit, shift_term(arg, shift), span)
-    Match(arg, motive, cases, span) ->
-      Match(
-        shift_term(arg, shift),
-        shift_term(motive, shift),
-        list.map(cases, fn(c) { shift_case(c, shift) }),
-        span,
-      )
-    Hole(id, span) -> Hole(id, span)
-    Typ(k, span) -> Typ(k, span)
-    Lit(k, span) -> Lit(k, span)
-    LitT(k, span) -> LitT(k, span)
-    Rcd(fields, span) ->
-      Rcd(list.map(fields, fn(kv) { #(kv.0, shift_term(kv.1, shift)) }), span)
-    Ctr(tag, arg, span) -> Ctr(tag, shift_term(arg, shift), span)
-    Unit(span) -> Unit(span)
-    Dot(arg, name, span) -> Dot(shift_term(arg, shift), name, span)
-    Ann(term, type_ann, span) ->
-      Ann(shift_term(term, shift), shift_term(type_ann, shift), span)
-    Call(name, arg_tuples, ret, span) -> {
-      let shifted_args = list.map(arg_tuples, fn(pair) { #(shift_term(pair.0, shift), shift_term(pair.1, shift)) })
-      Call(name, shifted_args, shift_term(ret, shift), span)
-    }
-    Comptime(term, span) -> Comptime(shift_term(term, shift), span)
-    Fix(name, body, span) -> Fix(name, shift_term(body, shift), span)
-    Let(name, value, body, span) -> Let(name, shift_term(value, shift), shift_term(body, shift), span)
-    Err(msg, span) -> Err(msg, span)
-  }
+pub fn i64(span: Span) {
+  AST(LitT(lit.I64), span)
 }
 
-pub fn shift_case(case_val: Case, shift: Int) -> Case {
-  case case_val {
-    Case(pattern, body, guard, span) ->
-      Case(
-        pattern,
-        shift_term(body, shift),
-        option.map(guard, fn(g) { shift_term(g, shift) }),
-        span,
-      )
-  }
+pub fn u8(span: Span) {
+  AST(LitT(lit.U8), span)
 }
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/// Check if a value matches the given truth constructor tag.
-pub fn is_true_value(value: Value, truth_ctor: String) -> Bool {
-  case value {
-    VCtrValue(VCtr(tag, _)) if tag == truth_ctor -> True
-    _ -> False
-  }
+pub fn u16(span: Span) {
+  AST(LitT(lit.U16), span)
 }
 
-/// Alias for is_true_value. Prefer this name for clarity.
-pub fn is_truth_value(value: Value, truth_ctor: String) -> Bool {
-  is_true_value(value, truth_ctor)
+pub fn u32(span: Span) {
+  AST(LitT(lit.U32), span)
 }
+
+pub fn u64(span: Span) {
+  AST(LitT(lit.U64), span)
+}
+
+pub fn f32(span: Span) {
+  AST(LitT(lit.F32), span)
+}
+
+pub fn f64(span: Span) {
+  AST(LitT(lit.F64), span)
+}
+
+pub fn ctr(tag: String, args: List(#(String, AST)), span: Span) {
+  AST(Ctr(tag, AST(Rcd(args), span)), span)
+}
+
+/// Syntax sugar for `_@name`.
+pub fn pvar(name: String, span: Span) -> Pattern {
+  PAlias(name, PAny(span), span)
+}
+
+pub fn pint(value: Int, span: Span) -> Pattern {
+  PLit(lit.Int(value), span)
+}
+
+pub fn pfloat(value: Float, span: Span) -> Pattern {
+  PLit(lit.Float(value), span)
+}
+// ALitT(t: LiteralType, span: Span)
+// AVar(name: String, span: Span)
+// ACtr(tag: String, arg: AST, span: Span)
+// ARcd(fields: List(#(String, AST)), span: Span)
+// ARcdT(fields: List(#(String, AST, Option(AST))), span: Span)
+// ACall(name: String, args: List(#(AST, AST)), return_type: AST, span: Span)
+// AAnn(term: AST, type_: AST, span: Span)
+// ALam(implicit: Bool, param: #(String, AST), body: AST, span: Span)
+// APi(implicit: Bool, domain: #(String, AST), codomain: AST, span: Span)
+// AFix(name: String, body: AST, span: Span)
+// AApp(fun: AST, arg: AST, span: Span)
+// ATypeDef(
+//   params: List(#(String, AST)),
+//   constructors: List(#(String, #(List(String), AST, AST), Span)),
+//   span: Span,
+// )
+// ALet(name: String, param_type: AST, value: AST, body: AST, span: Span)
+// AMatch(arg: AST, cases: List(CaseAST), span: Span)
+// AErr(message: String, span: Span)

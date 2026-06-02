@@ -1,0 +1,16 @@
+// A while loop runs a block as long as a condition is true.
+fn factorial(num: Int) -> Int {
+  let mut n = num
+  let mut result = 1
+  while n > 0 {
+    mut result *= num
+    mut num -= 1
+  }
+  return result
+}
+> factorial(0) ~> 1
+> factorial(1) ~> 1
+> factorial(2) ~> 2
+> factorial(3) ~> 6
+> factorial(4) ~> 24
+> factorial(5) ~> 120

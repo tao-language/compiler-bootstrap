@@ -1,0 +1,35 @@
+// Records have named fields, similar to JSON objects.
+// They can have zero or more fields.
+> {} ~> {}
+> {x: 10} ~> {x: 10}
+> {x: 10, y: 20} ~> {x: 10, y: 20}
+
+// Tests can span multiple lines.
+// Lines starting with `>` are still part of the test expression.
+> {
+>   x: 10,
+>   y: 20, // a trailing comma is allowed
+> }
+{x: 10, y: 20}
+
+// Field order doesn't matter.
+> {x: 10, y: 20} ~> {y: 20, x: 10}
+
+// Access a field with the dot operator (.)
+let point = {x: 10, y: 20}
+> point.x ~> 10
+> point.y ~> 20
+
+// Update a field with the spread operator (..)
+> {..point, x: 0} ~> {x: 0, y: 20}
+
+// Note that values are immutable, so the original `point` is unaffected.
+> point ~> {x: 10, y: 20}
+
+// You can also add new fields with spread since it's creating a new record.
+> {w: 0, ..point, z: 30} ~> {w: 0, x: 10, y: 20, z: 30}
+
+// Record queries can make massaging data easier.
+// All fields in the record being queried are accessible.
+> point.{x, sum: x + y}
+{x: 10, sum: 30}

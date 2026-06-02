@@ -1,180 +1,427 @@
-// ============================================================================
-// EVALUATION TESTS
-// ============================================================================
-/// Tests for the evaluator.
+/// Tests for the eval module — Core evaluator.
 ///
-/// Evaluation reduces terms to values in a given environment.
-/// It's used for:
-/// - Runtime execution
-/// - Normalization by evaluation
-/// - Comptime evaluation
-import core/ast as ast
-import core/state as state
+/// These tests verify core evaluator logic only:
+/// - Variable lookup via env (utils.list_at)
+/// - Beta reduction (explicit parameter application)
+/// - Implicit parameter expansion
+/// - Neutral term handling
+/// - Error path for non-function application
+/// - Match evaluation: pattern matching, guards, bindings
+/// - FFI integration
+///
+/// Trivial data-pass-through tests (Typ, Hole, Lit, LitT, Ctr, Rcd,
+/// RcdT, Fix, Ann) have been removed — they only verify data flows
+/// through, not logic.
+import core/context.{type FFI}
+import core/eval.{eval, match_pattern}
+import core/literals as lit
+import core/term as tm
+import core/value as v
+import gleam/option.{None, Some}
 import gleeunit
-import gleeunit/should
-import syntax/grammar.{Span}
-import core/eval.{eval}
 
 pub fn main() {
   gleeunit.main()
 }
 
+// const s = span.Span("eval_test", 0, 0, 0, 0) // unused — not needed for current tests
+
 // ============================================================================
-// TEST HELPERS
+// Variable lookup — tests utils.list_at logic
 // ============================================================================
 
-
-const s1 = Span("eval_test", 1, 1, 1, 1)
-
-const s2 = Span("eval_test", 2, 2, 2, 2)
-
-fn typ(l, s) {
-  ast.Typ(l, s)
+pub fn eval_var_defined_test() {
+  let env = [v.int(42), v.float(3.14)]
+  let term = tm.Var(0)
+  let result = eval([], env, term)
+  assert result == v.int(42)
 }
 
-fn lit(v, s) {
-  ast.Lit(v, s)
-}
-
-fn litt(t, s) {
-  ast.LitT(t, s)
-}
-
-fn var(i, s) {
-  ast.Var(i, s)
-}
-
-fn hole(id, s) {
-  ast.Hole(id, s)
-}
-
-fn v32(v) {
-  ast.VLit(ast.I32(v))
-}
-
-fn v64(v) {
-  ast.VLit(ast.I64(v))
-}
-
-const v32t = ast.VLitT(ast.I32T)
-
-const v64t = ast.VLitT(ast.I64T)
-
-fn vhole(i) {
-  ast.VNeut(ast.HHole(i), [])
+pub fn eval_var_undefined_test() {
+  // Accessing index 0 in empty env returns Err
+  let term = tm.Var(0)
+  let result = eval([], [], term)
+  assert result == v.Err
 }
 
 // ============================================================================
-// HELPER FUNCTIONS
+// Application — tests do_app logic
 // ============================================================================
 
-fn i32(n, s) {
-  ast.Lit(ast.I32(n), s)
+pub fn eval_app_beta_reduction_test() {
+  // ($fn(x: $Int) => x) 42 ~> 42
+  let fun = tm.Lam(False, #("x", tm.LitT(lit.IntT)), tm.Var(0))
+  let term = tm.App(fun, tm.Lit(lit.Int(42)))
+  let result = eval([], [], term)
+  assert result == v.int(42)
 }
 
-fn lam(name, body, s) {
-  ast.Lam([], #(name, ast.Hole(-1, s)), body, s)
+pub fn eval_app_implicit_expansion_test() {
+  // ($fn<x: $Type> => ?10 x) 42
+  // ~> (?10 $error) 42
+  let inner = tm.App(tm.Hole(10), tm.Var(0))
+  let fun = tm.Lam(True, #("x", tm.Typ(0)), inner)
+  let term = tm.App(fun, tm.Lit(lit.Int(42)))
+  let result = eval([], [], term)
+  assert result == v.app(v.NApp(v.NHole(10), v.Err), v.int(42))
 }
 
-fn app(fun, arg, s) {
-  ast.App(fun, [], arg, s)
+pub fn eval_app_neutral_test() {
+  // ?10 42 ~> ?10 42 (neutral spine)
+  let fun = tm.Hole(10)
+  let term = tm.App(fun, tm.Lit(lit.Int(42)))
+  let result = eval([], [], term)
+  assert result == v.app(v.NHole(10), v.int(42))
 }
 
-// ============================================================================
-// TYPE EVALUATION
-// ============================================================================
-
-pub fn eval_typ_test() {
-  eval([], [], typ(0, s1)) |> should.equal(ast.VTyp(0))
-  eval([], [], typ(1, s1)) |> should.equal(ast.VTyp(1))
-}
-
-// ============================================================================
-// LITERAL EVALUATION
-// ============================================================================
-
-pub fn eval_lit_test() {
-  eval([], [], lit(ast.I32(1), s1))
-  |> should.equal(ast.VLit(ast.I32(1)))
-  eval([], [], lit(ast.I64(1), s1))
-  |> should.equal(ast.VLit(ast.I64(1)))
-  eval([], [], lit(ast.U32(1), s1))
-  |> should.equal(ast.VLit(ast.U32(1)))
-  eval([], [], lit(ast.U64(1), s1))
-  |> should.equal(ast.VLit(ast.U64(1)))
-  eval([], [], lit(ast.F32(1.0), s1))
-  |> should.equal(ast.VLit(ast.F32(1.0)))
-  eval([], [], lit(ast.F64(1.0), s1))
-  |> should.equal(ast.VLit(ast.F64(1.0)))
+pub fn eval_app_not_a_function_test() {
+  // Applying a non-lambda value yields Err
+  let fun = tm.Typ(0)
+  let term = tm.App(fun, tm.Lit(lit.Int(42)))
+  let result = eval([], [], term)
+  assert result == v.Err
 }
 
 // ============================================================================
-// LITERAL TYPE EVALUATION
+// FFI integration
 // ============================================================================
 
-pub fn eval_litt_test() {
-  eval([], [], litt(ast.I32T, s1))
-  |> should.equal(ast.VLitT(ast.I32T))
-  eval([], [], litt(ast.I64T, s1))
-  |> should.equal(ast.VLitT(ast.I64T))
-  eval([], [], litt(ast.U32T, s1))
-  |> should.equal(ast.VLitT(ast.U32T))
-  eval([], [], litt(ast.U64T, s1))
-  |> should.equal(ast.VLitT(ast.U64T))
-  eval([], [], litt(ast.F32T, s1))
-  |> should.equal(ast.VLitT(ast.F32T))
-  eval([], [], litt(ast.F64T, s1))
-  |> should.equal(ast.VLitT(ast.F64T))
+pub fn eval_call_ffi_some_test() {
+  let ffi: FFI = [#("f", fn(_) { Some(v.int(42)) })]
+  let term = tm.Call("f", [])
+  let result = eval(ffi, [], term)
+  assert result == v.int(42)
+}
+
+pub fn eval_call_ffi_none_test() {
+  // FFI returns None → falls back to neutral call value
+  let ffi: FFI = [#("f", fn(_) { None })]
+  let term = tm.Call("f", [])
+  let result = eval(ffi, [], term)
+  assert result == v.call("f", [])
 }
 
 // ============================================================================
-// VARIABLE EVALUATION
+// Match evaluation — tests do_match / do_match_case logic
 // ============================================================================
 
-pub fn eval_var_test() {
-  let env = [v32(0)]
-  eval([], env, var(0, s1)) |> should.equal(v32(0))
-  eval([], env, var(1, s1)) |> should.equal(ast.VErr)
+pub fn eval_match_first_case_test() {
+  let cases = [tm.Case(tm.PLit(lit.Int(42)), None, tm.float(1.0))]
+  let term = tm.Match(tm.Lit(lit.Int(42)), cases)
+  let result = eval([], [], term)
+  assert result == v.float(1.0)
+}
+
+pub fn eval_match_second_case_test() {
+  let cases = [
+    tm.Case(tm.PLit(lit.Int(0)), None, tm.float(1.0)),
+    tm.Case(tm.PLit(lit.Int(42)), None, tm.float(2.0)),
+  ]
+  let term = tm.Match(tm.Lit(lit.Int(42)), cases)
+  let result = eval([], [], term)
+  assert result == v.float(2.0)
+}
+
+pub fn eval_match_no_cases_test() {
+  let term = tm.Match(tm.Lit(lit.Int(42)), [])
+  let result = eval([], [], term)
+  assert result == v.Err
 }
 
 // ============================================================================
-// HOLE EVALUATION
+// Match with bindings — tests DeBruijn/env ordering
 // ============================================================================
 
-pub fn eval_hole_test() {
-  eval([], [], hole(0, s1)) |> should.equal(vhole(0))
-  eval([], [], hole(1, s1)) |> should.equal(vhole(1))
+pub fn eval_match_bindings_test() {
+  // $match {x: 10, y: 20} { | {x: a, y: b} => {x: a, y: b} }
+  //    a is #1 = 10, b is #0 = 20
+  let arg =
+    tm.Rcd([
+      #("x", tm.Lit(lit.Int(10))),
+      #("y", tm.Lit(lit.Int(20))),
+    ])
+  let cases = [
+    tm.Case(
+      tm.PRcd([
+        #("x", tm.PAlias("a", tm.PAny)),
+        #("y", tm.PAlias("b", tm.PAny)),
+      ]),
+      None,
+      tm.Rcd([
+        #("x", tm.Var(1)),
+        #("y", tm.Var(0)),
+      ]),
+    ),
+  ]
+  let term = tm.Match(arg, cases)
+  let result = eval([], [], term)
+  assert result
+    == v.Rcd([
+      #("x", v.int(10)),
+      #("y", v.int(20)),
+    ])
 }
 
 // ============================================================================
-// LAMBDA BETA-REDUCTION TESTS
+// Match with guards — tests do_match_guard logic
 // ============================================================================
 
-pub fn eval_lambda_identity_test() {
-  // (λx. x) 42 should evaluate to 42
-  let identity = lam("x", var(0, s1), s1)  // λx. x
-  let arg = i32(42, s1)
-  let app_term = app(identity, arg, s1)
-  eval([], [], app_term) |> should.equal(v32(42))
+pub fn eval_match_guard_fail_test() {
+  // $match (42) { | x ? x ~ 0 => 1.0 | _ => 2.0 }
+  let term =
+    tm.Match(tm.Lit(lit.Int(42)), [
+      tm.Case(
+        tm.PAlias("x", tm.PAny),
+        Some(#(tm.Var(0), tm.PLit(lit.Int(0)))),
+        tm.float(1.0),
+      ),
+      tm.Case(tm.PAny, None, tm.float(2.0)),
+    ])
+  let result = eval([], [], term)
+  assert result == v.float(2.0)
 }
 
-pub fn eval_lambda_const_test() {
-  // (λx. λy. x) 1 2 should evaluate to 1 (K combinator)
-  let inner_lam = lam("y", var(1, s1), s1)  // λy. x (x is at index 1)
-  let outer_lam = lam("x", inner_lam, s1)   // λx. λy. x
-  let arg1 = i32(1, s1)
-  let arg2 = i32(2, s1)
-  let app1 = app(outer_lam, arg1, s1)
-  let app2 = app(app1, arg2, s1)
-  eval([], [], app2) |> should.equal(v32(1))
+pub fn eval_match_guard_pass_test() {
+  // $match (42) { | x ? x ~ 42 => 1.0 | _ => 2.0 }
+  let term =
+    tm.Match(tm.Lit(lit.Int(42)), [
+      tm.Case(
+        tm.PAlias("x", tm.PAny),
+        Some(#(tm.Var(0), tm.PLit(lit.Int(42)))),
+        tm.float(1.0),
+      ),
+      tm.Case(tm.PAny, None, tm.float(2.0)),
+    ])
+  let result = eval([], [], term)
+  assert result == v.float(1.0)
 }
 
-pub fn eval_lambda_application_test() {
-  // (λf. f 5) (λx. x + 1) - simplified version
-  // (λx. x) (λy. y) 42 should evaluate to 42
-  let identity_inner = lam("y", var(0, s1), s1)
-  let identity_outer = lam("x", identity_inner, s1)
-  let arg = i32(42, s1)
-  let app_term = app(app(identity_outer, identity_outer, s1), arg, s1)
-  eval([], [], app_term) |> should.equal(v32(42))
+pub fn eval_match_guard_bindings_test() {
+  // $match (10) { | x ? {x: 20, y: 30} ~ {x: a, y: b} => {x: x, y: a, z: b} }
+  //    x is #2 = 10, a is #1 = 20, b is #0 = 30
+  let cases = [
+    tm.Case(
+      tm.PAlias("x", tm.PAny),
+      Some(#(
+        tm.Rcd([
+          #("x", tm.Lit(lit.Int(20))),
+          #("y", tm.Lit(lit.Int(30))),
+        ]),
+        tm.PRcd([
+          #("x", tm.PAlias("a", tm.PAny)),
+          #("y", tm.PAlias("b", tm.PAny)),
+        ]),
+      )),
+      tm.Rcd([
+        #("x", tm.Var(2)),
+        #("y", tm.Var(1)),
+        #("z", tm.Var(0)),
+      ]),
+    ),
+  ]
+  let term = tm.Match(tm.Lit(lit.Int(10)), cases)
+  let result = eval([], [], term)
+  assert result
+    == v.Rcd([
+      #("x", v.int(10)),
+      #("y", v.int(20)),
+      #("z", v.int(30)),
+    ])
+}
+
+pub fn eval_match_err_test() {
+  let term = tm.Err
+  let result = eval([], [], term)
+  assert result == v.Err
+}
+
+// ============================================================================
+// match_pattern — tests the pattern matching algorithm
+// ============================================================================
+
+pub fn match_pattern_any_matches_test() {
+  assert match_pattern(tm.PAny, v.int(42)) == Some([])
+}
+
+pub fn match_pattern_any_matches_float_test() {
+  // PAny matches any value type
+  assert match_pattern(tm.PAny, v.float(3.14)) == Some([])
+}
+
+pub fn match_pattern_typ_match_test() {
+  assert match_pattern(tm.PTyp(0), v.Typ(0)) == Some([])
+}
+
+pub fn match_pattern_typ_mismatch_test() {
+  assert match_pattern(tm.PTyp(1), v.Typ(0)) == None
+}
+
+pub fn match_pattern_typ_wrong_value_test() {
+  assert match_pattern(tm.PTyp(0), v.int(42)) == None
+}
+
+pub fn match_pattern_lit_int_match_test() {
+  assert match_pattern(tm.PLit(lit.Int(42)), v.int(42)) == Some([])
+}
+
+pub fn match_pattern_lit_int_mismatch_test() {
+  assert match_pattern(tm.PLit(lit.Int(1)), v.int(42)) == None
+}
+
+pub fn match_pattern_lit_float_match_test() {
+  assert match_pattern(tm.PLit(lit.Float(3.14)), v.float(3.14)) == Some([])
+}
+
+pub fn match_pattern_litt_int_match_test() {
+  assert match_pattern(tm.PLitT(lit.IntT), v.int_t) == Some([])
+}
+
+pub fn match_pattern_litt_int_mismatch_test() {
+  assert match_pattern(tm.PLitT(lit.IntT), v.float_t) == None
+}
+
+pub fn match_pattern_litt_wrong_value_test() {
+  assert match_pattern(tm.PLitT(lit.IntT), v.int(42)) == None
+}
+
+pub fn match_pattern_alias_bind_test() {
+  let result = match_pattern(tm.PAlias("x", tm.PAny), v.int(42))
+  assert result == Some([v.int(42)])
+}
+
+pub fn match_pattern_alias_nested_test() {
+  // Each PAlias prepends the value: inner binds it, then outer binds it again
+  let result =
+    match_pattern(tm.PAlias("outer", tm.PAlias("inner", tm.PAny)), v.int(42))
+  assert result == Some([v.int(42), v.int(42)])
+}
+
+pub fn match_pattern_alias_fail_test() {
+  let result = match_pattern(tm.PAlias("x", tm.PLit(lit.Int(0))), v.int(42))
+  assert result == None
+}
+
+pub fn match_pattern_ctr_match_test() {
+  let result =
+    match_pattern(
+      tm.PCtr("Some", tm.PAlias("x", tm.PAny)),
+      v.Ctr("Some", v.int(42)),
+    )
+  assert result == Some([v.int(42)])
+}
+
+pub fn match_pattern_ctr_tag_mismatch_test() {
+  let result = match_pattern(tm.PCtr("None", tm.PAny), v.Ctr("Some", v.int(42)))
+  assert result == None
+}
+
+pub fn match_pattern_ctr_wrong_value_test() {
+  let result = match_pattern(tm.PCtr("Some", tm.PAny), v.int(42))
+  assert result == None
+}
+
+pub fn match_pattern_ctr_nested_test() {
+  let inner = tm.PCtr("Int", tm.PLit(lit.Int(42)))
+  let result =
+    match_pattern(
+      tm.PCtr("Some", inner),
+      v.Ctr("Some", v.Ctr("Int", v.Lit(lit.Int(42)))),
+    )
+  assert result == Some([])
+}
+
+pub fn match_pattern_ctr_nested_fail_test() {
+  let inner = tm.PCtr("Int", tm.PLit(lit.Int(99)))
+  let result =
+    match_pattern(
+      tm.PCtr("Some", inner),
+      v.Ctr("Some", v.Ctr("Int", v.Lit(lit.Int(42)))),
+    )
+  assert result == None
+}
+
+pub fn match_pattern_rcd_match_test() {
+  let result =
+    match_pattern(
+      tm.PRcd([
+        #("x", tm.PLit(lit.Int(1))),
+        #("y", tm.PAny),
+      ]),
+      v.Rcd([
+        #("x", v.int(1)),
+        #("y", v.int(2)),
+      ]),
+    )
+  assert result == Some([])
+}
+
+pub fn match_pattern_rcd_extra_field_test() {
+  // Pattern has field not in value
+  let result =
+    match_pattern(
+      tm.PRcd([
+        #("x", tm.PAny),
+        #("y", tm.PAny),
+        #("z", tm.PAny),
+      ]),
+      v.Rcd([
+        #("x", v.int(1)),
+        #("y", v.int(2)),
+      ]),
+    )
+  assert result == None
+}
+
+pub fn match_pattern_rcd_fewer_fields_test() {
+  // Pattern with fewer fields succeeds
+  let result =
+    match_pattern(
+      tm.PRcd([#("x", tm.PAny)]),
+      v.Rcd([
+        #("x", v.int(1)),
+        #("y", v.int(2)),
+      ]),
+    )
+  assert result == Some([])
+}
+
+pub fn match_pattern_rcd_bindings_test() {
+  // PRcd with alias bindings — DeBruijn ordering: x(#2), y(#1), z(#0)
+  let result =
+    match_pattern(
+      tm.PRcd([
+        #("x", tm.PAlias("a", tm.PAny)),
+        #("y", tm.PAlias("b", tm.PAny)),
+        #("z", tm.PAlias("c", tm.PAny)),
+      ]),
+      v.Rcd([
+        #("x", v.int(1)),
+        #("y", v.int(2)),
+        #("z", v.int(3)),
+      ]),
+    )
+  assert result == Some([v.int(3), v.int(2), v.int(1)])
+}
+
+pub fn match_pattern_rcd_wrong_field_name_test() {
+  let result =
+    match_pattern(tm.PRcd([#("x", tm.PAny)]), v.Rcd([#("y", v.int(1))]))
+  assert result == None
+}
+
+pub fn match_pattern_rcd_value_mismatch_test() {
+  let result =
+    match_pattern(
+      tm.PRcd([#("x", tm.PLit(lit.Int(99)))]),
+      v.Rcd([#("x", v.int(42))]),
+    )
+  assert result == None
+}
+
+pub fn match_pattern_error_match_test() {
+  assert match_pattern(tm.PError, v.Err) == Some([])
+}
+
+pub fn match_pattern_error_wrong_value_test() {
+  assert match_pattern(tm.PError, v.int(42)) == None
 }

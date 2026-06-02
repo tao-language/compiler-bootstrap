@@ -1,0 +1,5 @@
+// Only C-style single line comments are supported.
+
+// A core file represents a single expression, there are no statements.
+// For example, this entire file represents only the number 42.
+42

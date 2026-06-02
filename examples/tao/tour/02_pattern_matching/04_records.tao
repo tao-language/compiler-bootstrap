@@ -1,0 +1,39 @@
+let point = {x: 10, y: 20}
+
+// Record patterns match any record with the pattern fields.
+> match point {
+> | {x} => x
+> }
+10
+
+// Fields can be in any order.
+> match point {
+> | {y, x} => x + y
+> }
+30
+
+// If at least one field name doesn't match, the pattern doesn't match.
+> match point {
+> | {x, z} => False
+> | {} => True  // the empty pattern matches any record regardless of its fields.
+> }
+True
+
+// You can also match over the field's value.
+> match point {
+> | {x: 0} => 0  // matches only if the field 'x' is exactly 0.
+> | {x: z} => z  // matches pattern `z` on field 'x' value, only `z` is bound in this branch.
+> | {y} => y     // field punning: `{y}` pattern is shorthand for `{y: y}`.
+> }
+10  // matches `{x: z}`, binds `z` to x's value.
+
+// To get the whole record, you can alias a more specific pattern.
+> match point {
+> | {x} as p => p.y  // matches a record containing 'x', but binds the entire original record to `p`.
+> }
+20
+
+// Get the remaining fields using the spread pattern (..)
+> match point {
+> | {x, ..p} => p.y  // 'x' was bound, so `p` only contains 'y'
+> }

@@ -1,0 +1,5 @@
+// A pattern alias follows `name@pattern`.
+match 42 {
+| x@_ => x  // matches anything, binds to `x` variable name
+| y => y    // same, but syntax sugar for `name@_`
+}

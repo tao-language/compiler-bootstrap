@@ -1,0 +1,14 @@
+let point = (10, 20)
+
+// Tuple patterns must have one pattern for each tuple's item.
+> match point {
+> | (0, y) => 0  // matches only if the first item is exactly 0.
+> | (x, y) => x + y
+> }
+30
+
+// Get partial matches with the spread pattern (..)
+> match (10, 20, 30) {
+> | (x, ..p) => p
+> }
+(20, 30)

@@ -1,0 +1,17 @@
+// Function composition (>>) and (<<) creates a new function by joining existing ones.
+// The direction of the "arrow" reflects the flow of data.
+
+fn add_one(n: I32) -> I32 = n + 1
+fn double(n: I32) -> I32 = n * 2
+
+// Forward (>>) is for `f then g`.
+// `(f >> g)(x)` is equivalent to `g(f(x))`
+let increment_then_double = add_one >> double
+> increment_then_double(10)  // (10 + 1) * 2
+22
+
+// Backward (<<) is for `f after g`.
+// `(f << g)(x)` is equivalent to `f(g(x))`
+let double_then_increment = add_one << double
+> double_then_increment(10)  // (10 * 2) + 1
+21

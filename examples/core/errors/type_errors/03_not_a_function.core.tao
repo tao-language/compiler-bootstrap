@@ -1,3 +1,0 @@
-// Type Error: Not a function
-// Trying to apply a non-function value
-42(x)

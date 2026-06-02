@@ -1,0 +1,6 @@
+$let empty = {};
+$let point1D = {x: 1};
+$let point2D = {x: 1, y: 2};
+$let point3D= {x: 1, y: 2, z: 3};
+
+point2D  // evaluates to {x: 1, y: 2} — proves record creation

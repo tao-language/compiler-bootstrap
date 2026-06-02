@@ -1,0 +1,29 @@
+// Types are defined using the 'type' keyword.
+// Basic types are represented with Algebraic Data Types (ADT).
+// An ADT (Sum type) represents a choice between different variants.
+// Variants can be simple tags or carry data (payloads).
+type Style {
+| Default     // simple constructor without any data
+| Padded(Int) // this one has an integer data
+}
+> Default ~> Default
+> Padded(2) ~> Padded(2)
+
+// Constructors support named arguments and default values.
+// This makes complex types much easier to read and extend.
+type Widget {
+| Label(text: String)
+| Button(text: String, style: Style = Default)
+}
+
+// Here 'style' is omitted, so we get the default value.
+> Button("Login")
+Button(text: "Login", style: Defualt)
+
+// Overriding the 'style' default value.
+> Button("Login", style: Padded(2))
+Button(text: "Login", style: Padded(2))
+
+// With named arguments, they can go in a different order.
+> Button(style: Padded(2), text: "Login")
+Button("Login", Padded(2))

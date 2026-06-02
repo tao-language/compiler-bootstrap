@@ -1,0 +1,23 @@
+// Use the 'TODO' keyword to mark something as "not yet implemented".
+// At build time, this raises a compiler warning.
+// At run time, this evaluates to an error.
+
+// Can be used as an expression.
+fn simple_example()
+=> TODO
+
+> simple_example() ~> $error "todo.tao:9: TODO"
+
+// To include a more informative message.
+// Use a (:), then the message until the end of line.
+fn message_example()
+=> TODO: Under construction!
+
+> message_example() ~> $error "todo.tao:16: TODO: Under construction!"
+
+// Can also be used in block statements.
+fn statement_example() {
+  TODO: (☞ﾟヮﾟ)☞
+}
+
+> statement_example() ~> $error "todo.tao:23: TODO: (☞ﾟヮﾟ)☞"

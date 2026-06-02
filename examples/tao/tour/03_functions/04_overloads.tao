@@ -1,0 +1,31 @@
+// There can be multiple definitions of the same function.
+// They must recieve different argument types, and may have different return types.
+fn overload(x: One) -> I32 {
+  return 1
+}
+
+fn overload(x: NotFalse) -> Bool {
+  return True
+}
+
+fn overload<any>(x: any) -> Option(any) {
+  return None
+}
+
+// The correct one is chosen via pattern matching the argument types.
+// Cases are defined in the same order as the functions were defined.
+> overload(One) ~> 1
+> overload(NotFalse) ~> True
+> overload(42) ~> None
+
+// Just like functions, operators can also be overloaded.
+// However, operators are predefined with a predefined precedence.
+// You cannot define custom operators other than the supported ones.
+// Operators must be enclosed in parentheses, for example:
+fn (+)(lhs: (I32, I32), rhs: (I32, I32)) -> (I32, I32) {
+  return (lhs.1 + rhs.1, lhs.2 + rhs.2)
+}
+
+// Operators are (implicitly) imported from prelude.
+// Overloads defined in the current module (file) have precedence over the imported ones.
+> (1, 2) + (3, 4) ~> (4, 6)

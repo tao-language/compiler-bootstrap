@@ -1,0 +1,27 @@
+// Types are defined as Generalized Algebraic Data Types (GADT).
+// See 04_type_definitions/ for more in-depth information.
+
+// Type definitions have the following syntax:
+// $type<param1: Type1, param2: Type2, ..., paramN: TypeN> {
+// | #Constructor1(argument) -> ReturnType
+// | @binding. #Constructor2(argument) -> ReturnType
+// ...
+// | @x y z. #ConstructorN(argument) -> ReturnType
+// }
+
+// The type parameters are optional.
+// If it doesn't have parameters, it's a monomorphic (concrete) type.
+// If it has parameters, it's a polymorphic (generic) type.
+
+// Constructors consist of a tag starting with #.
+// They can have optional bindings.
+// They always take exactly one argument.
+// You can use records to pass zero or multiple arguments.
+
+// Here's how a Bool type could be defined (monomorphic).
+$type {
+| #True({}) -> #Bool({})
+| #False({}) -> #Bool({})
+}
+
+#True({}) : #Bool({})

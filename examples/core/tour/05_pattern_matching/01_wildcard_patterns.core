@@ -1,0 +1,3 @@
+match 42 {
+| _ => 100  // matches anything, does not define any name; returns 100 to prove wildcard matched
+}

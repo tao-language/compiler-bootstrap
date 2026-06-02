@@ -1,0 +1,6 @@
+// Matches on an error term.
+// An error term "poisons" a result, this can be used to recover from it.
+// Note that the error pattern does not match on error message, so it's ignored.
+$match ($error "my error message") {
+| $error => 0
+}

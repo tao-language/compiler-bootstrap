@@ -1,0 +1,22 @@
+// Expressions are the main building block, they represent a "data value".
+// With blocks we can express a "sequence of statements".
+// This can be a better fit for certain algorithms and logic.
+// Blocks must always return a value.
+
+// Function definitions can use blocks, this allows to use 'let' and other statements.
+fn add(x: Int, y: Int) -> Int {
+  let result = x + y  // let statement
+  return result       // a block must return something
+}
+
+> add(2, 3) ~> 5
+
+// This is just fn syntax sugar, but you can manually define blocks with `do {stmts..}`
+// A 'do' block allows us to use statements for more imperative control flow.
+let mul(x: Int, y: Int) -> Int
+=> do {
+  let result = x * y
+  return result
+}
+
+> mul(2, 3) ~> 6

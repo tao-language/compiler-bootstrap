@@ -1,0 +1,4 @@
+// Constructors consist of a tag starting with #.
+// They always take exactly one argument.
+// You can use records to pass zero or multiple arguments.
+#Some(42)

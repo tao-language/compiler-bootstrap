@@ -1,0 +1,15 @@
+// The compiler checks for exhaustive and redundant cases.
+// Numeric types are treated as "infinite" types which require a wildcard pattern at the end.
+
+$let Option = $type<a: $Type> {
+| #Some(a) -> #Option(a)
+| #None({}) -> #Option(a)
+}
+
+// Since we know the match argument is of type #Option, it looks at
+// the `Option` definition, which is a TypeDef containing all the variants.
+// It verifies all variants are covered in the match.
+$match (#Some(42) : #Option($Int)) {
+| #Some(x) => x
+| #None(_) => 0
+}

@@ -1,0 +1,25 @@
+// Sets are immutable unordered collections of unique items of the same type.
+
+// They are written using curly brackets starting with #.
+let empty = #{}
+let primes: Set(Int) = #{2, 3, 5, 7, 11}
+
+// Sets are immutable, transformations create new sets.
+> add(primes, 13)
+#{2, 3, 5, 7, 11, 13}
+
+// Merge sets with (+), it's automatically deduplicated.
+> primes + #{13, 17, 2}
+#{2, 3, 5, 7, 11, 13, 17}
+
+// The original set has not changed.
+> primes
+#{2, 3, 5, 7, 11}
+
+// Order doesn't matter.
+> #{1, 2, 3}
+#{3, 2, 1}
+
+// Elements must be unique, it's automatically deduplicated.
+> #{1, 1, 1, 2, 2, 3, 2}
+#{1, 2, 3}

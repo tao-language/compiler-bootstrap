@@ -1,0 +1,28 @@
+// Floating point numbers can be troublesome to check for equality
+// due to rounding errors on their internal representation.
+// Instead of matching on strict equality, it matches only up to the
+// digits provided in the pattern.
+// This way you decide how much accuracy you need.
+// If you want to check for strict float equality, use a guard with (==).
+// Since floats are eseentially infinite, there must always
+// be a "catch all" pattern at the end for it to be exhaustive.
+fn number_name(x: Float) -> Text
+=> match x {
+| 3.14159 => "pi"
+| 1.618 => "phi"
+| _ => "other"
+}
+
+// An "exact" match up to the specified digits.
+> number_name(3.14159) ~> "pi"
+> number_name(1.618) ~> "phi"
+
+// More digits are ok, as long as they match the pattern.
+> number_name(1.61803) ~> "phi"
+> number_name(1.61899) ~> "phi"
+
+// Less digits are not ok, the value does not completely match the pattern.
+> number_name(1.6) ~> "other"
+
+// If a digit does not match, the pattern won't match either.
+> number_name(3.1416) ~> "other"

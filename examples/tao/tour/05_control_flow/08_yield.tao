@@ -1,0 +1,11 @@
+// Used to create streams of values, also known as generators.
+fn range(start: Int, stop: Int) -> Stream(Int) {
+  let mut value = start
+  while value != stop {
+    yield value
+    mut value += 1
+  }
+}
+
+let numbers = range(2, 6)
+> list(numbers) ~> [2, 3, 4, 5]

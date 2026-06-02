@@ -1,0 +1,22 @@
+// You can define new types with Algebraic Data Types (ADT).
+// An ADT, also known as tagged union types, consists of one
+// or more variants, where each variant is a constructor with
+// zero or more arguments.
+// If a constructor does not have arguments, they can be omitted.
+
+// For example, a shape can either be a circle or a rectangle.
+type Shape {
+| Circle(radius: Float)
+| Rectangle(width: Float, height: Float)
+}
+
+// We can then pattern match on them, and the compiler checks
+// that all possible branches are covered, so it's type safe.
+fn area(shape: Shape) -> Float
+=> match shape {
+| Circle(radius) => 3.1416 * radius^2
+| Rectangle(width, height) => width * height
+}
+
+> area(Circle(2.0)) ~> 12.5664
+> area(Rectangle(2.0, 4.0)) ~> 8.0

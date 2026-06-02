@@ -1,0 +1,11 @@
+// For loops are used to iterate over a sequence.
+// Note that each element is processed sequentially.
+// Looks like: for item in sequence { statements }
+fn sum(numbers: List(Int)) -> Int {
+  let mut result = 0
+  for num in numbers {
+    mut result += num
+  }
+  return result
+}
+> sum([1, 2, 3, 4]) ~> 10

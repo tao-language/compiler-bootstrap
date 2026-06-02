@@ -1,0 +1,37 @@
+// Modules are defined by the file system structure.
+// A module can be a file or a directory.
+
+// Importing a file gets a module with all the public definitions.
+// When importing a file, omit the .tao extension.
+import ./utils/constants
+
+// Now a variable `constants` is defined with the module's definitions.
+// Note that the directory path is not part of the variable name, only the base name.
+> constants.pi ~> 3.14159
+
+// To define an alias to avoid name clashes, or use the name you prefer.
+import ./utils/constants as c
+
+> c.pi ~> 3.14159
+
+// To import specific definitions from that module.
+import ./utils/constants {pi, tau}
+
+> pi ~> 3.14159
+> tau ~> 6.28318
+
+// Importing a directory gets a module with all the public definitions
+// of all the files directly in that directory (not recursive).
+import ./utils
+
+> utils.pi ~> 3.14159
+> utils.greet("World") ~> "Hello World!"
+
+// **Not recommended**, to import everything from a module.
+// This is generally discouraged since it pollutes the namespace,
+// and makes it hard to know where things came from.
+import ./utils/math/helpers *
+
+// Not obvious where these definitions came from, so use with caution.
+> double(3) ~> 6
+> square(3) ~> 9

@@ -1,0 +1,57 @@
+// Type definitions can be recursive.
+// A recursive type refers to itself in its own definition.
+// This allows for data structures that can grow to any size, like lists or trees.
+
+// For example, a simple linked list is recursive.
+type List(a) {
+| Nil
+| Cons(a, List(a))
+}
+
+fn sum(list: List(Int)) -> Int
+= match list {
+| Nil => 0
+| Cons(x, xs) => x + sum(xs)
+}
+
+> sum(Nil) ~> 0
+> sum(Cons(1, Nil)) ~> 1
+> sum(Cons(1, Cons(2, Nil))) ~> 3
+
+// Here's how to define a simple binary tree.
+type Tree(a) {
+| Leaf
+| Branch(value: a, left: Tree(a), right: Tree(a))
+}
+
+/* Example tree:
+      10
+     /  \
+    5    15
+   / \     \
+  2   7     20
+*/
+let tree =  Branch(
+  value: 10,
+  left: Branch(
+    value: 5,
+    left: Branch(2, Leaf, Leaf),
+    right: Branch(7, Leaf, Leaf),
+  ),
+  right: Branch(
+    value: 15,
+    left: Leaf,
+    right: Branch(20, Leaf, Leaf),
+  ),
+)
+
+// Depth-First Search (DFS), recursively search branches.
+fn contains<a>(tree: Tree(a), target: a) -> Bool
+= match tree {
+| Leaf => False
+| Branch(value, left, right) =>
+    value == target || contains(left, target) || contains(right, target)
+}
+
+> contains(tree, 7) ~> True
+> contains(tree, 42) ~> False

@@ -1,0 +1,13 @@
+$let int: $Int = 1; // integer literal type
+
+$let int8:  $I8  = 1; // signed integer 8 bits
+$let int16: $I16 = 1; // signed integer 16 bits
+$let int32: $I32 = 1; // signed integer 32 bits
+$let int64: $I64 = 1; // signed integer 64 bits
+
+$let uint8:  $U8  = 1; // unsigned integer 8 bits
+$let uint16: $U16 = 1; // unsigned integer 16 bits
+$let uint32: $U32 = 1; // unsigned integer 32 bits
+$let uint64: $U64 = 1; // unsigned integer 64 bits
+
+int32  // evaluates to 1 of type $I32 — proves the binding worked

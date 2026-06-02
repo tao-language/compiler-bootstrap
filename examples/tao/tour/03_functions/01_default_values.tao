@@ -1,0 +1,12 @@
+// Function arguments can have default values as well as type annotations.
+fn add(x: I32 = 0, y = 1) -> I32 {
+  return x + y
+}
+
+// If an argument is missing, it uses the default values.
+> add() ~> 1        // 0 + 1
+> add(9) ~> 10      // 9 + 1
+> add(9, 11) ~> 20  // 9 + 11
+
+// Named arguments can be provided in a different order.
+> add(y = 5) ~> 5   // 0 + 5
