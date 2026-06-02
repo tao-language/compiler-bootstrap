@@ -142,6 +142,29 @@ pub fn infer_lam_identity_test() {
     )
 }
 
+pub fn infer_lam_typeof_test() {
+  // $fn<a: $Type>(x: a) => a
+  let term =
+    ast.lam(
+      True,
+      #("a", ast.typ(0, s)),
+      ast.lam(False, #("x", ast.var("a", s)), ast.var("a", s), s),
+      s,
+    )
+  let ctx0 = new_ctx
+  let #(result, type_, ctx) = infer(ctx0, term)
+  assert ctx.errors == []
+  assert result
+    == tm.Lam(#("a", tm.Typ(0)), tm.Lam(#("x", tm.Var(0)), tm.Var(1)))
+  assert type_
+    == v.Pi(
+      [],
+      True,
+      #("a", v.Typ(0)),
+      tm.Pi(False, #("x", tm.Var(0)), tm.Typ(0)),
+    )
+}
+
 // ============================================================================
 // Infer Pi
 // ============================================================================
