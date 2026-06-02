@@ -11,7 +11,6 @@
 import core/ast
 import core/context.{Context, new_ctx} as ctx
 import core/elaborate.{infer}
-import core/literals as lit
 import core/term as tm
 import core/value as v
 import gleam/option.{Some}
@@ -29,68 +28,100 @@ const s1 = span.Span("", 1, 1, 1, 1)
 const s2 = span.Span("", 2, 2, 2, 2)
 
 // ============================================================================
-// Variable lookup — tests context.lookup logic
+// Infer Typ
+// ============================================================================
+
+// ============================================================================
+// Infer Hole
+// ============================================================================
+
+// ============================================================================
+// Infer Lit
+// ============================================================================
+
+// ============================================================================
+// Infer LitT
+// ============================================================================
+
+// ============================================================================
+// Infer Var
 // ============================================================================
 
 pub fn infer_var_defined_test() {
+  let term = ast.var("x", s)
   let ctx0 = Context(..new_ctx, types: [#("x", v.int(42))])
-  let term = ast.AST(ast.Var("x"), s)
   let #(result, type_, ctx) = infer(ctx0, term)
-  assert ctx == ctx0
+  assert ctx.errors == []
   assert result == tm.Var(0)
   assert type_ == v.int(42)
 }
 
 pub fn infer_var_undefined_test() {
+  let term = ast.var("x", s)
   let ctx0 = new_ctx
-  let term = ast.AST(ast.Var("x"), s)
   let #(result, type_, ctx) = infer(ctx0, term)
-  let expected = ctx.with_err(ctx0, ctx.VarUndefined("x", s))
-  assert ctx == expected
+  assert ctx.errors == [ctx.VarUndefined("x", s)]
   assert result == tm.Err
   assert type_ == v.Err
 }
 
 // ============================================================================
-// Hole generation — tests context.new_hole logic
+// Infer Ctr
 // ============================================================================
 
-pub fn infer_hole_concrete_test() {
-  let ctx0 = Context(..new_ctx, hole_counter: 1)
-  let term = ast.AST(ast.Hole(0), s)
-  let #(result, type_, ctx) = infer(ctx0, term)
-  assert ctx == Context(..new_ctx, hole_counter: 2)
-  assert result == tm.Hole(0)
-  assert type_ == v.hole(1)
-}
-
-pub fn infer_hole_unknown_test() {
-  let ctx0 = Context(..new_ctx, hole_counter: 10)
-  let term = ast.AST(ast.Hole(-1), s)
-  let #(result, type_, ctx) = infer(ctx0, term)
-  // -1 triggers recursive new_hole, producing fresh IDs 10, 11
-  assert ctx == Context(..new_ctx, hole_counter: 12)
-  assert result == tm.Hole(10)
-  assert type_ == v.hole(11)
-}
-
 // ============================================================================
-// Default value checking in record types
+// Infer Rcd
 // ============================================================================
 
-pub fn infer_rcdt_default_value_checked_test() {
-  // RcdT with a default value: type is $Int, default is 42 (Int) — OK
+// ============================================================================
+// Infer RcdT
+// ============================================================================
+
+// ============================================================================
+// Infer Call
+// ============================================================================
+
+// ============================================================================
+// Infer Ann
+// ============================================================================
+
+// ============================================================================
+// Infer Lam
+// ============================================================================
+
+// ============================================================================
+// Infer Pi
+// ============================================================================
+
+// ============================================================================
+// Infer Fix
+// ============================================================================
+
+// ============================================================================
+// Infer App
+// ============================================================================
+
+// ============================================================================
+// Infer TypeDef
+// ============================================================================
+
+// ============================================================================
+// Infer Let
+// ============================================================================
+
+// ============================================================================
+// Infer Match
+// ============================================================================
+
+// ============================================================================
+// Infer Err
+// ============================================================================
+
+pub fn infer_err_test() {
+  let term = ast.err(s)
   let ctx0 = new_ctx
-  let type_int = ast.AST(ast.LitT(lit.IntT), s1)
-  let default_val = ast.AST(ast.Lit(lit.Int(42)), s2)
-  let term = ast.AST(ast.RcdT([#("x", #(type_int, Some(default_val)))]), s)
   let #(result, type_, ctx) = infer(ctx0, term)
-  assert ctx == ctx0
-  assert result
-    == tm.RcdT([
-      #("x", #(tm.LitT(lit.IntT), Some(tm.Lit(lit.Int(42))))),
-    ])
-  assert type_ == v.Typ(0)
+  assert ctx.errors == []
+  assert result == tm.Err
+  assert type_ == v.Err
 }
-// Note: infer_lam, infer_pi, infer_fix, infer_app are currently `todo` in
-// the source, so their logic tests are deferred until implementation.

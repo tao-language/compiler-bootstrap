@@ -12,6 +12,7 @@ import core/quote.{quote}
 import core/term.{type Term} as tm
 import core/unify.{unify}
 import core/value.{type Value} as v
+import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
@@ -218,9 +219,10 @@ fn infer_lam(
   let #(name, param_ast) = named_param
   let #(param, _, ctx) = infer(ctx, param_ast)
   let param_val = eval(ctx.ffi, ctx.env, param)
-  let ctx = context.push_var(ctx, #(name, v.var(0), param_val))
+  let level = list.length(ctx.env)
+  let ctx = context.push_var(ctx, #(name, v.var(level), param_val))
   let #(body, body_type_val, ctx) = infer(ctx, body)
-  let body_type = quote(ctx.ffi, 0, body_type_val)
+  let body_type = quote(ctx.ffi, list.length(ctx.env), body_type_val)
   let ctx = context.pop_vars(ctx, 1)
   #(
     tm.Lam(#(name, param), body),

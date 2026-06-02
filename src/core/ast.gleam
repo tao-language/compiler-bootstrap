@@ -35,7 +35,7 @@ pub type Data {
   TypeDef(type_def: TypeDefinition)
   Let(name: String, param_type: AST, value: AST, body: AST)
   Match(arg: AST, cases: List(Case))
-  Err(message: String)
+  Err
 }
 
 pub type TypeDefinition {
@@ -131,8 +131,16 @@ pub fn f64(span: Span) {
   AST(LitT(lit.F64), span)
 }
 
+pub fn var(name: String, span: Span) {
+  AST(Var(name), span)
+}
+
 pub fn ctr(tag: String, args: List(#(String, AST)), span: Span) {
   AST(Ctr(tag, AST(Rcd(args), span)), span)
+}
+
+pub fn err(span: Span) {
+  AST(Err, span)
 }
 
 /// Syntax sugar for `_@name`.
