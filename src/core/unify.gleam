@@ -65,6 +65,26 @@ fn unify_with_term(
   unify(ctx, a, #(value, s))
 }
 
+/// GADT constructor unification.
+///
+/// This function unifies a concrete constructor value (a) with a GADT
+/// type constructor (b). It is asymmetric by design:
+///   - `a`: the inferred/actual constructor (tag, arg, span)
+///   - `b`: the expected GADT type definition (env, type_def, tag, arg, span)
+///
+/// Key insight: In the check/infer workflow, one side always comes from
+/// `lookup_type_def` (the expected type's TypeDef), so we always have a
+/// valid type definition to inspect variants from. This makes the
+/// asymmetry safe — we never need to try both directions.
+///
+/// The algorithm:
+///   1. Instantiate the type definition's parameters (create holes)
+///   2. Unify the type's argument with its parameter term (binds params)
+///   3. Look up the constructor's tag in the type's variants
+///   4. Instantiate the matching variant's parameters
+///   5. Unify the constructor's arg with the variant's arg (binds more)
+///   6. Evaluate the variant's return type and unify with the type arg
+///   7. Pop the bound variables from the environment
 fn unify_gadt(
   ctx: Context,
   a: #(String, Value, Span),
@@ -72,20 +92,40 @@ fn unify_gadt(
 ) -> Context {
   let #(ctr_tag, ctr_arg, s1) = a
   let #(env, tdef, type_tag, type_arg, s2) = b
+  // Instantiate the type definition's parameters by pushing fresh holes.
+  // This binds the type's type parameters to concrete values during
+  // unification (e.g., {n: 1, a: Float} binds n=1, a=Float).
   let #(env, ctx) = instantiate(ctx, env, tdef.params)
+  // Unify the expected type's argument with the type definition's parameter
+  // term. This step resolves any remaining type variables and binds the
+  // instantiated holes to concrete values.
   let ctx = unify_with_term(ctx, #(type_arg, s2), #(env, tdef.arg, s2))
+  // Look up the constructor's tag in the type definition's variants.
+  // Assumption: the constructor tag must be a valid variant of this type.
+  // If not found, it's a type error — the constructor doesn't belong
+  // to this type definition.
   let ctx = case list.key_find(tdef.variants, ctr_tag) {
     Error(Nil) ->
       with_err(ctx, TypeVariantUndefined(#(ctr_tag, s1), #(tdef.variants, s2)))
     Ok(variant) -> {
+      // Instantiate the variant's own parameters (e.g., the `m` in Cons<m>).
+      // These are separate from the type's params and need their own scope.
       let #(env, ctx) = instantiate(ctx, env, variant.params)
+      // Unify the constructor's actual argument with the variant's argument
+      // pattern. This binds the variant's parameters and any type variables
+      // in the argument (e.g., x: a, xs: #Vec {n: m, a: a} binds x, m).
       let ctx = unify_with_term(ctx, #(ctr_arg, s1), #(env, variant.arg, s2))
+      // Evaluate the variant's return type (which now has all params bound)
+      // and unify it with the expected type constructor to verify consistency.
       let expected = v.Ctr(type_tag, type_arg)
       let ctx =
         unify_with_term(ctx, #(expected, s2), #(env, variant.return_type, s2))
+      // Pop the variant's parameter scope before the type's params scope.
       context.pop_vars(ctx, list.length(variant.params))
     }
   }
+  // Pop the type definition's parameter scope.
+  // Order matters: pop in reverse order of instantiation (inner → outer).
   context.pop_vars(ctx, list.length(tdef.params))
 }
 

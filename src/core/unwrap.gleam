@@ -2,7 +2,6 @@ import core/context.{type FFI, type Subst}
 import core/eval
 import core/value.{type Neut, type Value} as v
 import gleam/list
-import tao/ast
 
 /// Looks up a hole in the substitution table,
 /// recursively stripping away solved wrappers.
