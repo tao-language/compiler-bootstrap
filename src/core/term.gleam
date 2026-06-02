@@ -41,7 +41,7 @@ pub type Term {
   RcdT(fields: List(#(String, #(Term, Option(Term)))))
   Call(name: String, args: List(Term))
   Ann(term: Term, type_: Term)
-  Lam(implicit: Bool, param: #(String, Term), body: Term)
+  Lam(param: #(String, Term), body: Term)
   Pi(implicit: Bool, domain: #(String, Term), codomain: Term)
   Fix(name: String, body: Term)
   App(fun: Term, arg: Term)

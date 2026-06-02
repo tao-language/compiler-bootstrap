@@ -40,8 +40,11 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       unify_rcd(ctx, #(fields1, s1), #(fields2, s2))
     v.RcdT(fields1), v.RcdT(fields2) ->
       unify_rcd_type(ctx, #(fields1, s1), #(fields2, s2))
-    v.Lam(env1, i1, #(_, a1), b1), v.Lam(env2, i2, #(_, a2), b2) -> {
-      todo as "unify Lam"
+    v.Lam(env1, #(_, a1), b1), v.Lam(env2, #(_, a2), b2) -> {
+      let ctx = unify(ctx, #(a1, s1), #(a2, s2))
+      let v1 = eval(ctx.ffi, [v.hole(-1), ..env1], b1)
+      let v2 = eval(ctx.ffi, [v.hole(-1), ..env2], b2)
+      unify(ctx, #(v1, s1), #(v2, s2))
     }
     v.Pi(env1, i1, #(_, a1), b1), v.Pi(env2, i2, #(_, a2), b2) -> {
       todo as "unify Pi"

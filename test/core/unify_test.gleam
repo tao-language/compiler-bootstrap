@@ -463,30 +463,30 @@ pub fn unify_neut_nmatch_case_with_bindings_test() {
 // ============================================================================
 
 pub fn unify_neut_ncall_empty_args_test() {
-  let a = v.Neut(v.NCall("foo", []))
-  let b = v.Neut(v.NCall("foo", []))
+  let a = v.Neut(v.NCall("f", []))
+  let b = v.Neut(v.NCall("f", []))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
 
 pub fn unify_neut_ncall_same_test() {
-  let a = v.Neut(v.NCall("foo", []))
-  let b = v.Neut(v.NCall("foo", []))
+  let a = v.Neut(v.NCall("f", []))
+  let b = v.Neut(v.NCall("f", []))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
 
 pub fn unify_neut_ncall_name_mismatch_test() {
-  let a = v.Neut(v.NCall("foo", []))
-  let b = v.Neut(v.NCall("bar", []))
+  let a = v.Neut(v.NCall("f", []))
+  let b = v.Neut(v.NCall("g", []))
   let ctx0 = new_ctx
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
   assert ctx.errors != []
 }
 
 pub fn unify_neut_ncall_arity_mismatch_test() {
-  let a = v.Neut(v.NCall("foo", [v.int_t, v.float_t]))
-  let b = v.Neut(v.NCall("foo", [v.int_t, v.float_t, v.i64]))
+  let a = v.Neut(v.NCall("f", [v.int_t, v.float_t]))
+  let b = v.Neut(v.NCall("f", [v.int_t, v.float_t, v.i64]))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
     == with_err(ctx0, CallArityMismatch(#(2, s1), #(3, s2)))

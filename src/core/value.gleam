@@ -18,7 +18,7 @@ pub type Value {
   Rcd(fields: List(#(String, Value)))
   RcdT(fields: List(#(String, #(Value, Option(Value)))))
   Neut(neutral: Neut)
-  Lam(env: Env, implicit: Bool, param: #(String, Value), body: Term)
+  Lam(env: Env, param: #(String, Value), body: Term)
   Pi(env: Env, implicit: Bool, domain: #(String, Value), codomain: Term)
   Fix(env: Env, name: String, body: Term)
   TypeDef(env: Env, type_def: TypeDefinition)

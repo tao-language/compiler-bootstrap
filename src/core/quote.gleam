@@ -30,11 +30,11 @@ pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
       tm.RcdT(fields)
     }
     v.Neut(neut) -> quote_neut(ffi, size, neut)
-    v.Lam(env, implicit, #(name, param_val), body) -> {
+    v.Lam(env, #(name, param_val), body) -> {
       let param = quote(ffi, size, param_val)
       let body_val = eval(ffi, [param_val, ..env], body)
       let body = quote(ffi, size, body_val)
-      tm.Lam(implicit, #(name, param), body)
+      tm.Lam(#(name, param), body)
     }
     v.Pi(env, implicit, #(name, param_val), body) -> {
       let param = quote(ffi, size, param_val)

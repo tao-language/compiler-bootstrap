@@ -50,20 +50,10 @@ pub fn eval_var_undefined_test() {
 
 pub fn eval_app_beta_reduction_test() {
   // ($fn(x: $Int) => x) 42 ~> 42
-  let fun = tm.Lam(False, #("x", tm.LitT(lit.IntT)), tm.Var(0))
+  let fun = tm.Lam(#("x", tm.LitT(lit.IntT)), tm.Var(0))
   let term = tm.App(fun, tm.Lit(lit.Int(42)))
   let result = eval([], [], term)
   assert result == v.int(42)
-}
-
-pub fn eval_app_implicit_expansion_test() {
-  // ($fn<x: $Type> => ?10 x) 42
-  // ~> (?10 $error) 42
-  let inner = tm.App(tm.Hole(10), tm.Var(0))
-  let fun = tm.Lam(True, #("x", tm.Typ(0)), inner)
-  let term = tm.App(fun, tm.Lit(lit.Int(42)))
-  let result = eval([], [], term)
-  assert result == v.app(v.NApp(v.NHole(10), v.Err), v.int(42))
 }
 
 pub fn eval_app_neutral_test() {

@@ -38,9 +38,9 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       do_call(ffi, name, args_val)
     }
     tm.Ann(term, _) -> eval(ffi, env, term)
-    tm.Lam(implicit, #(name, param), body) -> {
+    tm.Lam(#(name, param), body) -> {
       let param_val = eval(ffi, env, param)
-      v.Lam(env, implicit, #(name, param_val), body)
+      v.Lam(env, #(name, param_val), body)
     }
     tm.Pi(implicit, #(name, domain), codomain) -> {
       let domain_val = eval(ffi, env, domain)
@@ -68,13 +68,8 @@ pub fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value {
   case fun {
     // Neutral application
     v.Neut(neut_fun) -> v.app(neut_fun, arg)
-    // Explicit parameter: β-reduction
-    v.Lam(env, False, _, body) -> eval(ffi, [arg, ..env], body)
-    // Implicit parameter: implicit expansion
-    v.Lam(env, True, param, body) -> {
-      // Implicit parameters are expanded and solved during elaboration.
-      todo as "Remove implicit from term.Lam and value.Lam"
-    }
+    // Lambda application: β-reduction
+    v.Lam(env, _, body) -> eval(ffi, [arg, ..env], body)
     _ -> v.Err
   }
 }

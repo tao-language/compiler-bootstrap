@@ -21,7 +21,7 @@ pub fn resolve(subst: Subst, term: Term) -> Term {
     tm.RcdT(fields) -> todo
     tm.Call(name, args) -> tm.Call(name, list.map(args, resolve(subst, _)))
     tm.Ann(term, _) -> todo
-    tm.Lam(implicit, param, body) -> todo
+    tm.Lam(param, body) -> todo
     tm.Pi(implicit, domain, codomain) -> todo
     tm.Fix(name, body) -> todo
     tm.App(fun, arg) -> todo
