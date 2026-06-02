@@ -43,7 +43,7 @@ pub fn infer(ctx: Context, node: AST) -> #(Term, Value, Context) {
     // ast.TypeDef(params, constructors) ->
     //   infer_type_def(ctx, params, constructors, span)
     // ast.Match(arg, cases) -> infer_match(ctx, arg, cases, span)
-    // ast.Err -> infer_err(ctx, message, span)
+    ast.Err -> infer_err(ctx)
     _ -> todo
   }
 }
@@ -222,7 +222,7 @@ fn infer_lam(
   let level = list.length(ctx.env)
   let ctx = context.push_var(ctx, #(name, v.var(level), param_val))
   let #(body, body_type_val, ctx) = infer(ctx, body)
-  let body_type = quote(ctx.ffi, list.length(ctx.env), body_type_val)
+  let body_type = quote(ctx.ffi, level + 1, body_type_val)
   let ctx = context.pop_vars(ctx, 1)
   #(
     tm.Lam(#(name, param), body),
@@ -281,4 +281,8 @@ fn infer_app(
       #(tm.Err, v.Err, ctx)
     }
   }
+}
+
+fn infer_err(ctx: Context) -> #(Term, Value, Context) {
+  #(tm.Err, v.Err, ctx)
 }

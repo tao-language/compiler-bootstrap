@@ -139,6 +139,18 @@ pub fn ctr(tag: String, args: List(#(String, AST)), span: Span) {
   AST(Ctr(tag, AST(Rcd(args), span)), span)
 }
 
+pub fn lam(implicit: Bool, param: #(String, AST), body: AST, span: Span) {
+  AST(Lam(implicit, param, body), span)
+}
+
+pub fn pi(implicit: Bool, param: #(String, AST), body: AST, span: Span) {
+  AST(Pi(implicit, param, body), span)
+}
+
+pub fn fix(name: String, body: AST, span: Span) {
+  AST(Fix(name, body), span)
+}
+
 pub fn err(span: Span) {
   AST(Err, span)
 }

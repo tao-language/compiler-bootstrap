@@ -42,19 +42,19 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       unify_rcd_type(ctx, #(fields1, s1), #(fields2, s2))
     v.Lam(env1, #(_, a1), b1), v.Lam(env2, #(_, a2), b2) -> {
       let ctx = unify(ctx, #(a1, s1), #(a2, s2))
-      let v1 = eval(ctx.ffi, [v.var(0), ..env1], b1)
-      let v2 = eval(ctx.ffi, [v.var(0), ..env2], b2)
+      let v1 = eval(ctx.ffi, [v.var(list.length(env1)), ..env1], b1)
+      let v2 = eval(ctx.ffi, [v.var(list.length(env2)), ..env2], b2)
       unify(ctx, #(v1, s1), #(v2, s2))
     }
     v.Pi(env1, i1, #(_, a1), b1), v.Pi(env2, i2, #(_, a2), b2) if i1 == i2 -> {
       let ctx = unify(ctx, #(a1, s1), #(a2, s2))
-      let v1 = eval(ctx.ffi, [v.var(0), ..env1], b1)
-      let v2 = eval(ctx.ffi, [v.var(0), ..env2], b2)
+      let v1 = eval(ctx.ffi, [v.var(list.length(env1)), ..env1], b1)
+      let v2 = eval(ctx.ffi, [v.var(list.length(env2)), ..env2], b2)
       unify(ctx, #(v1, s1), #(v2, s2))
     }
     v.Fix(env1, _, a1), v.Fix(env2, _, a2) -> {
-      let v1 = eval(ctx.ffi, [v.var(0), ..env1], a1)
-      let v2 = eval(ctx.ffi, [v.var(0), ..env2], a2)
+      let v1 = eval(ctx.ffi, [v.var(list.length(env1)), ..env1], a1)
+      let v2 = eval(ctx.ffi, [v.var(list.length(env2)), ..env2], a2)
       unify(ctx, #(v1, s1), #(v2, s2))
     }
     v.TypeDef(env1, tdef1), v.TypeDef(env2, tdef2) -> {

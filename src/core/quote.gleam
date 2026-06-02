@@ -33,13 +33,13 @@ pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
     v.Lam(env, #(name, param_val), body) -> {
       let param = quote(ffi, size, param_val)
       let body_val = eval(ffi, [param_val, ..env], body)
-      let body = quote(ffi, size, body_val)
+      let body = quote(ffi, size + 1, body_val)
       tm.Lam(#(name, param), body)
     }
     v.Pi(env, implicit, #(name, param_val), body) -> {
       let param = quote(ffi, size, param_val)
       let body_val = eval(ffi, [param_val, ..env], body)
-      let body = quote(ffi, size, body_val)
+      let body = quote(ffi, size + 1, body_val)
       tm.Pi(implicit, #(name, param), body)
     }
     v.Fix(env, name, body) -> {
