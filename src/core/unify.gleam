@@ -28,13 +28,13 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     v.Lit(v1), v.Lit(v2) if v1 == v2 -> ctx
     v.LitT(v1), v.LitT(v2) if v1 == v2 -> ctx
     v.Ctr(t1, a1), v.Ctr(t2, a2) if t1 == t2 -> unify(ctx, #(a1, s1), #(a2, s2))
-    v.Ctr(t1, a1), v.Ctr(t2, a2) ->
+    v.Ctr(t1, a1) as value1, v.Ctr(t2, a2) as value2 ->
       case context.lookup_type_def(ctx, t1), context.lookup_type_def(ctx, t2) {
         _, Some(#(env, tdef)) ->
           unify_gadt(ctx, #(t1, a1, s1), #(env, tdef, t2, a2, s2))
         Some(#(env, tdef)), _ ->
           unify_gadt(ctx, #(t2, a2, s2), #(env, tdef, t1, a1, s1))
-        None, None -> with_err(ctx, TypeMismatch(a, b))
+        None, None -> with_err(ctx, TypeMismatch(#(value1, s1), #(value2, s2)))
       }
     v.Rcd(fields1), v.Rcd(fields2) ->
       unify_rcd(ctx, #(fields1, s1), #(fields2, s2))
@@ -50,7 +50,7 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       todo as "unify TypeDef"
     }
     v.Err, v.Err -> ctx
-    _, _ -> with_err(ctx, TypeMismatch(a, b))
+    value1, value2 -> with_err(ctx, TypeMismatch(#(value1, s1), #(value2, s2)))
   }
 }
 

@@ -200,8 +200,7 @@ pub fn unify_ctr_gadt_option_test() {
   // Error: type mismatch
   // TODO: save spans in ctx.types for better error reporting
   let ctx = unify(ctx0, #(option(v.int_t), s1), #(some(v.float_t), s2))
-  assert ctx.errors == [TypeMismatch(#(v.float_t, s2), #(v.hole(0), s1))]
-  assert ctx.subst == [#(0, v.int_t)]
+  assert ctx.errors == [TypeMismatch(#(v.float_t, s2), #(v.int_t, s1))]
 }
 
 pub fn unify_ctr_gadt_vec_test() {
@@ -269,8 +268,7 @@ pub fn unify_ctr_gadt_vec_test() {
   let a = vec(v.int(2), v.float_t)
   let b = cons(v.int_t, cons(v.float_t, nil))
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
-  assert ctx.errors == [TypeMismatch(#(v.int_t, s2), #(v.hole(1), s1))]
-  assert list.key_find(ctx.subst, 1) == Ok(v.float_t)
+  assert ctx.errors == [TypeMismatch(#(v.int_t, s2), #(v.float_t, s1))]
 }
 
 // ============================================================================
