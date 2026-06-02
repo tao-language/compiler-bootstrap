@@ -1,4 +1,5 @@
 import core/context.{type Context}
+import core/eval.{eval}
 import core/unwrap.{unwrap}
 import core/value.{type Neut, type Value} as v
 import gleam/list
@@ -25,9 +26,18 @@ pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
         }
       })
     v.Neut(neut) -> occurs_neut(ctx, hole_id, neut)
-    v.Lam(env, #(_, param), body) -> todo
-    v.Pi(env, _, #(_, domain), codomain) -> todo
-    v.Fix(env, _, body) -> todo
+    v.Lam(env, #(_, param), body) -> {
+      let body_val = eval(ctx.ffi, [v.var(0), ..env], body)
+      occurs(ctx, hole_id, param) || occurs(ctx, hole_id, body_val)
+    }
+    v.Pi(env, _, #(_, domain), codomain) -> {
+      let codomain_val = eval(ctx.ffi, [v.var(0), ..env], codomain)
+      occurs(ctx, hole_id, domain) || occurs(ctx, hole_id, codomain_val)
+    }
+    v.Fix(env, _, body) -> {
+      let body_val = eval(ctx.ffi, [v.var(0), ..env], body)
+      occurs(ctx, hole_id, body_val)
+    }
     v.TypeDef(env, v.TypeDefinition(params, arg, variants)) -> todo
     v.Err -> False
   }
