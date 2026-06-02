@@ -291,7 +291,7 @@ fn instantiate(
   env: Env,
   params: List(#(String, Value)),
 ) -> #(Env, Context) {
-  let ctx = context.push_var_param_list(ctx, params)
+  let ctx = context.push_var_hole_list(ctx, params)
   let vars = list.take(ctx.env, list.length(params))
   #(list.append(vars, env), ctx)
 }

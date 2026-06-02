@@ -8,6 +8,7 @@ import core/ast.{type AST}
 import core/context.{type Context}
 import core/eval.{eval}
 import core/literals.{type Literal, type LiteralType} as lit
+import core/quote.{quote}
 import core/term.{type Term} as tm
 import core/unify.{unify}
 import core/value.{type Value} as v
@@ -33,8 +34,7 @@ pub fn infer(ctx: Context, node: AST) -> #(Term, Value, Context) {
     ast.Call(name, args, return_type) ->
       infer_call(ctx, name, args, return_type)
     ast.Ann(inner, type_) -> infer_ann(ctx, inner, type_)
-    ast.Lam(implicit, param, body) ->
-      infer_lam(ctx, implicit, param, body, node.span)
+    ast.Lam(implicit, param, body) -> infer_lam(ctx, implicit, param, body)
     ast.Pi(implicit, domain, codomain) ->
       infer_pi(ctx, implicit, domain, codomain, node.span)
     ast.Fix(name, body) -> infer_fix(ctx, name, body, node.span)
@@ -212,20 +212,21 @@ fn infer_ann(ctx: Context, term: AST, type_: AST) -> #(Term, Value, Context) {
 fn infer_lam(
   ctx: Context,
   implicit: Bool,
-  param: #(String, AST),
+  named_param: #(String, AST),
   body: AST,
-  span: Span,
 ) -> #(Term, Value, Context) {
-  // let #(implicits, implicits_val, ctx) = push_param_list(ctx, implicits)
-  // let #(param, param_val, ctx) = push_param(ctx, param)
-  // let #(body, body_type_val, ctx) = infer(ctx, body)
-  // let ctx = pop_params(ctx, list.length(implicits) + 1)
-  // #(
-  //   ast.Lam(implicits, param, body, span),
-  //   ast.VPi(implicits_val, param_val, body_type_val),
-  //   ctx,
-  // )
-  todo
+  let #(name, param_ast) = named_param
+  let #(param, _, ctx) = infer(ctx, param_ast)
+  let param_val = eval(ctx.ffi, ctx.env, param)
+  let ctx = context.push_var(ctx, #(name, v.var(0), param_val))
+  let #(body, body_type_val, ctx) = infer(ctx, body)
+  let body_type = quote(ctx.ffi, 0, body_type_val)
+  let ctx = context.pop_vars(ctx, 1)
+  #(
+    tm.Lam(#(name, param), body),
+    v.Pi(ctx.env, implicit, #(name, param_val), body_type),
+    ctx,
+  )
 }
 
 /// Infer a Pi type: $pi<implicits>(domain: param_type) -> codomain

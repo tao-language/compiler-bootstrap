@@ -157,21 +157,21 @@ pub fn push_var_list(
   )
 }
 
-pub fn push_var_param(ctx: Context, param: #(String, Value)) -> Context {
+pub fn push_var_hole(ctx: Context, param: #(String, Value)) -> Context {
   let #(name, type_) = param
   let #(hole_id, ctx) = new_hole(ctx)
   push_var(ctx, #(name, v.hole(hole_id), type_))
 }
 
-pub fn push_var_param_list(
+pub fn push_var_hole_list(
   ctx: Context,
   params: List(#(String, Value)),
 ) -> Context {
   case params {
     [] -> ctx
     [param, ..params] -> {
-      let ctx = push_var_param(ctx, param)
-      push_var_param_list(ctx, params)
+      let ctx = push_var_hole(ctx, param)
+      push_var_hole_list(ctx, params)
     }
   }
 }
