@@ -497,11 +497,34 @@ pub fn unify_neut_ncall_arity_mismatch_test() {
 // ============================================================================
 
 pub fn unify_lam_identity_test() {
-  todo
+  // Names don't matter, only the DeBruijn indices.
+  let a = v.Lam([], #("x", v.int_t), tm.Var(0))
+  let b = v.Lam([], #("y", v.int_t), tm.Var(0))
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
 
-pub fn unify_lam_different_env_closure_test() {
-  todo
+pub fn unify_lam_closure_test() {
+  let a = v.Lam([], #("x", v.int_t), tm.int(42))
+  let b = v.Lam([v.int(42)], #("y", v.int_t), tm.Var(1))
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
+}
+
+pub fn unify_lam_param_type_mismatch_test() {
+  let a = v.Lam([], #("x", v.int_t), tm.Var(0))
+  let b = v.Lam([], #("y", v.float_t), tm.Var(0))
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2))
+    == with_err(ctx0, TypeMismatch(#(v.int_t, s1), #(v.float_t, s2)))
+}
+
+pub fn unify_lam_body_mismatch_test() {
+  let a = v.Lam([], #("x", v.int_t), tm.int(1))
+  let b = v.Lam([], #("y", v.int_t), tm.int(2))
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2))
+    == with_err(ctx0, TypeMismatch(#(v.int(1), s1), #(v.int(2), s2)))
 }
 
 // ============================================================================
@@ -509,19 +532,69 @@ pub fn unify_lam_different_env_closure_test() {
 // ============================================================================
 
 pub fn unify_pi_identity_test() {
-  todo
+  // Names don't matter, only the DeBruijn indices.
+  let a = v.Pi([], False, #("x", v.int_t), tm.Var(0))
+  let b = v.Pi([], False, #("y", v.int_t), tm.Var(0))
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
 
-pub fn unify_pi_different_env_closure_test() {
-  todo
+pub fn unify_pi_implicit_mismatch_test() {
+  let a = v.Pi([], True, #("x", v.int_t), tm.Var(0))
+  let b = v.Pi([], False, #("y", v.int_t), tm.Var(0))
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2))
+    == with_err(ctx0, TypeMismatch(#(a, s1), #(b, s2)))
+}
+
+pub fn unify_pi_closure_test() {
+  let a = v.Pi([], False, #("x", v.int_t), tm.int(42))
+  let b = v.Pi([v.int(42)], False, #("y", v.int_t), tm.Var(1))
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
+}
+
+pub fn unify_pi_param_type_mismatch_test() {
+  let a = v.Pi([], False, #("x", v.int_t), tm.Var(0))
+  let b = v.Pi([], False, #("y", v.float_t), tm.Var(0))
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2))
+    == with_err(ctx0, TypeMismatch(#(v.int_t, s1), #(v.float_t, s2)))
+}
+
+pub fn unify_pi_body_mismatch_test() {
+  let a = v.Pi([], False, #("x", v.int_t), tm.int(1))
+  let b = v.Pi([], False, #("y", v.int_t), tm.int(2))
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2))
+    == with_err(ctx0, TypeMismatch(#(v.int(1), s1), #(v.int(2), s2)))
 }
 
 // ============================================================================
 // Fix-point unification
 // ============================================================================
 
-pub fn unify_fix_test() {
-  todo
+pub fn unify_fix_identity_test() {
+  // Names don't matter, only the DeBruijn indices.
+  let a = v.Fix([], "x", tm.Var(0))
+  let b = v.Fix([], "y", tm.Var(0))
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
+}
+
+pub fn unify_fix_closure_test() {
+  let a = v.Fix([], "x", tm.int(42))
+  let b = v.Fix([v.int(42)], "y", tm.Var(1))
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
+}
+
+pub fn unify_fix_body_mismatch_test() {
+  let a = v.Fix([], "x", tm.int(1))
+  let b = v.Fix([], "y", tm.int(2))
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2))
+    == with_err(ctx0, TypeMismatch(#(v.int(1), s1), #(v.int(2), s2)))
 }
 
 // ============================================================================
