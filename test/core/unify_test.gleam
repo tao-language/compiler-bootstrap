@@ -446,17 +446,9 @@ pub fn unify_neut_napp_test() {
 // Neutral match unification
 // ============================================================================
 
-pub fn unify_neut_nmatch_empty_cases_test() {
-  todo
-}
-
-pub fn unify_neut_nmatch_case_without_bindings_test() {
-  todo
-}
-
-pub fn unify_neut_nmatch_case_with_bindings_test() {
-  todo
-}
+// pub fn unify_neut_nmatch_empty_cases_test() { todo }
+// pub fn unify_neut_nmatch_case_without_bindings_test() { todo }
+// pub fn unify_neut_nmatch_case_with_bindings_test() { todo }
 
 // ============================================================================
 // Neutral call unification
