@@ -9,11 +9,10 @@
 /// Trivial data-pass-through tests (Lit, LitT, Typ, Ctr, Rcd, Call)
 /// have been removed — they only verify data flows through, not logic.
 import core/ast
-import core/context.{Context, new_ctx}
-import core/elaborate.{infer}
+import core/context.{new_ctx}
+import core/infer.{infer}
 import core/term as tm
 import core/value as v
-import gleam/option.{Some}
 import gleeunit
 import syntax/span
 

@@ -21,9 +21,9 @@
 /// 7. EVALUATION — evald result value
 /// 8. ERRORS — Type checking errors (empty if none)
 import core/ast
-import core/elaborate.{infer}
+import core/context.{type Context, type Error, with_err} as ctx
+import core/elaborate.{elaborate}
 import core/eval.{eval}
-import core/context.{type Error, type Context, with_err} as ctx
 import core/syntax
 import gleam/int
 import gleam/io
