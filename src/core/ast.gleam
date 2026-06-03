@@ -31,7 +31,7 @@ pub type Data {
   Lam(implicit: Bool, param: #(String, AST), body: AST)
   Pi(implicit: Bool, domain: #(String, AST), codomain: AST)
   Fix(name: String, body: AST)
-  App(fun: AST, arg: AST)
+  App(implicit: Bool, fun: AST, arg: AST)
   TypeDef(type_def: TypeDefinition)
   Let(name: String, param_type: AST, value: AST, body: AST)
   Match(arg: AST, cases: List(Case))
@@ -149,6 +149,10 @@ pub fn pi(implicit: Bool, param: #(String, AST), body: AST, span: Span) {
 
 pub fn fix(name: String, body: AST, span: Span) {
   AST(Fix(name, body), span)
+}
+
+pub fn app(implicit: Bool, fun: AST, arg: AST, span: Span) {
+  AST(App(implicit, fun, arg), span)
 }
 
 pub fn err(span: Span) {

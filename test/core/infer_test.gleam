@@ -12,6 +12,7 @@ import core/ast
 import core/context.{new_ctx}
 import core/infer.{infer}
 import core/term as tm
+import core/unwrap.{unwrap}
 import core/value as v
 import gleeunit
 import syntax/span
@@ -27,23 +28,23 @@ const s1 = span.Span("", 1, 1, 1, 1)
 const s2 = span.Span("", 2, 2, 2, 2)
 
 // ============================================================================
-// Infer Typ
+//  Typ
 // ============================================================================
 
 // ============================================================================
-// Infer Hole
+//  Hole
 // ============================================================================
 
 // ============================================================================
-// Infer Lit
+//  Lit
 // ============================================================================
 
 // ============================================================================
-// Infer LitT
+//  LitT
 // ============================================================================
 
 // ============================================================================
-// Infer Var
+//  Var
 // ============================================================================
 
 pub fn infer_var_defined_test() {
@@ -65,27 +66,27 @@ pub fn infer_var_undefined_test() {
 }
 
 // ============================================================================
-// Infer Ctr
+//  Ctr
 // ============================================================================
 
 // ============================================================================
-// Infer Rcd
+//  Rcd
 // ============================================================================
 
 // ============================================================================
-// Infer RcdT
+//  RcdT
 // ============================================================================
 
 // ============================================================================
-// Infer Call
+//  Call
 // ============================================================================
 
 // ============================================================================
-// Infer Ann
+//  Ann
 // ============================================================================
 
 // ============================================================================
-// Infer Lam
+//  Lam
 // ============================================================================
 
 pub fn infer_lam_simple_test() {
@@ -165,35 +166,104 @@ pub fn infer_lam_typeof_test() {
 }
 
 // ============================================================================
-// Infer Pi
+//  Pi
 // ============================================================================
 
 // ============================================================================
-// Infer Fix
+//  Fix
 // ============================================================================
 
 // ============================================================================
-// Infer App
+//  App
 // ============================================================================
 
 pub fn infer_app_error_not_a_function_test() {
-  todo
+  let #(_implicit, explicit) = #(True, False)
+  let ast = ast.app(explicit, ast.float(3.14, s1), ast.int(1, s), s)
+  let ctx0 = new_ctx
+  let #(result, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == [context.NotAFunction(tm.float(3.14), v.float_t, s1)]
+  assert result == tm.Err
+  assert type_ == v.Err
+}
+
+pub fn infer_app_explicit_arg_test() {
+  let #(_implicit, explicit) = #(True, False)
+  let ast = ast.app(explicit, ast.var("f", s), ast.int(42, s), s)
+  let pi = v.Pi([], explicit, #("x", v.int_t), tm.Var(0))
+  let ctx0 = context.push_var(new_ctx, #("f", v.var(0), pi))
+  let #(result, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  assert result == tm.App(tm.Var(0), tm.int(42))
+  assert type_ == v.int(42)
+}
+
+pub fn infer_app_implicit_arg_test() {
+  let #(implicit, _explicit) = #(True, False)
+  let ast = ast.app(implicit, ast.var("f", s), ast.int(42, s), s)
+  let pi = v.Pi([], implicit, #("a", v.int_t), tm.Var(0))
+  let ctx0 = context.push_var(new_ctx, #("f", v.var(0), pi))
+  let #(result, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  assert result == tm.App(tm.Var(0), tm.int(42))
+  assert type_ == v.int(42)
+}
+
+pub fn infer_app_error_expected_explicit_argument_test() {
+  let #(implicit, explicit) = #(True, False)
+  let ast = ast.app(implicit, ast.var("f", s), ast.int(42, s), s1)
+  let pi = v.Pi([], explicit, #("x", v.int_t), tm.Var(0))
+  let ctx0 = context.push_var(new_ctx, #("f", v.var(0), pi))
+  let #(result, type_, ctx) = infer(ctx0, ast)
+  let error = context.AppExpectedExplicitArg(pi, s1)
+  assert ctx.errors == [error]
+  assert result == tm.Err
+  assert type_ == v.Err
+}
+
+pub fn infer_app_implicit_expansion_test() {
+  let #(implicit, explicit) = #(True, False)
+  let ast = ast.app(explicit, ast.var("f", s), ast.int(42, s), s)
+  let pi = v.Pi([], implicit, #("a", v.Typ(0)), tm.Var(0))
+  let ctx0 = context.push_var(new_ctx, #("f", v.var(0), pi))
+  let #(result, type_, ctx) = infer(ctx0, ast)
+  let error = context.NotAFunction(tm.App(tm.Var(0), tm.Hole(0)), v.hole(0), s)
+  assert ctx.errors == [error]
+  assert result == tm.Err
+  assert type_ == v.Err
+}
+
+pub fn infer_app_implicit_solve_hole_test() {
+  let #(implicit, explicit) = #(True, False)
+  let ast = ast.app(explicit, ast.var("identity", s), ast.int(1, s), s)
+  let pi =
+    v.Pi(
+      [],
+      implicit,
+      #("a", v.Typ(0)),
+      tm.Pi(explicit, #("x", tm.Var(0)), tm.Var(1)),
+    )
+  let ctx0 = context.push_var(new_ctx, #("identity", v.var(0), pi))
+  let #(result, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  assert result == tm.App(tm.App(tm.Var(0), tm.Hole(0)), tm.int(1))
+  assert type_ == v.int_t
 }
 
 // ============================================================================
-// Infer TypeDef
+//  TypeDef
 // ============================================================================
 
 // ============================================================================
-// Infer Let
+//  Let
 // ============================================================================
 
 // ============================================================================
-// Infer Match
+//  Match
 // ============================================================================
 
 // ============================================================================
-// Infer Err
+//  Err
 // ============================================================================
 
 pub fn infer_err_test() {

@@ -11,6 +11,7 @@ import core/literals.{type Literal, type LiteralType} as lit
 import core/quote.{quote}
 import core/term.{type Term} as tm
 import core/unify.{unify}
+import core/unwrap.{unwrap}
 import core/value.{type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -39,7 +40,7 @@ pub fn infer(ctx: Context, ast: AST) -> #(Term, Value, Context) {
     ast.Pi(implicit, domain, codomain) ->
       infer_pi(ctx, implicit, domain, codomain, ast.span)
     ast.Fix(name, body) -> infer_fix(ctx, name, body, ast.span)
-    ast.App(fun, arg) -> infer_app(ctx, fun, arg, ast.span)
+    ast.App(implicit, fun, arg) -> infer_app(ctx, implicit, fun, arg, ast.span)
     // ast.TypeDef(params, constructors) ->
     //   infer_type_def(ctx, params, constructors, span)
     // ast.Match(arg, cases) -> infer_match(ctx, arg, cases, span)
@@ -205,8 +206,8 @@ fn check_call_args(ctx: Context, args: List(AST)) -> #(List(Term), Context) {
   }
 }
 
-fn infer_ann(ctx: Context, term: AST, type_: AST) -> #(Term, Value, Context) {
-  let #(term, #(_, type_val), ctx) = check_on_ast(ctx, term, type_)
+fn infer_ann(ctx: Context, ast: AST, type_: AST) -> #(Term, Value, Context) {
+  let #(term, #(_, type_val), ctx) = check_on_ast(ctx, ast, type_)
   #(term, type_val, ctx)
 }
 
@@ -265,20 +266,62 @@ fn infer_fix(
 
 fn infer_app(
   ctx: Context,
-  fun: AST,
-  arg: AST,
+  app_implicit: Bool,
+  fun_ast: AST,
+  arg_ast: AST,
   span: Span,
 ) -> #(Term, Value, Context) {
-  let #(fun_term, fun_type, ctx) = infer(ctx, fun)
-  case fun_type {
-    v.Pi(env, False, #(_, domain_val), codomain) -> {
-      let #(arg, _, ctx) = check(ctx, arg, #(domain_val, fun.span))
-      todo
-    }
+  let #(fun, fun_type, ctx) = infer(ctx, fun_ast)
+  let fun_data = #(fun, fun_type, fun_ast.span)
+  infer_app_args(ctx, app_implicit, fun_data, arg_ast, span)
+}
+
+fn infer_app_args(
+  ctx: Context,
+  app_implicit: Bool,
+  fun_typed: #(Term, Value, Span),
+  arg_ast: AST,
+  span: Span,
+) -> #(Term, Value, Context) {
+  let #(fun, fun_type, fun_span) = fun_typed
+  case unwrap(ctx.ffi, ctx.subst, fun_type) {
+    v.Pi(pi_env, pi_implicit, #(_, domain_val), codomain) ->
+      case pi_implicit, app_implicit {
+        // pi_implicit, app_implicit | pi_explicit, app_explicit
+        True, True | False, False -> {
+          // Matching implicit/explicit argument application
+          let #(arg, _, ctx) = check(ctx, arg_ast, #(domain_val, fun_span))
+          let pi_env = [eval(ctx.ffi, ctx.env, arg), ..pi_env]
+          let type_ = eval(ctx.ffi, pi_env, codomain)
+          #(tm.App(fun, arg), unwrap(ctx.ffi, ctx.subst, type_), ctx)
+        }
+        // pi_implicit, app_explicit
+        True, False as app_explicit -> {
+          // Implicit argument expansion
+          let #(hole_id, ctx) = context.new_hole(ctx)
+          let fun = tm.App(fun, tm.Hole(hole_id))
+          let pi_env = [v.hole(hole_id), ..pi_env]
+          let fun_type = eval(ctx.ffi, pi_env, codomain)
+          let fun_data = #(fun, fun_type, fun_span)
+          infer_app_args(ctx, app_explicit, fun_data, arg_ast, span)
+        }
+        // pi_explicit, app_implicit
+        False, True -> {
+          // Expected explicit argument, got implicit argument instead
+          // Still infer the arg to get as much additional information as possible in
+          // the context, it might be solving holes for other parts of the program.
+          let #(_, _, ctx) = infer(ctx, arg_ast)
+          let error = context.AppExpectedExplicitArg(fun_type, span)
+          #(tm.Err, v.Err, context.with_err(ctx, error))
+        }
+      }
+    // Not a function type
     _ -> {
-      let #(_, _, ctx) = infer(ctx, arg)
-      let ctx = context.with_err(ctx, context.NotAFunction(fun_type, span))
-      #(tm.Err, v.Err, ctx)
+      // Still infer the arg to get as much additional information as possible in
+      // the context, it might be solving holes for other parts of the program.
+      let #(_, _, ctx) = infer(ctx, arg_ast)
+      let error = context.NotAFunction(fun, fun_type, fun_span)
+      #(tm.Err, v.Err, context.with_err(ctx, error))
     }
   }
 }

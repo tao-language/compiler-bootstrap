@@ -63,7 +63,8 @@ pub type Error {
   RcdFieldsMismatch(#(List(String), Span), #(List(String), Span))
   CallArityMismatch(#(Int, Span), #(Int, Span))
   InfiniteType(hole_id: Int, type_: Value, span: Span)
-  NotAFunction(fun_type: Value, span: Span)
+  NotAFunction(fun: Term, fun_type: Value, span: Span)
+  AppExpectedExplicitArg(fun_type: Value, span: Span)
   TypeVariantUndefined(
     tag: #(String, Span),
     variants: #(List(#(String, Variant)), Span),
