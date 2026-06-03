@@ -22,13 +22,13 @@ import syntax/span.{type Span}
 /// - result_term is the original term with holes filled and implicit args expanded
 /// - type_value is the inferred type (a Value)
 /// - ctx is the updated ctx with any new bindings
-pub fn infer(ctx: Context, node: AST) -> #(Term, Value, Context) {
-  case node.data {
+pub fn infer(ctx: Context, ast: AST) -> #(Term, Value, Context) {
+  case ast.data {
     ast.Typ(level) -> infer_typ(ctx, level)
     ast.Hole(id) -> infer_hole(ctx, id)
     ast.Lit(value) -> infer_lit(ctx, value)
     ast.LitT(t) -> infer_litt(ctx, t)
-    ast.Var(name) -> infer_var(ctx, name, node.span)
+    ast.Var(name) -> infer_var(ctx, name, ast.span)
     ast.Ctr(tag, arg) -> infer_ctr(ctx, tag, arg)
     ast.Rcd(fields) -> infer_rcd(ctx, fields)
     ast.RcdT(fields) -> infer_rcd_type(ctx, fields)
@@ -37,9 +37,9 @@ pub fn infer(ctx: Context, node: AST) -> #(Term, Value, Context) {
     ast.Ann(inner, type_) -> infer_ann(ctx, inner, type_)
     ast.Lam(implicit, param, body) -> infer_lam(ctx, implicit, param, body)
     ast.Pi(implicit, domain, codomain) ->
-      infer_pi(ctx, implicit, domain, codomain, node.span)
-    ast.Fix(name, body) -> infer_fix(ctx, name, body, node.span)
-    ast.App(fun, arg) -> infer_app(ctx, fun, arg, node.span)
+      infer_pi(ctx, implicit, domain, codomain, ast.span)
+    ast.Fix(name, body) -> infer_fix(ctx, name, body, ast.span)
+    ast.App(fun, arg) -> infer_app(ctx, fun, arg, ast.span)
     // ast.TypeDef(params, constructors) ->
     //   infer_type_def(ctx, params, constructors, span)
     // ast.Match(arg, cases) -> infer_match(ctx, arg, cases, span)
@@ -54,22 +54,22 @@ pub fn infer(ctx: Context, node: AST) -> #(Term, Value, Context) {
 /// record defaults at the value level before unifying.
 pub fn check(
   ctx: Context,
-  node: AST,
+  ast: AST,
   expected: #(Value, Span),
 ) -> #(Term, Value, Context) {
-  let #(term, type_, ctx) = infer(ctx, node)
-  let ctx = unify(ctx, #(type_, node.span), expected)
+  let #(term, type_, ctx) = infer(ctx, ast)
+  let ctx = unify(ctx, #(type_, ast.span), expected)
   #(term, type_, ctx)
 }
 
 fn check_on_ast(
   ctx: Context,
-  node: AST,
+  ast: AST,
   type_: AST,
 ) -> #(Term, #(Term, Value), Context) {
   let #(type_term, _, ctx) = infer(ctx, type_)
   let type_val = eval(ctx.ffi, ctx.env, type_term)
-  let #(term, type_val, ctx) = check(ctx, node, #(type_val, type_.span))
+  let #(term, type_val, ctx) = check(ctx, ast, #(type_val, type_.span))
   #(term, #(type_term, type_val), ctx)
 }
 

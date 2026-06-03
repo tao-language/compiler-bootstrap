@@ -22,7 +22,6 @@
 /// 8. ERRORS — Type checking errors (empty if none)
 import core/ast
 import core/context.{type Context, type Error, with_err} as ctx
-import core/elaborate.{elaborate}
 import core/eval.{eval}
 import core/syntax
 import gleam/int
