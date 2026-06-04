@@ -12,7 +12,6 @@ import core/literals as lit
 import core/term as tm
 import core/unify.{unify}
 import core/value as v
-import gleam/list
 import gleam/option.{None, Some}
 import gleeunit
 import syntax/span
@@ -406,19 +405,11 @@ pub fn unify_neut_nhole_infinite_type_test() {
   // Unifying a neutral hole with a value containing the same hole
   // triggers the occurs check, producing an InfiniteType error.
   let a = v.Neut(v.NHole(0))
-  let b = v.Neut(v.NHole(0))
+  let b = v.Neut(v.NApp(v.NHole(0), v.int_t))
   let ctx0 = new_ctx
-  // Same hole id unifies directly (both are NHole(0)), so no infinite type.
-  // For infinite type, we need a different scenario: a hole unified with
-  // a value that contains a deeper hole that itself contains the same hole.
-  // Since the first NHole(0)==NHole(0) path catches equal IDs, we test
-  // the occurs check path: NHole(0) unified with a Neut(NHole(0)).
-  let deep = v.Neut(v.NApp(v.NHole(0), v.int_t))
-  let ctx = unify(ctx0, #(a, s1), #(deep, s2))
-  assert ctx.errors
-    == [
-      InfiniteType(0, v.Neut(v.NApp(v.NHole(0), v.int_t)), s2),
-    ]
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  let error = InfiniteType(0, v.Neut(v.NApp(v.NHole(0), v.int_t)), s2)
+  assert ctx.errors == [error]
 }
 
 pub fn unify_neut_nhole_solve_twice_test() {

@@ -12,7 +12,6 @@ import core/ast
 import core/context.{new_ctx}
 import core/infer.{infer}
 import core/term as tm
-import core/unwrap.{unwrap}
 import core/value as v
 import gleeunit
 import syntax/span
@@ -24,8 +23,6 @@ pub fn main() {
 const s = span.Span("", 0, 0, 0, 0)
 
 const s1 = span.Span("", 1, 1, 1, 1)
-
-const s2 = span.Span("", 2, 2, 2, 2)
 
 // ============================================================================
 //  Typ

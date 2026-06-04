@@ -4,7 +4,7 @@
 /// - `lookup`: finding variables by name and returning their DeBruijn index + type
 /// - `with_err` / `with_err_list`: accumulating errors in context
 /// - `new_hole`: generating fresh hole IDs
-import core/context.{Context, lookup, new_ctx, new_hole, with_err, with_err_list} as ctx
+import core/context.{Context, lookup, new_ctx, new_hole, with_err} as ctx
 import core/value as v
 import gleam/option.{None, Some}
 import gleeunit
