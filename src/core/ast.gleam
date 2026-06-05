@@ -1,5 +1,6 @@
 import core/literals.{type Literal, type LiteralType} as lit
-import gleam/option.{type Option}
+import gleam/list
+import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
 // ============================================================================
@@ -38,6 +39,21 @@ pub type Data {
   Err
 }
 
+pub type Pattern {
+  PAny(span: Span)
+  PTyp(universe: Int, span: Span)
+  PLit(value: Literal, span: Span)
+  PLitT(lit_type: LiteralType, span: Span)
+  PAlias(name: String, pattern: Pattern, span: Span)
+  PCtr(tag: String, pattern: Pattern, span: Span)
+  PRcd(fields: List(#(String, Pattern)), span: Span)
+  PErr(span: Span)
+}
+
+pub type Case {
+  Case(pattern: Pattern, guard: Option(#(AST, Pattern)), body: AST, span: Span)
+}
+
 pub type TypeDefinition {
   TypeDefinition(
     params: List(#(String, AST)),
@@ -50,19 +66,19 @@ pub type Variant {
   Variant(params: List(#(String, AST)), arg: AST, return_type: AST)
 }
 
-pub type Pattern {
-  PAny(span: Span)
-  PTyp(universe: Int, span: Span)
-  PLit(value: Literal, span: Span)
-  PLitT(lit_type: LiteralType, span: Span)
-  PAlias(name: String, pattern: Pattern, span: Span)
-  PCtr(tag: String, pattern: Pattern, span: Span)
-  PRcd(fields: List(#(String, Pattern)), span: Span)
-  PError(span: Span)
-}
+// Helper functions
 
-pub type Case {
-  Case(pattern: Pattern, guard: Option(#(AST, Pattern)), body: AST, span: Span)
+pub fn pattern_span(pattern: Pattern) -> Span {
+  case pattern {
+    PAny(span) -> span
+    PTyp(_, span) -> span
+    PLit(_, span) -> span
+    PLitT(_, span) -> span
+    PAlias(_, _, span) -> span
+    PCtr(_, _, span) -> span
+    PRcd(_, span) -> span
+    PErr(span) -> span
+  }
 }
 
 // Syntax sugar
@@ -155,6 +171,10 @@ pub fn app(implicit: Bool, fun: AST, arg: AST, span: Span) {
   AST(App(implicit, fun, arg), span)
 }
 
+pub fn match(arg: AST, cases: List(Case), span: Span) {
+  AST(Match(arg, cases), span)
+}
+
 pub fn err(span: Span) {
   AST(Err, span)
 }
@@ -171,22 +191,3 @@ pub fn pint(value: Int, span: Span) -> Pattern {
 pub fn pfloat(value: Float, span: Span) -> Pattern {
   PLit(lit.Float(value), span)
 }
-// ALitT(t: LiteralType, span: Span)
-// AVar(name: String, span: Span)
-// ACtr(tag: String, arg: AST, span: Span)
-// ARcd(fields: List(#(String, AST)), span: Span)
-// ARcdT(fields: List(#(String, AST, Option(AST))), span: Span)
-// ACall(name: String, args: List(#(AST, AST)), return_type: AST, span: Span)
-// AAnn(term: AST, type_: AST, span: Span)
-// ALam(implicit: Bool, param: #(String, AST), body: AST, span: Span)
-// APi(implicit: Bool, domain: #(String, AST), codomain: AST, span: Span)
-// AFix(name: String, body: AST, span: Span)
-// AApp(fun: AST, arg: AST, span: Span)
-// ATypeDef(
-//   params: List(#(String, AST)),
-//   constructors: List(#(String, #(List(String), AST, AST), Span)),
-//   span: Span,
-// )
-// ALet(name: String, param_type: AST, value: AST, body: AST, span: Span)
-// AMatch(arg: AST, cases: List(CaseAST), span: Span)
-// AErr(message: String, span: Span)

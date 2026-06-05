@@ -140,39 +140,34 @@ pub fn new_hole_list(ctx: Context, num_holes: Int) -> #(List(Int), Context) {
   }
 }
 
-pub fn push_var(ctx: Context, var: #(String, Value, Value)) -> Context {
-  let #(name, value, type_) = var
+pub fn push_var(
+  ctx: Context,
+  var: #(String, Option(Value), Option(Value)),
+) -> Context {
+  let #(name, maybe_value, maybe_type) = var
+  let instantiate = fn(ctx, maybe_value) {
+    case maybe_value {
+      Some(value) -> #(value, ctx)
+      None -> {
+        let #(id, ctx) = new_hole(ctx)
+        #(v.hole(id), ctx)
+      }
+    }
+  }
+  let #(value, ctx) = instantiate(ctx, maybe_value)
+  let #(type_, ctx) = instantiate(ctx, maybe_type)
   Context(..ctx, env: [value, ..ctx.env], types: [#(name, type_), ..ctx.types])
 }
 
 pub fn push_var_list(
   ctx: Context,
-  vars: List(#(String, Value, Value)),
+  vars: List(#(String, Option(Value), Option(Value))),
 ) -> Context {
-  let vars_env = list.map(vars, fn(var) { var.1 })
-  let vars_types = list.map(vars, fn(var) { #(var.0, var.2) })
-  Context(
-    ..ctx,
-    env: list.append(vars_env, ctx.env),
-    types: list.append(vars_types, ctx.types),
-  )
-}
-
-pub fn push_var_hole(ctx: Context, param: #(String, Value)) -> Context {
-  let #(name, type_) = param
-  let #(hole_id, ctx) = new_hole(ctx)
-  push_var(ctx, #(name, v.hole(hole_id), type_))
-}
-
-pub fn push_var_hole_list(
-  ctx: Context,
-  params: List(#(String, Value)),
-) -> Context {
-  case params {
+  case vars {
     [] -> ctx
-    [param, ..params] -> {
-      let ctx = push_var_hole(ctx, param)
-      push_var_hole_list(ctx, params)
+    [var, ..vars] -> {
+      let ctx = push_var(ctx, var)
+      push_var_list(ctx, vars)
     }
   }
 }
@@ -184,3 +179,56 @@ pub fn pop_vars(ctx: Context, num_vars: Int) -> Context {
     types: list.drop(ctx.types, num_vars),
   )
 }
+// pub fn instantiate_holes(ctx: Context, value: Value) -> #(Value, Context) {
+//   case value {
+//     v.Typ(_) -> #(value, ctx)
+//     v.Lit(_) -> #(value, ctx)
+//     v.LitT(_) -> #(value, ctx)
+//     v.Ctr(tag, arg) -> {
+//       let #(arg, ctx) = instantiate_holes(ctx, arg)
+//       #(v.Ctr(tag, arg), ctx)
+//     }
+//     v.Rcd(fields) -> {
+//       let #(fields, ctx) =
+//         list.fold(fields, #([], ctx), fn(acc, kv) {
+//           let #(#(fields, ctx), #(name, value)) = #(acc, kv)
+//           let #(value, ctx) = instantiate_holes(ctx, value)
+//           #([#(name, value), ..fields], ctx)
+//         })
+//       #(v.Rcd(fields), ctx)
+//     }
+//     v.RcdT(fields) -> {
+//       let #(fields, ctx) =
+//         list.fold(fields, #([], ctx), fn(acc, kv) {
+//           let #(#(fields, ctx), #(name, #(value, maybe_default))) = #(acc, kv)
+//           let #(value, ctx) = instantiate_holes(ctx, value)
+//           let #(maybe_default, ctx) = case maybe_default {
+//             Some(value) -> {
+//               let #(value, ctx) = instantiate_holes(ctx, value)
+//               #(Some(value), ctx)
+//             }
+//             None -> #(None, ctx)
+//           }
+//           #([#(name, #(value, maybe_default)), ..fields], ctx)
+//         })
+//       #(v.RcdT(fields), ctx)
+//     }
+//     v.Neut(neutral) ->
+//       case neutral {
+//         v.NVar(_) -> #(value, ctx)
+//         v.NHole(id) if id < 0 -> {
+//           let #(id, ctx) = new_hole(ctx)
+//           #(v.hole(id), ctx)
+//         }
+//         v.NHole(_) -> #(value, ctx)
+//         v.NApp(fun:, arg:) -> todo
+//         v.NMatch(env:, arg:, cases:) -> todo
+//         v.NCall(name:, args:) -> todo
+//       }
+//     v.Lam(env:, param:, body:) -> todo
+//     v.Pi(env:, implicit:, domain:, codomain:) -> todo
+//     v.Fix(env:, name:, body:) -> todo
+//     v.TypeDef(env:, type_def:) -> todo
+//     v.Err -> todo
+//   }
+// }

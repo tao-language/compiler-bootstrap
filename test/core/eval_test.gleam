@@ -409,9 +409,9 @@ pub fn match_pattern_rcd_value_mismatch_test() {
 }
 
 pub fn match_pattern_error_match_test() {
-  assert match_pattern(tm.PError, v.Err) == Some([])
+  assert match_pattern(tm.PErr, v.Err) == Some([])
 }
 
 pub fn match_pattern_error_wrong_value_test() {
-  assert match_pattern(tm.PError, v.int(42)) == None
+  assert match_pattern(tm.PErr, v.int(42)) == None
 }

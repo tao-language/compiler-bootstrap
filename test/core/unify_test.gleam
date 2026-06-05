@@ -140,7 +140,8 @@ pub fn unify_ctr_gadt_undefined_variant_test() {
   let a = v.Ctr("A", v.int_t)
   let b = v.Ctr("T", v.float_t)
   let tdef = v.TypeDefinition([], tm.Rcd([]), [])
-  let ctx0 = context.push_var(new_ctx, #("T", v.TypeDef([], tdef), v.Typ(0)))
+  let ctx0 =
+    context.push_var(new_ctx, #("T", Some(v.TypeDef([], tdef)), Some(v.Typ(0))))
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
   assert ctx.errors
     == [
@@ -162,7 +163,12 @@ pub fn unify_ctr_gadt_bool_test() {
       #("True", v.Variant([], tm.Rcd([]), tm.ctr("Bool", []))),
       #("False", v.Variant([], tm.Rcd([]), tm.ctr("Bool", []))),
     ])
-  let ctx0 = context.push_var(new_ctx, #("Bool", v.TypeDef([], tdef), v.Typ(0)))
+  let ctx0 =
+    context.push_var(new_ctx, #(
+      "Bool",
+      Some(v.TypeDef([], tdef)),
+      Some(v.Typ(0)),
+    ))
   // Check: True constructor
   assert unify(ctx0, #(bool, s1), #(true_, s2)) == ctx0
   assert unify(ctx0, #(true_, s2), #(bool, s1)) == ctx0
@@ -185,17 +191,27 @@ pub fn unify_ctr_gadt_option_test() {
       #("Some", v.Variant([], tm.Var(0), tm.Ctr("Option", tm.Var(0)))),
     ])
   let ctx0 =
-    context.push_var(new_ctx, #("Option", v.TypeDef([], tdef), v.Typ(0)))
+    context.push_var(new_ctx, #(
+      "Option",
+      Some(v.TypeDef([], tdef)),
+      Some(v.Typ(0)),
+    ))
   // Check: None constructor
-  assert unify(ctx0, #(option(v.int_t), s1), #(none, s2))
-    == Context(..ctx0, subst: [#(0, v.int_t)], hole_counter: 1)
-  assert unify(ctx0, #(none, s2), #(option(v.int_t), s1))
-    == Context(..ctx0, subst: [#(0, v.int_t)], hole_counter: 1)
+  let ctx = unify(ctx0, #(option(v.int_t), s1), #(none, s2))
+  assert ctx.env == ctx0.env
+  assert ctx.types == ctx0.types
+  assert ctx.subst == [#(0, v.int_t)]
+  assert ctx.hole_counter == 1
+  let ctx = unify(ctx0, #(none, s2), #(option(v.int_t), s1))
+  assert ctx.subst == [#(0, v.int_t)]
+  assert ctx.hole_counter == 1
   // Check: Some constructor
-  assert unify(ctx0, #(option(v.int_t), s1), #(some(v.int_t), s2))
-    == Context(..ctx0, subst: [#(0, v.int_t)], hole_counter: 1)
-  assert unify(ctx0, #(some(v.int_t), s2), #(option(v.int_t), s1))
-    == Context(..ctx0, subst: [#(0, v.int_t)], hole_counter: 1)
+  let ctx = unify(ctx0, #(option(v.int_t), s1), #(some(v.int_t), s2))
+  assert ctx.subst == [#(0, v.int_t)]
+  assert ctx.hole_counter == 1
+  let ctx = unify(ctx0, #(some(v.int_t), s2), #(option(v.int_t), s1))
+  assert ctx.subst == [#(0, v.int_t)]
+  assert ctx.hole_counter == 1
   // Error: type mismatch
   // TODO: save spans in ctx.types for better error reporting
   let ctx = unify(ctx0, #(option(v.int_t), s1), #(some(v.float_t), s2))
@@ -228,7 +244,11 @@ pub fn unify_ctr_gadt_vec_test() {
     )
   let ctx0 =
     Context(
-      ..context.push_var(new_ctx, #("Vec", v.TypeDef([], tdef), v.Typ(0))),
+      ..context.push_var(new_ctx, #(
+        "Vec",
+        Some(v.TypeDef([], tdef)),
+        Some(v.Typ(0)),
+      )),
       ffi: [
         #("+", fn(args) {
           case args {

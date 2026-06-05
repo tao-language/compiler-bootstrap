@@ -20,7 +20,8 @@
 ///   ...
 /// This means quoting a level to an index is the identity conversion.
 import core/literals.{type Literal, type LiteralType} as lit
-import gleam/option.{type Option}
+import gleam/list
+import gleam/option.{type Option, None, Some}
 
 // ============================================================================
 // TERMS (Syntax level - De Bruijn indices)
@@ -50,6 +51,21 @@ pub type Term {
   Err
 }
 
+pub type Pattern {
+  PAny
+  PTyp(universe: Int)
+  PLit(value: Literal)
+  PLitT(lit_type: LiteralType)
+  PAlias(name: String, pattern: Pattern)
+  PCtr(tag: String, pattern: Pattern)
+  PRcd(fields: List(#(String, Pattern)))
+  PErr
+}
+
+pub type Case {
+  Case(pattern: Pattern, guard: Option(#(Term, Pattern)), body: Term)
+}
+
 pub type TypeDefinition {
   TypeDefinition(
     params: List(#(String, Term)),
@@ -62,19 +78,29 @@ pub type Variant {
   Variant(params: List(#(String, Term)), arg: Term, return_type: Term)
 }
 
-pub type Pattern {
-  PAny
-  PTyp(universe: Int)
-  PLit(value: Literal)
-  PLitT(lit_type: LiteralType)
-  PAlias(name: String, pattern: Pattern)
-  PCtr(tag: String, pattern: Pattern)
-  PRcd(fields: List(#(String, Pattern)))
-  PError
+//
+// Helper functions
+
+pub fn case_bindings(c: Case) -> List(String) {
+  let xs = pattern_bindings(c.pattern)
+  let ys = case c.guard {
+    Some(#(_, p)) -> pattern_bindings(p)
+    None -> []
+  }
+  list.append(xs, ys)
 }
 
-pub type Case {
-  Case(pattern: Pattern, guard: Option(#(Term, Pattern)), body: Term)
+pub fn pattern_bindings(p: Pattern) -> List(String) {
+  case p {
+    PAny -> []
+    PTyp(_) -> []
+    PLit(_) -> []
+    PLitT(_) -> []
+    PAlias(name, p) -> [name, ..pattern_bindings(p)]
+    PCtr(_, p) -> pattern_bindings(p)
+    PRcd(fields) -> list.flat_map(fields, fn(kv) { pattern_bindings(kv.1) })
+    PErr -> []
+  }
 }
 
 // Syntax sugar

@@ -144,7 +144,7 @@ pub fn match_pattern(pattern: Pattern, value: Value) -> Option(List(Value)) {
     tm.PCtr(tag1, pattern), v.Ctr(tag2, arg) if tag1 == tag2 ->
       match_pattern(pattern, arg)
     tm.PRcd(pfields), v.Rcd(vfields) -> match_pattern_rcd(pfields, vfields)
-    tm.PError, v.Err -> Some([])
+    tm.PErr, v.Err -> Some([])
     _, _ -> None
   }
 }

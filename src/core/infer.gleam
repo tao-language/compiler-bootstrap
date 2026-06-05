@@ -9,7 +9,7 @@ import core/context.{type Context}
 import core/eval.{eval}
 import core/literals.{type Literal, type LiteralType} as lit
 import core/quote.{quote}
-import core/term.{type Term} as tm
+import core/term.{type Pattern, type Term} as tm
 import core/unify.{unify}
 import core/unwrap.{unwrap}
 import core/value.{type Value} as v
@@ -43,7 +43,7 @@ pub fn infer(ctx: Context, ast: AST) -> #(Term, Value, Context) {
     ast.App(implicit, fun, arg) -> infer_app(ctx, implicit, fun, arg, ast.span)
     // ast.TypeDef(params, constructors) ->
     //   infer_type_def(ctx, params, constructors, span)
-    // ast.Match(arg, cases) -> infer_match(ctx, arg, cases, span)
+    ast.Match(arg, cases) -> infer_match(ctx, arg, cases, ast.span)
     ast.Err -> infer_err(ctx)
     _ -> todo
   }
@@ -59,8 +59,13 @@ pub fn check(
   expected: #(Value, Span),
 ) -> #(Term, Value, Context) {
   let #(term, type_, ctx) = infer(ctx, ast)
-  let ctx = unify(ctx, #(type_, ast.span), expected)
-  #(term, type_, ctx)
+  case term, expected {
+    tm.Hole(_), _ -> #(term, type_, ctx)
+    _, _ -> {
+      let ctx = unify(ctx, #(type_, ast.span), expected)
+      #(term, type_, ctx)
+    }
+  }
 }
 
 fn check_on_ast(
@@ -221,7 +226,7 @@ fn infer_lam(
   let #(param, _, ctx) = infer(ctx, param_ast)
   let param_val = eval(ctx.ffi, ctx.env, param)
   let level = list.length(ctx.env)
-  let ctx = context.push_var(ctx, #(name, v.var(level), param_val))
+  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(param_val)))
   let #(body, body_type_val, ctx) = infer(ctx, body)
   let body_type = quote(ctx.ffi, level + 1, body_type_val)
   let ctx = context.pop_vars(ctx, 1)
@@ -322,6 +327,112 @@ fn infer_app_args(
       let #(_, _, ctx) = infer(ctx, arg_ast)
       let error = context.NotAFunction(fun, fun_type, fun_span)
       #(tm.Err, v.Err, context.with_err(ctx, error))
+    }
+  }
+}
+
+fn infer_match(
+  ctx: Context,
+  arg_ast: AST,
+  cases_ast: List(ast.Case),
+  span: Span,
+) -> #(Term, Value, Context) {
+  let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
+  let #(cases, cases_type, ctx) =
+    infer_match_case_list(ctx, #(arg_type, arg_ast.span), cases_ast)
+  let arg_val = eval(ctx.ffi, ctx.env, arg)
+  let value = eval.do_match(ctx.ffi, ctx.env, arg_val, cases)
+  let type_ = eval.do_match(ctx.ffi, ctx.env, arg_val, cases_type)
+  #(
+    quote(ctx.ffi, list.length(ctx.env), value),
+    unwrap(ctx.ffi, ctx.subst, type_),
+    ctx,
+  )
+}
+
+fn infer_match_case_list(
+  ctx: Context,
+  arg_type: #(Value, Span),
+  cases_ast: List(ast.Case),
+) -> #(List(tm.Case), List(tm.Case), Context) {
+  case cases_ast {
+    [] -> #([], [], ctx)
+    [case_ast, ..cases_ast] -> {
+      let #(case_, case_type, ctx) = infer_match_case(ctx, arg_type, case_ast)
+      let #(cases, cases_types, ctx) =
+        infer_match_case_list(ctx, arg_type, cases_ast)
+      #([case_, ..cases], [case_type, ..cases_types], ctx)
+    }
+  }
+}
+
+fn infer_match_case(
+  ctx: Context,
+  arg_type: #(Value, Span),
+  case_ast: ast.Case,
+) -> #(tm.Case, tm.Case, Context) {
+  let old_env_size = list.length(ctx.env)
+  let #(pattern, ctx) = check_pattern(ctx, case_ast.pattern, arg_type)
+  let #(guard, ctx) = bind_guard(ctx, case_ast.guard)
+  let #(body, body_type_val, ctx) = infer(ctx, case_ast.body)
+  let body_type = quote(ctx.ffi, list.length(ctx.env), body_type_val)
+  let ctx = context.pop_vars(ctx, list.length(ctx.env) - old_env_size)
+  #(tm.Case(pattern, guard, body), tm.Case(pattern, guard, body_type), ctx)
+}
+
+fn infer_pattern(
+  ctx: Context,
+  pattern_ast: ast.Pattern,
+) -> #(tm.Pattern, Value, Context) {
+  case pattern_ast {
+    ast.PAny(_) -> {
+      let #(id, ctx) = context.new_hole(ctx)
+      #(tm.PAny, v.hole(id), ctx)
+    }
+    ast.PTyp(u, _) -> #(tm.PTyp(u), v.Typ(u + 1), ctx)
+    ast.PLit(lit, _) -> {
+      let type_ = case lit {
+        lit.Int(_) -> v.int_t
+        lit.Float(_) -> v.float_t
+      }
+      #(tm.PLit(lit), type_, ctx)
+    }
+    ast.PLitT(lit, _) -> #(tm.PLitT(lit), v.Typ(0), ctx)
+    ast.PAlias(name, pattern_ast, _) -> {
+      let #(pattern, type_, ctx) = infer_pattern(ctx, pattern_ast)
+      let var = #(name, Some(v.var(list.length(ctx.env))), Some(type_))
+      let ctx = context.push_var(ctx, var)
+      #(tm.PAlias(name, pattern), type_, ctx)
+    }
+    ast.PCtr(tag, pattern_ast, _) -> {
+      let #(pattern, type_, ctx) = infer_pattern(ctx, pattern_ast)
+      #(tm.PCtr(tag, pattern), v.Ctr(tag, type_), ctx)
+    }
+    ast.PRcd(fields, _) -> todo
+    ast.PErr(_) -> #(tm.PErr, v.Err, ctx)
+  }
+}
+
+fn check_pattern(
+  ctx: Context,
+  pattern_ast: ast.Pattern,
+  expected: #(Value, Span),
+) -> #(tm.Pattern, Context) {
+  let #(pattern, inferred, ctx) = infer_pattern(ctx, pattern_ast)
+  let ctx = unify(ctx, #(inferred, ast.pattern_span(pattern_ast)), expected)
+  #(pattern, ctx)
+}
+
+fn bind_guard(
+  ctx: Context,
+  guard_ast: Option(#(AST, ast.Pattern)),
+) -> #(Option(#(tm.Term, tm.Pattern)), Context) {
+  case guard_ast {
+    None -> #(None, ctx)
+    Some(#(ast, pattern_ast)) -> {
+      let #(term, type_, ctx) = infer(ctx, ast)
+      let #(pattern, ctx) = check_pattern(ctx, pattern_ast, #(type_, ast.span))
+      #(Some(#(term, pattern)), ctx)
     }
   }
 }
