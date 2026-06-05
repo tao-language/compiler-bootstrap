@@ -37,9 +37,9 @@ pub fn infer(ctx: Context, ast: AST) -> #(Term, Value, Context) {
       infer_call(ctx, name, args, return_type)
     ast.Ann(inner, type_) -> infer_ann(ctx, inner, type_)
     ast.Lam(implicit, param, body) -> infer_lam(ctx, implicit, param, body)
-    ast.Pi(implicit, domain, codomain) ->
-      infer_pi(ctx, implicit, domain, codomain, ast.span)
-    ast.Fix(name, body) -> infer_fix(ctx, name, body, ast.span)
+    // ast.Pi(implicit, domain, codomain) ->
+    //   infer_pi(ctx, implicit, domain, codomain, ast.span)
+    // ast.Fix(name, body) -> infer_fix(ctx, name, body, ast.span)
     ast.App(implicit, fun, arg) -> infer_app(ctx, implicit, fun, arg, ast.span)
     // ast.TypeDef(params, constructors) ->
     //   infer_type_def(ctx, params, constructors, span)
