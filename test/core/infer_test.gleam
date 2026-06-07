@@ -9,8 +9,8 @@
 /// Trivial data-pass-through tests (Lit, LitT, Typ, Ctr, Rcd, Call)
 /// have been removed — they only verify data flows through, not logic.
 import core/ast
-import core/context.{new_ctx}
-import core/infer.{infer}
+import core/context.{TypeMismatch, new_ctx}
+import core/infer.{check, infer}
 import core/term as tm
 import core/value as v
 import gleam/option.{None, Some}
@@ -39,6 +39,66 @@ const s2 = span.Span("", 2, 2, 2, 2)
 //  Lit
 // ============================================================================
 
+pub fn infer_lit_int_test() {
+  let #(term, type_, ctx) = infer(new_ctx, ast.int(1, s))
+  assert ctx.errors == []
+  assert term == tm.int(1)
+  assert type_ == v.int_t
+}
+
+pub fn check_lit_int_test() {
+  let check_int = fn(ty) {
+    let #(term, type_, ctx) = check(new_ctx, ast.int(1, s1), #(ty, s2))
+    #(ctx.errors, term, type_)
+  }
+  assert check_int(v.int_t) == #([], tm.int(1), v.int_t)
+  assert check_int(v.i8) == #([], tm.int(1), v.i8)
+  assert check_int(v.i16) == #([], tm.int(1), v.i16)
+  assert check_int(v.i32) == #([], tm.int(1), v.i32)
+  assert check_int(v.i64) == #([], tm.int(1), v.i64)
+  assert check_int(v.u8) == #([], tm.int(1), v.u8)
+  assert check_int(v.u16) == #([], tm.int(1), v.u16)
+  assert check_int(v.u32) == #([], tm.int(1), v.u32)
+  assert check_int(v.u64) == #([], tm.int(1), v.u64)
+  assert check_int(v.float_t) == #([], tm.float(1.0), v.float_t)
+  assert check_int(v.f16) == #([], tm.float(1.0), v.f16)
+  assert check_int(v.f32) == #([], tm.float(1.0), v.f32)
+  assert check_int(v.f64) == #([], tm.float(1.0), v.f64)
+}
+
+pub fn check_lit_float_test() {
+  let check_float = fn(ty) {
+    let #(term, type_, ctx) = check(new_ctx, ast.float(1.0, s1), #(ty, s2))
+    #(ctx.errors, term, type_)
+  }
+  assert check_float(v.int_t)
+    == #(
+      [TypeMismatch(#(v.float_t, s1), #(v.int_t, s2))],
+      tm.float(1.0),
+      v.int_t,
+    )
+  assert check_float(v.i8)
+    == #([TypeMismatch(#(v.float_t, s1), #(v.i8, s2))], tm.float(1.0), v.i8)
+  assert check_float(v.i16)
+    == #([TypeMismatch(#(v.float_t, s1), #(v.i16, s2))], tm.float(1.0), v.i16)
+  assert check_float(v.i32)
+    == #([TypeMismatch(#(v.float_t, s1), #(v.i32, s2))], tm.float(1.0), v.i32)
+  assert check_float(v.i64)
+    == #([TypeMismatch(#(v.float_t, s1), #(v.i64, s2))], tm.float(1.0), v.i64)
+  assert check_float(v.u8)
+    == #([TypeMismatch(#(v.float_t, s1), #(v.u8, s2))], tm.float(1.0), v.u8)
+  assert check_float(v.u16)
+    == #([TypeMismatch(#(v.float_t, s1), #(v.u16, s2))], tm.float(1.0), v.u16)
+  assert check_float(v.u32)
+    == #([TypeMismatch(#(v.float_t, s1), #(v.u32, s2))], tm.float(1.0), v.u32)
+  assert check_float(v.u64)
+    == #([TypeMismatch(#(v.float_t, s1), #(v.u64, s2))], tm.float(1.0), v.u64)
+  assert check_float(v.float_t) == #([], tm.float(1.0), v.float_t)
+  assert check_float(v.f16) == #([], tm.float(1.0), v.f16)
+  assert check_float(v.f32) == #([], tm.float(1.0), v.f32)
+  assert check_float(v.f64) == #([], tm.float(1.0), v.f64)
+}
+
 // ============================================================================
 //  LitT
 // ============================================================================
@@ -47,15 +107,6 @@ const s2 = span.Span("", 2, 2, 2, 2)
 //  Var
 // ============================================================================
 
-pub fn infer_var_defined_test() {
-  let ast = ast.var("x", s)
-  let ctx0 = context.push_var(new_ctx, #("x", Some(v.int(42)), Some(v.int_t)))
-  let #(term, type_, ctx) = infer(ctx0, ast)
-  assert ctx.errors == []
-  assert term == tm.Var(0)
-  assert type_ == v.int_t
-}
-
 pub fn infer_var_undefined_test() {
   let ast = ast.var("x", s)
   let ctx0 = new_ctx
@@ -63,6 +114,15 @@ pub fn infer_var_undefined_test() {
   assert ctx.errors == [context.VarUndefined("x", s)]
   assert term == tm.Err
   assert type_ == v.Err
+}
+
+pub fn infer_var_defined_test() {
+  let ast = ast.var("x", s)
+  let ctx0 = context.push_var(new_ctx, #("x", Some(v.int(42)), Some(v.int_t)))
+  let #(term, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  assert term == tm.Var(0)
+  assert type_ == v.int_t
 }
 
 // ============================================================================

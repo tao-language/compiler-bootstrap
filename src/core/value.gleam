@@ -113,6 +113,8 @@ pub const u32 = LitT(lit.U32)
 
 pub const u64 = LitT(lit.U64)
 
+pub const f16 = LitT(lit.F16)
+
 pub const f32 = LitT(lit.F32)
 
 pub const f64 = LitT(lit.F64)

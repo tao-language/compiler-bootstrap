@@ -5,6 +5,7 @@
 /// thin wrapper that synthesizes the term then unifies its type with
 /// the expected type.
 import core/ast.{type AST}
+import core/coerce.{coerce}
 import core/context.{type Context}
 import core/eval.{eval}
 import core/literals.{type Literal, type LiteralType} as lit
@@ -13,6 +14,7 @@ import core/term.{type Pattern, type Term} as tm
 import core/unify.{unify}
 import core/unwrap.{unwrap, unwrap_term}
 import core/value.{type Value} as v
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
@@ -58,19 +60,31 @@ pub fn check(
   ast: AST,
   expected: #(Value, Span),
 ) -> #(Term, Value, Context) {
-  let #(expected_type, span) = expected
+  let #(expected_type, type_span) = expected
   let #(term, type_, ctx) = infer(ctx, ast)
   let term = unwrap_term(ctx.ffi, ctx.subst, ctx.env, term)
   let expected_type = unwrap(ctx.ffi, ctx.subst, expected_type)
-  let expected = #(expected_type, span)
-  case term, expected_type {
+  case coerce(term, expected_type), expected_type {
     tm.Hole(_), _ -> #(term, expected_type, ctx)
-    tm.Lit(lit.Int(_)), v.LitT(_) -> #(term, expected_type, ctx)
-    tm.Lit(lit.Float(_)), v.LitT(lit.F32) -> #(term, expected_type, ctx)
-    tm.Lit(lit.Float(_)), v.LitT(lit.F64) -> #(term, expected_type, ctx)
+    tm.Lit(lit.Int(_)), v.LitT(ty)
+      if ty == lit.I8
+      || ty == lit.I16
+      || ty == lit.I32
+      || ty == lit.I64
+      || ty == lit.U8
+      || ty == lit.U16
+      || ty == lit.U32
+      || ty == lit.U64
+    -> #(term, expected_type, ctx)
+    tm.Lit(lit.Int(k)), v.LitT(ty)
+      if ty == lit.FloatT || ty == lit.F16 || ty == lit.F32 || ty == lit.F64
+    -> #(tm.float(int.to_float(k)), expected_type, ctx)
+    tm.Lit(lit.Float(_)), v.LitT(ty)
+      if ty == lit.F16 || ty == lit.F32 || ty == lit.F64
+    -> #(term, expected_type, ctx)
     _, _ -> {
-      let ctx = unify(ctx, #(type_, ast.span), expected)
-      #(term, type_, ctx)
+      let ctx = unify(ctx, #(type_, ast.span), #(expected_type, type_span))
+      #(term, expected_type, ctx)
     }
   }
 }
