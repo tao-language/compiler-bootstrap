@@ -61,10 +61,11 @@ pub fn check(
   expected: #(Value, Span),
 ) -> #(Term, Value, Context) {
   let #(expected_type, type_span) = expected
-  let #(term, type_, ctx) = infer(ctx, ast)
+  let #(term, inferred_type, ctx) = infer(ctx, ast)
   let term = unwrap_term(ctx.ffi, ctx.subst, ctx.env, term)
   let expected_type = unwrap(ctx.ffi, ctx.subst, expected_type)
-  case coerce(term, expected_type), expected_type {
+  let term = coerce(term, expected_type)
+  case term, expected_type {
     tm.Hole(_), _ -> #(term, expected_type, ctx)
     tm.Lit(lit.Int(_)), v.LitT(ty)
       if ty == lit.I8
@@ -80,10 +81,11 @@ pub fn check(
       if ty == lit.FloatT || ty == lit.F16 || ty == lit.F32 || ty == lit.F64
     -> #(tm.float(int.to_float(k)), expected_type, ctx)
     tm.Lit(lit.Float(_)), v.LitT(ty)
-      if ty == lit.F16 || ty == lit.F32 || ty == lit.F64
+      if ty == lit.FloatT || ty == lit.F16 || ty == lit.F32 || ty == lit.F64
     -> #(term, expected_type, ctx)
     _, _ -> {
-      let ctx = unify(ctx, #(type_, ast.span), #(expected_type, type_span))
+      let ctx =
+        unify(ctx, #(inferred_type, ast.span), #(expected_type, type_span))
       #(term, expected_type, ctx)
     }
   }
