@@ -1,7 +1,10 @@
 import core/context.{type FFI, type Subst}
-import core/eval
-import core/value.{type Neut, type Value} as v
+import core/eval.{eval}
+import core/quote.{quote}
+import core/term.{type Case, type Term} as tm
+import core/value.{type Env, type Neut, type Value} as v
 import gleam/list
+import gleam/option.{None, Some}
 
 /// Looks up a hole in the substitution table,
 /// recursively stripping away solved wrappers.
@@ -26,6 +29,7 @@ fn unwrap_neut(ffi: FFI, subst: Subst, neut: Neut) -> Value {
     }
     v.NMatch(env, arg_neut, cases) -> {
       let arg = unwrap_neut(ffi, subst, arg_neut)
+      let cases = list.map(cases, unwrap_case(ffi, subst, env, _))
       eval.do_match(ffi, env, arg, cases)
     }
     v.NCall(name, args) -> {
@@ -33,4 +37,23 @@ fn unwrap_neut(ffi: FFI, subst: Subst, neut: Neut) -> Value {
       eval.do_call(ffi, name, args)
     }
   }
+}
+
+pub fn unwrap_case(ffi: FFI, subst: Subst, env: Env, c: Case) -> Case {
+  let env = v.env_push_vars(env, list.length(tm.bindings(c.pattern)))
+  let #(guard, env) = case c.guard {
+    Some(#(g_term, g_pattern)) -> {
+      let env = v.env_push_vars(env, list.length(tm.bindings(g_pattern)))
+      let g_term = unwrap_term(ffi, subst, env, g_term)
+      #(Some(#(g_term, g_pattern)), env)
+    }
+    None -> #(None, env)
+  }
+  tm.Case(c.pattern, guard, unwrap_term(ffi, subst, env, c.body))
+}
+
+pub fn unwrap_term(ffi: FFI, subst: Subst, env: Env, term: Term) -> Term {
+  eval(ffi, env, term)
+  |> unwrap(ffi, subst, _)
+  |> quote(ffi, list.length(env), _)
 }

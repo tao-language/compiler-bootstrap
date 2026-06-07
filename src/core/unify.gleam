@@ -71,7 +71,7 @@ fn unify_with_term(
   b: #(Env, Term, Span),
 ) -> Context {
   let #(env, term, s) = b
-  let term = resolve(ctx.subst, term)
+  // let term = resolve(ctx.ffi, ctx.subst, list.length(ctx.env), term)
   let value = eval(ctx.ffi, env, term)
   unify(ctx, a, #(value, s))
 }

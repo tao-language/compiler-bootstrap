@@ -81,24 +81,15 @@ pub type Variant {
 //
 // Helper functions
 
-pub fn case_bindings(c: Case) -> List(String) {
-  let xs = pattern_bindings(c.pattern)
-  let ys = case c.guard {
-    Some(#(_, p)) -> pattern_bindings(p)
-    None -> []
-  }
-  list.append(xs, ys)
-}
-
-pub fn pattern_bindings(p: Pattern) -> List(String) {
+pub fn bindings(p: Pattern) -> List(String) {
   case p {
     PAny -> []
     PTyp(_) -> []
     PLit(_) -> []
     PLitT(_) -> []
-    PAlias(name, p) -> [name, ..pattern_bindings(p)]
-    PCtr(_, p) -> pattern_bindings(p)
-    PRcd(fields) -> list.flat_map(fields, fn(kv) { pattern_bindings(kv.1) })
+    PAlias(name, p) -> [name, ..bindings(p)]
+    PCtr(_, p) -> bindings(p)
+    PRcd(fields) -> list.flat_map(fields, fn(kv) { bindings(kv.1) })
     PErr -> []
   }
 }

@@ -336,8 +336,19 @@ pub fn infer_match_dependent_motive_test() {
   assert ctx.env == ctx0.env
   assert ctx.types == ctx0.types
   assert ctx.errors == []
-  assert term == todo
-  assert type_ == todo
+  assert term
+    == tm.Match(tm.Hole(id), [
+      tm.Case(tm.pint(1), None, tm.int(42)),
+      tm.Case(tm.pint(2), None, tm.float(3.14)),
+      tm.Case(tm.pvar("x"), None, tm.Var(0)),
+    ])
+  assert type_
+    == v.match([], v.NHole(id), [
+      tm.Case(tm.pint(1), None, tm.int_t),
+      tm.Case(tm.pint(2), None, tm.float_t),
+      tm.Case(tm.pvar("x"), None, tm.Hole(2)),
+    ])
+  assert ctx.subst == []
 }
 
 // ============================================================================

@@ -1,5 +1,7 @@
 import core/literals.{type Literal, type LiteralType} as lit
 import core/term.{type Case, type Term}
+import gleam/int
+import gleam/list
 import gleam/option.{type Option}
 
 // ============================================================================
@@ -47,6 +49,19 @@ pub type Neut {
 
 pub type Env =
   List(Value)
+
+// Helper functions
+
+pub fn env_push_vars(env: Env, num_vars: Int) -> Env {
+  int.range(
+    from: list.length(env),
+    to: list.length(env) + num_vars + 1,
+    with: [],
+    run: list.prepend,
+  )
+  |> list.map(var)
+  |> list.append(env)
+}
 
 // Syntax sugar
 

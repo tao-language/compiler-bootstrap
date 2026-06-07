@@ -58,9 +58,12 @@ fn quote_neut(ffi: FFI, size: Int, neut: Neut) -> Term {
   case neut {
     v.NVar(level) -> tm.Var(size - level - 1)
     v.NHole(id) -> tm.Hole(id)
-    _ -> {
-      echo neut
-      todo
+    v.NApp(fun_neut, arg) -> todo
+    v.NMatch(env, arg_neut, cases) -> {
+      let arg = quote_neut(ffi, size, arg_neut)
+      // TODO: eval+quote cases with env
+      tm.Match(arg, cases)
     }
+    v.NCall(name, args) -> todo
   }
 }
