@@ -55,7 +55,7 @@ pub type Env =
 pub fn env_push_vars(env: Env, num_vars: Int) -> Env {
   int.range(
     from: list.length(env),
-    to: list.length(env) + num_vars + 1,
+    to: list.length(env) + num_vars,
     with: [],
     run: list.prepend,
   )
