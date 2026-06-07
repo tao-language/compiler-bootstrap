@@ -52,7 +52,7 @@ pub type Env =
 
 // Helper functions
 
-pub fn env_push_vars(env: Env, num_vars: Int) -> Env {
+pub fn env_push(env: Env, num_vars: Int) -> Env {
   int.range(
     from: list.length(env),
     to: list.length(env) + num_vars,

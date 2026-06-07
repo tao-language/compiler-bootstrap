@@ -40,10 +40,10 @@ fn unwrap_neut(ffi: FFI, subst: Subst, neut: Neut) -> Value {
 }
 
 pub fn unwrap_case(ffi: FFI, subst: Subst, env: Env, c: Case) -> Case {
-  let env = v.env_push_vars(env, list.length(tm.bindings(c.pattern)))
+  let env = v.env_push(env, list.length(tm.bindings(c.pattern)))
   let #(guard, env) = case c.guard {
     Some(#(g_term, g_pattern)) -> {
-      let env = v.env_push_vars(env, list.length(tm.bindings(g_pattern)))
+      let env = v.env_push(env, list.length(tm.bindings(g_pattern)))
       let g_term = unwrap_term(ffi, subst, env, g_term)
       #(Some(#(g_term, g_pattern)), env)
     }
