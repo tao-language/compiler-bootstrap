@@ -11,7 +11,7 @@ import core/literals.{type Literal, type LiteralType} as lit
 import core/quote.{quote}
 import core/term.{type Pattern, type Term} as tm
 import core/unify.{unify}
-import core/unwrap.{unwrap}
+import core/unwrap.{unwrap, unwrap_term}
 import core/value.{type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -58,9 +58,16 @@ pub fn check(
   ast: AST,
   expected: #(Value, Span),
 ) -> #(Term, Value, Context) {
+  let #(expected_type, span) = expected
   let #(term, type_, ctx) = infer(ctx, ast)
-  case term, expected {
-    tm.Hole(_), _ -> #(term, type_, ctx)
+  let term = unwrap_term(ctx.ffi, ctx.subst, ctx.env, term)
+  let expected_type = unwrap(ctx.ffi, ctx.subst, expected_type)
+  let expected = #(expected_type, span)
+  case term, expected_type {
+    tm.Hole(_), _ -> #(term, expected_type, ctx)
+    tm.Lit(lit.Int(_)), v.LitT(_) -> #(term, expected_type, ctx)
+    tm.Lit(lit.Float(_)), v.LitT(lit.F32) -> #(term, expected_type, ctx)
+    tm.Lit(lit.Float(_)), v.LitT(lit.F64) -> #(term, expected_type, ctx)
     _, _ -> {
       let ctx = unify(ctx, #(type_, ast.span), expected)
       #(term, type_, ctx)

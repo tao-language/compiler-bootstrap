@@ -15,6 +15,12 @@ pub fn unwrap(ffi: FFI, subst: Subst, value: Value) -> Value {
   }
 }
 
+pub fn unwrap_term(ffi: FFI, subst: Subst, env: Env, term: Term) -> Term {
+  eval(ffi, env, term)
+  |> unwrap(ffi, subst, _)
+  |> quote(ffi, list.length(env), _)
+}
+
 fn unwrap_neut(ffi: FFI, subst: Subst, neut: Neut) -> Value {
   case neut {
     v.NVar(level) -> v.var(level)
@@ -39,7 +45,7 @@ fn unwrap_neut(ffi: FFI, subst: Subst, neut: Neut) -> Value {
   }
 }
 
-pub fn unwrap_case(ffi: FFI, subst: Subst, env: Env, c: Case) -> Case {
+fn unwrap_case(ffi: FFI, subst: Subst, env: Env, c: Case) -> Case {
   let env = v.env_push(env, list.length(tm.bindings(c.pattern)))
   let #(guard, env) = case c.guard {
     Some(#(g_term, g_pattern)) -> {
@@ -50,10 +56,4 @@ pub fn unwrap_case(ffi: FFI, subst: Subst, env: Env, c: Case) -> Case {
     None -> #(None, env)
   }
   tm.Case(c.pattern, guard, unwrap_term(ffi, subst, env, c.body))
-}
-
-pub fn unwrap_term(ffi: FFI, subst: Subst, env: Env, term: Term) -> Term {
-  eval(ffi, env, term)
-  |> unwrap(ffi, subst, _)
-  |> quote(ffi, list.length(env), _)
 }
