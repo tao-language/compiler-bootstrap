@@ -346,9 +346,9 @@ pub fn infer_match_dependent_motive_test() {
     == v.match([], v.NHole(id), [
       tm.Case(tm.pint(1), None, tm.int_t),
       tm.Case(tm.pint(2), None, tm.float_t),
-      tm.Case(tm.pvar("x"), None, tm.Hole(2)),
+      tm.Case(tm.pvar("x"), None, tm.int_t),
     ])
-  assert ctx.subst == []
+  assert ctx.subst == [#(2, v.hole(1)), #(1, v.int_t)]
 }
 
 // ============================================================================
