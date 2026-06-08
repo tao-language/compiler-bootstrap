@@ -27,7 +27,6 @@ pub type Data {
   Ctr(tag: String, arg: AST)
   Rcd(fields: List(#(String, AST)))
   RcdT(fields: List(#(String, #(AST, Option(AST)))))
-  Call(name: String, args: List(AST), return_type: AST)
   Ann(term: AST, type_: AST)
   Lam(implicit: Bool, param: #(String, AST), body: AST)
   Pi(implicit: Bool, domain: #(String, AST), codomain: AST)
@@ -36,6 +35,7 @@ pub type Data {
   TypeDef(type_def: TypeDefinition)
   Let(name: String, param_type: AST, value: AST, body: AST)
   Match(arg: AST, cases: List(Case))
+  Call(name: String, args: List(AST), return_type: AST)
   Err
 }
 
@@ -155,8 +155,12 @@ pub fn ctr(tag: String, args: List(#(String, AST)), span: Span) {
   AST(Ctr(tag, AST(Rcd(args), span)), span)
 }
 
-pub fn lam(implicit: Bool, param: #(String, AST), body: AST, span: Span) {
-  AST(Lam(implicit, param, body), span)
+pub fn lam(param: #(String, AST), body: AST, span: Span) {
+  AST(Lam(False, param, body), span)
+}
+
+pub fn lam_implicit(param: #(String, AST), body: AST, span: Span) {
+  AST(Lam(True, param, body), span)
 }
 
 pub fn pi(implicit: Bool, param: #(String, AST), body: AST, span: Span) {
@@ -173,6 +177,10 @@ pub fn app(implicit: Bool, fun: AST, arg: AST, span: Span) {
 
 pub fn match(arg: AST, cases: List(Case), span: Span) {
   AST(Match(arg, cases), span)
+}
+
+pub fn call(name: String, args: List(AST), return_type: AST, span: Span) {
+  AST(Call(name, args, return_type), span)
 }
 
 pub fn err(span: Span) {

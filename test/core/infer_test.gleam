@@ -151,7 +151,7 @@ pub fn infer_var_defined_test() {
 
 pub fn infer_lam_simple_test() {
   // $fn(x: $Int) => x
-  let ast = ast.lam(False, #("x", ast.int_t(s)), ast.var("x", s), s)
+  let ast = ast.lam(#("x", ast.int_t(s)), ast.var("x", s), s)
   let ctx0 = new_ctx
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
@@ -161,7 +161,7 @@ pub fn infer_lam_simple_test() {
 
 pub fn infer_lam_implicit_test() {
   // $fn<x: $Int> => x
-  let ast = ast.lam(True, #("x", ast.int_t(s)), ast.var("x", s), s)
+  let ast = ast.lam_implicit(#("x", ast.int_t(s)), ast.var("x", s), s)
   let ctx0 = new_ctx
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
@@ -171,7 +171,7 @@ pub fn infer_lam_implicit_test() {
 
 pub fn infer_lam_closure_test() {
   // $let y = 3.14; $fn(x: $Int) => y
-  let ast = ast.lam(False, #("x", ast.int_t(s)), ast.var("y", s), s)
+  let ast = ast.lam(#("x", ast.int_t(s)), ast.var("y", s), s)
   let ctx0 =
     context.push_var(new_ctx, #("y", Some(v.float(3.14)), Some(v.float_t)))
   let #(term, type_, ctx) = infer(ctx0, ast)
@@ -183,10 +183,9 @@ pub fn infer_lam_closure_test() {
 pub fn infer_lam_identity_test() {
   // $fn<a: $Type>(x: a) => x
   let ast =
-    ast.lam(
-      True,
+    ast.lam_implicit(
       #("a", ast.typ(0, s)),
-      ast.lam(False, #("x", ast.var("a", s)), ast.var("x", s), s),
+      ast.lam(#("x", ast.var("a", s)), ast.var("x", s), s),
       s,
     )
   let ctx0 = new_ctx
@@ -205,10 +204,9 @@ pub fn infer_lam_identity_test() {
 pub fn infer_lam_typeof_test() {
   // $fn<a: $Type>(x: a) => a
   let ast =
-    ast.lam(
-      True,
+    ast.lam_implicit(
       #("a", ast.typ(0, s)),
-      ast.lam(False, #("x", ast.var("a", s)), ast.var("a", s), s),
+      ast.lam(#("x", ast.var("a", s)), ast.var("a", s), s),
       s,
     )
   let ctx0 = new_ctx
