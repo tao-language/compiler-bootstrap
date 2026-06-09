@@ -1,2 +1,2 @@
-// Record types can have optional default values, they start with $.
-${x: $Int, y: $Int = 0}
+// Record types can have optional default values, they start with #.
+#{x: %Int, y: %Int = 0}

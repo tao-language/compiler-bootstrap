@@ -3,14 +3,14 @@
 // Instead, they try to match an expression against a "pass" pattern.
 // The expression to be tested includes the bound variables from the main pattern.
 // For example, this evaluates to 100 because `x` matches 42.
-$match (42) {
+%match (42) {
 | x ? x ~ 42 => 100
 | _ => -1
 }
 
 // In a high level language with a #Bool type with #True and #False constructors,
 // this could look something like:
-// $match (term) {
+// %match (term) {
 // | x ? equals(x, 42) ~ #True(_) => 0
 // | _ => 1
 // }

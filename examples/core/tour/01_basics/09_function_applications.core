@@ -1,4 +1,4 @@
 // Function application is space-separated, Haskell-style.
 // Application always takes exactly one argument.
 // You can use records to pass zero or multiple arguments.
-($fn(x: $Int) => x) 42
+(%fn(x: %Int) => x) 42

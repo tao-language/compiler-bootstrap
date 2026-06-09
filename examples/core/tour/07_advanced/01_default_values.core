@@ -1,6 +1,6 @@
 // Even if the record literal doesn't contain a `y` field, it's inferred from the record type's default value.
-$let point: ${x: $Int, y: $Int = 42} = {x: 1};
+%let point: #{x: %Int, y: %Int = 42} = {x: 1};
 
-$match (point) {
+%match (point) {
 | {y} => y // field exists and evaluates to 42
 }

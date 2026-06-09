@@ -1,8 +1,8 @@
-// Record type pattern follows the syntax `${field_name: pattern}`
+// Record type pattern follows the syntax `#{field_name: pattern}`
 // If a pattern has a field not present in the match arg, it's a pattern mismatch.
-$match ($) {x: $Int, y: $Float} {
-| ${x: $Int, y: _} => 0   // matches when `x` equals $Int and `y` always, does not bind anything
-| ${x: z} => z            // matches and binds field `x` as `z`
-| ${x} => x               // syntax sugar, equivalent to {x: x}
-| ${} => 0                // matches any record type, but does not bind anything
+%match #{x: %Int, y: %Float} {
+| #{x: %Int, y: _} => 0   // matches when `x` equals %Int and `y` always, does not bind anything
+| #{x: z} => z            // matches and binds field `x` as `z`
+| #{x} => x               // syntax sugar, equivalent to {x: x}
+| #{} => 0                // matches any record type, but does not bind anything
 }

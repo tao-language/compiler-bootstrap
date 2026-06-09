@@ -1,14 +1,14 @@
 // Monomorphic (concrete) types don't have type parameters.
-// You declare types like any other definition with $let or beta reduction.
+// You declare types like any other definition with %let or beta reduction.
 
 // This could be explicit with <>.
-$let Bool = $type<> {
+%let Bool = %type<> {
 | #True({}) -> #Bool({})
 | #False({}) -> #Bool({})
 }
 
 // Or it could be implicit by omitting <>.
-$let Color = $type {
+%let Color = %type {
 | #Red({}) -> #Color({})
 | #Green({}) -> #Color({})
 | #Blue({}) -> #Color({})

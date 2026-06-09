@@ -1,4 +1,4 @@
 // Holes represent unknowns, starting with ?.
 // Typically used by a high level language desugarer,
 // to allow the type system to infer and check unknown types.
-($fn(x: ?) => x)(42)  // infers type $Int
+(%fn(x: ?) => x)(42)  // infers type %Int

@@ -1,8 +1,8 @@
 // In Generalized Algebraic Data Types (GADT) each constructor can have
 // a different return type.
-$let Vec = $type<n: $I32, a: $Type> {
+%let Vec = %type<n: %I32, a: %Type> {
 | #Nil({}) -> #Vec({n: 0, a: a})
-| @m. #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %i32_add<$I32>(m, 1), a: a})
+| @m. #Cons({x: a, xs: #Vec({n: m, a: a})}) -> #Vec({n: %i32_add<%I32>(m, 1), a: a})
 }
 
-#Cons({x: 3.14, xs: #Nil({})}) : #Vec({n: 1, a: $Float})
+#Cons({x: 3.14, xs: #Nil({})}) : #Vec({n: 1, a: %Float})

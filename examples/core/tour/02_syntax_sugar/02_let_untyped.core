@@ -1,5 +1,5 @@
 // Omitting the type annotation inserts a hole.
-// This is equivalent to `$let x: ? = 42`
-$let x = 42
+// This is equivalent to `%let x: ? = 42`
+%let x = 42
 
 x  // evaluates to 42

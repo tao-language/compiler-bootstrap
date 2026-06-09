@@ -1,4 +1,4 @@
 // Lambdas are unnamed functions, they take a single typed variable argument.
 // The body comes after a fat arrow (=>).
 // The input variable can then be accessed in the body.
-$fn(x: $Int) => x
+%fn(x: %Int) => x

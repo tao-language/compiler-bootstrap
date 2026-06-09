@@ -2,4 +2,4 @@
 // The domain is passed with parentheses.
 // The codomain comes after an arrow (->).
 // The input variable can then be accessed in the codomain (body).
-$pi(x: $Type) -> x
+%pi(x: %Type) -> x

@@ -1,6 +1,6 @@
-// Built-in types and keywords start with $ to differentiate them from variable names.
-// For example, $Int for integer types.
+// Built-in types and keywords start with % to differentiate them from variable names.
+// For example, %Int for integer types.
 // This allows high level languages to use any keywords without clashing with core names.
 
 // This is the type of types, also known as kinds in other languages.
-$Type
+%Type

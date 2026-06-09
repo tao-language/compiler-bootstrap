@@ -1,23 +1,23 @@
-$match ($Type) {
+%match (%Type) {
 // Type universes
-| $Type => 0    // implicit type universe 0
-| $Type<1> => 1 // explicit type universe 1
-| $Type<x> => x // any type universe, binds to `x`
+| %Type => 0    // implicit type universe 0
+| %Type<1> => 1 // explicit type universe 1
+| %Type<x> => x // any type universe, binds to `x`
 
 // Numeric literal types
-| $Int => 0     // matches any $Int type: $I32, $U64, etc.
-| $Float => 0   // matches any $Float type: $F32, F64
+| %Int => 0     // matches any %Int type: %I32, %U64, etc.
+| %Float => 0   // matches any %Float type: %F32, F64
 
 // Specific type patterns
-| $I8  => 0
-| $I16 => 0
-| $I32 => 0
-| $I64 => 0
-| $U8  => 0
-| $U16 => 0
-| $U32 => 0
-| $U64 => 0
-| $F16 => 0
-| $F32 => 0
-| $F64 => 0
+| %I8  => 0
+| %I16 => 0
+| %I32 => 0
+| %I64 => 0
+| %U8  => 0
+| %U16 => 0
+| %U32 => 0
+| %U64 => 0
+| %F16 => 0
+| %F32 => 0
+| %F64 => 0
 }

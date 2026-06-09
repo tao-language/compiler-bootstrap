@@ -1,2 +1,2 @@
 // Using a type annotation ensures an expression matches an expected type.
-42 : $I32
+42 : %I32

@@ -2,7 +2,7 @@
 // See 04_type_definitions/ for more in-depth information.
 
 // Type definitions have the following syntax:
-// $type<param1: Type1, param2: Type2, ..., paramN: TypeN> {
+// %type<param1: Type1, param2: Type2, ..., paramN: TypeN> {
 // | #Constructor1(argument) -> ReturnType
 // | @binding. #Constructor2(argument) -> ReturnType
 // ...
@@ -19,7 +19,7 @@
 // You can use records to pass zero or multiple arguments.
 
 // Here's how a Bool type could be defined (monomorphic).
-$type {
+%type {
 | #True({}) -> #Bool({})
 | #False({}) -> #Bool({})
 }
