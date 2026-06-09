@@ -87,4 +87,5 @@ pub fn factorial_test() {
         ]),
       ),
     )
+  assert type_ == v.Err
 }

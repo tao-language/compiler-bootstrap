@@ -86,6 +86,7 @@ pub fn check(
     _, _ -> {
       let ctx =
         unify(ctx, #(inferred_type, ast.span), #(expected_type, type_span))
+      let expected_type = unwrap(ctx.ffi, ctx.subst, expected_type)
       #(term, expected_type, ctx)
     }
   }
@@ -157,6 +158,13 @@ fn infer_rcd(
   fields: List(#(String, AST)),
 ) -> #(Term, Value, Context) {
   let #(fields, field_types, ctx) = infer_rcd_fields(ctx, fields)
+  let field_types =
+    list.map(field_types, fn(kv) {
+      let #(name, #(type_, default)) = kv
+      let type_ = unwrap(ctx.ffi, ctx.subst, type_)
+      let default = option.map(default, unwrap(ctx.ffi, ctx.subst, _))
+      #(name, #(type_, default))
+    })
   #(tm.Rcd(fields), v.RcdT(field_types), ctx)
 }
 
@@ -220,6 +228,7 @@ fn infer_call(
   let #(args, ctx) = check_call_args(ctx, args)
   let #(return_type, _, ctx) = infer(ctx, return_type)
   let return_type_val = eval(ctx.ffi, ctx.env, return_type)
+  let return_type_val = unwrap(ctx.ffi, ctx.subst, return_type_val)
   #(tm.Call(name, args), return_type_val, ctx)
 }
 
@@ -251,8 +260,10 @@ fn infer_lam(
   let level = list.length(ctx.env)
   let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(param_val)))
   let #(body, body_type_val, ctx) = infer(ctx, body)
+  let body_type_val = unwrap(ctx.ffi, ctx.subst, body_type_val)
   let body_type = quote(ctx.ffi, level + 1, body_type_val)
   let ctx = context.pop_vars(ctx, 1)
+  let param_val = unwrap(ctx.ffi, ctx.subst, param_val)
   #(
     tm.Lam(#(name, param), body),
     v.Pi(ctx.env, implicit, #(name, param_val), body_type),
@@ -289,6 +300,7 @@ fn infer_fix(
   let #(body, body_type, ctx) = infer(ctx, body)
   let ctx = context.pop_vars(ctx, 1)
   let ctx = unify(ctx, #(type_hole, span), #(body_type, span))
+  let body_type = unwrap(ctx.ffi, ctx.subst, body_type)
   #(tm.Fix(name, body), body_type, ctx)
 }
 
@@ -354,7 +366,8 @@ fn infer_app_args(
       let expected =
         v.Pi([], app_implicit, #("", arg_type), tm.Hole(body_type_id))
       let ctx = unify(ctx, #(v.hole(id), fun_span), #(expected, fun_span))
-      #(tm.App(fun, arg), v.hole(body_type_id), ctx)
+      let type_ = unwrap(ctx.ffi, ctx.subst, v.hole(body_type_id))
+      #(tm.App(fun, arg), type_, ctx)
     }
     // Not a function type
     _ -> {
