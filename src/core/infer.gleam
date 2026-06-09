@@ -41,7 +41,7 @@ pub fn infer(ctx: Context, ast: AST) -> #(Term, Value, Context) {
     ast.Lam(implicit, param, body) -> infer_lam(ctx, implicit, param, body)
     // ast.Pi(implicit, domain, codomain) ->
     //   infer_pi(ctx, implicit, domain, codomain, ast.span)
-    // ast.Fix(name, body) -> infer_fix(ctx, name, body, ast.span)
+    ast.Fix(name, body) -> infer_fix(ctx, name, body, ast.span)
     ast.App(implicit, fun, arg) -> infer_app(ctx, implicit, fun, arg, ast.span)
     // ast.TypeDef(params, constructors) ->
     //   infer_type_def(ctx, params, constructors, span)
@@ -282,14 +282,14 @@ fn infer_fix(
   body: AST,
   span: Span,
 ) -> #(Term, Value, Context) {
-  // let #(hole_id, ctx) = ctx.new_hole(ctx)
-  // let type_hole = ast.vhole(hole_id, [])
-  // let ctx = push_param_val(ctx, #(name, type_hole))
-  // let #(body, body_type, ctx) = infer(ctx, body)
-  // let ctx = pop_params(ctx, 1)
-  // let ctx = unify(ctx, #(type_hole, span), #(body_type, span))
-  // #(ast.Fix(name, body, span), body_type, ctx)
-  todo
+  let level = list.length(ctx.env)
+  let #(hole_id, ctx) = context.new_hole(ctx)
+  let type_hole = v.hole(hole_id)
+  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(type_hole)))
+  let #(body, body_type, ctx) = infer(ctx, body)
+  let ctx = context.pop_vars(ctx, 1)
+  let ctx = unify(ctx, #(type_hole, span), #(body_type, span))
+  #(tm.Fix(name, body), body_type, ctx)
 }
 
 fn infer_app(
