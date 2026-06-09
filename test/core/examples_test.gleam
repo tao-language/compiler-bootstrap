@@ -87,5 +87,14 @@ pub fn factorial_test() {
         ]),
       ),
     )
-  assert type_ == v.Err
+  assert type_
+    == v.Pi(
+      [v.var(0)],
+      False,
+      #("x", v.int_t),
+      tm.Match(tm.Var(0), [
+        tm.Case(tm.pint(0), None, tm.int_t),
+        tm.Case(tm.pvar("n"), None, tm.int_t),
+      ]),
+    )
 }
