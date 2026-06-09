@@ -266,7 +266,7 @@ pub fn infer_app_implicit_arg_test() {
 }
 
 pub fn infer_app_error_expected_explicit_argument_test() {
-  let #(implicit, explicit) = #(True, False)
+  let #(_implicit, explicit) = #(True, False)
   let ast = ast.app_implicit(ast.var("f", s), ast.int(42, s), s1)
   let pi = v.Pi([], explicit, #("x", v.int_t), tm.Var(0))
   let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(pi)))

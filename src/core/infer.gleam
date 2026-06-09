@@ -10,7 +10,7 @@ import core/context.{type Context}
 import core/eval.{eval}
 import core/literals.{type Literal, type LiteralType} as lit
 import core/quote.{quote}
-import core/term.{type Pattern, type Term} as tm
+import core/term.{type Term} as tm
 import core/unify.{unify}
 import core/unwrap.{unwrap, unwrap_term}
 import core/value.{type Value} as v
@@ -45,7 +45,7 @@ pub fn infer(ctx: Context, ast: AST) -> #(Term, Value, Context) {
     ast.App(implicit, fun, arg) -> infer_app(ctx, implicit, fun, arg, ast.span)
     // ast.TypeDef(params, constructors) ->
     //   infer_type_def(ctx, params, constructors, span)
-    ast.Match(arg, cases) -> infer_match(ctx, arg, cases, ast.span)
+    ast.Match(arg, cases) -> infer_match(ctx, arg, cases)
     ast.Err -> infer_err(ctx)
     _ -> todo
   }
@@ -384,7 +384,6 @@ fn infer_match(
   ctx: Context,
   arg_ast: AST,
   cases_ast: List(ast.Case),
-  span: Span,
 ) -> #(Term, Value, Context) {
   let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
   let #(cases, cases_type, ctx) =

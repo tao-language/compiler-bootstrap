@@ -1,6 +1,5 @@
 import core/literals.{type Literal, type LiteralType} as lit
-import gleam/list
-import gleam/option.{type Option, None, Some}
+import gleam/option.{type Option}
 import syntax/span.{type Span}
 
 // ============================================================================

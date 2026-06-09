@@ -21,7 +21,7 @@
 /// This means quoting a level to an index is the identity conversion.
 import core/literals.{type Literal, type LiteralType} as lit
 import gleam/list
-import gleam/option.{type Option, None, Some}
+import gleam/option.{type Option}
 
 // ============================================================================
 // TERMS (Syntax level - De Bruijn indices)

@@ -2,7 +2,7 @@
 ///
 /// TODO: parse/format checks
 import core/ast
-import core/context.{type FFI, Context, new_ctx}
+import core/context.{Context, new_ctx}
 import core/eval.{eval}
 import core/infer.{infer}
 import core/literals as lit

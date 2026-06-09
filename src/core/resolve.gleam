@@ -27,16 +27,33 @@ pub fn resolve(ffi: FFI, subst: Subst, size: Int, term: Term) -> Term {
         })
       tm.Rcd(fields)
     }
-    tm.RcdT(fields) -> todo
+    tm.RcdT(fields) -> {
+      let fields =
+        list.map(fields, fn(field) {
+          let #(name, #(term, default)) = field
+          let term = resolve(ffi, subst, size, term)
+          let default = option.map(default, resolve(ffi, subst, size, _))
+          #(name, #(term, default))
+        })
+      tm.RcdT(fields)
+    }
     tm.Call(name, args) ->
       tm.Call(name, list.map(args, resolve(ffi, subst, size, _)))
-    tm.Ann(term, _) -> todo
+    tm.Ann(term, type_) -> {
+      let term = resolve(ffi, subst, size, term)
+      let type_ = resolve(ffi, subst, size, type_)
+      tm.Ann(term, type_)
+    }
     tm.Lam(#(name, param), body) -> {
       let param = resolve(ffi, subst, size, param)
       let body = resolve(ffi, subst, size, body)
       tm.Lam(#(name, param), body)
     }
-    tm.Pi(implicit, domain, codomain) -> todo
+    tm.Pi(implicit, #(name, domain), codomain) -> {
+      let domain = resolve(ffi, subst, size, domain)
+      let codomain = resolve(ffi, subst, size, codomain)
+      tm.Pi(implicit, #(name, domain), codomain)
+    }
     tm.Fix(name, body) -> {
       let body = resolve(ffi, subst, size, body)
       tm.Fix(name, body)

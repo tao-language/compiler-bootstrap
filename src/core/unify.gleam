@@ -5,7 +5,6 @@ import core/context.{
 }
 import core/eval.{eval}
 import core/occurs.{occurs}
-import core/resolve.{resolve}
 import core/term.{type Term}
 import core/unwrap.{unwrap}
 import core/value.{type Env, type Neut, type TypeDefinition, type Value} as v
