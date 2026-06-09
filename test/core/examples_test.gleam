@@ -2,14 +2,15 @@
 ///
 /// TODO: parse/format checks
 import core/ast
-import core/context.{new_ctx}
+import core/context.{type FFI, Context, new_ctx}
 import core/eval.{eval}
 import core/infer.{infer}
+import core/literals as lit
 import core/resolve.{resolve}
 import core/term as tm
-import core/value as v
+import core/value.{type Value} as v
 import gleam/list
-import gleam/option.{None}
+import gleam/option.{type Option, None, Some}
 import gleeunit
 import syntax/span.{Span}
 
@@ -18,6 +19,20 @@ pub fn main() {
 }
 
 const s = Span("", 0, 0, 0, 0)
+
+fn int_mul(args: List(Value)) -> Option(Value) {
+  case args {
+    [v.Lit(lit.Int(x)), v.Lit(lit.Int(y))] -> Some(v.int(x * y))
+    _ -> None
+  }
+}
+
+fn int_sub(args: List(Value)) -> Option(Value) {
+  case args {
+    [v.Lit(lit.Int(x)), v.Lit(lit.Int(y))] -> Some(v.int(x - y))
+    _ -> None
+  }
+}
 
 pub fn factorial_test() {
   // TODO: parse/format checks
@@ -66,10 +81,15 @@ pub fn factorial_test() {
       s,
     )
 
-  let ctx0 = new_ctx
+  let ctx0 =
+    Context(..new_ctx, ffi: [
+      #("int_mul", int_mul),
+      #("int_sub", int_sub),
+    ])
   let #(term, type_, ctx) = infer(ctx0, ast_fn)
   assert ctx.errors == []
-  assert resolve(ctx.ffi, ctx.subst, list.length(ctx.env), term)
+  let term = resolve(ctx.ffi, ctx.subst, list.length(ctx.env), term)
+  assert term
     == tm.Fix(
       "f",
       tm.Lam(
@@ -97,4 +117,11 @@ pub fn factorial_test() {
         tm.Case(tm.pvar("n"), None, tm.int_t),
       ]),
     )
+  let factorial = fn(n) { eval(ctx.ffi, ctx.env, tm.App(term, tm.int(n))) }
+  assert factorial(0) == v.int(1)
+  assert factorial(1) == v.int(1)
+  assert factorial(2) == v.int(2)
+  assert factorial(3) == v.int(6)
+  assert factorial(4) == v.int(24)
+  assert factorial(5) == v.int(120)
 }

@@ -64,52 +64,68 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
   }
 }
 
-pub fn do_app(ffi: FFI, fun: Value, arg: Value) -> Value {
-  case fun {
+pub fn do_app(ffi: FFI, fun_val: Value, arg_val: Value) -> Value {
+  case fun_val {
     // Neutral application
-    v.Neut(neut_fun) -> v.app(neut_fun, arg)
+    v.Neut(neut_fun) -> v.app(neut_fun, arg_val)
     // Lambda application: β-reduction
-    v.Lam(env, _, body) -> eval(ffi, [arg, ..env], body)
+    v.Lam(env, _, body) -> eval(ffi, [arg_val, ..env], body)
+    // Recursive function application
+    v.Fix(env, _, body) -> {
+      let body_val = eval(ffi, [fun_val, ..env], body)
+      do_app(ffi, body_val, arg_val)
+    }
+    // Not a function
     _ -> v.Err
   }
 }
 
-pub fn do_call(ffi: FFI, name: String, args: List(Value)) -> Value {
+pub fn do_call(ffi: FFI, name: String, args_val: List(Value)) -> Value {
   let result = case list.key_find(ffi, name) {
-    Ok(call) -> call(args)
+    Ok(call) -> call(args_val)
     Error(Nil) -> None
   }
   case result {
     Some(value) -> value
-    None -> v.call(name, args)
+    None -> v.call(name, args_val)
   }
 }
 
-pub fn do_match(ffi: FFI, env: Env, arg: Value, cases: List(Case)) -> Value {
-  case arg {
+pub fn do_match(
+  ffi: FFI,
+  env: Env,
+  arg_val: Value,
+  cases: List(Case),
+) -> Value {
+  case arg_val {
     v.Neut(arg_neut) -> v.match(env, arg_neut, cases)
-    _ -> do_match_case_list(ffi, env, arg, cases)
+    _ -> do_match_case_list(ffi, env, arg_val, cases)
   }
 }
 
 fn do_match_case_list(
   ffi: FFI,
   env: Env,
-  arg: Value,
+  arg_val: Value,
   cases: List(Case),
 ) -> Value {
   case cases {
     [] -> v.Err
     [case_, ..cases] ->
-      case do_match_case(ffi, env, arg, case_) {
+      case do_match_case(ffi, env, arg_val, case_) {
         Some(env) -> eval(ffi, env, case_.body)
-        None -> do_match_case_list(ffi, env, arg, cases)
+        None -> do_match_case_list(ffi, env, arg_val, cases)
       }
   }
 }
 
-fn do_match_case(ffi: FFI, env: Env, arg: Value, case_: Case) -> Option(Env) {
-  case match_pattern(case_.pattern, arg) {
+fn do_match_case(
+  ffi: FFI,
+  env: Env,
+  arg_val: Value,
+  case_: Case,
+) -> Option(Env) {
+  case match_pattern(case_.pattern, arg_val) {
     Some(bindings) -> {
       let env = list.append(bindings, env)
       case case_.guard {
