@@ -5,8 +5,10 @@ import core/ast
 import core/context.{new_ctx}
 import core/eval.{eval}
 import core/infer.{infer}
+import core/resolve.{resolve}
 import core/term as tm
 import core/value as v
+import gleam/list
 import gleam/option.{None}
 import gleeunit
 import syntax/span.{Span}
@@ -22,7 +24,7 @@ pub fn factorial_test() {
   // $fix f. $fn(x: ?)
   // => $match(x) {
   // | 0 => 1
-  // | n => @int_mul<$Int>(n, @int_sub(n, 1))
+  // | n => @int_mul<$Int>(n, f @int_sub(n, 1))
   // }
   let ast_fn =
     ast.fix(
@@ -39,11 +41,15 @@ pub fn factorial_test() {
               ast.call(
                 "int_mul",
                 [
-                  ast.var("x", s),
-                  ast.call(
-                    "int_sub",
-                    [ast.var("x", s), ast.int(1, s)],
-                    ast.int_t(s),
+                  ast.var("n", s),
+                  ast.app(
+                    ast.var("f", s),
+                    ast.call(
+                      "int_sub",
+                      [ast.var("x", s), ast.int(1, s)],
+                      ast.int_t(s),
+                      s,
+                    ),
                     s,
                   ),
                 ],
@@ -63,4 +69,22 @@ pub fn factorial_test() {
   let ctx0 = new_ctx
   let #(term, type_, ctx) = infer(ctx0, ast_fn)
   assert ctx.errors == []
+  assert resolve(ctx.ffi, ctx.subst, list.length(ctx.env), term)
+    == tm.Fix(
+      "f",
+      tm.Lam(
+        #("x", tm.int_t),
+        tm.Match(tm.Var(0), [
+          tm.Case(tm.pint(0), None, tm.int(1)),
+          tm.Case(
+            tm.pvar("n"),
+            None,
+            tm.Call("int_mul", [
+              tm.Var(0),
+              tm.App(tm.Var(2), tm.Call("int_sub", [tm.Var(1), tm.int(1)])),
+            ]),
+          ),
+        ]),
+      ),
+    )
 }

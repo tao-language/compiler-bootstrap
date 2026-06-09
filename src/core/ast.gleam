@@ -171,8 +171,12 @@ pub fn fix(name: String, body: AST, span: Span) {
   AST(Fix(name, body), span)
 }
 
-pub fn app(implicit: Bool, fun: AST, arg: AST, span: Span) {
-  AST(App(implicit, fun, arg), span)
+pub fn app(fun: AST, arg: AST, span: Span) {
+  AST(App(False, fun, arg), span)
+}
+
+pub fn app_implicit(fun: AST, arg: AST, span: Span) {
+  AST(App(True, fun, arg), span)
 }
 
 pub fn match(arg: AST, cases: List(Case), span: Span) {

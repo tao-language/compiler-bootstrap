@@ -235,8 +235,7 @@ pub fn infer_lam_typeof_test() {
 // ============================================================================
 
 pub fn infer_app_error_not_a_function_test() {
-  let #(_implicit, explicit) = #(True, False)
-  let ast = ast.app(explicit, ast.float(3.14, s1), ast.int(1, s), s)
+  let ast = ast.app(ast.float(3.14, s1), ast.int(1, s), s)
   let ctx0 = new_ctx
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == [context.NotAFunction(tm.float(3.14), v.float_t, s1)]
@@ -246,7 +245,7 @@ pub fn infer_app_error_not_a_function_test() {
 
 pub fn infer_app_explicit_arg_test() {
   let #(_implicit, explicit) = #(True, False)
-  let ast = ast.app(explicit, ast.var("f", s), ast.int(42, s), s)
+  let ast = ast.app(ast.var("f", s), ast.int(42, s), s)
   let pi = v.Pi([], explicit, #("x", v.int_t), tm.Var(0))
   let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(pi)))
   let #(term, type_, ctx) = infer(ctx0, ast)
@@ -257,7 +256,7 @@ pub fn infer_app_explicit_arg_test() {
 
 pub fn infer_app_implicit_arg_test() {
   let #(implicit, _explicit) = #(True, False)
-  let ast = ast.app(implicit, ast.var("f", s), ast.int(42, s), s)
+  let ast = ast.app_implicit(ast.var("f", s), ast.int(42, s), s)
   let pi = v.Pi([], implicit, #("a", v.int_t), tm.Var(0))
   let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(pi)))
   let #(term, type_, ctx) = infer(ctx0, ast)
@@ -268,7 +267,7 @@ pub fn infer_app_implicit_arg_test() {
 
 pub fn infer_app_error_expected_explicit_argument_test() {
   let #(implicit, explicit) = #(True, False)
-  let ast = ast.app(implicit, ast.var("f", s), ast.int(42, s), s1)
+  let ast = ast.app_implicit(ast.var("f", s), ast.int(42, s), s1)
   let pi = v.Pi([], explicit, #("x", v.int_t), tm.Var(0))
   let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(pi)))
   let #(term, type_, ctx) = infer(ctx0, ast)
@@ -278,21 +277,31 @@ pub fn infer_app_error_expected_explicit_argument_test() {
   assert type_ == v.Err
 }
 
+pub fn infer_app_hole_expansion_test() {
+  let ast = ast.app(ast.var("f", s), ast.int(42, s), s)
+  let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(v.hole(-1))))
+  let #(term, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  assert term == tm.App(tm.Var(0), tm.int(42))
+  assert type_ == v.hole(1)
+  assert ctx.subst == [#(0, v.Pi([], False, #("", v.int_t), tm.Hole(1)))]
+}
+
 pub fn infer_app_implicit_expansion_test() {
-  let #(implicit, explicit) = #(True, False)
-  let ast = ast.app(explicit, ast.var("f", s), ast.int(42, s), s)
+  let #(implicit, _explicit) = #(True, False)
+  let ast = ast.app(ast.var("f", s), ast.int(42, s), s)
   let pi = v.Pi([], implicit, #("a", v.Typ(0)), tm.Var(0))
   let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(pi)))
   let #(term, type_, ctx) = infer(ctx0, ast)
-  let error = context.NotAFunction(tm.App(tm.Var(0), tm.Hole(0)), v.hole(0), s)
-  assert ctx.errors == [error]
-  assert term == tm.Err
-  assert type_ == v.Err
+  assert ctx.errors == []
+  assert term == tm.App(tm.App(tm.Var(0), tm.Hole(0)), tm.int(42))
+  assert type_ == v.hole(1)
+  assert ctx.subst == [#(0, v.Pi([], False, #("", v.int_t), tm.Hole(1)))]
 }
 
 pub fn infer_app_implicit_solve_hole_test() {
   let #(implicit, explicit) = #(True, False)
-  let ast = ast.app(explicit, ast.var("identity", s), ast.int(1, s), s)
+  let ast = ast.app(ast.var("identity", s), ast.int(1, s), s)
   let pi =
     v.Pi(
       [],

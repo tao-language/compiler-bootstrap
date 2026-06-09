@@ -60,7 +60,11 @@ fn quote_neut(ffi: FFI, size: Int, neut: Neut) -> Term {
   case neut {
     v.NVar(level) -> tm.Var(size - level - 1)
     v.NHole(id) -> tm.Hole(id)
-    v.NApp(fun_neut, arg) -> todo
+    v.NApp(fun_neut, arg_val) -> {
+      let fun = quote_neut(ffi, size, fun_neut)
+      let arg = quote(ffi, size, arg_val)
+      tm.App(fun, arg)
+    }
     v.NMatch(env, arg_neut, cases) -> {
       let arg = quote_neut(ffi, size, arg_neut)
       let cases = list.map(cases, quote_case(ffi, env, _))

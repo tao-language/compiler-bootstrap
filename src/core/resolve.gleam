@@ -31,12 +31,27 @@ pub fn resolve(ffi: FFI, subst: Subst, size: Int, term: Term) -> Term {
     tm.Call(name, args) ->
       tm.Call(name, list.map(args, resolve(ffi, subst, size, _)))
     tm.Ann(term, _) -> todo
-    tm.Lam(param, body) -> todo
+    tm.Lam(#(name, param), body) -> {
+      let param = resolve(ffi, subst, size, param)
+      let body = resolve(ffi, subst, size, body)
+      tm.Lam(#(name, param), body)
+    }
     tm.Pi(implicit, domain, codomain) -> todo
-    tm.Fix(name, body) -> todo
-    tm.App(fun, arg) -> todo
+    tm.Fix(name, body) -> {
+      let body = resolve(ffi, subst, size, body)
+      tm.Fix(name, body)
+    }
+    tm.App(fun, arg) -> {
+      let fun = resolve(ffi, subst, size, fun)
+      let arg = resolve(ffi, subst, size, arg)
+      tm.App(fun, arg)
+    }
     tm.TypeDef(type_def) -> todo
-    tm.Match(arg, cases) -> todo
+    tm.Match(arg, cases) -> {
+      let arg = resolve(ffi, subst, size, arg)
+      let cases = list.map(cases, resolve_case(ffi, subst, size, _))
+      tm.Match(arg, cases)
+    }
     tm.Err -> term
   }
 }

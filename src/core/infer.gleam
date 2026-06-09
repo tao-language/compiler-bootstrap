@@ -343,6 +343,19 @@ fn infer_app_args(
           #(tm.Err, v.Err, context.with_err(ctx, error))
         }
       }
+    // Hole expansion
+    v.Neut(v.NHole(id)) -> {
+      let #(id, ctx) = case id >= 0 {
+        True -> #(id, ctx)
+        False -> context.new_hole(ctx)
+      }
+      let #(body_type_id, ctx) = context.new_hole(ctx)
+      let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
+      let expected =
+        v.Pi([], app_implicit, #("", arg_type), tm.Hole(body_type_id))
+      let ctx = unify(ctx, #(v.hole(id), fun_span), #(expected, fun_span))
+      #(tm.App(fun, arg), v.hole(body_type_id), ctx)
+    }
     // Not a function type
     _ -> {
       // Still infer the arg to get as much additional information as possible in
