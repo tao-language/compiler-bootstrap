@@ -10,7 +10,7 @@ import syntax/span.{type Span}
 ///
 /// Variables use names instead of De Bruijn indices. A separate conversion
 /// pass (term_to_debruijn) converts NamedTerm to Term, calculating
-/// De Bruijn indices and desugaring syntax sugar like $let.
+/// De Bruijn indices and desugaring syntax sugar like %let.
 ///
 /// This separates parsing from index calculation, making both simpler.
 pub type AST {

@@ -6,13 +6,14 @@
 ///   gleam run --help
 ///   gleam run check <file.core>
 import argv.{Argv}
-import cli/debug_core
+import cli/debug_core.{debug_core}
 import cli/run as cli
 import gleam/io
 
 const help = "Tao compiler bootstrap
 
 Usage:
+  tao                           Enter interactive REPL mode
   tao <filename>                Run a .tao or .core file
   tao -c 'expression'           Run a Tao expression
   tao debug-core 'expression'   Debug a Core expression
@@ -21,42 +22,29 @@ Usage:
 
 pub fn main() {
   let Argv(arguments: args, ..) = argv.load()
-  todo
-  // case parse_args(args) {
-  //   Ok(command) -> run_command(command)
-  //   Error(msg) -> {
-  //     io.println("Error: " <> msg)
-  //     io.print(help)
-  //   }
-  // }
+  case args {
+    [] -> todo as "TODO: CLI repl"
+    ["--help", ..] -> {
+      io.print(help)
+      exit(0)
+    }
+    // ["-c", expr, ..rest] ->
+    //   case rest {
+    //     [] -> Ok(Run(Inline(expr), False, False))
+    //     _ -> Error("Too many arguments after -c expression")
+    //   }
+    ["debug-core", source, ..] -> debug_core(source)
+    // [path, ..rest] ->
+    //   case rest {
+    //     [] -> Ok(Run(File(path), False, False))
+    //     _ -> Error("Too many arguments")
+    //   }
+    _ -> {
+      echo args
+      todo as "CLI command not implemented"
+    }
+  }
 }
-// /// Parse command-line arguments into a Command.
-// pub fn parse_args(args: List(String)) -> Result(Command, String) {
-//   case args {
-//     ["--help", ..] -> Ok(Help)
-//     ["--debug", path, ..rest] ->
-//       case rest {
-//         [] -> Ok(Run(File(path), False, True))
-//         _ -> Error("Too many arguments for --debug")
-//       }
-//     ["-c", expr, ..rest] ->
-//       case rest {
-//         [] -> Ok(Run(Inline(expr), False, False))
-//         _ -> Error("Too many arguments after -c expression")
-//       }
-//     ["debug-core", expr, ..rest] ->
-//       case parse_debug_flags(rest, False, False) {
-//         Ok(flags) -> Ok(DebugCore(expr, flags.0, flags.1))
-//         Error(msg) -> Error(msg)
-//       }
-//     [path, ..rest] ->
-//       case rest {
-//         [] -> Ok(Run(File(path), False, False))
-//         _ -> Error("Too many arguments")
-//       }
-//     _ -> Ok(Help)
-//   }
-// }
 
 // /// Execute a command.
 // pub fn run_command(command: Command) -> Nil {
@@ -71,3 +59,7 @@ pub fn main() {
 //       debug_core.run(expr, trace_parser, trace_infer)
 //   }
 // }
+
+// Declare the external Erlang halt function
+@external(erlang, "erlang", "halt")
+pub fn exit(status: Int) -> Nil
