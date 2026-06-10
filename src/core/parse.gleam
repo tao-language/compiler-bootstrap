@@ -81,19 +81,19 @@ pub type Token {
 // ============================================================================
 
 pub fn lex(
-  name: String,
+  file: String,
   source: String,
 ) -> Result(List(LexToken(Token)), Error) {
   case lexer.run(source, core_lexer()) {
     Ok(tokens) -> Ok(tokens)
     Error(lexer.NoMatchFound(row, col, lexeme)) ->
-      Error(e.UnexpectedToken(lexeme, Span(name, row, col, row, col)))
+      Error(e.UnexpectedToken(lexeme, Span(file, row, col, row, col)))
   }
 }
 
-pub fn parse(name: String, source: String) -> Result(AST, Error) {
-  use tokens <- try(lex(name, source))
-  case nibble.run(tokens, term(name)) {
+pub fn parse(file: String, source: String) -> Result(AST, Error) {
+  use tokens <- try(lex(file, source))
+  case nibble.run(tokens, term(file)) {
     Ok(ast) -> Ok(ast)
     Error(err) -> {
       echo err
@@ -132,7 +132,8 @@ fn core_lexer() -> Lexer(Token, Nil) {
     lexer.keyword("%error", "[^\\w]", KwError),
 
     // Identifiers
-    lexer.variable(set.new(), Ident),
+    lexer.keyword("_", "[^\\w]", Underscore),
+    lexer.identifier("[_a-zA-Z]", "[_a-zA-Z0-9]", set.new(), Ident),
 
     // Int and Float literals
     lexer.number(IntLit, FloatLit),
@@ -163,7 +164,6 @@ fn core_lexer() -> Lexer(Token, Nil) {
     lexer.token("?", Question),
     lexer.token("#", Hash),
     lexer.token("@", At),
-    lexer.token("_", Underscore),
 
     // Whitespace
     lexer.whitespace(Nil) |> lexer.ignore,
@@ -180,7 +180,8 @@ fn term(file: String) -> Parser(AST, Token, Nil) {
     hole(file),
     int(file),
     float(file),
-    lit_type_expr(file),
+    lit_type(file),
+    var(file),
     // lambda_expr(file),
   // pi_expr(file),
   // let_expr(file),
@@ -193,7 +194,6 @@ fn term(file: String) -> Parser(AST, Token, Nil) {
   // record_expr(file),
   // paren_expr(file),
   // paren_ann_expr(file),
-  // ident_expr(file),
   ])
 }
 
@@ -202,14 +202,7 @@ fn typ(file: String) -> Parser(AST, Token, Nil) {
   use _ <- do(nibble.token(KwType))
   use universe <- do(
     nibble.one_of([
-      {
-        // %Type<universe>
-        use _ <- do(nibble.token(LAngle))
-        use n <- do(take_int())
-        use _ <- do(nibble.token(RAngle))
-        return(n)
-      },
-      // %Type (implicit universe 0)
+      angle_brackets(take_int()),
       nibble.return(0),
     ]),
   )
@@ -222,14 +215,7 @@ fn hole(file: String) -> Parser(AST, Token, Nil) {
   use _ <- do(nibble.token(Question))
   use id <- do(
     nibble.one_of([
-      {
-        // ?<universe>
-        use _ <- do(nibble.token(LAngle))
-        use n <- do(take_int())
-        use _ <- do(nibble.token(RAngle))
-        return(n)
-      },
-      // ? (implicit id -1)
+      angle_brackets(take_int()),
       nibble.return(-1),
     ]),
   )
@@ -246,16 +232,23 @@ fn int(file: String) -> Parser(AST, Token, Nil) {
 
 fn float(file: String) -> Parser(AST, Token, Nil) {
   use start <- do(get_span(file))
-  use f <- do(take_float())
+  use num <- do(take_float())
   use end <- do(get_span(file))
-  return(ast.float(f, span.merge(start, end)))
+  return(ast.float(num, span.merge(start, end)))
 }
 
-fn lit_type_expr(file: String) -> Parser(AST, Token, Nil) {
+fn lit_type(file: String) -> Parser(AST, Token, Nil) {
   use start <- do(get_span(file))
-  use lit_type <- do(take_lit_type())
+  use type_ <- do(take_lit_type())
   use end <- do(get_span(file))
-  return(ast.AST(ast.LitT(lit_type), span.merge(start, end)))
+  return(ast.AST(ast.LitT(type_), span.merge(start, end)))
+}
+
+fn var(file: String) -> Parser(AST, Token, Nil) {
+  use start <- do(get_span(file))
+  use name <- do(take_ident())
+  use end <- do(get_span(file))
+  return(ast.var(name, span.merge(start, end)))
 }
 
 // fn lambda_expr(file: String) -> Parser(AST, Token, Nil) {
@@ -535,13 +528,6 @@ fn lit_type_expr(file: String) -> Parser(AST, Token, Nil) {
 //   return(AST(core.ast.Ann(expr, typ), span.merge(expr.span, typ.span)))
 // }
 
-// fn ident_expr(file: String) -> Parser(AST, Token, Nil) {
-//   use start <- do(get_span(file))
-//   use name <- do(take_ident())
-//   use end <- do(get_span(file))
-//   return(AST(core.ast.Var(name), span.merge(start, end)))
-// }
-
 // // ============================================================================
 // // IMPLICIT PARAM LIST
 // // ============================================================================
@@ -799,6 +785,13 @@ fn take_lit_type() -> Parser(LiteralType, Token, Nil) {
       _ -> None
     }
   })
+}
+
+fn angle_brackets(parser: Parser(a, Token, Nil)) -> Parser(a, Token, Nil) {
+  use _ <- do(nibble.token(LAngle))
+  use n <- do(parser)
+  use _ <- do(nibble.token(RAngle))
+  return(n)
 }
 
 fn comma_separated(
