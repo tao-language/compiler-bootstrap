@@ -4,10 +4,8 @@
 /// - Basic type/literal unification
 /// - Error handling for mismatches
 /// - Constructor tag and argument unification
-import core/context.{
-  CallArityMismatch, Context, InfiniteType, RcdFieldsMismatch, TypeMismatch,
-  TypeVariantUndefined, new_ctx, with_err,
-}
+import core/context.{Context, new_ctx, with_err}
+import core/error as e
 import core/literals as lit
 import core/term as tm
 import core/unify.{unify}
@@ -41,9 +39,9 @@ pub fn unify_vtyp_type_mismatch_test() {
   let b = v.Typ(1)
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, TypeMismatch(#(a, s1), #(b, s2)))
+    == with_err(ctx0, e.TypeMismatch(#(a, s1), #(b, s2)))
   assert unify(ctx0, #(b, s2), #(a, s1))
-    == with_err(ctx0, TypeMismatch(#(b, s2), #(a, s1)))
+    == with_err(ctx0, e.TypeMismatch(#(b, s2), #(a, s1)))
 }
 
 // ============================================================================
@@ -63,9 +61,9 @@ pub fn unify_vlit_type_mismatch_test() {
   let b = v.int(2)
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, TypeMismatch(#(a, s1), #(b, s2)))
+    == with_err(ctx0, e.TypeMismatch(#(a, s1), #(b, s2)))
   assert unify(ctx0, #(b, s2), #(a, s1))
-    == with_err(ctx0, TypeMismatch(#(b, s2), #(a, s1)))
+    == with_err(ctx0, e.TypeMismatch(#(b, s2), #(a, s1)))
 }
 
 // ============================================================================
@@ -85,9 +83,9 @@ pub fn unify_litt_type_mismatch_test() {
   let b = v.float_t
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, TypeMismatch(#(a, s1), #(b, s2)))
+    == with_err(ctx0, e.TypeMismatch(#(a, s1), #(b, s2)))
   assert unify(ctx0, #(b, s2), #(a, s1))
-    == with_err(ctx0, TypeMismatch(#(b, s2), #(a, s1)))
+    == with_err(ctx0, e.TypeMismatch(#(b, s2), #(a, s1)))
 }
 
 // ============================================================================
@@ -107,9 +105,9 @@ pub fn unify_ctr_tag_mismatch_test() {
   let b = v.Ctr("B", v.int_t)
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, TypeMismatch(#(a, s1), #(b, s2)))
+    == with_err(ctx0, e.TypeMismatch(#(a, s1), #(b, s2)))
   assert unify(ctx0, #(b, s2), #(a, s1))
-    == with_err(ctx0, TypeMismatch(#(b, s2), #(a, s1)))
+    == with_err(ctx0, e.TypeMismatch(#(b, s2), #(a, s1)))
 }
 
 pub fn unify_ctr_arg_mismatch_test() {
@@ -117,9 +115,9 @@ pub fn unify_ctr_arg_mismatch_test() {
   let b = v.Ctr("A", v.float_t)
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, TypeMismatch(#(v.int_t, s1), #(v.float_t, s2)))
+    == with_err(ctx0, e.TypeMismatch(#(v.int_t, s1), #(v.float_t, s2)))
   assert unify(ctx0, #(b, s2), #(a, s1))
-    == with_err(ctx0, TypeMismatch(#(v.float_t, s2), #(v.int_t, s1)))
+    == with_err(ctx0, e.TypeMismatch(#(v.float_t, s2), #(v.int_t, s1)))
 }
 
 // ============================================================================
@@ -131,9 +129,9 @@ pub fn unify_ctr_gadt_undefined_type_test() {
   let b = v.Ctr("T", v.float_t)
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, TypeMismatch(#(a, s1), #(b, s2)))
+    == with_err(ctx0, e.TypeMismatch(#(a, s1), #(b, s2)))
   assert unify(ctx0, #(b, s2), #(a, s1))
-    == with_err(ctx0, TypeMismatch(#(b, s2), #(a, s1)))
+    == with_err(ctx0, e.TypeMismatch(#(b, s2), #(a, s1)))
 }
 
 pub fn unify_ctr_gadt_undefined_variant_test() {
@@ -145,8 +143,8 @@ pub fn unify_ctr_gadt_undefined_variant_test() {
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
   assert ctx.errors
     == [
-      TypeMismatch(#(v.float_t, s2), #(v.Rcd([]), s2)),
-      TypeVariantUndefined(#("A", s1), #([], s2)),
+      e.TypeMismatch(#(v.float_t, s2), #(v.Rcd([]), s2)),
+      e.TypeVariantUndefined(#("A", s1), #([], s2)),
     ]
 }
 
@@ -215,7 +213,7 @@ pub fn unify_ctr_gadt_option_test() {
   // Error: type mismatch
   // TODO: save spans in ctx.types for better error reporting
   let ctx = unify(ctx0, #(option(v.int_t), s1), #(some(v.float_t), s2))
-  assert ctx.errors == [TypeMismatch(#(v.float_t, s2), #(v.int_t, s1))]
+  assert ctx.errors == [e.TypeMismatch(#(v.float_t, s2), #(v.int_t, s1))]
 }
 
 pub fn unify_ctr_gadt_vec_test() {
@@ -282,12 +280,12 @@ pub fn unify_ctr_gadt_vec_test() {
   let a = vec(v.int(1), v.float_t)
   let b = nil
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
-  assert ctx.errors == [TypeMismatch(#(v.int(1), s1), #(v.int(0), s1))]
+  assert ctx.errors == [e.TypeMismatch(#(v.int(1), s1), #(v.int(0), s1))]
   // Error: nested Cons with type mismatch
   let a = vec(v.int(2), v.float_t)
   let b = cons(v.int_t, cons(v.float_t, nil))
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
-  assert ctx.errors == [TypeMismatch(#(v.int_t, s2), #(v.float_t, s1))]
+  assert ctx.errors == [e.TypeMismatch(#(v.int_t, s2), #(v.float_t, s1))]
 }
 
 // ============================================================================
@@ -306,7 +304,7 @@ pub fn unify_rcd_fields_mismatch_test() {
   let b = v.Rcd([#("y", v.int_t)])
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, RcdFieldsMismatch(#(["x"], s1), #(["y"], s2)))
+    == with_err(ctx0, e.RcdFieldsMismatch(#(["x"], s1), #(["y"], s2)))
 }
 
 pub fn unify_rcd_different_order_test() {
@@ -348,7 +346,7 @@ pub fn unify_rcdt_fields_mismatch_test() {
   let b = v.RcdT([#("y", #(v.int_t, None))])
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, RcdFieldsMismatch(#(["x"], s1), #(["y"], s2)))
+    == with_err(ctx0, e.RcdFieldsMismatch(#(["x"], s1), #(["y"], s2)))
 }
 
 pub fn unify_rcdt_different_order_test() {
@@ -378,7 +376,7 @@ pub fn unify_rcdt_default_mismatch_test() {
   let b = v.RcdT([#("x", #(v.int_t, Some(v.int(1))))])
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, TypeMismatch(#(v.int(0), s1), #(v.int(1), s2)))
+    == with_err(ctx0, e.TypeMismatch(#(v.int(0), s1), #(v.int(1), s2)))
 }
 
 // ============================================================================
@@ -428,7 +426,7 @@ pub fn unify_neut_nhole_infinite_type_test() {
   let b = v.Neut(v.NApp(v.NHole(0), v.int_t))
   let ctx0 = new_ctx
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
-  let error = InfiniteType(0, v.Neut(v.NApp(v.NHole(0), v.int_t)), s2)
+  let error = e.InfiniteType(0, v.Neut(v.NApp(v.NHole(0), v.int_t)), s2)
   assert ctx.errors == [error]
 }
 
@@ -492,7 +490,7 @@ pub fn unify_neut_ncall_arity_mismatch_test() {
   let b = v.Neut(v.NCall("f", [v.int_t, v.float_t, v.i64]))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, CallArityMismatch(#(2, s1), #(3, s2)))
+    == with_err(ctx0, e.CallArityMismatch(#(2, s1), #(3, s2)))
 }
 
 // ============================================================================
@@ -519,7 +517,7 @@ pub fn unify_lam_param_type_mismatch_test() {
   let b = v.Lam([], #("y", v.float_t), tm.Var(0))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, TypeMismatch(#(v.int_t, s1), #(v.float_t, s2)))
+    == with_err(ctx0, e.TypeMismatch(#(v.int_t, s1), #(v.float_t, s2)))
 }
 
 pub fn unify_lam_body_mismatch_test() {
@@ -527,7 +525,7 @@ pub fn unify_lam_body_mismatch_test() {
   let b = v.Lam([], #("y", v.int_t), tm.int(2))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, TypeMismatch(#(v.int(1), s1), #(v.int(2), s2)))
+    == with_err(ctx0, e.TypeMismatch(#(v.int(1), s1), #(v.int(2), s2)))
 }
 
 // ============================================================================
@@ -547,7 +545,7 @@ pub fn unify_pi_implicit_mismatch_test() {
   let b = v.Pi([], False, #("y", v.int_t), tm.Var(0))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, TypeMismatch(#(a, s1), #(b, s2)))
+    == with_err(ctx0, e.TypeMismatch(#(a, s1), #(b, s2)))
 }
 
 pub fn unify_pi_closure_test() {
@@ -562,7 +560,7 @@ pub fn unify_pi_param_type_mismatch_test() {
   let b = v.Pi([], False, #("y", v.float_t), tm.Var(0))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, TypeMismatch(#(v.int_t, s1), #(v.float_t, s2)))
+    == with_err(ctx0, e.TypeMismatch(#(v.int_t, s1), #(v.float_t, s2)))
 }
 
 pub fn unify_pi_body_mismatch_test() {
@@ -570,7 +568,7 @@ pub fn unify_pi_body_mismatch_test() {
   let b = v.Pi([], False, #("y", v.int_t), tm.int(2))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, TypeMismatch(#(v.int(1), s1), #(v.int(2), s2)))
+    == with_err(ctx0, e.TypeMismatch(#(v.int(1), s1), #(v.int(2), s2)))
 }
 
 // ============================================================================
@@ -597,7 +595,7 @@ pub fn unify_fix_body_mismatch_test() {
   let b = v.Fix([], "y", tm.int(2))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, TypeMismatch(#(v.int(1), s1), #(v.int(2), s2)))
+    == with_err(ctx0, e.TypeMismatch(#(v.int(1), s1), #(v.int(2), s2)))
 }
 
 // ============================================================================
@@ -621,5 +619,5 @@ pub fn unify_err_mismatch_test() {
   let b = v.int(0)
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, TypeMismatch(#(a, s1), #(b, s2)))
+    == with_err(ctx0, e.TypeMismatch(#(a, s1), #(b, s2)))
 }

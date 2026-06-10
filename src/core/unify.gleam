@@ -1,8 +1,6 @@
 /// Unification — Higher-order unification for Core values.
-import core/context.{
-  type Context, CallArityMismatch, Context, InfiniteType, NeutralTypeMismatch,
-  RcdFieldsMismatch, TypeMismatch, TypeVariantUndefined, with_err,
-}
+import core/context.{type Context, Context, with_err}
+import core/error as e
 import core/eval.{eval}
 import core/occurs.{occurs}
 import core/term.{type Term}
@@ -33,7 +31,8 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
           unify_gadt(ctx, #(t1, a1, s1), #(env, tdef, t2, a2, s2))
         Some(#(env, tdef)), _ ->
           unify_gadt(ctx, #(t2, a2, s2), #(env, tdef, t1, a1, s1))
-        None, None -> with_err(ctx, TypeMismatch(#(value1, s1), #(value2, s2)))
+        None, None ->
+          with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)))
       }
     v.Rcd(fields1), v.Rcd(fields2) ->
       unify_rcd(ctx, #(fields1, s1), #(fields2, s2))
@@ -60,7 +59,8 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       todo as "unify TypeDef"
     }
     v.Err, v.Err -> ctx
-    value1, value2 -> with_err(ctx, TypeMismatch(#(value1, s1), #(value2, s2)))
+    value1, value2 ->
+      with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)))
   }
 }
 
@@ -116,7 +116,10 @@ fn unify_gadt(
   // to this type definition.
   let ctx = case list.key_find(tdef.variants, ctr_tag) {
     Error(Nil) ->
-      with_err(ctx, TypeVariantUndefined(#(ctr_tag, s1), #(tdef.variants, s2)))
+      with_err(
+        ctx,
+        e.TypeVariantUndefined(#(ctr_tag, s1), #(tdef.variants, s2)),
+      )
     Ok(variant) -> {
       // Instantiate the variant's own parameters (e.g., the `m` in Cons<m>).
       // These are separate from the type's params and need their own scope.
@@ -152,7 +155,7 @@ fn unify_rcd(
   }
   let ctx = case sorted_names(fields1), sorted_names(fields2) {
     names1, names2 if names1 != names2 ->
-      with_err(ctx, RcdFieldsMismatch(#(names1, s1), #(names2, s2)))
+      with_err(ctx, e.RcdFieldsMismatch(#(names1, s1), #(names2, s2)))
     _, _ -> ctx
   }
   unify_rcd_fields(ctx, #(fields1, s1), #(fields2, s2))
@@ -191,7 +194,7 @@ fn unify_rcd_type(
   }
   let ctx = case sorted_names(fields1), sorted_names(fields2) {
     names1, names2 if names1 != names2 ->
-      with_err(ctx, RcdFieldsMismatch(#(names1, s1), #(names2, s2)))
+      with_err(ctx, e.RcdFieldsMismatch(#(names1, s1), #(names2, s2)))
     _, _ -> ctx
   }
   unify_rcd_type_fields(ctx, #(fields1, s1), #(fields2, s2))
@@ -234,7 +237,8 @@ fn unify_neut(ctx: Context, a: #(Neut, Span), b: #(Neut, Span)) -> Context {
     v.NCall(name1, args1), v.NCall(name2, args2) if name1 == name2 -> {
       let ctx = case list.length(args1), list.length(args2) {
         len1, len2 if len1 == len2 -> ctx
-        len1, len2 -> with_err(ctx, CallArityMismatch(#(len1, s1), #(len2, s2)))
+        len1, len2 ->
+          with_err(ctx, e.CallArityMismatch(#(len1, s1), #(len2, s2)))
       }
       unify_args(ctx, #(args1, s1), #(args2, s2))
     }
@@ -242,7 +246,7 @@ fn unify_neut(ctx: Context, a: #(Neut, Span), b: #(Neut, Span)) -> Context {
       let ctx = unify_neut(ctx, #(arg1, s1), #(arg2, s2))
       todo as "unify_neut NMatch cases, use env to evaluate with pattern bindings"
     }
-    _, _ -> with_err(ctx, NeutralTypeMismatch(a, b))
+    _, _ -> with_err(ctx, e.NeutralTypeMismatch(a, b))
   }
 }
 
@@ -267,7 +271,7 @@ fn solve_hole(ctx: Context, hole_id: Int, value: Value, span: Span) -> Context {
     True ->
       // Concrete hole, do occurs check and solve with a substitution
       case occurs(ctx, hole_id, value) {
-        True -> with_err(ctx, InfiniteType(hole_id, value, span))
+        True -> with_err(ctx, e.InfiniteType(hole_id, value, span))
         False ->
           case list.key_find(ctx.subst, hole_id) {
             Error(Nil) ->

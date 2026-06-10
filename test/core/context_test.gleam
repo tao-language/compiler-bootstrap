@@ -4,7 +4,8 @@
 /// - `lookup`: finding variables by name and returning their DeBruijn index + type
 /// - `with_err` / `with_err_list`: accumulating errors in context
 /// - `new_hole`: generating fresh hole IDs
-import core/context.{Context, lookup, new_ctx, new_hole, with_err} as ctx
+import core/context.{Context, lookup, new_ctx, new_hole, with_err}
+import core/error as e
 import core/value as v
 import gleam/option.{None, Some}
 import gleeunit
@@ -46,25 +47,25 @@ pub fn lookup_empty_context_test() {
 
 pub fn with_err_accumulates_single_error_test() {
   let ctx0 = new_ctx
-  let ctx1 = with_err(ctx0, ctx.TypeMismatch(#(v.int_t, s), #(v.float_t, s)))
-  let ctx2 = with_err(ctx1, ctx.VarUndefined("x", s))
+  let ctx1 = with_err(ctx0, e.TypeMismatch(#(v.int_t, s), #(v.float_t, s)))
+  let ctx2 = with_err(ctx1, e.VarUndefined("x", s))
   // Errors accumulate: both errors should be present
   assert ctx2.errors
     == [
-      ctx.TypeMismatch(#(v.int_t, s), #(v.float_t, s)),
-      ctx.VarUndefined("x", s),
+      e.TypeMismatch(#(v.int_t, s), #(v.float_t, s)),
+      e.VarUndefined("x", s),
     ]
 }
 
 pub fn with_err_appends_to_existing_errors_test() {
   let ctx0 = new_ctx
-  let ctx1 = with_err(ctx0, ctx.VarUndefined("a", s))
-  let ctx2 = with_err(ctx1, ctx.VarUndefined("b", s))
+  let ctx1 = with_err(ctx0, e.VarUndefined("a", s))
+  let ctx2 = with_err(ctx1, e.VarUndefined("b", s))
   // Should have 2 errors, not replace the first
   assert ctx2.errors
     == [
-      ctx.VarUndefined("a", s),
-      ctx.VarUndefined("b", s),
+      e.VarUndefined("a", s),
+      e.VarUndefined("b", s),
     ]
 }
 

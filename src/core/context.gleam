@@ -6,6 +6,7 @@
 ///
 /// Errors accumulate as the type checker progresses, allowing
 /// recovery after type errors.
+import core/error.{type Error}
 import core/term.{type Term}
 import core/utils
 import core/value.{
@@ -54,32 +55,6 @@ pub type Context {
 
 pub type Subst =
   List(#(Int, Value))
-
-/// Type checking errors.
-pub type Error {
-  VarUndefined(name: String, span: Span)
-  TypeMismatch(#(Value, Span), #(Value, Span))
-  NeutralTypeMismatch(#(Neut, Span), #(Neut, Span))
-  RcdFieldsMismatch(#(List(String), Span), #(List(String), Span))
-  CallArityMismatch(#(Int, Span), #(Int, Span))
-  InfiniteType(hole_id: Int, type_: Value, span: Span)
-  NotAFunction(fun: Term, fun_type: Value, span: Span)
-  AppExpectedExplicitArg(fun_type: Value, span: Span)
-  TypeVariantUndefined(
-    tag: #(String, Span),
-    variants: #(List(#(String, Variant)), Span),
-  )
-  MatchMissing(patterns: List(String), covered: List(String), span: Span)
-  MatchRedundant(span: Span)
-  StepLimitExceeded(steps: Int, span: Span)
-  CtorArgTypeMismatch(
-    tag: String,
-    expected_pattern: Value,
-    actual_type: Value,
-    span: Span,
-  )
-  CtorNotFound(tag: String, span: Span)
-}
 
 pub const new_ctx = Context([], [], [], [], [], 0)
 

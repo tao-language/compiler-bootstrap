@@ -138,6 +138,10 @@ pub fn u64(span: Span) {
   AST(LitT(lit.U64), span)
 }
 
+pub fn f16(span: Span) {
+  AST(LitT(lit.F16), span)
+}
+
 pub fn f32(span: Span) {
   AST(LitT(lit.F32), span)
 }

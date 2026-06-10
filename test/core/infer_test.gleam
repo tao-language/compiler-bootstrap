@@ -9,7 +9,8 @@
 /// Trivial data-pass-through tests (Lit, LitT, Typ, Ctr, Rcd, Call)
 /// have been removed — they only verify data flows through, not logic.
 import core/ast
-import core/context.{TypeMismatch, new_ctx}
+import core/context.{new_ctx}
+import core/error as e
 import core/infer.{check, infer}
 import core/term as tm
 import core/value as v
@@ -73,26 +74,26 @@ pub fn check_lit_float_test() {
   }
   assert check_float(v.int_t)
     == #(
-      [TypeMismatch(#(v.float_t, s1), #(v.int_t, s2))],
+      [e.TypeMismatch(#(v.float_t, s1), #(v.int_t, s2))],
       tm.float(1.0),
       v.int_t,
     )
   assert check_float(v.i8)
-    == #([TypeMismatch(#(v.float_t, s1), #(v.i8, s2))], tm.float(1.0), v.i8)
+    == #([e.TypeMismatch(#(v.float_t, s1), #(v.i8, s2))], tm.float(1.0), v.i8)
   assert check_float(v.i16)
-    == #([TypeMismatch(#(v.float_t, s1), #(v.i16, s2))], tm.float(1.0), v.i16)
+    == #([e.TypeMismatch(#(v.float_t, s1), #(v.i16, s2))], tm.float(1.0), v.i16)
   assert check_float(v.i32)
-    == #([TypeMismatch(#(v.float_t, s1), #(v.i32, s2))], tm.float(1.0), v.i32)
+    == #([e.TypeMismatch(#(v.float_t, s1), #(v.i32, s2))], tm.float(1.0), v.i32)
   assert check_float(v.i64)
-    == #([TypeMismatch(#(v.float_t, s1), #(v.i64, s2))], tm.float(1.0), v.i64)
+    == #([e.TypeMismatch(#(v.float_t, s1), #(v.i64, s2))], tm.float(1.0), v.i64)
   assert check_float(v.u8)
-    == #([TypeMismatch(#(v.float_t, s1), #(v.u8, s2))], tm.float(1.0), v.u8)
+    == #([e.TypeMismatch(#(v.float_t, s1), #(v.u8, s2))], tm.float(1.0), v.u8)
   assert check_float(v.u16)
-    == #([TypeMismatch(#(v.float_t, s1), #(v.u16, s2))], tm.float(1.0), v.u16)
+    == #([e.TypeMismatch(#(v.float_t, s1), #(v.u16, s2))], tm.float(1.0), v.u16)
   assert check_float(v.u32)
-    == #([TypeMismatch(#(v.float_t, s1), #(v.u32, s2))], tm.float(1.0), v.u32)
+    == #([e.TypeMismatch(#(v.float_t, s1), #(v.u32, s2))], tm.float(1.0), v.u32)
   assert check_float(v.u64)
-    == #([TypeMismatch(#(v.float_t, s1), #(v.u64, s2))], tm.float(1.0), v.u64)
+    == #([e.TypeMismatch(#(v.float_t, s1), #(v.u64, s2))], tm.float(1.0), v.u64)
   assert check_float(v.float_t) == #([], tm.float(1.0), v.float_t)
   assert check_float(v.f16) == #([], tm.float(1.0), v.f16)
   assert check_float(v.f32) == #([], tm.float(1.0), v.f32)
@@ -111,7 +112,7 @@ pub fn infer_var_undefined_test() {
   let ast = ast.var("x", s)
   let ctx0 = new_ctx
   let #(term, type_, ctx) = infer(ctx0, ast)
-  assert ctx.errors == [context.VarUndefined("x", s)]
+  assert ctx.errors == [e.VarUndefined("x", s)]
   assert term == tm.Err
   assert type_ == v.Err
 }
@@ -238,7 +239,7 @@ pub fn infer_app_error_not_a_function_test() {
   let ast = ast.app(ast.float(3.14, s1), ast.int(1, s), s)
   let ctx0 = new_ctx
   let #(term, type_, ctx) = infer(ctx0, ast)
-  assert ctx.errors == [context.NotAFunction(tm.float(3.14), v.float_t, s1)]
+  assert ctx.errors == [e.NotAFunction(tm.float(3.14), v.float_t, s1)]
   assert term == tm.Err
   assert type_ == v.Err
 }
@@ -271,7 +272,7 @@ pub fn infer_app_error_expected_explicit_argument_test() {
   let pi = v.Pi([], explicit, #("x", v.int_t), tm.Var(0))
   let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(pi)))
   let #(term, type_, ctx) = infer(ctx0, ast)
-  let error = context.AppExpectedExplicitArg(pi, s1)
+  let error = e.AppExpectedExplicitArg(pi, s1)
   assert ctx.errors == [error]
   assert term == tm.Err
   assert type_ == v.Err
@@ -386,7 +387,7 @@ pub fn infer_match_error_arg_type_mismatch_test() {
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.env == ctx0.env
   assert ctx.types == ctx0.types
-  assert ctx.errors == [context.TypeMismatch(#(v.int_t, s1), #(v.float_t, s2))]
+  assert ctx.errors == [e.TypeMismatch(#(v.int_t, s1), #(v.float_t, s2))]
   assert term == tm.float(3.14)
   assert type_ == v.float_t
 }

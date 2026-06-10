@@ -7,6 +7,7 @@
 import core/ast.{type AST}
 import core/coerce.{coerce}
 import core/context.{type Context}
+import core/error as e
 import core/eval.{eval}
 import core/literals.{type Literal, type LiteralType} as lit
 import core/quote.{quote}
@@ -142,7 +143,7 @@ fn infer_var(
   case context.lookup(ctx, name) {
     Some(#(index, type_)) -> #(tm.Var(index), type_, ctx)
     None -> {
-      let ctx = context.with_err(ctx, context.VarUndefined(name, span))
+      let ctx = context.with_err(ctx, e.VarUndefined(name, span))
       #(tm.Err, v.Err, ctx)
     }
   }
@@ -351,7 +352,7 @@ fn infer_app_args(
           // Still infer the arg to get as much additional information as possible in
           // the context, it might be solving holes for other parts of the program.
           let #(_, _, ctx) = infer(ctx, arg_ast)
-          let error = context.AppExpectedExplicitArg(fun_type, span)
+          let error = e.AppExpectedExplicitArg(fun_type, span)
           #(tm.Err, v.Err, context.with_err(ctx, error))
         }
       }
@@ -374,7 +375,7 @@ fn infer_app_args(
       // Still infer the arg to get as much additional information as possible in
       // the context, it might be solving holes for other parts of the program.
       let #(_, _, ctx) = infer(ctx, arg_ast)
-      let error = context.NotAFunction(fun, fun_type, fun_span)
+      let error = e.NotAFunction(fun, fun_type, fun_span)
       #(tm.Err, v.Err, context.with_err(ctx, error))
     }
   }
