@@ -158,6 +158,14 @@ pub fn ctr(tag: String, args: List(#(String, AST)), span: Span) {
   AST(Ctr(tag, AST(Rcd(args), span)), span)
 }
 
+pub fn rcd(fields: List(#(String, AST)), span: Span) {
+  AST(Rcd(fields), span)
+}
+
+pub fn rcd_t(fields: List(#(String, #(AST, Option(AST)))), span: Span) {
+  AST(RcdT(fields), span)
+}
+
 pub fn lam(param: #(String, AST), body: AST, span: Span) {
   AST(Lam(False, param, body), span)
 }

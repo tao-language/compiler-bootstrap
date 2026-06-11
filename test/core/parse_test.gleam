@@ -145,10 +145,35 @@ pub fn parse_ctr_test() {
   assert parse("#A(x)")
     == Ok(ast.AST(ast.Ctr("A", ast.var("x", s(1, 3, 1, 5))), s(1, 1, 1, 6)))
 }
+
 // ============================================================================
 // Rcd
 // ============================================================================
-// pub fn parse_rcd_test() { todo }
+pub fn lex_rcd_test() {
+  assert lex("{}") == Ok([p.LBrace, p.RBrace])
+  assert lex("{a:x}")
+    == Ok([p.LBrace, p.Name("a"), p.Colon, p.Name("x"), p.RBrace])
+  assert lex("{ a : x } ")
+    == Ok([p.LBrace, p.Name("a"), p.Colon, p.Name("x"), p.RBrace])
+  assert lex("{a: x, b: y}")
+    == Ok([
+      p.LBrace,
+      p.Name("a"),
+      p.Colon,
+      p.Name("x"),
+      p.Comma,
+      p.Name("b"),
+      p.Colon,
+      p.Name("y"),
+      p.RBrace,
+    ])
+}
+
+pub fn parse_rcd_test() {
+  assert parse("{}") == Ok(ast.rcd([], s(1, 1, 1, 3)))
+  assert parse("{a: x}")
+    == Ok(ast.rcd([#("a", ast.var("x", s(1, 3, 1, 6)))], s(1, 1, 1, 7)))
+}
 // ============================================================================
 // RcdT
 // ============================================================================

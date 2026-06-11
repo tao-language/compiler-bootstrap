@@ -182,6 +182,7 @@ fn term(file: String) -> Parser(AST, Token, Nil) {
     lit_type(file),
     var(file),
     tag(file),
+    rcd(file),
     // lambda_expr(file),
   // pi_expr(file),
   // let_expr(file),
@@ -190,7 +191,6 @@ fn term(file: String) -> Parser(AST, Token, Nil) {
   // error_expr(file),
   // builtin_call(file),
   // record_type_expr(file),
-  // record_expr(file),
   // paren_expr(file),
   // paren_ann_expr(file),
   ])
@@ -259,6 +259,25 @@ fn tag(file: String) -> Parser(AST, Token, Nil) {
   use _ <- do(nibble.token(RParen))
   use end <- do(get_span(file))
   return(ast.AST(ast.Ctr(tag, arg), span.merge(start, end)))
+}
+
+fn rcd(file: String) -> Parser(AST, Token, Nil) {
+  use start <- do(get_span(file))
+  use _ <- do(nibble.token(LBrace))
+  use fields <- do(
+    nibble.one_of([
+      comma_separated({
+        use name <- do(take_ident())
+        use _ <- do(nibble.token(Colon))
+        use value <- do(term(file))
+        return(#(name, value))
+      }),
+      nibble.return([]),
+    ]),
+  )
+  use _ <- do(nibble.token(RBrace))
+  use end <- do(get_span(file))
+  return(ast.rcd(fields, span.merge(start, end)))
 }
 
 // fn lambda_expr(file: String) -> Parser(AST, Token, Nil) {
@@ -474,40 +493,6 @@ fn tag(file: String) -> Parser(AST, Token, Nil) {
 //     ]),
 //   )
 //   return(#(name, #(typ, default)))
-// }
-
-// fn record_expr(file: String) -> Parser(AST, Token, Nil) {
-//   use start <- do(get_span(file))
-//   use _ <- do(nibble.token(LBrace))
-//   use fields <- do(
-//     nibble.one_of([
-//       comma_separated(file, rcd_field(file)),
-//       nibble.return([]),
-//     ]),
-//   )
-//   use _ <- do(nibble.token(RBrace))
-//   use end <- do(get_span(file))
-//   return(AST(core.ast.Rcd(fields), span.merge(start, end)))
-// }
-
-// fn rcd_field(file: String) -> Parser(#(String, AST), Token, Nil) {
-//   use name <- do(take_ident())
-//   use value <- do(
-//     nibble.one_of([
-//       // name: value
-//       {
-//         use _ <- do(nibble.token(Colon))
-//         use val <- do(expression(file))
-//         return(val)
-//       },
-//       // name (sugar for name: name)
-//       {
-//         use s <- do(get_span(file))
-//         return(AST(core.ast.Var(name), s))
-//       },
-//     ]),
-//   )
-//   return(#(name, value))
 // }
 
 // fn paren_expr(file: String) -> Parser(AST, Token, Nil) {
@@ -729,12 +714,7 @@ fn tag(file: String) -> Parser(AST, Token, Nil) {
 
 fn get_span(file: String) -> Parser(Span, Token, Nil) {
   use s <- do(nibble.span())
-  return(to_span(s, file))
-}
-
-/// Convert a nibble lexer Span to our Span.
-fn to_span(s: LexSpan, file: String) -> Span {
-  Span(file, s.row_start, s.col_start, s.row_end, s.col_end)
+  return(Span(file, s.row_start, s.col_start, s.row_end, s.col_end))
 }
 
 fn take_ident() -> Parser(String, Token, Nil) {
@@ -792,10 +772,7 @@ fn angle_brackets(parser: Parser(a, Token, Nil)) -> Parser(a, Token, Nil) {
   return(n)
 }
 
-fn comma_separated(
-  file: String,
-  item: Parser(a, Token, Nil),
-) -> Parser(List(a), Token, Nil) {
+fn comma_separated(item: Parser(a, Token, Nil)) -> Parser(List(a), Token, Nil) {
   use first <- do(item)
   use rest <- do(
     nibble.many({
