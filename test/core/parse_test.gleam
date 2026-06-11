@@ -252,14 +252,74 @@ pub fn parse_ann_test() {
       s(1, 1, 1, 8),
     ))
 }
+
 // ============================================================================
 // Lam
 // ============================================================================
-// pub fn parse_lam_test() { todo }
+pub fn lex_lam_test() {
+  assert lex("%fn") == Ok([p.KwFn])
+  assert lex("=>") == Ok([p.FatArrow])
+  assert lex("%fn(x:y)=>z")
+    == Ok([
+      p.KwFn,
+      p.LParen,
+      p.Name("x"),
+      p.Colon,
+      p.Name("y"),
+      p.RParen,
+      p.FatArrow,
+      p.Name("z"),
+    ])
+  assert lex("%fn ( x : y ) => z ")
+    == Ok([
+      p.KwFn,
+      p.LParen,
+      p.Name("x"),
+      p.Colon,
+      p.Name("y"),
+      p.RParen,
+      p.FatArrow,
+      p.Name("z"),
+    ])
+}
+
+pub fn parse_lam_test() {
+  assert parse("%fn(x: y) => z")
+    == Ok(ast.lam(
+      #("x", ast.var("y", s(1, 6, 1, 9))),
+      ast.var("z", s(1, 11, 1, 15)),
+      s(1, 1, 1, 15),
+    ))
+  assert parse("%fn<x: y> => z")
+    == Ok(ast.lam_implicit(
+      #("x", ast.var("y", s(1, 6, 1, 9))),
+      ast.var("z", s(1, 11, 1, 15)),
+      s(1, 1, 1, 15),
+    ))
+}
+
 // ============================================================================
 // Pi
 // ============================================================================
-// pub fn parse_pi_test() { todo }
+pub fn lex_pi_test() {
+  assert lex("%pi") == Ok([p.KwPi])
+  assert lex("->") == Ok([p.ThinArrow])
+}
+
+pub fn parse_pi_test() {
+  assert parse("%pi(x: y) -> z")
+    == Ok(ast.pi(
+      #("x", ast.var("y", s(1, 6, 1, 9))),
+      ast.var("z", s(1, 11, 1, 15)),
+      s(1, 1, 1, 15),
+    ))
+  assert parse("%pi<x: y> -> z")
+    == Ok(ast.pi_implicit(
+      #("x", ast.var("y", s(1, 6, 1, 9))),
+      ast.var("z", s(1, 11, 1, 15)),
+      s(1, 1, 1, 15),
+    ))
+}
 // ============================================================================
 // Fix
 // ============================================================================

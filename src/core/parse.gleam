@@ -103,30 +103,30 @@ pub fn parse(file: String, source: String) -> Result(AST, Error) {
 fn core_lexer() -> Lexer(Token, Nil) {
   lexer.simple([
     // Keywords with % prefix
-    lexer.keyword("%Type", "[^\\w]", KwType),
-    lexer.keyword("%Int", "[^\\w]", KwIntT),
-    lexer.keyword("%Float", "[^\\w]", KwFloatT),
-    lexer.keyword("%I8", "[^\\w]", KwI8),
-    lexer.keyword("%I16", "[^\\w]", KwI16),
-    lexer.keyword("%I32", "[^\\w]", KwI32),
-    lexer.keyword("%I64", "[^\\w]", KwI64),
-    lexer.keyword("%U8", "[^\\w]", KwU8),
-    lexer.keyword("%U16", "[^\\w]", KwU16),
-    lexer.keyword("%U32", "[^\\w]", KwU32),
-    lexer.keyword("%U64", "[^\\w]", KwU64),
-    lexer.keyword("%F16", "[^\\w]", KwF16),
-    lexer.keyword("%F32", "[^\\w]", KwF32),
-    lexer.keyword("%F64", "[^\\w]", KwF64),
+    lexer.keyword("%Type", "\\W", KwType),
+    lexer.keyword("%Int", "\\W", KwIntT),
+    lexer.keyword("%Float", "\\W", KwFloatT),
+    lexer.keyword("%I8", "\\W", KwI8),
+    lexer.keyword("%I16", "\\W", KwI16),
+    lexer.keyword("%I32", "\\W", KwI32),
+    lexer.keyword("%I64", "\\W", KwI64),
+    lexer.keyword("%U8", "\\W", KwU8),
+    lexer.keyword("%U16", "\\W", KwU16),
+    lexer.keyword("%U32", "\\W", KwU32),
+    lexer.keyword("%U64", "\\W", KwU64),
+    lexer.keyword("%F16", "\\W", KwF16),
+    lexer.keyword("%F32", "\\W", KwF32),
+    lexer.keyword("%F64", "\\W", KwF64),
 
-    lexer.keyword("%fn", "[^\\w]", KwFn),
-    lexer.keyword("%pi", "[^\\w]", KwPi),
-    lexer.keyword("%let", "[^\\w]", KwLet),
-    lexer.keyword("%match", "[^\\w]", KwMatch),
-    lexer.keyword("%fix", "[^\\w]", KwFix),
-    lexer.keyword("%error", "[^\\w]", KwError),
+    lexer.keyword("%fn", "\\W", KwFn),
+    lexer.keyword("%pi", "\\W", KwPi),
+    lexer.keyword("%let", "\\W", KwLet),
+    lexer.keyword("%match", "\\W", KwMatch),
+    lexer.keyword("%fix", "\\W", KwFix),
+    lexer.keyword("%error", "\\W", KwError),
 
     // Names
-    lexer.identifier("[_a-zA-Z]", "[_a-zA-Z0-9]", set.new(), Name),
+    lexer.identifier("[_a-zA-Z]", "[_\\w]", set.new(), Name),
 
     // Int and Float literals
     lexer.number(IntLit, FloatLit),
@@ -153,7 +153,7 @@ fn core_lexer() -> Lexer(Token, Nil) {
     lexer.token(";", Semicolon),
     lexer.token(",", Comma),
     lexer.token(".", Dot),
-    lexer.token("=", Equals),
+    lexer.symbol("=", "[^>]", Equals),
     lexer.token("|", Pipe),
     lexer.token("~", Tilde),
     lexer.token("?", Question),
@@ -181,9 +181,9 @@ fn term(file: String) -> Parser(AST, Token, Nil) {
     rcd(file),
     rcd_t(file),
     ann(file),
-    // lambda_expr(file),
-  // pi_expr(file),
-  // let_expr(file),
+    lam(file),
+    pi_expr(file),
+    // let_expr(file),
   // fix_expr(file),
   // match_expr(file),
   // error_expr(file),
@@ -314,85 +314,67 @@ fn ann(file: String) -> Parser(AST, Token, Nil) {
   return(ast.ann(expr, typ, span.merge(expr.span, typ.span)))
 }
 
-// fn lambda_expr(file: String) -> Parser(AST, Token, Nil) {
-//   use start <- do(get_span(file))
-//   use _ <- do(nibble.token(KwFn))
-//   // Optional implicit params: <a: Type, b: Type>
-//   use implicits <- do(
-//     nibble.one_of([implicit_param_list(file), return([])]),
-//   )
-//   // (param_name: param_type) or (param_type) — sugar
-//   use _ <- do(nibble.token(LParen))
-//   use param <- do(
-//     nibble.one_of([
-//       // Named: (x: Type)
-//       {
-//         use name <- do(take_ident())
-//         use _ <- do(nibble.token(Colon))
-//         use typ <- do(expression(file))
-//         return(#(name, typ))
-//       },
-//       // Sugar: (Type) — anonymous, equivalent to (_: Type)
-//       {
-//         use typ <- do(expression(file))
-//         return(#("_", typ))
-//       },
-//     ]),
-//   )
-//   use _ <- do(nibble.token(RParen))
-//   // => body
-//   use _ <- do(nibble.token(FatArrow))
-//   use body <- do(expression(file))
-//   use end <- do(get_span(file))
+fn lam(file: String) -> Parser(AST, Token, Nil) {
+  use start <- do(get_span(file))
+  use _ <- do(nibble.token(KwFn))
+  use #(implicit, param) <- do(
+    nibble.one_of([
+      {
+        // Explicit: %fn(x: y)
+        use _ <- do(nibble.token(LParen))
+        use name <- do(take_ident())
+        use _ <- do(nibble.token(Colon))
+        use type_ <- do(term(file))
+        use _ <- do(nibble.token(RParen))
+        return(#(False, #(name, type_)))
+      },
+      {
+        // Implicit: %fn<x: y>
+        use _ <- do(nibble.token(LAngle))
+        use name <- do(take_ident())
+        use _ <- do(nibble.token(Colon))
+        use type_ <- do(term(file))
+        use _ <- do(nibble.token(RAngle))
+        return(#(True, #(name, type_)))
+      },
+    ]),
+  )
+  use _ <- do(nibble.token(FatArrow))
+  use body <- do(term(file))
+  use end <- do(get_span(file))
+  return(ast.AST(ast.Lam(implicit, param, body), span.merge(start, end)))
+}
 
-//   let lam = AST(core.ast.Lam(False, param, body), span.merge(start, end))
-//   let lam =
-//     list.fold(implicits, lam, fn(acc, imp) {
-//       let #(name, typ) = imp
-//       AST(core.ast.Lam(True, #(name, typ), acc), span.merge(start, end))
-//     })
-//   return(lam)
-// }
-
-// fn pi_expr(file: String) -> Parser(AST, Token, Nil) {
-//   use start <- do(get_span(file))
-//   use _ <- do(nibble.token(KwPi))
-//   // Optional implicit params: <a: Type, b: Type>
-//   use implicits <- do(
-//     nibble.one_of([implicit_param_list(file), return([])]),
-//   )
-//   // (domain_name: domain_type) or (domain_type) — sugar
-//   use _ <- do(nibble.token(LParen))
-//   use domain <- do(
-//     nibble.one_of([
-//       // Named: (x: Type)
-//       {
-//         use name <- do(take_ident())
-//         use _ <- do(nibble.token(Colon))
-//         use typ <- do(expression(file))
-//         return(#(name, typ))
-//       },
-//       // Sugar: (Type) — anonymous
-//       {
-//         use typ <- do(expression(file))
-//         return(#("_", typ))
-//       },
-//     ]),
-//   )
-//   use _ <- do(nibble.token(RParen))
-//   // -> codomain
-//   use _ <- do(nibble.token(ThinArrow))
-//   use codomain <- do(expression(file))
-//   use end <- do(get_span(file))
-
-//   let pi = AST(core.ast.Pi(False, domain, codomain), span.merge(start, end))
-//   let pi =
-//     list.fold(implicits, pi, fn(acc, imp) {
-//       let #(name, typ) = imp
-//       AST(core.ast.Pi(True, #(name, typ), acc), span.merge(start, end))
-//     })
-//   return(pi)
-// }
+fn pi_expr(file: String) -> Parser(AST, Token, Nil) {
+  use start <- do(get_span(file))
+  use _ <- do(nibble.token(KwPi))
+  use #(implicit, param) <- do(
+    nibble.one_of([
+      {
+        // Explicit: %pi(x: y)
+        use _ <- do(nibble.token(LParen))
+        use name <- do(take_ident())
+        use _ <- do(nibble.token(Colon))
+        use type_ <- do(term(file))
+        use _ <- do(nibble.token(RParen))
+        return(#(False, #(name, type_)))
+      },
+      {
+        // Implicit: %pi<x: y>
+        use _ <- do(nibble.token(LAngle))
+        use name <- do(take_ident())
+        use _ <- do(nibble.token(Colon))
+        use type_ <- do(term(file))
+        use _ <- do(nibble.token(RAngle))
+        return(#(True, #(name, type_)))
+      },
+    ]),
+  )
+  use _ <- do(nibble.token(ThinArrow))
+  use body <- do(term(file))
+  use end <- do(get_span(file))
+  return(ast.AST(ast.Pi(implicit, param, body), span.merge(start, end)))
+}
 
 // fn let_expr(file: String) -> Parser(AST, Token, Nil) {
 //   use start <- do(get_span(file))

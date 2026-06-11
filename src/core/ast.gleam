@@ -178,8 +178,12 @@ pub fn lam_implicit(param: #(String, AST), body: AST, span: Span) {
   AST(Lam(True, param, body), span)
 }
 
-pub fn pi(implicit: Bool, param: #(String, AST), body: AST, span: Span) {
-  AST(Pi(implicit, param, body), span)
+pub fn pi(param: #(String, AST), body: AST, span: Span) {
+  AST(Pi(False, param, body), span)
+}
+
+pub fn pi_implicit(param: #(String, AST), body: AST, span: Span) {
+  AST(Pi(True, param, body), span)
 }
 
 pub fn fix(name: String, body: AST, span: Span) {
