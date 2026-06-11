@@ -32,7 +32,7 @@ pub type Data {
   Fix(name: String, body: AST)
   App(implicit: Bool, fun: AST, arg: AST)
   TypeDef(type_def: TypeDefinition)
-  Let(name: String, param_type: AST, value: AST, body: AST)
+  Let(def: #(String, AST, AST), body: AST)
   Match(arg: AST, cases: List(Case))
   Call(name: String, args: List(AST), return_type: AST)
   Err
@@ -196,6 +196,10 @@ pub fn app(fun: AST, arg: AST, span: Span) {
 
 pub fn app_implicit(fun: AST, arg: AST, span: Span) {
   AST(App(True, fun, arg), span)
+}
+
+pub fn let_(def: #(String, AST, AST), body: AST, span: Span) {
+  AST(Let(def, body), span)
 }
 
 pub fn match(arg: AST, cases: List(Case), span: Span) {

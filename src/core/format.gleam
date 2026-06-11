@@ -53,7 +53,7 @@ pub fn format(ast: AST) -> String {
     ast.Fix(name, body) -> todo
     ast.App(implicit, fun, arg) -> todo
     ast.TypeDef(type_def) -> todo
-    ast.Let(name, param_type, value, body) -> todo
+    ast.Let(def, body) -> todo
     ast.Match(arg, cases) -> todo
     ast.Call(name, args, return_type) -> todo
     ast.Err -> todo
