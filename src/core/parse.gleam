@@ -10,6 +10,7 @@ import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/regexp
 import gleam/result.{try}
 import gleam/set.{type Set}
 import gleam/string
@@ -48,7 +49,7 @@ pub type Token {
   KwError
 
   // Values
-  Ident(String)
+  Name(String)
   IntLit(Int)
   FloatLit(Float)
 
@@ -71,9 +72,8 @@ pub type Token {
   Pipe
   Tilde
   Question
-  Hash
   At
-  Underscore
+  Hash
 }
 
 // ============================================================================
@@ -131,9 +131,8 @@ fn core_lexer() -> Lexer(Token, Nil) {
     lexer.keyword("%fix", "[^\\w]", KwFix),
     lexer.keyword("%error", "[^\\w]", KwError),
 
-    // Identifiers
-    lexer.keyword("_", "[^\\w]", Underscore),
-    lexer.identifier("[_a-zA-Z]", "[_a-zA-Z0-9]", set.new(), Ident),
+    // Names
+    lexer.identifier("[_a-zA-Z]", "[_a-zA-Z0-9]", set.new(), Name),
 
     // Int and Float literals
     lexer.number(IntLit, FloatLit),
@@ -162,8 +161,8 @@ fn core_lexer() -> Lexer(Token, Nil) {
     lexer.token("|", Pipe),
     lexer.token("~", Tilde),
     lexer.token("?", Question),
-    lexer.token("#", Hash),
     lexer.token("@", At),
+    lexer.token("#", Hash),
 
     // Whitespace
     lexer.whitespace(Nil) |> lexer.ignore,
@@ -182,6 +181,7 @@ fn term(file: String) -> Parser(AST, Token, Nil) {
     float(file),
     lit_type(file),
     var(file),
+    tag(file),
     // lambda_expr(file),
   // pi_expr(file),
   // let_expr(file),
@@ -189,7 +189,6 @@ fn term(file: String) -> Parser(AST, Token, Nil) {
   // match_expr(file),
   // error_expr(file),
   // builtin_call(file),
-  // constructor_expr(file),
   // record_type_expr(file),
   // record_expr(file),
   // paren_expr(file),
@@ -249,6 +248,17 @@ fn var(file: String) -> Parser(AST, Token, Nil) {
   use name <- do(take_ident())
   use end <- do(get_span(file))
   return(ast.var(name, span.merge(start, end)))
+}
+
+fn tag(file: String) -> Parser(AST, Token, Nil) {
+  use start <- do(get_span(file))
+  use _ <- do(nibble.token(Hash))
+  use tag <- do(take_ident())
+  use _ <- do(nibble.token(LParen))
+  use arg <- do(term(file))
+  use _ <- do(nibble.token(RParen))
+  use end <- do(get_span(file))
+  return(ast.AST(ast.Ctr(tag, arg), span.merge(start, end)))
 }
 
 // fn lambda_expr(file: String) -> Parser(AST, Token, Nil) {
@@ -430,18 +440,6 @@ fn var(file: String) -> Parser(AST, Token, Nil) {
 //   use _ <- do(nibble.token(Colon))
 //   use _ <- do(expression(file))
 //   return(arg)
-// }
-
-// fn constructor_expr(file: String) -> Parser(AST, Token, Nil) {
-//   use start <- do(get_span(file))
-//   use _ <- do(nibble.token(Hash))
-//   use tag <- do(take_ident())
-//   // (arg)
-//   use _ <- do(nibble.token(LParen))
-//   use arg <- do(expression(file))
-//   use _ <- do(nibble.token(RParen))
-//   use end <- do(get_span(file))
-//   return(AST(core.ast.Ctr(tag, arg), span.merge(start, end)))
 // }
 
 // fn record_type_expr(file: String) -> Parser(AST, Token, Nil) {
@@ -742,7 +740,7 @@ fn to_span(s: LexSpan, file: String) -> Span {
 fn take_ident() -> Parser(String, Token, Nil) {
   nibble.take_map("an identifier", fn(tok) {
     case tok {
-      Ident(name) -> Some(name)
+      Name(name) -> Some(name)
       _ -> None
     }
   })

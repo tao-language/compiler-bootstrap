@@ -115,23 +115,36 @@ pub fn parse_litt_test() {
 // Var
 // ============================================================================
 pub fn lex_var_test() {
-  assert lex("x") == Ok([p.Ident("x")])
-  assert lex("xy") == Ok([p.Ident("xy")])
-  assert lex("XY") == Ok([p.Ident("XY")])
-  assert lex("x_") == Ok([p.Ident("x_")])
-  assert lex("_x") == Ok([p.Ident("_x")])
-  assert lex("x1") == Ok([p.Ident("x1")])
-  assert lex("1x") == Ok([p.IntLit(1), p.Ident("x")])
-  assert lex("_") == Ok([p.Underscore])
+  assert lex("x") == Ok([p.Name("x")])
+  assert lex("xy") == Ok([p.Name("xy")])
+  assert lex("xyz") == Ok([p.Name("xyz")])
+  assert lex("XY") == Ok([p.Name("XY")])
+  assert lex("x_") == Ok([p.Name("x_")])
+  assert lex("_x") == Ok([p.Name("_x")])
+  assert lex("x1") == Ok([p.Name("x1")])
+  assert lex("1x") == Ok([p.IntLit(1), p.Name("x")])
+  assert lex("_") == Ok([p.Name("_")])
 }
 
 pub fn parse_var_test() {
   assert parse("x") == Ok(ast.var("x", s(1, 1, 1, 2)))
 }
+
 // ============================================================================
 // Ctr
 // ============================================================================
-// pub fn parse_ctr_test() { todo }
+pub fn lex_ctr_test() {
+  assert lex("#A") == Ok([p.Hash, p.Name("A")])
+  assert lex("#A(x)")
+    == Ok([p.Hash, p.Name("A"), p.LParen, p.Name("x"), p.RParen])
+  assert lex("# A ( x ) ")
+    == Ok([p.Hash, p.Name("A"), p.LParen, p.Name("x"), p.RParen])
+}
+
+pub fn parse_ctr_test() {
+  assert parse("#A(x)")
+    == Ok(ast.AST(ast.Ctr("A", ast.var("x", s(1, 3, 1, 5))), s(1, 1, 1, 6)))
+}
 // ============================================================================
 // Rcd
 // ============================================================================
