@@ -6,19 +6,11 @@ import core/ast.{
 }
 import core/error.{type Error} as e
 import core/literals.{type LiteralType} as lit
-import gleam/float
-import gleam/int
-import gleam/list
 import gleam/option.{type Option, None, Some}
-import gleam/regexp
 import gleam/result.{try}
-import gleam/set.{type Set}
-import gleam/string
+import gleam/set
 import nibble.{type Parser, do, return}
-import nibble/lexer.{
-  type Error as LexError, type Lexer, type Matcher, type Span as LexSpan,
-  type Token as LexToken, NoMatchFound,
-}
+import nibble/lexer.{type Lexer}
 import syntax/span.{type Span, Span}
 
 // ============================================================================
@@ -54,6 +46,7 @@ pub type Token {
   FloatLit(Float)
 
   // Symbols
+  RcdTOpen
   LParen
   RParen
   LBrace
@@ -83,7 +76,7 @@ pub type Token {
 pub fn lex(
   file: String,
   source: String,
-) -> Result(List(LexToken(Token)), Error) {
+) -> Result(List(lexer.Token(Token)), Error) {
   case lexer.run(source, core_lexer()) {
     Ok(tokens) -> Ok(tokens)
     Error(lexer.NoMatchFound(row, col, lexeme)) ->
@@ -141,6 +134,7 @@ fn core_lexer() -> Lexer(Token, Nil) {
     lexer.comment("//", fn(_) { Nil }) |> lexer.ignore,
 
     // Two-character symbols (must come before single-char)
+    lexer.token("%{", RcdTOpen),
     lexer.token("=>", FatArrow),
     lexer.token("->", ThinArrow),
     lexer.token("<", LAngle),
@@ -179,10 +173,11 @@ fn term(file: String) -> Parser(AST, Token, Nil) {
     hole(file),
     int(file),
     float(file),
-    lit_type(file),
+    lit_t(file),
     var(file),
     tag(file),
     rcd(file),
+    rcd_t(file),
     // lambda_expr(file),
   // pi_expr(file),
   // let_expr(file),
@@ -190,7 +185,6 @@ fn term(file: String) -> Parser(AST, Token, Nil) {
   // match_expr(file),
   // error_expr(file),
   // builtin_call(file),
-  // record_type_expr(file),
   // paren_expr(file),
   // paren_ann_expr(file),
   ])
@@ -202,7 +196,7 @@ fn typ(file: String) -> Parser(AST, Token, Nil) {
   use universe <- do(
     nibble.one_of([
       angle_brackets(take_int()),
-      nibble.return(0),
+      return(0),
     ]),
   )
   use end <- do(get_span(file))
@@ -215,7 +209,7 @@ fn hole(file: String) -> Parser(AST, Token, Nil) {
   use id <- do(
     nibble.one_of([
       angle_brackets(take_int()),
-      nibble.return(-1),
+      return(-1),
     ]),
   )
   use end <- do(get_span(file))
@@ -236,7 +230,7 @@ fn float(file: String) -> Parser(AST, Token, Nil) {
   return(ast.float(num, span.merge(start, end)))
 }
 
-fn lit_type(file: String) -> Parser(AST, Token, Nil) {
+fn lit_t(file: String) -> Parser(AST, Token, Nil) {
   use start <- do(get_span(file))
   use type_ <- do(take_lit_type())
   use end <- do(get_span(file))
@@ -272,7 +266,7 @@ fn rcd(file: String) -> Parser(AST, Token, Nil) {
         use value <- do(term(file))
         return(#(name, value))
       }),
-      nibble.return([]),
+      return([]),
     ]),
   )
   use _ <- do(nibble.token(RBrace))
@@ -280,12 +274,41 @@ fn rcd(file: String) -> Parser(AST, Token, Nil) {
   return(ast.rcd(fields, span.merge(start, end)))
 }
 
+fn rcd_t(file: String) -> Parser(AST, Token, Nil) {
+  use start <- do(get_span(file))
+  use _ <- do(nibble.token(RcdTOpen))
+  use fields <- do(
+    nibble.one_of([
+      comma_separated({
+        use name <- do(take_ident())
+        use _ <- do(nibble.token(Colon))
+        use value <- do(term(file))
+        use default <- do(
+          nibble.one_of([
+            {
+              use _ <- do(nibble.token(Equals))
+              use default_value <- do(term(file))
+              return(Some(default_value))
+            },
+            return(None),
+          ]),
+        )
+        return(#(name, #(value, default)))
+      }),
+      return([]),
+    ]),
+  )
+  use _ <- do(nibble.token(RBrace))
+  use end <- do(get_span(file))
+  return(ast.rcd_t(fields, span.merge(start, end)))
+}
+
 // fn lambda_expr(file: String) -> Parser(AST, Token, Nil) {
 //   use start <- do(get_span(file))
 //   use _ <- do(nibble.token(KwFn))
 //   // Optional implicit params: <a: Type, b: Type>
 //   use implicits <- do(
-//     nibble.one_of([implicit_param_list(file), nibble.return([])]),
+//     nibble.one_of([implicit_param_list(file), return([])]),
 //   )
 //   // (param_name: param_type) or (param_type) — sugar
 //   use _ <- do(nibble.token(LParen))
@@ -325,7 +348,7 @@ fn rcd(file: String) -> Parser(AST, Token, Nil) {
 //   use _ <- do(nibble.token(KwPi))
 //   // Optional implicit params: <a: Type, b: Type>
 //   use implicits <- do(
-//     nibble.one_of([implicit_param_list(file), nibble.return([])]),
+//     nibble.one_of([implicit_param_list(file), return([])]),
 //   )
 //   // (domain_name: domain_type) or (domain_type) — sugar
 //   use _ <- do(nibble.token(LParen))
@@ -426,7 +449,7 @@ fn rcd(file: String) -> Parser(AST, Token, Nil) {
 //         use _ <- do(take_str())
 //         return(Nil)
 //       },
-//       nibble.return(Nil),
+//       return(Nil),
 //     ]),
 //   )
 //   use end <- do(get_span(file))
@@ -446,7 +469,7 @@ fn rcd(file: String) -> Parser(AST, Token, Nil) {
 //   use args <- do(
 //     nibble.one_of([
 //       comma_separated(file, annotated_arg(file)),
-//       nibble.return([]),
+//       return([]),
 //     ]),
 //   )
 //   use _ <- do(nibble.token(RParen))
@@ -459,21 +482,6 @@ fn rcd(file: String) -> Parser(AST, Token, Nil) {
 //   use _ <- do(nibble.token(Colon))
 //   use _ <- do(expression(file))
 //   return(arg)
-// }
-
-// fn record_type_expr(file: String) -> Parser(AST, Token, Nil) {
-//   use start <- do(get_span(file))
-//   use _ <- do(nibble.token(Hash))
-//   use _ <- do(nibble.token(LBrace))
-//   use fields <- do(
-//     nibble.one_of([
-//       comma_separated(file, rcd_type_field(file)),
-//       nibble.return([]),
-//     ]),
-//   )
-//   use _ <- do(nibble.token(RBrace))
-//   use end <- do(get_span(file))
-//   return(AST(core.ast.RcdT(fields), span.merge(start, end)))
 // }
 
 // fn rcd_type_field(
@@ -489,7 +497,7 @@ fn rcd(file: String) -> Parser(AST, Token, Nil) {
 //         use val <- do(expression(file))
 //         return(Some(val))
 //       },
-//       nibble.return(None),
+//       return(None),
 //     ]),
 //   )
 //   return(#(name, #(typ, default)))
@@ -549,7 +557,7 @@ fn rcd(file: String) -> Parser(AST, Token, Nil) {
 //         use pass_pattern <- do(pattern_(file))
 //         return(Some(#(guard_expr, pass_pattern)))
 //       },
-//       nibble.return(None),
+//       return(None),
 //     ]),
 //   )
 //   use _ <- do(nibble.token(FatArrow))
@@ -638,7 +646,7 @@ fn rcd(file: String) -> Parser(AST, Token, Nil) {
 //   use fields <- do(
 //     nibble.one_of([
 //       comma_separated(file, rcd_pat_field(file)),
-//       nibble.return([]),
+//       return([]),
 //     ]),
 //   )
 //   use _ <- do(nibble.token(RBrace))
@@ -652,7 +660,7 @@ fn rcd(file: String) -> Parser(AST, Token, Nil) {
 //   use fields <- do(
 //     nibble.one_of([
 //       comma_separated(file, rcd_pat_field(file)),
-//       nibble.return([]),
+//       return([]),
 //     ]),
 //   )
 //   use _ <- do(nibble.token(RBrace))
