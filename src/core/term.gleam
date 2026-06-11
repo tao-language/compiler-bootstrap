@@ -115,8 +115,16 @@ pub fn to_ast(term: Term, names: List(String)) -> AST {
     RcdT(fields) -> todo
     Call(name, args) -> todo
     Ann(term, type_) -> todo
-    Lam(param, body) -> todo
-    Pi(implicit, domain, codomain) -> todo
+    Lam(#(name, type_), body) -> {
+      let type_ast = to_ast(type_, names)
+      let body_ast = to_ast(body, [name, ..names])
+      ast.AST(ast.Lam(False, #(name, type_ast), body_ast), s)
+    }
+    Pi(implicit, #(name, type_), codomain) -> {
+      let type_ast = to_ast(type_, names)
+      let codomain_ast = to_ast(codomain, [name, ..names])
+      ast.AST(ast.Pi(implicit, #(name, type_ast), codomain_ast), s)
+    }
     Fix(name, body) -> todo
     App(fun, arg) -> todo
     TypeDef(type_def) -> todo

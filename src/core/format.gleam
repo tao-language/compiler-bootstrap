@@ -29,13 +29,27 @@ pub fn format(ast: AST) -> String {
         lit.F32 -> "%F32"
         lit.F64 -> "%F64"
       }
-    ast.Var(name) -> todo
+    ast.Var(name) -> name
     ast.Ctr(tag, arg) -> todo
     ast.Rcd(fields) -> todo
     ast.RcdT(fields) -> todo
     ast.Ann(ast, type_) -> todo
-    ast.Lam(implicit, param, body) -> todo
-    ast.Pi(implicit, domain, codomain) -> todo
+    ast.Lam(implicit, #(name, type_), body) -> {
+      let #(open, close) = case implicit {
+        True -> #("<", ">")
+        False -> #("(", ")")
+      }
+      let param = open <> name <> ": " <> format(type_) <> close
+      "%fn" <> param <> " => " <> format(body)
+    }
+    ast.Pi(implicit, #(name, type_), codomain) -> {
+      let #(open, close) = case implicit {
+        True -> #("<", ">")
+        False -> #("(", ")")
+      }
+      let domain = open <> name <> ": " <> format(type_) <> close
+      "%pi" <> domain <> " -> " <> format(codomain)
+    }
     ast.Fix(name, body) -> todo
     ast.App(implicit, fun, arg) -> todo
     ast.TypeDef(type_def) -> todo

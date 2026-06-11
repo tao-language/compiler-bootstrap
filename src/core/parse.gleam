@@ -183,8 +183,8 @@ fn term(file: String) -> Parser(AST, Token, Nil) {
     ann(file),
     lam(file),
     pi_expr(file),
+    fix(file),
     // let_expr(file),
-  // fix_expr(file),
   // match_expr(file),
   // error_expr(file),
   // builtin_call(file),
@@ -376,6 +376,16 @@ fn pi_expr(file: String) -> Parser(AST, Token, Nil) {
   return(ast.AST(ast.Pi(implicit, param, body), span.merge(start, end)))
 }
 
+fn fix(file: String) -> Parser(AST, Token, Nil) {
+  use start <- do(get_span(file))
+  use _ <- do(nibble.token(KwFix))
+  use name <- do(take_ident())
+  use _ <- do(nibble.token(Dot))
+  use body <- do(term(file))
+  use end <- do(get_span(file))
+  return(ast.fix(name, body, span.merge(start, end)))
+}
+
 // fn let_expr(file: String) -> Parser(AST, Token, Nil) {
 //   use start <- do(get_span(file))
 //   use _ <- do(nibble.token(KwLet))
@@ -405,16 +415,6 @@ fn pi_expr(file: String) -> Parser(AST, Token, Nil) {
 //     core.ast.Let(name, param_type, value, AST(core.ast.Hole(-1), end)),
 //     span.merge(start, end),
 //   ))
-// }
-
-// fn fix_expr(file: String) -> Parser(AST, Token, Nil) {
-//   use start <- do(get_span(file))
-//   use _ <- do(nibble.token(KwFix))
-//   use name <- do(take_ident())
-//   use _ <- do(nibble.token(Dot))
-//   use body <- do(expression(file))
-//   use end <- do(get_span(file))
-//   return(AST(core.ast.Fix(name, body), span.merge(start, end)))
 // }
 
 // fn match_expr(file: String) -> Parser(AST, Token, Nil) {
