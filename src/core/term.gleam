@@ -19,9 +19,13 @@
 ///   level 1 = index 1 = next binder out
 ///   ...
 /// This means quoting a level to an index is the identity conversion.
+import core/ast.{type AST}
 import core/literals.{type Literal, type LiteralType} as lit
+import core/utils
+import gleam/int
 import gleam/list
-import gleam/option.{type Option}
+import gleam/option.{type Option, None, Some}
+import syntax/span
 
 // ============================================================================
 // TERMS (Syntax level - De Bruijn indices)
@@ -91,6 +95,33 @@ pub fn bindings(p: Pattern) -> List(String) {
     PCtr(_, p) -> bindings(p)
     PRcd(fields) -> list.flat_map(fields, fn(kv) { bindings(kv.1) })
     PErr -> []
+  }
+}
+
+pub fn to_ast(term: Term, names: List(String)) -> AST {
+  let s = span.empty("", 0, 0)
+  case term {
+    Typ(u) -> ast.typ(u, s)
+    Hole(id) -> ast.hole(id, s)
+    Lit(lit) -> ast.AST(ast.Lit(lit), s)
+    LitT(lit_t) -> ast.AST(ast.LitT(lit_t), s)
+    Var(index) ->
+      case utils.list_at(names, index) {
+        Some(name) -> ast.var(name, s)
+        None -> ast.var("`undefined " <> int.to_string(index) <> "`", s)
+      }
+    Ctr(tag, arg) -> ast.AST(ast.Ctr(tag, to_ast(arg, names)), s)
+    Rcd(fields) -> todo
+    RcdT(fields) -> todo
+    Call(name, args) -> todo
+    Ann(term, type_) -> todo
+    Lam(param, body) -> todo
+    Pi(implicit, domain, codomain) -> todo
+    Fix(name, body) -> todo
+    App(fun, arg) -> todo
+    TypeDef(type_def) -> todo
+    Match(arg, cases) -> todo
+    Err -> todo
   }
 }
 
