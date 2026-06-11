@@ -47,6 +47,7 @@ pub type Token {
 
   // Symbols
   RcdTOpen
+  AnnOpen
   LParen
   RParen
   LBrace
@@ -135,6 +136,7 @@ fn core_lexer() -> Lexer(Token, Nil) {
 
     // Two-character symbols (must come before single-char)
     lexer.token("%{", RcdTOpen),
+    lexer.token("%(", AnnOpen),
     lexer.token("=>", FatArrow),
     lexer.token("->", ThinArrow),
     lexer.token("<", LAngle),
@@ -178,6 +180,7 @@ fn term(file: String) -> Parser(AST, Token, Nil) {
     tag(file),
     rcd(file),
     rcd_t(file),
+    ann(file),
     // lambda_expr(file),
   // pi_expr(file),
   // let_expr(file),
@@ -186,7 +189,6 @@ fn term(file: String) -> Parser(AST, Token, Nil) {
   // error_expr(file),
   // builtin_call(file),
   // paren_expr(file),
-  // paren_ann_expr(file),
   ])
 }
 
@@ -301,6 +303,15 @@ fn rcd_t(file: String) -> Parser(AST, Token, Nil) {
   use _ <- do(nibble.token(RBrace))
   use end <- do(get_span(file))
   return(ast.rcd_t(fields, span.merge(start, end)))
+}
+
+fn ann(file: String) -> Parser(AST, Token, Nil) {
+  use _ <- do(nibble.token(AnnOpen))
+  use expr <- do(term(file))
+  use _ <- do(nibble.token(Colon))
+  use typ <- do(term(file))
+  use _ <- do(nibble.token(RParen))
+  return(ast.ann(expr, typ, span.merge(expr.span, typ.span)))
 }
 
 // fn lambda_expr(file: String) -> Parser(AST, Token, Nil) {
@@ -508,15 +519,6 @@ fn rcd_t(file: String) -> Parser(AST, Token, Nil) {
 //   use expr <- do(expression(file))
 //   use _ <- do(nibble.token(RParen))
 //   return(expr)
-// }
-
-// fn paren_ann_expr(file: String) -> Parser(AST, Token, Nil) {
-//   use _ <- do(nibble.token(LParen))
-//   use expr <- do(expression(file))
-//   use _ <- do(nibble.token(Colon))
-//   use typ <- do(expression(file))
-//   use _ <- do(nibble.token(RParen))
-//   return(AST(core.ast.Ann(expr, typ), span.merge(expr.span, typ.span)))
 // }
 
 // // ============================================================================

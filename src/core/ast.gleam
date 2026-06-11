@@ -166,6 +166,10 @@ pub fn rcd_t(fields: List(#(String, #(AST, Option(AST)))), span: Span) {
   AST(RcdT(fields), span)
 }
 
+pub fn ann(value: AST, type_: AST, span: Span) {
+  AST(Ann(value, type_), span)
+}
+
 pub fn lam(param: #(String, AST), body: AST, span: Span) {
   AST(Lam(False, param, body), span)
 }
