@@ -1,6 +1,5 @@
-import core/ast.{LitT}
+import core/ast
 import core/format
-import core/literals as lit
 import gleam/option.{None, Some}
 import gleeunit
 import syntax/span
@@ -44,19 +43,19 @@ pub fn format_type_universe_test() {
 }
 
 pub fn format_lit_type_test() {
-  assert format.format(ast.AST(LitT(lit.IntT), s(1, 1, 1, 5))) == "%Int"
-  assert format.format(ast.AST(LitT(lit.FloatT), s(1, 1, 1, 7))) == "%Float"
-  assert format.format(ast.AST(LitT(lit.I8), s(1, 1, 1, 4))) == "%I8"
-  assert format.format(ast.AST(LitT(lit.I16), s(1, 1, 1, 5))) == "%I16"
-  assert format.format(ast.AST(LitT(lit.I32), s(1, 1, 1, 5))) == "%I32"
-  assert format.format(ast.AST(LitT(lit.I64), s(1, 1, 1, 5))) == "%I64"
-  assert format.format(ast.AST(LitT(lit.U8), s(1, 1, 1, 4))) == "%U8"
-  assert format.format(ast.AST(LitT(lit.U16), s(1, 1, 1, 5))) == "%U16"
-  assert format.format(ast.AST(LitT(lit.U32), s(1, 1, 1, 5))) == "%U32"
-  assert format.format(ast.AST(LitT(lit.U64), s(1, 1, 1, 5))) == "%U64"
-  assert format.format(ast.AST(LitT(lit.F16), s(1, 1, 1, 5))) == "%F16"
-  assert format.format(ast.AST(LitT(lit.F32), s(1, 1, 1, 5))) == "%F32"
-  assert format.format(ast.AST(LitT(lit.F64), s(1, 1, 1, 5))) == "%F64"
+  assert format.format(ast.int_t(s(1, 1, 1, 5))) == "%Int"
+  assert format.format(ast.float_t(s(1, 1, 1, 7))) == "%Float"
+  assert format.format(ast.i8(s(1, 1, 1, 4))) == "%I8"
+  assert format.format(ast.i16(s(1, 1, 1, 5))) == "%I16"
+  assert format.format(ast.i32(s(1, 1, 1, 5))) == "%I32"
+  assert format.format(ast.i64(s(1, 1, 1, 5))) == "%I64"
+  assert format.format(ast.u8(s(1, 1, 1, 4))) == "%U8"
+  assert format.format(ast.u16(s(1, 1, 1, 5))) == "%U16"
+  assert format.format(ast.u32(s(1, 1, 1, 5))) == "%U32"
+  assert format.format(ast.u64(s(1, 1, 1, 5))) == "%U64"
+  assert format.format(ast.f16(s(1, 1, 1, 5))) == "%F16"
+  assert format.format(ast.f32(s(1, 1, 1, 5))) == "%F32"
+  assert format.format(ast.f64(s(1, 1, 1, 5))) == "%F64"
 }
 
 pub fn format_err_test() {
