@@ -1,12 +1,10 @@
 /// Tests for the Core language parser.
-import core/ast.{type AST, type Case, type Data, type Pattern}
+import core/ast.{type AST}
 import core/error.{type Error} as e
-import core/literals.{type Literal, type LiteralType} as lit
 import core/parse as p
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result.{try}
-import gleam/string
 import gleeunit
 import syntax/span.{type Span, Span}
 

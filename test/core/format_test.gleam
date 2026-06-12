@@ -1,11 +1,9 @@
-import core/ast.{type AST, AST, LitT}
+import core/ast.{LitT}
 import core/format
 import core/literals as lit
-import gleam/float
-import gleam/int
-import gleam/option.{type Option, None, Some}
+import gleam/option.{None, Some}
 import gleeunit
-import syntax/span as span
+import syntax/span
 
 pub fn main() {
   gleeunit.main()
@@ -85,7 +83,10 @@ pub fn format_rcd_single_test() {
 }
 
 pub fn format_rcd_multi_test() {
-  let fields = [#("a", ast.var("x", s(1, 3, 1, 4))), #("b", ast.var("y", s(1, 7, 1, 8)))]
+  let fields = [
+    #("a", ast.var("x", s(1, 3, 1, 4))),
+    #("b", ast.var("y", s(1, 7, 1, 8))),
+  ]
   let result = format.format(ast.rcd(fields, s(1, 1, 1, 9)))
   // Multi-field records should have newlines when formatted
   assert result == "{\n  a: x,\n  b: y\n}"
@@ -96,12 +97,14 @@ pub fn format_rcdt_empty_test() {
 }
 
 pub fn format_rcdt_single_test() {
-  let fields = [#("a", #(ast.var("x", s(1, 4, 1, 7)), option.None))]
+  let fields = [#("a", #(ast.var("x", s(1, 4, 1, 7)), None))]
   assert format.format(ast.rcd_t(fields, s(1, 1, 1, 8))) == "%{a: x}"
 }
 
 pub fn format_rcdt_with_default_test() {
-  let fields = [#("a", #(ast.var("x", s(1, 4, 1, 7)), option.Some(ast.int(42, s(1, 8, 1, 10)))))]
+  let fields = [
+    #("a", #(ast.var("x", s(1, 4, 1, 7)), Some(ast.int(42, s(1, 8, 1, 10))))),
+  ]
   assert format.format(ast.rcd_t(fields, s(1, 1, 1, 11))) == "%{a: x = 42}"
 }
 
