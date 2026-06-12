@@ -1,61 +1,334 @@
-import core/ast.{type AST}
-import core/literals as lit
+import core/ast.{
+  type AST,
+  type Case,
+  type Pattern,
+  type TypeDefinition,
+  type Variant,
+  PAny,
+  PTyp,
+  PLit,
+  PLitT,
+  PAlias,
+  PCtr,
+  PRcd,
+  PErr,
+}
+import core/literals.{type LiteralType}
+import core/literals as l
 import gleam/float
 import gleam/int
+import gleam/list
+import gleam/option.{type Option, None, Some}
+import gleam/string
+import glam/doc.{type Document}
+
+// ============================================================================
+// Pretty-printing helpers
+// ============================================================================
+
+fn t(s: String) -> Document {
+  doc.from_string(s)
+}
+
+// Concatenate a list of documents
+fn docs(ds: List(Document)) -> Document {
+  doc.concat(ds)
+}
+
+fn nl() -> Document {
+  doc.line
+}
+
+fn nest(d: Document) -> Document {
+  doc.nest(d, by: 2)
+}
+
+fn join_docs(ds: List(Document), sep: Document) -> Document {
+  doc.join(ds, with: sep)
+}
+
+// ============================================================================
+// AST formatting
+// ============================================================================
 
 pub fn format(ast: AST) -> String {
+  format_ast(ast)
+  |> doc.to_string(80)
+}
+
+fn format_ast(ast: AST) -> Document {
   case ast.data {
-    ast.Typ(u) -> todo
-    ast.Hole(id) if id < 0 -> "?"
-    ast.Hole(id) -> "?<" <> int.to_string(id) <> ">"
-    ast.Lit(lit) ->
-      case lit {
-        lit.Int(value) -> int.to_string(value)
-        lit.Float(value) -> float.to_string(value)
+    ast.Typ(u) ->
+      case u {
+        0 -> t("%Type")
+        n -> t("%Type<" <> int.to_string(n) <> ">")
       }
-    ast.LitT(lit_t) ->
-      case lit_t {
-        lit.IntT -> "%Int"
-        lit.FloatT -> "%Float"
-        lit.I8 -> "%I8"
-        lit.I16 -> "%I16"
-        lit.I32 -> "%I32"
-        lit.I64 -> "%I64"
-        lit.U8 -> "%U8"
-        lit.U16 -> "%U16"
-        lit.U32 -> "%U32"
-        lit.U64 -> "%U64"
-        lit.F16 -> "%F16"
-        lit.F32 -> "%F32"
-        lit.F64 -> "%F64"
+
+    ast.Hole(id) if id < 0 -> t("?")
+    ast.Hole(id) -> t("?<" <> int.to_string(id) <> ">")
+
+    ast.Lit(l) ->
+      case l {
+        l.Int(value) -> t(int.to_string(value))
+        l.Float(value) -> t(float.to_string(value))
       }
-    ast.Var(name) -> name
-    ast.Ctr(tag, arg) -> todo
-    ast.Rcd(fields) -> todo
-    ast.RcdT(fields) -> todo
-    ast.Ann(ast, type_) -> todo
+
+    ast.LitT(t_) -> format_lit_type(t_)
+
+    ast.Var(name) -> t(name)
+
+    ast.Ctr(tag, arg) ->
+      docs([t("#" <> tag <> "("), format_ast(arg), t(")")])
+
+    ast.Rcd(fields) -> format_rcd(fields)
+
+    ast.RcdT(fields) -> format_rcdt(fields)
+
+    ast.Ann(term, type_) ->
+      docs([t("%("), format_ast(term), t(": "), format_ast(type_), t(")")])
+
     ast.Lam(implicit, #(name, type_), body) -> {
-      let #(open, close) = case implicit {
-        True -> #("<", ">")
-        False -> #("(", ")")
-      }
-      let param = open <> name <> ": " <> format(type_) <> close
-      "%fn" <> param <> " => " <> format(body)
+      let param = param_doc(implicit, name, format_ast(type_))
+      docs([t("%fn"), param, t(" => "), format_ast(body)])
     }
+
     ast.Pi(implicit, #(name, type_), codomain) -> {
-      let #(open, close) = case implicit {
-        True -> #("<", ">")
-        False -> #("(", ")")
-      }
-      let domain = open <> name <> ": " <> format(type_) <> close
-      "%pi" <> domain <> " -> " <> format(codomain)
+      let domain = param_doc(implicit, name, format_ast(type_))
+      docs([t("%pi"), domain, t(" -> "), format_ast(codomain)])
     }
-    ast.Fix(name, body) -> todo
-    ast.App(implicit, fun, arg) -> todo
-    ast.TypeDef(type_def) -> todo
-    ast.Let(def, body) -> todo
-    ast.Match(arg, cases) -> todo
-    ast.Call(name, args, return_type) -> todo
-    ast.Err -> todo
+
+    ast.Fix(name, body) ->
+      docs([t("%fix "), t(name), t(". "), format_ast(body)])
+
+    ast.App(implicit, fun, arg) -> {
+      let fun_doc = format_ast(fun)
+      let arg_doc = format_ast(arg)
+      case implicit {
+        True -> docs([fun_doc, t("<"), arg_doc, t(">")])
+        False -> docs([fun_doc, t("("), arg_doc, t(")")])
+      }
+    }
+
+    ast.TypeDef(type_def) -> format_typedef(type_def)
+
+    ast.Let(#(name, type_, value), body) ->
+      docs([
+        t("%let "),
+        t(name),
+        t(": "),
+        format_ast(type_),
+        t(" = "),
+        format_ast(value),
+        t("; "),
+        format_ast(body),
+      ])
+
+    ast.Match(arg, cases) -> {
+      let case_docs = cases |> list.map(format_case)
+      docs([
+        t("%match "),
+        format_ast(arg),
+        t(" {"),
+        nl(),
+        nest(join_docs(case_docs, docs([t("|"), nl()]))),
+        nl(),
+        t("}"),
+      ])
+      |> doc.group
+    }
+
+    ast.Call(name, args, return_type) -> {
+      let arg_docs = args |> list.map(format_ast)
+      docs([
+        t("@"),
+        t(name),
+        t("<"),
+        format_ast(return_type),
+        t(">"),
+        t("("),
+        join_docs(arg_docs, docs([t(","), doc.space])),
+        t(")"),
+      ])
+    }
+
+    ast.Err -> t("%error")
   }
+}
+
+fn format_rcd(fields: List(#(String, AST))) -> Document {
+  case fields {
+    [] -> t("{}")
+    [field] -> {
+      let field_doc = docs([t(field.0 <> ": "), format_ast(field.1)])
+      docs([t("{"), field_doc, t("}")])
+    }
+    _ -> {
+      let field_docs =
+        fields
+        |> list.map(fn(f) {
+          docs([t(f.0 <> ": "), format_ast(f.1)])
+        })
+      docs([
+        t("{"),
+        nest(docs([
+          nl(),
+          join_docs(field_docs, docs([t(","), nl()])),
+        ])),
+        nl(),
+        t("}"),
+      ])
+      |> doc.group
+    }
+  }
+}
+
+fn format_rcdt(fields: List(#(String, #(AST, Option(AST))))) -> Document {
+  case fields {
+    [] -> t("%{}")
+    [field] -> {
+      let field_doc = case field.1.1 {
+        Some(default_) -> docs([t(field.0 <> ": "), format_ast(field.1.0), t(" = "), format_ast(default_)])
+        None -> docs([t(field.0 <> ": "), format_ast(field.1.0)])
+      }
+      docs([t("%{"), field_doc, t("}")])
+    }
+    _ -> {
+      let field_docs =
+        fields
+        |> list.map(fn(f) {
+          let field_str = docs([t(f.0 <> ": "), format_ast(f.1.0)])
+          case f.1.1 {
+            Some(default_) -> docs([field_str, t(" = "), format_ast(default_)])
+            None -> field_str
+          }
+        })
+      docs([
+        t("%{"),
+        nest(docs([
+          nl(),
+          join_docs(field_docs, docs([t(","), nl()])),
+        ])),
+        nl(),
+        t("}"),
+      ])
+      |> doc.group
+    }
+  }
+}
+
+fn param_doc(implicit: Bool, name: String, type_: Document) -> Document {
+  case implicit {
+    True -> docs([t("<"), t(name), t(": "), type_, t(">")])
+    False -> docs([t("("), t(name), t(": "), type_, t(")")])
+  }
+}
+
+fn format_lit_type(lt: LiteralType) -> Document {
+  case lt {
+    _ if lt == l.IntT -> t("%Int")
+    _ if lt == l.FloatT -> t("%Float")
+    _ if lt == l.I8 -> t("%I8")
+    _ if lt == l.I16 -> t("%I16")
+    _ if lt == l.I32 -> t("%I32")
+    _ if lt == l.I64 -> t("%I64")
+    _ if lt == l.U8 -> t("%U8")
+    _ if lt == l.U16 -> t("%U16")
+    _ if lt == l.U32 -> t("%U32")
+    _ if lt == l.U64 -> t("%U64")
+    _ if lt == l.F16 -> t("%F16")
+    _ if lt == l.F32 -> t("%F32")
+    _ -> t("%F64")
+  }
+}
+
+fn format_case(c: Case) -> Document {
+  let guard_doc =
+    case c.guard {
+      Some(#(guard, pass)) ->
+        docs([t(" ? "), format_ast(guard), t(" ~ "), format_pattern(pass)])
+      None -> t("")
+    }
+  docs([
+    t("| "),
+    format_pattern(c.pattern),
+    guard_doc,
+    t(" => "),
+    format_ast(c.body),
+  ])
+}
+
+fn format_pattern(pattern: Pattern) -> Document {
+  case pattern {
+    PAny(_) -> t("_")
+    PTyp(u, _) ->
+      case u {
+        0 -> t("%Type")
+        n -> t("%Type<" <> int.to_string(n) <> ">")
+      }
+    PLit(l, _) ->
+      case l {
+        l.Int(n) -> t(int.to_string(n))
+        l.Float(f) -> t(float.to_string(f))
+      }
+    PLitT(t, _) -> format_lit_type(t)
+    PAlias(name, inner, _) ->
+      docs([t("_@"), t(name), t("@"), format_pattern(inner)])
+    PCtr(tag, inner, _) ->
+      docs([t("#" <> tag <> "("), format_pattern(inner), t(")")])
+    PRcd(fields, _) -> format_pattern_rcd(fields)
+    PErr(_) -> t("%error")
+  }
+}
+
+fn format_pattern_rcd(fields: List(#(String, Pattern))) -> Document {
+  case fields {
+    [] -> t("{}")
+    [field] -> {
+      let field_doc = docs([t(field.0 <> ": "), format_pattern(field.1)])
+      docs([t("{"), field_doc, t("}")])
+    }
+    _ -> {
+      let field_docs =
+        fields
+        |> list.map(fn(f) {
+          docs([t(f.0 <> ": "), format_pattern(f.1)])
+        })
+      docs([
+        t("{"),
+        nl(),
+        nest(join_docs(field_docs, docs([t(","), nl()]))),
+        nl(),
+        t("}"),
+      ])
+      |> doc.group
+    }
+  }
+}
+
+fn format_typedef(td: TypeDefinition) -> Document {
+  let param_names =
+    td.params
+    |> list.map(fn(p) { p.0 })
+    |> string.join(" ")
+  let variant_docs =
+    td.variants
+    |> list.map(fn(v) { format_variant(v.1) })
+  docs([
+    t("type "),
+    t(param_names),
+    t(" {"),
+    nl(),
+    nest(join_docs(variant_docs, docs([t("|"), nl()]))),
+    nl(),
+    t("}"),
+  ])
+  |> doc.group
+}
+
+fn format_variant(v: Variant) -> Document {
+  let param_names =
+    v.params
+    |> list.map(fn(p) { p.0 })
+    |> string.join(" ")
+  docs([t("| "), t(param_names), t(" -> "), format_ast(v.return_type)])
 }

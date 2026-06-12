@@ -1,0 +1,190 @@
+/// Round-trip tests: parse -> format -> same source
+///
+/// These tests verify that the parser and formatter work correctly together
+/// by checking that format(parse(source)) == source for various inputs.
+import core/ast.{type AST}
+import core/format
+import core/parse as p
+import gleam/list
+import gleeunit
+
+pub fn main() {
+  gleeunit.main()
+}
+
+const filename = "syntax_test"
+
+fn parse(src: String) -> AST {
+  case p.parse(filename, src) {
+    Ok(ast) -> ast
+    Error(_) -> panic as "parse failed"
+  }
+}
+
+// ============================================================================
+// Simple values
+// ============================================================================
+
+pub fn roundtrip_int_test() {
+  let source = "42"
+  assert format.format(parse(source)) == source
+}
+
+pub fn roundtrip_float_test() {
+  let source = "3.14"
+  assert format.format(parse(source)) == source
+}
+
+pub fn roundtrip_var_test() {
+  let source = "x"
+  assert format.format(parse(source)) == source
+}
+
+pub fn roundtrip_hole_test() {
+  let source = "?"
+  assert format.format(parse(source)) == source
+
+  let source2 = "?<42>"
+  assert format.format(parse(source2)) == source2
+}
+
+pub fn roundtrip_type_test() {
+  let source1 = "%Type"
+  assert format.format(parse(source1)) == source1
+
+  let source2 = "%Type<42>"
+  assert format.format(parse(source2)) == source2
+}
+
+// ============================================================================
+// Literals types
+// ============================================================================
+
+pub fn roundtrip_lit_type_test() {
+  let sources = [
+    "%Int",
+    "%Float",
+    "%I8",
+    "%I16",
+    "%I32",
+    "%I64",
+    "%U8",
+    "%U16",
+    "%U32",
+    "%U64",
+    "%F16",
+    "%F32",
+    "%F64",
+  ]
+  sources
+  |> list.each(fn(src) {
+    assert format.format(parse(src)) == src
+  })
+}
+
+// ============================================================================
+// Records
+// ============================================================================
+
+pub fn roundtrip_rcd_empty_test() {
+  let source = "{}"
+  assert format.format(parse(source)) == source
+}
+
+pub fn roundtrip_rcd_single_test() {
+  let source = "{a: x}"
+  assert format.format(parse(source)) == source
+}
+
+pub fn roundtrip_rcdt_empty_test() {
+  let source = "%{}"
+  assert format.format(parse(source)) == source
+}
+
+pub fn roundtrip_rcdt_single_test() {
+  let source = "%{a: x}"
+  assert format.format(parse(source)) == source
+}
+
+pub fn roundtrip_rcdt_with_default_test() {
+  let source = "%{a: x = 42}"
+  assert format.format(parse(source)) == source
+}
+
+// ============================================================================
+// Annotations
+// ============================================================================
+
+pub fn roundtrip_ann_test() {
+  let source = "%(x: y)"
+  assert format.format(parse(source)) == source
+}
+
+// ============================================================================
+// Lambdas
+// ============================================================================
+
+pub fn roundtrip_lam_explicit_test() {
+  let source = "%fn(x: y) => z"
+  assert format.format(parse(source)) == source
+}
+
+pub fn roundtrip_lam_implicit_test() {
+  let source = "%fn<x: y> => z"
+  assert format.format(parse(source)) == source
+}
+
+// ============================================================================
+// Pi types
+// ============================================================================
+
+pub fn roundtrip_pi_explicit_test() {
+  let source = "%pi(x: y) -> z"
+  assert format.format(parse(source)) == source
+}
+
+pub fn roundtrip_pi_implicit_test() {
+  let source = "%pi<x: y> -> z"
+  assert format.format(parse(source)) == source
+}
+
+// ============================================================================
+// Fixpoint
+// ============================================================================
+
+pub fn roundtrip_fix_test() {
+  let source = "%fix f. x"
+  assert format.format(parse(source)) == source
+}
+
+// ============================================================================
+// Applications
+// ============================================================================
+
+pub fn roundtrip_app_explicit_test() {
+  let source = "f(x)"
+  assert format.format(parse(source)) == source
+}
+
+pub fn roundtrip_app_implicit_test() {
+  let source = "f<x>"
+  assert format.format(parse(source)) == source
+}
+
+// ============================================================================
+// Let bindings
+// ============================================================================
+
+pub fn roundtrip_let_test() {
+  let source = "%let x: a = y; z"
+  assert format.format(parse(source)) == source
+}
+
+// ============================================================================
+// Constructor
+// ============================================================================
+
+pub fn roundtrip_ctr_test() {
+  let source = "#A(x)"
+  assert format.format(parse(source)) == source
+}
