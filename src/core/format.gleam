@@ -1,26 +1,14 @@
 import core/ast.{
-  type AST,
-  type Case,
-  type Pattern,
-  type TypeDefinition,
-  type Variant,
-  PAny,
-  PTyp,
-  PLit,
-  PLitT,
-  PAlias,
-  PCtr,
-  PRcd,
-  PErr,
+  type AST, type Case, type Pattern, type TypeDefinition, type Variant, PAlias,
+  PAny, PCtr, PErr, PLit, PLitT, PRcd, PTyp,
 }
-import core/literals.{type LiteralType}
-import core/literals as l
+import core/literals.{type LiteralType} as l
+import glam/doc.{type Document}
 import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
-import glam/doc.{type Document}
 
 // ============================================================================
 // Pretty-printing helpers
@@ -51,9 +39,9 @@ fn join_docs(ds: List(Document), sep: Document) -> Document {
 // AST formatting
 // ============================================================================
 
-pub fn format(ast: AST) -> String {
+pub fn format(ast: AST, width: Int) -> String {
   format_ast(ast)
-  |> doc.to_string(80)
+  |> doc.to_string(width)
 }
 
 fn format_ast(ast: AST) -> Document {
@@ -77,8 +65,7 @@ fn format_ast(ast: AST) -> Document {
 
     ast.Var(name) -> t(name)
 
-    ast.Ctr(tag, arg) ->
-      docs([t("#" <> tag <> "("), format_ast(arg), t(")")])
+    ast.Ctr(tag, arg) -> docs([t("#" <> tag <> "("), format_ast(arg), t(")")])
 
     ast.Rcd(fields) -> format_rcd(fields)
 
@@ -165,15 +152,15 @@ fn format_rcd(fields: List(#(String, AST))) -> Document {
     _ -> {
       let field_docs =
         fields
-        |> list.map(fn(f) {
-          docs([t(f.0 <> ": "), format_ast(f.1)])
-        })
+        |> list.map(fn(f) { docs([t(f.0 <> ": "), format_ast(f.1)]) })
       docs([
         t("{"),
-        nest(docs([
-          nl(),
-          join_docs(field_docs, docs([t(","), nl()])),
-        ])),
+        nest(
+          docs([
+            nl(),
+            join_docs(field_docs, docs([t(","), nl()])),
+          ]),
+        ),
         nl(),
         t("}"),
       ])
@@ -187,7 +174,13 @@ fn format_rcdt(fields: List(#(String, #(AST, Option(AST))))) -> Document {
     [] -> t("%{}")
     [field] -> {
       let field_doc = case field.1.1 {
-        Some(default_) -> docs([t(field.0 <> ": "), format_ast(field.1.0), t(" = "), format_ast(default_)])
+        Some(default_) ->
+          docs([
+            t(field.0 <> ": "),
+            format_ast(field.1.0),
+            t(" = "),
+            format_ast(default_),
+          ])
         None -> docs([t(field.0 <> ": "), format_ast(field.1.0)])
       }
       docs([t("%{"), field_doc, t("}")])
@@ -204,10 +197,12 @@ fn format_rcdt(fields: List(#(String, #(AST, Option(AST))))) -> Document {
         })
       docs([
         t("%{"),
-        nest(docs([
-          nl(),
-          join_docs(field_docs, docs([t(","), nl()])),
-        ])),
+        nest(
+          docs([
+            nl(),
+            join_docs(field_docs, docs([t(","), nl()])),
+          ]),
+        ),
         nl(),
         t("}"),
       ])
@@ -242,12 +237,11 @@ fn format_lit_type(lt: LiteralType) -> Document {
 }
 
 fn format_case(c: Case) -> Document {
-  let guard_doc =
-    case c.guard {
-      Some(#(guard, pass)) ->
-        docs([t(" ? "), format_ast(guard), t(" ~ "), format_pattern(pass)])
-      None -> t("")
-    }
+  let guard_doc = case c.guard {
+    Some(#(guard, pass)) ->
+      docs([t(" ? "), format_ast(guard), t(" ~ "), format_pattern(pass)])
+    None -> t("")
+  }
   docs([
     t("| "),
     format_pattern(c.pattern),
@@ -290,9 +284,7 @@ fn format_pattern_rcd(fields: List(#(String, Pattern))) -> Document {
     _ -> {
       let field_docs =
         fields
-        |> list.map(fn(f) {
-          docs([t(f.0 <> ": "), format_pattern(f.1)])
-        })
+        |> list.map(fn(f) { docs([t(f.0 <> ": "), format_pattern(f.1)]) })
       docs([
         t("{"),
         nl(),

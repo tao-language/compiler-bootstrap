@@ -1,8 +1,8 @@
 import core/ast
-import core/format
+import core/format.{format}
 import gleam/option.{None, Some}
 import gleeunit
-import syntax/span
+import syntax/span.{Span}
 
 pub fn main() {
   gleeunit.main()
@@ -10,56 +10,54 @@ pub fn main() {
 
 const filename = "format_test"
 
-fn s(r1: Int, c1: Int, r2: Int, c2: Int) -> span.Span {
-  span.Span(filename, r1, c1, r2, c2)
-}
+const s = Span(filename, 1, 1, 1, 1)
 
 // ============================================================================
 // Simple values
 // ============================================================================
 
 pub fn format_int_test() {
-  assert format.format(ast.int(42, s(1, 1, 1, 3))) == "42"
-  assert format.format(ast.int(-7, s(1, 1, 1, 3))) == "-7"
+  assert format(ast.int(42, s), 80) == "42"
+  assert format(ast.int(-7, s), 80) == "-7"
 }
 
 pub fn format_float_test() {
-  assert format.format(ast.float(3.14, s(1, 1, 1, 5))) == "3.14"
+  assert format(ast.float(3.14, s), 80) == "3.14"
 }
 
 pub fn format_var_test() {
-  assert format.format(ast.var("x", s(1, 1, 1, 2))) == "x"
-  assert format.format(ast.var("foo", s(1, 1, 1, 4))) == "foo"
+  assert format(ast.var("x", s), 80) == "x"
+  assert format(ast.var("foo", s), 80) == "foo"
 }
 
 pub fn format_hole_test() {
-  assert format.format(ast.hole(-1, s(1, 1, 1, 2))) == "?"
-  assert format.format(ast.hole(42, s(1, 1, 1, 6))) == "?<42>"
+  assert format(ast.hole(-1, s), 80) == "?"
+  assert format(ast.hole(42, s), 80) == "?<42>"
 }
 
 pub fn format_type_universe_test() {
-  assert format.format(ast.typ(0, s(1, 1, 1, 6))) == "%Type"
-  assert format.format(ast.typ(42, s(1, 1, 1, 10))) == "%Type<42>"
+  assert format(ast.typ(0, s), 80) == "%Type"
+  assert format(ast.typ(42, s), 80) == "%Type<42>"
 }
 
 pub fn format_lit_type_test() {
-  assert format.format(ast.int_t(s(1, 1, 1, 5))) == "%Int"
-  assert format.format(ast.float_t(s(1, 1, 1, 7))) == "%Float"
-  assert format.format(ast.i8(s(1, 1, 1, 4))) == "%I8"
-  assert format.format(ast.i16(s(1, 1, 1, 5))) == "%I16"
-  assert format.format(ast.i32(s(1, 1, 1, 5))) == "%I32"
-  assert format.format(ast.i64(s(1, 1, 1, 5))) == "%I64"
-  assert format.format(ast.u8(s(1, 1, 1, 4))) == "%U8"
-  assert format.format(ast.u16(s(1, 1, 1, 5))) == "%U16"
-  assert format.format(ast.u32(s(1, 1, 1, 5))) == "%U32"
-  assert format.format(ast.u64(s(1, 1, 1, 5))) == "%U64"
-  assert format.format(ast.f16(s(1, 1, 1, 5))) == "%F16"
-  assert format.format(ast.f32(s(1, 1, 1, 5))) == "%F32"
-  assert format.format(ast.f64(s(1, 1, 1, 5))) == "%F64"
+  assert format(ast.int_t(s), 80) == "%Int"
+  assert format(ast.float_t(s), 80) == "%Float"
+  assert format(ast.i8(s), 80) == "%I8"
+  assert format(ast.i16(s), 80) == "%I16"
+  assert format(ast.i32(s), 80) == "%I32"
+  assert format(ast.i64(s), 80) == "%I64"
+  assert format(ast.u8(s), 80) == "%U8"
+  assert format(ast.u16(s), 80) == "%U16"
+  assert format(ast.u32(s), 80) == "%U32"
+  assert format(ast.u64(s), 80) == "%U64"
+  assert format(ast.f16(s), 80) == "%F16"
+  assert format(ast.f32(s), 80) == "%F32"
+  assert format(ast.f64(s), 80) == "%F64"
 }
 
 pub fn format_err_test() {
-  assert format.format(ast.err(s(1, 1, 1, 1))) == "%error"
+  assert format(ast.err(s), 80) == "%error"
 }
 
 // ============================================================================
@@ -67,44 +65,43 @@ pub fn format_err_test() {
 // ============================================================================
 
 pub fn format_ctr_test() {
-  let arg = ast.var("x", s(1, 2, 1, 4))
-  let c = ast.AST(ast.Ctr("A", arg), s(1, 1, 1, 6))
-  assert format.format(c) == "#A(x)"
+  let arg = ast.var("x", s)
+  let c = ast.AST(ast.Ctr("A", arg), s)
+  assert format(c, 80) == "#A(x)"
 }
 
 pub fn format_rcd_empty_test() {
-  assert format.format(ast.rcd([], s(1, 1, 1, 3))) == "{}"
+  assert format(ast.rcd([], s), 80) == "{}"
 }
 
 pub fn format_rcd_single_test() {
-  let fields = [#("a", ast.var("x", s(1, 3, 1, 6)))]
-  assert format.format(ast.rcd(fields, s(1, 1, 1, 7))) == "{a: x}"
+  let fields = [#("a", ast.var("x", s))]
+  assert format(ast.rcd(fields, s), 80) == "{a: x}"
 }
 
 pub fn format_rcd_multi_test() {
   let fields = [
-    #("a", ast.var("x", s(1, 3, 1, 4))),
-    #("b", ast.var("y", s(1, 7, 1, 8))),
+    #("a", ast.var("x", s)),
+    #("b", ast.var("y", s)),
   ]
-  let result = format.format(ast.rcd(fields, s(1, 1, 1, 9)))
   // Multi-field records should have newlines when formatted
-  assert result == "{\n  a: x,\n  b: y\n}"
+  assert format(ast.rcd(fields, s), 80) == "{\n  a: x,\n  b: y\n}"
 }
 
 pub fn format_rcdt_empty_test() {
-  assert format.format(ast.rcd_t([], s(1, 1, 1, 4))) == "%{}"
+  assert format(ast.rcd_t([], s), 80) == "%{}"
 }
 
 pub fn format_rcdt_single_test() {
-  let fields = [#("a", #(ast.var("x", s(1, 4, 1, 7)), None))]
-  assert format.format(ast.rcd_t(fields, s(1, 1, 1, 8))) == "%{a: x}"
+  let fields = [#("a", #(ast.var("x", s), None))]
+  assert format(ast.rcd_t(fields, s), 80) == "%{a: x}"
 }
 
 pub fn format_rcdt_with_default_test() {
   let fields = [
-    #("a", #(ast.var("x", s(1, 4, 1, 7)), Some(ast.int(42, s(1, 8, 1, 10))))),
+    #("a", #(ast.var("x", s), Some(ast.int(42, s)))),
   ]
-  assert format.format(ast.rcd_t(fields, s(1, 1, 1, 11))) == "%{a: x = 42}"
+  assert format(ast.rcd_t(fields, s), 80) == "%{a: x = 42}"
 }
 
 // ============================================================================
@@ -112,10 +109,10 @@ pub fn format_rcdt_with_default_test() {
 // ============================================================================
 
 pub fn format_ann_test() {
-  let term = ast.var("x", s(1, 2, 1, 4))
-  let type_ = ast.var("y", s(1, 5, 1, 8))
-  let ann = ast.ann(term, type_, s(1, 1, 1, 8))
-  assert format.format(ann) == "%(x: y)"
+  let term = ast.var("x", s)
+  let type_ = ast.var("y", s)
+  let ann = ast.ann(term, type_, s)
+  assert format(ann, 80) == "%(x: y)"
 }
 
 // ============================================================================
@@ -123,17 +120,17 @@ pub fn format_ann_test() {
 // ============================================================================
 
 pub fn format_lam_explicit_test() {
-  let param = #("x", ast.var("y", s(1, 6, 1, 9)))
-  let body = ast.var("z", s(1, 11, 1, 15))
-  let lam = ast.lam(param, body, s(1, 1, 1, 15))
-  assert format.format(lam) == "%fn(x: y) => z"
+  let param = #("x", ast.var("y", s))
+  let body = ast.var("z", s)
+  let lam = ast.lam(param, body, s)
+  assert format(lam, 80) == "%fn(x: y) => z"
 }
 
 pub fn format_lam_implicit_test() {
-  let param = #("x", ast.var("y", s(1, 6, 1, 9)))
-  let body = ast.var("z", s(1, 11, 1, 15))
-  let lam = ast.lam_implicit(param, body, s(1, 1, 1, 15))
-  assert format.format(lam) == "%fn<x: y> => z"
+  let param = #("x", ast.var("y", s))
+  let body = ast.var("z", s)
+  let lam = ast.lam_implicit(param, body, s)
+  assert format(lam, 80) == "%fn<x: y> => z"
 }
 
 // ============================================================================
@@ -141,17 +138,17 @@ pub fn format_lam_implicit_test() {
 // ============================================================================
 
 pub fn format_pi_explicit_test() {
-  let param = #("x", ast.var("y", s(1, 6, 1, 9)))
-  let codomain = ast.var("z", s(1, 11, 1, 15))
-  let pi = ast.pi(param, codomain, s(1, 1, 1, 15))
-  assert format.format(pi) == "%pi(x: y) -> z"
+  let param = #("x", ast.var("y", s))
+  let codomain = ast.var("z", s)
+  let pi = ast.pi(param, codomain, s)
+  assert format(pi, 80) == "%pi(x: y) -> z"
 }
 
 pub fn format_pi_implicit_test() {
-  let param = #("x", ast.var("y", s(1, 6, 1, 9)))
-  let codomain = ast.var("z", s(1, 11, 1, 15))
-  let pi = ast.pi_implicit(param, codomain, s(1, 1, 1, 15))
-  assert format.format(pi) == "%pi<x: y> -> z"
+  let param = #("x", ast.var("y", s))
+  let codomain = ast.var("z", s)
+  let pi = ast.pi_implicit(param, codomain, s)
+  assert format(pi, 80) == "%pi<x: y> -> z"
 }
 
 // ============================================================================
@@ -159,9 +156,9 @@ pub fn format_pi_implicit_test() {
 // ============================================================================
 
 pub fn format_fix_test() {
-  let body = ast.var("x", s(1, 7, 1, 10))
-  let fix = ast.fix("f", body, s(1, 1, 1, 10))
-  assert format.format(fix) == "%fix f. x"
+  let body = ast.var("x", s)
+  let fix = ast.fix("f", body, s)
+  assert format(fix, 80) == "%fix f. x"
 }
 
 // ============================================================================
@@ -169,17 +166,17 @@ pub fn format_fix_test() {
 // ============================================================================
 
 pub fn format_app_explicit_test() {
-  let fun = ast.var("f", s(1, 1, 1, 2))
-  let arg = ast.var("x", s(1, 2, 1, 4))
-  let app = ast.app(fun, arg, s(1, 1, 1, 4))
-  assert format.format(app) == "f(x)"
+  let fun = ast.var("f", s)
+  let arg = ast.var("x", s)
+  let app = ast.app(fun, arg, s)
+  assert format(app, 80) == "f(x)"
 }
 
 pub fn format_app_implicit_test() {
-  let fun = ast.var("f", s(1, 1, 1, 2))
-  let arg = ast.var("x", s(1, 2, 1, 4))
-  let app = ast.app_implicit(fun, arg, s(1, 1, 1, 4))
-  assert format.format(app) == "f<x>"
+  let fun = ast.var("f", s)
+  let arg = ast.var("x", s)
+  let app = ast.app_implicit(fun, arg, s)
+  assert format(app, 80) == "f<x>"
 }
 
 // ============================================================================
@@ -187,10 +184,10 @@ pub fn format_app_implicit_test() {
 // ============================================================================
 
 pub fn format_let_test() {
-  let type_ = ast.var("a", s(1, 7, 1, 10))
-  let value = ast.var("y", s(1, 11, 1, 14))
-  let body = ast.var("z", s(1, 14, 1, 17))
+  let type_ = ast.var("a", s)
+  let value = ast.var("y", s)
+  let body = ast.var("z", s)
   let def = #("x", type_, value)
-  let let_ = ast.let_(def, body, s(1, 1, 1, 17))
-  assert format.format(let_) == "%let x: a = y; z"
+  let let_ = ast.let_(def, body, s)
+  assert format(let_, 80) == "%let x: a = y; z"
 }

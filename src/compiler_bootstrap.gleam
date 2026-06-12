@@ -7,7 +7,6 @@
 ///   gleam run check <file.core>
 import argv.{Argv}
 import cli/debug_core.{debug_core}
-import cli/run as cli
 import gleam/io
 
 const help = "Tao compiler bootstrap
@@ -33,7 +32,7 @@ pub fn main() {
     //     [] -> Ok(Run(Inline(expr), False, False))
     //     _ -> Error("Too many arguments after -c expression")
     //   }
-    ["debug-core", source, ..] -> debug_core(source)
+    ["debug-core", source, ..] -> debug_core(source, 80)
     // [path, ..rest] ->
     //   case rest {
     //     [] -> Ok(Run(File(path), False, False))
