@@ -1,4 +1,4 @@
-import core/context.{type FFI}
+import core/ffi.{type FFI}
 import core/term.{type Case, type Pattern, type Term} as tm
 import core/utils
 import core/value.{type Env, type Value} as v

@@ -1,5 +1,6 @@
-import core/context.{type FFI, type Subst}
+import core/context.{type Subst}
 import core/eval.{eval}
+import core/ffi.{type FFI}
 import core/quote.{quote}
 import core/term.{type Case, type Term} as tm
 import core/value.{type Env, type Neut, type Value} as v

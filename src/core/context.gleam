@@ -7,26 +7,11 @@
 /// Errors accumulate as the type checker progresses, allowing
 /// recovery after type errors.
 import core/error.{type Error}
-import core/term.{type Term}
+import core/ffi.{type FFI}
 import core/utils
-import core/value.{
-  type Env, type Neut, type TypeDefinition, type Value, type Variant,
-} as v
+import core/value.{type Env, type TypeDefinition, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import syntax/span.{type Span}
-
-// ============================================================================
-// FFI
-// ============================================================================
-
-/// FFI entry — a builtin function that can be called from Core code.
-///
-/// The `impl` receives a list of #(value, type) pairs, where the type
-/// is the result of type-checking the argument. This enables operator
-/// overloading in Phase 5.
-pub type FFI =
-  List(#(String, fn(List(Value)) -> Option(Value)))
 
 // ============================================================================
 // CONTEXT

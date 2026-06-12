@@ -1,4 +1,5 @@
-import core/context.{type FFI, type Subst}
+import core/context.{type Subst}
+import core/ffi.{type FFI}
 import core/quote.{quote}
 import core/term.{type Case, type Term} as tm
 import gleam/list

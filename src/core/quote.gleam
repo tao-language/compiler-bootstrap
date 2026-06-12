@@ -1,6 +1,6 @@
 /// Quote — Convert Values back to Terms
-import core/context.{type FFI}
 import core/eval.{eval}
+import core/ffi.{type FFI}
 import core/term.{type Case, type Term} as tm
 import core/value.{type Env, type Neut, type Value} as v
 import gleam/list

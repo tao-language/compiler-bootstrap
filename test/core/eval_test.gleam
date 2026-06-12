@@ -12,8 +12,8 @@
 /// Trivial data-pass-through tests (Typ, Hole, Lit, LitT, Ctr, Rcd,
 /// RcdT, Fix, Ann) have been removed — they only verify data flows
 /// through, not logic.
-import core/context.{type FFI}
 import core/eval.{eval, match_pattern}
+import core/ffi.{type FFI}
 import core/literals as lit
 import core/term as tm
 import core/value as v
