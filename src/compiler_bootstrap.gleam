@@ -7,6 +7,7 @@
 ///   gleam run check <file.core>
 import argv.{Argv}
 import cli/debug_core.{debug_core}
+import cli/debug_expr.{debug_expr}
 import gleam/io
 
 const help = "Tao compiler bootstrap
@@ -15,7 +16,8 @@ Usage:
   tao                           Enter interactive REPL mode
   tao <filename>                Run a .tao or .core file
   tao -c 'expression'           Run a Tao expression
-  tao debug-core 'expression'   Debug a Core expression
+  tao debug-expr 'expression'   Debug a Tao expression
+  tao debug-core 'core-term'    Debug a Core term
   tao --help                    Show this help
 "
 
@@ -32,6 +34,7 @@ pub fn main() {
     //     [] -> Ok(Run(Inline(expr), False, False))
     //     _ -> Error("Too many arguments after -c expression")
     //   }
+    ["debug-expr", source, ..] -> debug_expr(source, 80)
     ["debug-core", source, ..] -> debug_core(source, 80)
     // [path, ..rest] ->
     //   case rest {

@@ -12,11 +12,11 @@ import gleam/int
 import gleam/io
 import gleam/list
 import gleam/string
-import syntax/span
+import syntax/span.{Span}
 
 /// This command takes a Core expression string and runs the entire
 /// pipeline, printing structured debug information at each stage.
-pub fn debug_core(source: String, width: Int) -> Nil {
+pub fn debug_core(source: String, width: Int) {
   io.println(">> source")
   io.println(source)
   io.println("")
@@ -26,7 +26,7 @@ pub fn debug_core(source: String, width: Int) -> Nil {
     Ok(ast) -> ast
     Error(err) -> {
       io.print_error(string.inspect(err))
-      ast.err(span.Span("<syntax error>", 0, 0, 0, 0))
+      ast.err(Span("<syntax error>", 0, 0, 0, 0))
     }
   }
   io.println(format(ast, width))
