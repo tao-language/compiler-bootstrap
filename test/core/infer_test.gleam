@@ -15,12 +15,7 @@ import core/infer.{check, infer}
 import core/term as tm
 import core/value as v
 import gleam/option.{None, Some}
-import gleeunit
 import syntax/span
-
-pub fn main() {
-  gleeunit.main()
-}
 
 const s = span.Span("", 0, 0, 0, 0)
 

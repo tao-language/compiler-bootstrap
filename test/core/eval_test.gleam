@@ -18,13 +18,6 @@ import core/literals as lit
 import core/term as tm
 import core/value as v
 import gleam/option.{None, Some}
-import gleeunit
-
-pub fn main() {
-  gleeunit.main()
-}
-
-// const s = span.Span("eval_test", 0, 0, 0, 0) // unused — not needed for current tests
 
 // ============================================================================
 // Variable lookup — tests utils.list_at logic

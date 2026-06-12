@@ -11,12 +11,7 @@ import core/term as tm
 import core/unify.{unify}
 import core/value as v
 import gleam/option.{None, Some}
-import gleeunit
 import syntax/span
-
-pub fn main() {
-  gleeunit.main()
-}
 
 const s1 = span.Span("", 1, 1, 1, 1)
 

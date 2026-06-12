@@ -5,12 +5,7 @@ import core/parse as p
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result.{try}
-import gleeunit
 import syntax/span.{type Span, Span}
-
-pub fn main() {
-  gleeunit.main()
-}
 
 const filename = "parse_test"
 

@@ -1,9 +1,4 @@
 import core/value.{env_push, float_t, int_t, var}
-import gleeunit
-
-pub fn main() {
-  gleeunit.main()
-}
 
 pub fn env_push_vars_empty_env_test() {
   assert env_push([], 3) == [var(2), var(1), var(0)]

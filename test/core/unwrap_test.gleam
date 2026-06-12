@@ -4,11 +4,6 @@
 /// to find the concrete underlying value.
 import core/unwrap.{unwrap}
 import core/value as v
-import gleeunit
-
-pub fn main() {
-  gleeunit.main()
-}
 
 pub fn unwrap_no_solution_test() {
   let solution = unwrap([], [], v.hole(10))

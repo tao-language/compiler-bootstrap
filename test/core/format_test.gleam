@@ -1,12 +1,7 @@
 import core/ast
 import core/format.{format}
 import gleam/option.{None, Some}
-import gleeunit
 import syntax/span.{Span}
-
-pub fn main() {
-  gleeunit.main()
-}
 
 const filename = "format_test"
 

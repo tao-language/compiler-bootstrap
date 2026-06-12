@@ -10,11 +10,6 @@ import core/quote.{quote}
 import core/term as tm
 import core/value as v
 import gleam/option.{None, Some}
-import gleeunit
-
-pub fn main() {
-  gleeunit.main()
-}
 
 // ============================================================================
 // Basic value constructors

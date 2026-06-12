@@ -8,12 +8,7 @@ import core/context.{Context, lookup, new_ctx, new_hole, with_err}
 import core/error as e
 import core/value as v
 import gleam/option.{None, Some}
-import gleeunit
 import syntax/span
-
-pub fn main() {
-  gleeunit.main()
-}
 
 const s = span.Span("context_test", 0, 0, 0, 0)
 

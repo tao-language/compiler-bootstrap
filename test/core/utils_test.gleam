@@ -4,11 +4,6 @@
 /// - `list_at`: index-based list access returning Option
 import core/utils.{list_at}
 import gleam/option.{None, Some}
-import gleeunit
-
-pub fn main() {
-  gleeunit.main()
-}
 
 pub fn list_at_index_0_test() {
   assert list_at([1, 2, 3], 0) == Some(1)

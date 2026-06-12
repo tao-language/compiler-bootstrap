@@ -6,11 +6,6 @@ import core/ast.{type AST}
 import core/format.{format}
 import core/parse as p
 import gleam/list
-import gleeunit
-
-pub fn main() {
-  gleeunit.main()
-}
 
 const filename = "syntax_test"
 
