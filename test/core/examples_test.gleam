@@ -4,30 +4,16 @@
 import core/ast
 import core/context.{Context, new_ctx}
 import core/eval.{eval}
+import core/ffi
 import core/infer.{infer}
-import core/literals as lit
 import core/resolve.{resolve}
 import core/term as tm
-import core/value.{type Value} as v
+import core/value as v
 import gleam/list
-import gleam/option.{type Option, None, Some}
+import gleam/option.{None}
 import syntax/span.{Span}
 
 const s = Span("", 0, 0, 0, 0)
-
-fn int_mul(args: List(Value)) -> Option(Value) {
-  case args {
-    [v.Lit(lit.Int(x)), v.Lit(lit.Int(y))] -> Some(v.int(x * y))
-    _ -> None
-  }
-}
-
-fn int_sub(args: List(Value)) -> Option(Value) {
-  case args {
-    [v.Lit(lit.Int(x)), v.Lit(lit.Int(y))] -> Some(v.int(x - y))
-    _ -> None
-  }
-}
 
 pub fn factorial_test() {
   // TODO: parse/format checks
@@ -36,51 +22,21 @@ pub fn factorial_test() {
   // | 0 => 1
   // | n => @int_mul<$Int>(n, f @int_sub(n, 1))
   // }
+  let #(f, x, n) = #(ast.var("f", s), ast.var("x", s), ast.var("n", s))
+  let i1 = ast.int(1, s)
+  let mul = fn(x, y) { ast.call("int_mul", [x, y], ast.int_t(s), s) }
+  let sub = fn(x, y) { ast.call("int_sub", [x, y], ast.int_t(s), s) }
+  let case0 = ast.Case(ast.pint(0, s), None, ast.int(1, s), s)
+  let case_n =
+    ast.Case(ast.pvar("n", s), None, mul(n, ast.app(f, sub(n, i1), s)), s)
   let ast_fn =
     ast.fix(
       "f",
-      ast.lam(
-        #("x", ast.hole(-1, s)),
-        ast.match(
-          ast.var("x", s),
-          [
-            ast.Case(ast.pint(0, s), None, ast.int(1, s), s),
-            ast.Case(
-              ast.pvar("n", s),
-              None,
-              ast.call(
-                "int_mul",
-                [
-                  ast.var("n", s),
-                  ast.app(
-                    ast.var("f", s),
-                    ast.call(
-                      "int_sub",
-                      [ast.var("x", s), ast.int(1, s)],
-                      ast.int_t(s),
-                      s,
-                    ),
-                    s,
-                  ),
-                ],
-                ast.int_t(s),
-                s,
-              ),
-              s,
-            ),
-          ],
-          s,
-        ),
-        s,
-      ),
+      ast.lam(#("x", ast.hole(-1, s)), ast.match(x, [case0, case_n], s), s),
       s,
     )
 
-  let ctx0 =
-    Context(..new_ctx, ffi: [
-      #("int_mul", int_mul),
-      #("int_sub", int_sub),
-    ])
+  let ctx0 = Context(..new_ctx, ffi: ffi.build)
   let #(term, type_, ctx) = infer(ctx0, ast_fn)
   assert ctx.errors == []
   let term = resolve(ctx.ffi, ctx.subst, list.length(ctx.env), term)
@@ -96,7 +52,7 @@ pub fn factorial_test() {
             None,
             tm.Call("int_mul", [
               tm.Var(0),
-              tm.App(tm.Var(2), tm.Call("int_sub", [tm.Var(1), tm.int(1)])),
+              tm.App(tm.Var(2), tm.Call("int_sub", [tm.Var(0), tm.int(1)])),
             ]),
           ),
         ]),
