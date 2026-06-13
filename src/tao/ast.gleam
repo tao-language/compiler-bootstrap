@@ -38,6 +38,7 @@ pub type Stmt {
 pub type StmtData {
   Let(pattern: Pattern, type_: Option(Type), value: Expr)
   LetMut(name: String, type_: Option(Type), value: Expr)
+  Mut(name: String, value: Expr)
   FnDef(
     name: Label,
     implicits: List(Param),
