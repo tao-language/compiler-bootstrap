@@ -15,7 +15,7 @@ import syntax/span.{Span}
 
 const s = Span("", 0, 0, 0, 0)
 
-pub fn factorial_test() {
+pub fn core_factorial_test() {
   // TODO: parse/format checks
   // $fix f. $fn(x: ?)
   // => $match(x) {
@@ -27,12 +27,12 @@ pub fn factorial_test() {
   let mul = fn(x, y) { ast.call("int_mul", [x, y], ast.int_t(s), s) }
   let sub = fn(x, y) { ast.call("int_sub", [x, y], ast.int_t(s), s) }
   let case0 = ast.Case(ast.pint(0, s), None, ast.int(1, s), s)
-  let case_n =
+  let case_ =
     ast.Case(ast.pvar("n", s), None, mul(n, ast.app(f, sub(n, i1), s)), s)
   let ast_fn =
     ast.fix(
       "f",
-      ast.lam(#("x", ast.hole(-1, s)), ast.match(x, [case0, case_n], s), s),
+      ast.lam(#("x", ast.hole(-1, s)), ast.match(x, [case0, case_], s), s),
       s,
     )
 

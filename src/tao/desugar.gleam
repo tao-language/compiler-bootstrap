@@ -10,13 +10,13 @@ pub fn desugar_expr(expr: Expr) -> AST {
     tao.Rcd(fields) -> todo
     tao.RcdT(fields) -> todo
     tao.Ann(value, type_) -> todo
-    tao.Fn(implicits, params, body) -> todo
+    tao.Fn(implicits, params, returns, body) -> todo
     tao.FnT(implicits, params, body) -> todo
     tao.App(fun, implicits, args) -> todo
-    tao.TypeDef(type_def) -> todo
     tao.Match(arg, cases) -> todo
     tao.Call(name, ret, args) -> todo
     tao.Let(def, body) -> todo
+    tao.Do(stmts) -> todo
     tao.Err -> core.Err
   }
   AST(data, expr.span)
