@@ -4,7 +4,7 @@
 /// language. Every term can be synthesized (inferred), and `check` is a
 /// thin wrapper that synthesizes the term then unifies its type with
 /// the expected type.
-import core/ast.{type AST}
+import core/ast.{type Term as AST}
 import core/coerce.{coerce}
 import core/context.{type Context}
 import core/error as e
@@ -26,24 +26,24 @@ import syntax/span.{type Span}
 /// - result_term is the original term with holes filled and implicit args expanded
 /// - type_value is the inferred type (a Value)
 /// - ctx is the updated ctx with any new bindings
-pub fn infer(ctx: Context, ast: AST) -> #(Term, Value, Context) {
-  case ast.data {
+pub fn infer(ctx: Context, term_ast: ast.Term) -> #(Term, Value, Context) {
+  case term_ast.data {
     ast.Typ(level) -> infer_typ(ctx, level)
     ast.Hole(id) -> infer_hole(ctx, id)
     ast.Lit(value) -> infer_lit(ctx, value)
     ast.LitT(t) -> infer_litt(ctx, t)
-    ast.Var(name) -> infer_var(ctx, name, ast.span)
+    ast.Var(name) -> infer_var(ctx, name, term_ast.span)
     ast.Ctr(tag, arg) -> infer_ctr(ctx, tag, arg)
     ast.Rcd(fields) -> infer_rcd(ctx, fields)
     ast.RcdT(fields) -> infer_rcd_type(ctx, fields)
-    ast.Call(name, args, return_type) ->
-      infer_call(ctx, name, args, return_type)
+    ast.Call(name, returns, args) -> infer_call(ctx, name, returns, args)
     ast.Ann(inner, type_) -> infer_ann(ctx, inner, type_)
     ast.Lam(implicit, param, body) -> infer_lam(ctx, implicit, param, body)
     // ast.Pi(implicit, domain, codomain) ->
     //   infer_pi(ctx, implicit, domain, codomain, ast.span)
-    ast.Fix(name, body) -> infer_fix(ctx, name, body, ast.span)
-    ast.App(implicit, fun, arg) -> infer_app(ctx, implicit, fun, arg, ast.span)
+    ast.Fix(name, body) -> infer_fix(ctx, name, body, term_ast.span)
+    ast.App(implicit, fun, arg) ->
+      infer_app(ctx, implicit, fun, arg, term_ast.span)
     // ast.TypeDef(params, constructors) ->
     //   infer_type_def(ctx, params, constructors, span)
     ast.Match(arg, cases) -> infer_match(ctx, arg, cases)
@@ -108,17 +108,17 @@ fn infer_typ(ctx: Context, level: Int) -> #(Term, Value, Context) {
   #(tm.Typ(level), v.Typ(level + 1), ctx)
 }
 
-fn infer_hole(ctx: Context, hole_id: Int) -> #(Term, Value, Context) {
-  case hole_id >= 0 {
-    True -> {
+fn infer_hole(ctx: Context, id: Option(Int)) -> #(Term, Value, Context) {
+  case id {
+    Some(hole_id) -> {
       // Concrete hole, create a new hole for its type.
       let #(type_id, ctx) = context.new_hole(ctx)
       #(tm.Hole(hole_id), v.hole(type_id), ctx)
     }
-    False -> {
+    None -> {
       // Unknown hole, instantiate a fresh new hole.
       let #(id, ctx) = context.new_hole(ctx)
-      infer_hole(ctx, id)
+      infer_hole(ctx, Some(id))
     }
   }
 }
@@ -189,7 +189,7 @@ fn infer_rcd_fields(
 
 fn infer_rcd_type(
   ctx: Context,
-  fields: List(#(String, #(AST, option.Option(AST)))),
+  fields: List(#(String, #(Option(AST), Option(AST)))),
 ) -> #(Term, Value, Context) {
   let #(fields, ctx) = infer_rcd_type_fields(ctx, fields)
   #(tm.RcdT(fields), v.Typ(0), ctx)
@@ -197,20 +197,31 @@ fn infer_rcd_type(
 
 fn infer_rcd_type_fields(
   ctx: Context,
-  fields: List(#(String, #(AST, option.Option(AST)))),
-) -> #(List(#(String, #(Term, option.Option(Term)))), Context) {
+  fields: List(#(String, #(Option(AST), Option(AST)))),
+) -> #(List(#(String, #(Term, Option(Term)))), Context) {
   case fields {
     [] -> #([], ctx)
     [#(name, #(type_, default)), ..fields] -> {
-      let #(field, ctx) = case default {
-        Some(default) -> {
-          let #(default, #(type_, _), ctx) = check_on_ast(ctx, default, type_)
-          let field = #(name, #(type_, Some(default)))
+      let #(field, ctx) = case type_, default {
+        Some(type_), Some(default) -> {
+          let #(default, #(type_tm, _), ctx) = check_on_ast(ctx, default, type_)
+          let field = #(name, #(type_tm, Some(default)))
           #(field, ctx)
         }
-        None -> {
-          let #(type_, _, ctx) = infer(ctx, type_)
-          let field = #(name, #(type_, None))
+        Some(type_), None -> {
+          let #(type_tm, _, ctx) = infer(ctx, type_)
+          let field = #(name, #(type_tm, None))
+          #(field, ctx)
+        }
+        None, Some(default) -> {
+          let #(default, type_, ctx) = infer(ctx, default)
+          let type_tm = quote(ctx.ffi, list.length(ctx.env), type_)
+          let field = #(name, #(type_tm, Some(default)))
+          #(field, ctx)
+        }
+        None, None -> {
+          let #(hole_id, ctx) = context.new_hole(ctx)
+          let field = #(name, #(tm.Hole(hole_id), None))
           #(field, ctx)
         }
       }
@@ -223,11 +234,11 @@ fn infer_rcd_type_fields(
 fn infer_call(
   ctx: Context,
   name: String,
+  returns: AST,
   args: List(AST),
-  return_type: AST,
 ) -> #(Term, Value, Context) {
   let #(args, ctx) = check_call_args(ctx, args)
-  let #(return_type, _, ctx) = infer(ctx, return_type)
+  let #(return_type, _, ctx) = infer(ctx, returns)
   let return_type_val = eval(ctx.ffi, ctx.env, return_type)
   let return_type_val = unwrap(ctx.ffi, ctx.subst, return_type_val)
   #(tm.Call(name, args), return_type_val, ctx)
@@ -252,32 +263,33 @@ fn infer_ann(ctx: Context, ast: AST, type_: AST) -> #(Term, Value, Context) {
 fn infer_lam(
   ctx: Context,
   implicit: Bool,
-  named_param: #(String, AST),
+  param: #(String, Option(ast.Type)),
   body: AST,
 ) -> #(Term, Value, Context) {
-  let #(name, param_ast) = named_param
-  let #(param, _, ctx) = infer(ctx, param_ast)
-  let param_val = eval(ctx.ffi, ctx.env, param)
-  let level = list.length(ctx.env)
-  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(param_val)))
-  let #(body, body_type_val, ctx) = infer(ctx, body)
-  let body_type_val = unwrap(ctx.ffi, ctx.subst, body_type_val)
-  let body_type = quote(ctx.ffi, level + 1, body_type_val)
-  let ctx = context.pop_vars(ctx, 1)
-  let param_val = unwrap(ctx.ffi, ctx.subst, param_val)
-  #(
-    tm.Lam(#(name, param), body),
-    v.Pi(ctx.env, implicit, #(name, param_val), body_type),
-    ctx,
-  )
+  todo
+  // let #(name, param_ast) = params
+  // let #(param, _, ctx) = infer(ctx, param_ast)
+  // let param_val = eval(ctx.ffi, ctx.env, param)
+  // let level = list.length(ctx.env)
+  // let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(param_val)))
+  // let #(body, body_type_val, ctx) = infer(ctx, body)
+  // let body_type_val = unwrap(ctx.ffi, ctx.subst, body_type_val)
+  // let body_type = quote(ctx.ffi, level + 1, body_type_val)
+  // let ctx = context.pop_vars(ctx, 1)
+  // let param_val = unwrap(ctx.ffi, ctx.subst, param_val)
+  // #(
+  //   tm.Lam(#(name, param), body),
+  //   v.Pi(ctx.env, implicit, #(name, param_val), body_type),
+  //   ctx,
+  // )
 }
 
 /// Infer a Pi type: $pi<implicits>(domain: param_type) -> codomain
 fn infer_pi(
   ctx: Context,
-  implicit: Bool,
-  domain: #(String, AST),
-  codomain: AST,
+  implicits: List(ast.Param),
+  params: List(ast.Param),
+  body: AST,
   span: Span,
 ) -> #(Term, Value, Context) {
   // let #(implicits, _, ctx) = push_param_list(ctx, implicits)
@@ -334,13 +346,17 @@ fn infer_app_args(
           let #(arg, _, ctx) = check(ctx, arg_ast, #(domain_val, fun_span))
           let pi_env = [eval(ctx.ffi, ctx.env, arg), ..pi_env]
           let type_ = eval(ctx.ffi, pi_env, codomain)
-          #(tm.App(fun, arg), unwrap(ctx.ffi, ctx.subst, type_), ctx)
+          #(
+            tm.App(app_implicit, fun, arg),
+            unwrap(ctx.ffi, ctx.subst, type_),
+            ctx,
+          )
         }
         // pi_implicit, app_explicit
         True, False as app_explicit -> {
           // Implicit argument expansion
           let #(hole_id, ctx) = context.new_hole(ctx)
-          let fun = tm.App(fun, tm.Hole(hole_id))
+          let fun = tm.App(pi_implicit, fun, tm.Hole(hole_id))
           let pi_env = [v.hole(hole_id), ..pi_env]
           let fun_type = eval(ctx.ffi, pi_env, codomain)
           let fun_data = #(fun, fun_type, fun_span)
@@ -368,7 +384,7 @@ fn infer_app_args(
         v.Pi([], app_implicit, #("", arg_type), tm.Hole(body_type_id))
       let ctx = unify(ctx, #(v.hole(id), fun_span), #(expected, fun_span))
       let type_ = unwrap(ctx.ffi, ctx.subst, v.hole(body_type_id))
-      #(tm.App(fun, arg), type_, ctx)
+      #(tm.App(app_implicit, fun, arg), type_, ctx)
     }
     // Not a function type
     _ -> {
@@ -422,11 +438,12 @@ fn infer_match_case(
 ) -> #(tm.Case, tm.Case, Context) {
   let old_env_size = list.length(ctx.env)
   let #(pattern, ctx) = check_pattern(ctx, case_ast.pattern, arg_type)
-  let #(guard, ctx) = bind_guard(ctx, case_ast.guard)
-  let #(body, body_type_val, ctx) = infer(ctx, case_ast.body)
-  let body_type = quote(ctx.ffi, list.length(ctx.env), body_type_val)
-  let ctx = context.pop_vars(ctx, list.length(ctx.env) - old_env_size)
-  #(tm.Case(pattern, guard, body), tm.Case(pattern, guard, body_type), ctx)
+  // let #(guard, ctx) = bind_guard(ctx, case_ast.guard)
+  // let #(body, body_type_val, ctx) = infer(ctx, case_ast.body)
+  // let body_type = quote(ctx.ffi, list.length(ctx.env), body_type_val)
+  // let ctx = context.pop_vars(ctx, list.length(ctx.env) - old_env_size)
+  // #(tm.Case(pattern, guard, body), tm.Case(pattern, guard, body_type), ctx)
+  todo
 }
 
 fn infer_pattern(
@@ -458,6 +475,7 @@ fn infer_pattern(
       #(tm.PCtr(tag, pattern), v.Ctr(tag, type_), ctx)
     }
     ast.PRcd(fields, _) -> todo
+    ast.PRcdT(fields, _) -> todo
     ast.PErr(_) -> #(tm.PErr, v.Err, ctx)
   }
 }
@@ -468,8 +486,9 @@ fn check_pattern(
   expected: #(Value, Span),
 ) -> #(tm.Pattern, Context) {
   let #(pattern, inferred, ctx) = infer_pattern(ctx, pattern_ast)
-  let ctx = unify(ctx, #(inferred, ast.pattern_span(pattern_ast)), expected)
-  #(pattern, ctx)
+  // let ctx = unify(ctx, #(inferred, ast.pattern_span(pattern_ast)), expected)
+  // #(pattern, ctx)
+  todo
 }
 
 fn bind_guard(

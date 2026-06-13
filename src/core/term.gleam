@@ -19,7 +19,7 @@
 ///   level 1 = index 1 = next binder out
 ///   ...
 /// This means quoting a level to an index is the identity conversion.
-import core/ast.{type AST}
+import core/ast
 import core/literals.{type Literal, type LiteralType} as lit
 import core/utils
 import gleam/int
@@ -31,7 +31,7 @@ import syntax/span
 // TERMS (Syntax level - De Bruijn indices)
 // ============================================================================
 
-/// Core terms. The AST for type checking and evaluation.
+/// Core terms. The ast.Term for type checking and evaluation.
 ///
 /// Terms use De Bruijn indices: Var(0) refers to the innermost
 /// enclosing binder, Var(1) to the one before that, etc.
@@ -46,12 +46,12 @@ pub type Term {
   RcdT(fields: List(#(String, #(Term, Option(Term)))))
   Call(name: String, args: List(Term))
   Ann(term: Term, type_: Term)
-  Lam(param: #(String, Term), body: Term)
+  Lam(implicit: Bool, param: #(String, Term), body: Term)
   Pi(implicit: Bool, domain: #(String, Term), codomain: Term)
   Fix(name: String, body: Term)
-  App(fun: Term, arg: Term)
-  TypeDef(type_def: TypeDefinition)
+  App(implicit: Bool, fun: Term, arg: Term)
   Match(arg: Term, cases: List(Case))
+  TypeDef(type_def: TypeDefinition)
   Err
 }
 
@@ -98,35 +98,36 @@ pub fn bindings(p: Pattern) -> List(String) {
   }
 }
 
-pub fn to_ast(term: Term, names: List(String)) -> AST {
+pub fn to_ast(term: Term, names: List(String)) -> ast.Term {
   let s = span.empty("", 0, 0)
   case term {
     Typ(u) -> ast.typ(u, s)
-    Hole(id) -> ast.hole(id, s)
-    Lit(lit) -> ast.AST(ast.Lit(lit), s)
-    LitT(lit_t) -> ast.AST(ast.LitT(lit_t), s)
+    Hole(id) if id < 0 -> ast.hole(None, s)
+    Hole(id) -> ast.hole(Some(id), s)
+    Lit(lit) -> ast.Term(ast.Lit(lit), s)
+    LitT(lit_t) -> ast.Term(ast.LitT(lit_t), s)
     Var(index) ->
       case utils.list_at(names, index) {
         Some(name) -> ast.var(name, s)
         None -> ast.var("`undefined " <> int.to_string(index) <> "`", s)
       }
-    Ctr(tag, arg) -> ast.AST(ast.Ctr(tag, to_ast(arg, names)), s)
+    Ctr(tag, arg) -> ast.Term(ast.Ctr(tag, to_ast(arg, names)), s)
     Rcd(fields) -> todo
     RcdT(fields) -> todo
     Call(name, args) -> todo
     Ann(term, type_) -> todo
-    Lam(#(name, type_), body) -> {
+    Lam(implicit, #(name, type_), body) -> {
       let type_ast = to_ast(type_, names)
-      let body_ast = to_ast(body, [name, ..names])
-      ast.AST(ast.Lam(False, #(name, type_ast), body_ast), s)
+      let body_ast = to_ast(body, names)
+      ast.Term(ast.Lam(implicit, #(name, Some(type_ast)), body_ast), s)
     }
-    Pi(implicit, #(name, type_), codomain) -> {
+    Pi(implicit, #(name, type_), body) -> {
       let type_ast = to_ast(type_, names)
-      let codomain_ast = to_ast(codomain, [name, ..names])
-      ast.AST(ast.Pi(implicit, #(name, type_ast), codomain_ast), s)
+      let body_ast = to_ast(body, names)
+      ast.Term(ast.Pi(implicit, #(name, Some(type_ast)), body_ast), s)
     }
     Fix(name, body) -> todo
-    App(fun, arg) -> todo
+    App(implicit, fun, arg) -> todo
     TypeDef(type_def) -> todo
     Match(arg, cases) -> todo
     Err -> todo
@@ -169,6 +170,14 @@ pub const f64 = LitT(lit.F64)
 
 pub fn ctr(tag: String, args: List(#(String, Term))) -> Term {
   Ctr(tag, Rcd(args))
+}
+
+pub fn app(fun: Term, arg: Term) -> Term {
+  App(False, fun, arg)
+}
+
+pub fn app_implicit(fun: Term, arg: Term) -> Term {
+  App(True, fun, arg)
 }
 
 /// Syntax sugar for `_@name`.

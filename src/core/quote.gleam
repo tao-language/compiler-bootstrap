@@ -38,7 +38,7 @@ pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
     v.Lam(env, #(name, param_val), body) -> {
       let param = quote(ffi, size, param_val)
       let body = normalize(ffi, v.env_push(env, 1), body)
-      tm.Lam(#(name, param), body)
+      tm.Lam(False, #(name, param), body)
     }
     v.Pi(env, implicit, #(name, param_val), body) -> {
       let param = quote(ffi, size, param_val)
@@ -63,7 +63,7 @@ fn quote_neut(ffi: FFI, size: Int, neut: Neut) -> Term {
     v.NApp(fun_neut, arg_val) -> {
       let fun = quote_neut(ffi, size, fun_neut)
       let arg = quote(ffi, size, arg_val)
-      tm.App(fun, arg)
+      tm.App(False, fun, arg)
     }
     v.NMatch(env, arg_neut, cases) -> {
       let arg = quote_neut(ffi, size, arg_neut)

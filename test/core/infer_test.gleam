@@ -146,76 +146,81 @@ pub fn infer_var_defined_test() {
 // ============================================================================
 
 pub fn infer_lam_simple_test() {
-  // $fn(x: $Int) => x
-  let ast = ast.lam(#("x", ast.int_t(s)), ast.var("x", s), s)
-  let ctx0 = new_ctx
-  let #(term, type_, ctx) = infer(ctx0, ast)
-  assert ctx.errors == []
-  assert term == tm.Lam(#("x", tm.int_t), tm.Var(0))
-  assert type_ == v.Pi([], False, #("x", v.int_t), tm.int_t)
+  todo
+  // // $fn(x: $Int) => x
+  // let ast = ast.fun([], [#("x", ast.int_t(s))], None, ast.var("x", s), s)
+  // let ctx0 = new_ctx
+  // let #(term, type_, ctx) = infer(ctx0, ast)
+  // assert ctx.errors == []
+  // assert term == tm.Lam(#("x", tm.int_t), tm.Var(0))
+  // assert type_ == v.Pi([], False, #("x", v.int_t), tm.int_t)
 }
 
 pub fn infer_lam_implicit_test() {
-  // $fn<x: $Int> => x
-  let ast = ast.lam_implicit(#("x", ast.int_t(s)), ast.var("x", s), s)
-  let ctx0 = new_ctx
-  let #(term, type_, ctx) = infer(ctx0, ast)
-  assert ctx.errors == []
-  assert term == tm.Lam(#("x", tm.int_t), tm.Var(0))
-  assert type_ == v.Pi([], True, #("x", v.int_t), tm.int_t)
+  todo
+  // // $fn<x: $Int> => x
+  // let ast = ast.lam_implicit(#("x", ast.int_t(s)), ast.var("x", s), s)
+  // let ctx0 = new_ctx
+  // let #(term, type_, ctx) = infer(ctx0, ast)
+  // assert ctx.errors == []
+  // assert term == tm.Lam(#("x", tm.int_t), tm.Var(0))
+  // assert type_ == v.Pi([], True, #("x", v.int_t), tm.int_t)
 }
 
 pub fn infer_lam_closure_test() {
-  // $let y = 3.14; $fn(x: $Int) => y
-  let ast = ast.lam(#("x", ast.int_t(s)), ast.var("y", s), s)
-  let ctx0 =
-    context.push_var(new_ctx, #("y", Some(v.float(3.14)), Some(v.float_t)))
-  let #(term, type_, ctx) = infer(ctx0, ast)
-  assert ctx.errors == []
-  assert term == tm.Lam(#("x", tm.int_t), tm.Var(1))
-  assert type_ == v.Pi([v.float(3.14)], False, #("x", v.int_t), tm.float_t)
+  todo
+  // // $let y = 3.14; $fn(x: $Int) => y
+  // let ast = ast.fun(#("x", ast.int_t(s)), ast.var("y", s), s)
+  // let ctx0 =
+  //   context.push_var(new_ctx, #("y", Some(v.float(3.14)), Some(v.float_t)))
+  // let #(term, type_, ctx) = infer(ctx0, ast)
+  // assert ctx.errors == []
+  // assert term == tm.Lam(#("x", tm.int_t), tm.Var(1))
+  // assert type_ == v.Pi([v.float(3.14)], False, #("x", v.int_t), tm.float_t)
 }
 
 pub fn infer_lam_identity_test() {
-  // $fn<a: $Type>(x: a) => x
-  let ast =
-    ast.lam_implicit(
-      #("a", ast.typ(0, s)),
-      ast.lam(#("x", ast.var("a", s)), ast.var("x", s), s),
-      s,
-    )
-  let ctx0 = new_ctx
-  let #(term, type_, ctx) = infer(ctx0, ast)
-  assert ctx.errors == []
-  assert term == tm.Lam(#("a", tm.Typ(0)), tm.Lam(#("x", tm.Var(0)), tm.Var(0)))
-  assert type_
-    == v.Pi(
-      [],
-      True,
-      #("a", v.Typ(0)),
-      tm.Pi(False, #("x", tm.Var(0)), tm.Var(1)),
-    )
+  todo
+  // // $fn<a: $Type>(x: a) => x
+  // let ast =
+  //   ast.lam_implicit(
+  //     #("a", ast.typ(0, s)),
+  //     ast.fun(#("x", ast.var("a", s)), ast.var("x", s), s),
+  //     s,
+  //   )
+  // let ctx0 = new_ctx
+  // let #(term, type_, ctx) = infer(ctx0, ast)
+  // assert ctx.errors == []
+  // assert term == tm.Lam(#("a", tm.Typ(0)), tm.Lam(#("x", tm.Var(0)), tm.Var(0)))
+  // assert type_
+  //   == v.Pi(
+  //     [],
+  //     True,
+  //     #("a", v.Typ(0)),
+  //     tm.Pi(False, #("x", tm.Var(0)), tm.Var(1)),
+  //   )
 }
 
 pub fn infer_lam_typeof_test() {
-  // $fn<a: $Type>(x: a) => a
-  let ast =
-    ast.lam_implicit(
-      #("a", ast.typ(0, s)),
-      ast.lam(#("x", ast.var("a", s)), ast.var("a", s), s),
-      s,
-    )
-  let ctx0 = new_ctx
-  let #(term, type_, ctx) = infer(ctx0, ast)
-  assert ctx.errors == []
-  assert term == tm.Lam(#("a", tm.Typ(0)), tm.Lam(#("x", tm.Var(0)), tm.Var(1)))
-  assert type_
-    == v.Pi(
-      [],
-      True,
-      #("a", v.Typ(0)),
-      tm.Pi(False, #("x", tm.Var(0)), tm.Typ(0)),
-    )
+  todo
+  // // $fn<a: $Type>(x: a) => a
+  // let ast =
+  //   ast.lam_implicit(
+  //     #("a", ast.typ(0, s)),
+  //     ast.fun(#("x", ast.var("a", s)), ast.var("a", s), s),
+  //     s,
+  //   )
+  // let ctx0 = new_ctx
+  // let #(term, type_, ctx) = infer(ctx0, ast)
+  // assert ctx.errors == []
+  // assert term == tm.Lam(#("a", tm.Typ(0)), tm.Lam(#("x", tm.Var(0)), tm.Var(1)))
+  // assert type_
+  //   == v.Pi(
+  //     [],
+  //     True,
+  //     #("a", v.Typ(0)),
+  //     tm.Pi(False, #("x", tm.Var(0)), tm.Typ(0)),
+  //   )
 }
 
 // ============================================================================
@@ -246,7 +251,7 @@ pub fn infer_app_explicit_arg_test() {
   let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(pi)))
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
-  assert term == tm.App(tm.Var(0), tm.int(42))
+  assert term == tm.app(tm.Var(0), tm.int(42))
   assert type_ == v.int(42)
 }
 
@@ -257,7 +262,7 @@ pub fn infer_app_implicit_arg_test() {
   let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(pi)))
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
-  assert term == tm.App(tm.Var(0), tm.int(42))
+  assert term == tm.app(tm.Var(0), tm.int(42))
   assert type_ == v.int(42)
 }
 
@@ -278,7 +283,7 @@ pub fn infer_app_hole_expansion_test() {
   let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(v.hole(-1))))
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
-  assert term == tm.App(tm.Var(0), tm.int(42))
+  assert term == tm.app(tm.Var(0), tm.int(42))
   assert type_ == v.hole(1)
   assert ctx.subst == [#(0, v.Pi([], False, #("", v.int_t), tm.Hole(1)))]
 }
@@ -290,7 +295,7 @@ pub fn infer_app_implicit_expansion_test() {
   let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(pi)))
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
-  assert term == tm.App(tm.App(tm.Var(0), tm.Hole(0)), tm.int(42))
+  assert term == tm.app(tm.app(tm.Var(0), tm.Hole(0)), tm.int(42))
   assert type_ == v.hole(1)
   assert ctx.subst == [#(0, v.Pi([], False, #("", v.int_t), tm.Hole(1)))]
 }
@@ -308,7 +313,7 @@ pub fn infer_app_implicit_solve_hole_test() {
   let ctx0 = context.push_var(new_ctx, #("identity", Some(v.var(0)), Some(pi)))
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
-  assert term == tm.App(tm.App(tm.Var(0), tm.Hole(0)), tm.int(1))
+  assert term == tm.app(tm.app(tm.Var(0), tm.Hole(0)), tm.int(1))
   assert type_ == v.int_t
 }
 
@@ -326,9 +331,9 @@ pub fn infer_app_implicit_solve_hole_test() {
 
 pub fn infer_match_first_test() {
   let cases = [
-    ast.Case(ast.pint(1, s), None, ast.int(42, s), s),
-    ast.Case(ast.pint(2, s), None, ast.float(3.14, s), s),
-    ast.Case(ast.pvar("x", s), None, ast.var("x", s), s),
+    ast.Case(ast.pint(1, s), ast.int(42, s)),
+    ast.Case(ast.pint(2, s), ast.float(3.14, s)),
+    ast.Case(ast.pvar("x", s), ast.var("x", s)),
   ]
   let ast = ast.match(ast.int(1, s), cases, s)
   let ctx0 = new_ctx
@@ -342,9 +347,9 @@ pub fn infer_match_first_test() {
 
 pub fn infer_match_second_test() {
   let cases = [
-    ast.Case(ast.pint(1, s), None, ast.int(42, s), s),
-    ast.Case(ast.pint(2, s), None, ast.float(3.14, s), s),
-    ast.Case(ast.pvar("x", s), None, ast.var("x", s), s),
+    ast.Case(ast.pint(1, s), ast.int(42, s)),
+    ast.Case(ast.pint(2, s), ast.float(3.14, s)),
+    ast.Case(ast.pvar("x", s), ast.var("x", s)),
   ]
   let ast = ast.match(ast.int(2, s), cases, s)
   let ctx0 = new_ctx
@@ -358,9 +363,9 @@ pub fn infer_match_second_test() {
 
 pub fn infer_match_binding_test() {
   let cases = [
-    ast.Case(ast.pint(1, s), None, ast.int(42, s), s),
-    ast.Case(ast.pint(2, s), None, ast.float(3.14, s), s),
-    ast.Case(ast.pvar("x", s), None, ast.var("x", s), s),
+    ast.Case(ast.pint(1, s), ast.int(42, s)),
+    ast.Case(ast.pint(2, s), ast.float(3.14, s)),
+    ast.Case(ast.pvar("x", s), ast.var("x", s)),
   ]
   let ast = ast.match(ast.int(10, s), cases, s)
   let ctx0 = new_ctx
@@ -374,8 +379,8 @@ pub fn infer_match_binding_test() {
 
 pub fn infer_match_error_arg_type_mismatch_test() {
   let cases = [
-    ast.Case(ast.pint(1, s1), None, ast.int(42, s), s),
-    ast.Case(ast.pvar("x", s), None, ast.var("x", s), s),
+    ast.Case(ast.pint(1, s1), ast.int(42, s)),
+    ast.Case(ast.pvar("x", s), ast.var("x", s)),
   ]
   let ast = ast.match(ast.float(3.14, s2), cases, s)
   let ctx0 = new_ctx
@@ -389,24 +394,24 @@ pub fn infer_match_error_arg_type_mismatch_test() {
 
 pub fn infer_match_dependent_motive_test() {
   let cases = [
-    ast.Case(ast.pint(1, s), None, ast.int(42, s), s),
-    ast.Case(ast.pint(2, s), None, ast.float(3.14, s), s),
-    ast.Case(ast.pvar("x", s), None, ast.var("x", s), s),
+    ast.Case(ast.pint(1, s), ast.int(42, s)),
+    ast.Case(ast.pint(2, s), ast.float(3.14, s)),
+    ast.Case(ast.pvar("x", s), ast.var("x", s)),
   ]
-  let #(id, ctx0) = context.new_hole(new_ctx)
-  let ast = ast.match(ast.hole(id, s), cases, s)
+  let ctx0 = new_ctx
+  let ast = ast.match(ast.hole(None, s), cases, s)
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.env == ctx0.env
   assert ctx.types == ctx0.types
   assert ctx.errors == []
   assert term
-    == tm.Match(tm.Hole(id), [
+    == tm.Match(tm.Hole(0), [
       tm.Case(tm.pint(1), None, tm.int(42)),
       tm.Case(tm.pint(2), None, tm.float(3.14)),
       tm.Case(tm.pvar("x"), None, tm.Var(0)),
     ])
   assert type_
-    == v.match([], v.NHole(id), [
+    == v.match([], v.NHole(0), [
       tm.Case(tm.pint(1), None, tm.int_t),
       tm.Case(tm.pint(2), None, tm.float_t),
       tm.Case(tm.pvar("x"), None, tm.int_t),

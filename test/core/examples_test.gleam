@@ -24,17 +24,12 @@ pub fn core_factorial_test() {
   // }
   let #(f, x, n) = #(ast.var("f", s), ast.var("x", s), ast.var("n", s))
   let i1 = ast.int(1, s)
-  let mul = fn(x, y) { ast.call("int_mul", [x, y], ast.int_t(s), s) }
-  let sub = fn(x, y) { ast.call("int_sub", [x, y], ast.int_t(s), s) }
-  let case0 = ast.Case(ast.pint(0, s), None, ast.int(1, s), s)
-  let case_ =
-    ast.Case(ast.pvar("n", s), None, mul(n, ast.app(f, sub(n, i1), s)), s)
+  let mul = fn(x, y) { ast.call("int_mul", ast.int_t(s), [x, y], s) }
+  let sub = fn(x, y) { ast.call("int_sub", ast.int_t(s), [x, y], s) }
+  let case0 = ast.Case(ast.pint(0, s), ast.int(1, s))
+  let case_ = ast.Case(ast.pvar("n", s), mul(n, ast.app(f, sub(n, i1), s)))
   let ast_fn =
-    ast.fix(
-      "f",
-      ast.lam(#("x", ast.hole(-1, s)), ast.match(x, [case0, case_], s), s),
-      s,
-    )
+    ast.fix("f", ast.lam(#("x", None), ast.match(x, [case0, case_], s), s), s)
 
   let ctx0 = Context(..new_ctx, ffi: ffi.build)
   let #(term, type_, ctx) = infer(ctx0, ast_fn)
@@ -44,6 +39,7 @@ pub fn core_factorial_test() {
     == tm.Fix(
       "f",
       tm.Lam(
+        False,
         #("x", tm.int_t),
         tm.Match(tm.Var(0), [
           tm.Case(tm.pint(0), None, tm.int(1)),
@@ -52,7 +48,7 @@ pub fn core_factorial_test() {
             None,
             tm.Call("int_mul", [
               tm.Var(0),
-              tm.App(tm.Var(2), tm.Call("int_sub", [tm.Var(0), tm.int(1)])),
+              tm.app(tm.Var(2), tm.Call("int_sub", [tm.Var(0), tm.int(1)])),
             ]),
           ),
         ]),
@@ -68,7 +64,7 @@ pub fn core_factorial_test() {
         tm.Case(tm.pvar("n"), None, tm.int_t),
       ]),
     )
-  let factorial = fn(n) { eval(ctx.ffi, ctx.env, tm.App(term, tm.int(n))) }
+  let factorial = fn(n) { eval(ctx.ffi, ctx.env, tm.app(term, tm.int(n))) }
   assert factorial(0) == v.int(1)
   assert factorial(1) == v.int(1)
   assert factorial(2) == v.int(2)

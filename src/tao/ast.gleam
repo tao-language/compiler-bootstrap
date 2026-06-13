@@ -10,12 +10,12 @@ pub type Type =
   Expr
 
 pub type ExprData {
-  Hole(id: Int)
+  Hole(id: Option(Int))
   Lit(value: Literal)
   Var(name: String)
-  Ctr(tag: Label, args: List(Arg))
-  Rcd(fields: List(Arg))
-  RcdT(fields: List(ArgT))
+  Ctr(tag: String, args: List(#(String, Expr)))
+  Rcd(fields: List(#(String, Expr)))
+  RcdT(fields: List(#(String, #(Option(Type), Option(Expr)))))
   Ann(value: Expr, type_: Type)
   Fn(
     implicits: List(Param),
@@ -24,12 +24,15 @@ pub type ExprData {
     body: Expr,
   )
   FnT(implicits: List(Param), params: List(Param), body: Expr)
-  App(fun: Expr, implicits: List(Arg), args: List(Arg))
+  App(fun: Expr, implicits: List(#(String, Expr)), args: List(#(String, Expr)))
   Match(arg: Expr, cases: List(Case))
-  Call(name: Label, ret: Type, args: List(Expr))
-  Do(List(Stmt))
+  Call(name: String, ret: Type, args: List(Expr))
+  Do(Block)
   Err
 }
+
+pub type Block =
+  List(Stmt)
 
 pub type Stmt {
   Stmt(data: StmtData, span: Span)
@@ -40,7 +43,7 @@ pub type StmtData {
   LetMut(name: String, type_: Option(Type), value: Expr)
   Mut(name: String, value: Expr)
   FnDef(
-    name: Label,
+    name: String,
     implicits: List(Param),
     params: List(Param),
     returns: Option(Type),
@@ -54,27 +57,24 @@ pub type StmtData {
   Continue
 }
 
-pub type Label =
-  // TODO: #(String, Span)
-  String
-
-pub type Arg =
-  #(Label, Expr)
-
-pub type ArgT =
-  // (name, (type, default_value))
-  #(Label, #(Option(Type), Option(Expr)))
-
 pub type Param =
   // (pattern, (type, default_value))
   #(Pattern, #(Option(Type), Option(Expr)))
 
 pub type TypeDefinition {
-  TypeDefinition(params: List(ArgT), variants: List(Variant))
+  TypeDefinition(
+    params: List(#(String, #(Option(Type), Option(Expr)))),
+    variants: List(Variant),
+  )
 }
 
 pub type Variant {
-  Variant(tag: Label, params: List(ArgT), args: List(Arg), returns: Type)
+  Variant(
+    tag: String,
+    params: List(#(String, #(Option(Type), Option(Expr)))),
+    args: List(#(String, Expr)),
+    returns: Type,
+  )
 }
 
 pub type Pattern {
@@ -86,11 +86,11 @@ pub type PatternData {
   PVar(name: String)
   PLit(lit: Literal)
   PLitT(lit_t: LiteralType)
-  PCtr(tag: Label, args: List(PArg))
+  PCtr(tag: String, args: List(PArg))
 }
 
 pub type PArg =
-  #(Label, Pattern)
+  #(String, Pattern)
 
 pub type Case {
   Case(pattern: Pattern, body: Expr)
@@ -116,7 +116,7 @@ pub fn var(name: String, span: Span) {
   Expr(Var(name), span)
 }
 
-pub fn app(fun: Expr, args: List(Arg), span: Span) {
+pub fn app(fun: Expr, args: List(#(String, Expr)), span: Span) {
   Expr(App(fun, [], args), span)
 }
 
@@ -124,7 +124,7 @@ pub fn match(arg: Expr, cases: List(Case), span: Span) {
   Expr(Match(arg, cases), span)
 }
 
-pub fn call(name: Label, ret: Type, args: List(Expr), span: Span) {
+pub fn call(name: String, ret: Type, args: List(Expr), span: Span) {
   Expr(Call(name, ret, args), span)
 }
 

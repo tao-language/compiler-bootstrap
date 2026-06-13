@@ -1,5 +1,5 @@
 /// Tests for the Core language parser.
-import core/ast.{type AST}
+import core/ast
 import core/error.{type Error} as e
 import core/parse as p
 import gleam/list
@@ -18,7 +18,7 @@ fn lex(source: String) -> Result(List(p.Token), Error) {
   Ok(list.map(tokens, fn(tok) { tok.value }))
 }
 
-fn parse(source: String) -> Result(AST, Error) {
+fn parse(source: String) -> Result(ast.Term, Error) {
   p.parse(filename, source)
 }
 
@@ -51,8 +51,8 @@ pub fn lex_hole_test() {
 }
 
 pub fn parse_hole_test() {
-  assert parse("?") == Ok(ast.hole(-1, s(1, 1, 1, 2)))
-  assert parse("?<42>") == Ok(ast.hole(42, s(1, 1, 1, 6)))
+  assert parse("?") == Ok(ast.hole(None, s(1, 1, 1, 2)))
+  assert parse("?<42>") == Ok(ast.hole(Some(42), s(1, 1, 1, 6)))
 }
 
 // ============================================================================
@@ -136,7 +136,7 @@ pub fn lex_ctr_test() {
 
 pub fn parse_ctr_test() {
   assert parse("#A(x)")
-    == Ok(ast.AST(ast.Ctr("A", ast.var("x", s(1, 3, 1, 5))), s(1, 1, 1, 6)))
+    == Ok(ast.ctr("A", ast.var("x", s(1, 3, 1, 5)), s(1, 1, 1, 6)))
 }
 
 // ============================================================================
@@ -211,7 +211,7 @@ pub fn parse_rcdt_test() {
   assert parse("%{}") == Ok(ast.rcd_t([], s(1, 1, 1, 4)))
   assert parse("%{a: x}")
     == Ok(ast.rcd_t(
-      [#("a", #(ast.var("x", s(1, 4, 1, 7)), None))],
+      [#("a", #(Some(ast.var("x", s(1, 4, 1, 7))), None))],
       s(1, 1, 1, 8),
     ))
   assert parse("%{a: x = 42}")
@@ -219,7 +219,10 @@ pub fn parse_rcdt_test() {
       [
         #(
           "a",
-          #(ast.var("x", s(1, 4, 1, 7)), Some(ast.int(42, s(1, 8, 1, 12)))),
+          #(
+            Some(ast.var("x", s(1, 4, 1, 7))),
+            Some(ast.int(42, s(1, 8, 1, 12))),
+          ),
         ),
       ],
       s(1, 1, 1, 13),
@@ -277,18 +280,19 @@ pub fn lex_lam_test() {
 }
 
 pub fn parse_lam_test() {
-  assert parse("%fn(x: y) => z")
-    == Ok(ast.lam(
-      #("x", ast.var("y", s(1, 6, 1, 9))),
-      ast.var("z", s(1, 11, 1, 15)),
-      s(1, 1, 1, 15),
-    ))
-  assert parse("%fn<x: y> => z")
-    == Ok(ast.lam_implicit(
-      #("x", ast.var("y", s(1, 6, 1, 9))),
-      ast.var("z", s(1, 11, 1, 15)),
-      s(1, 1, 1, 15),
-    ))
+  todo
+  // assert parse("%fn(x: y) => z")
+  //   == Ok(ast.lam(
+  //     #("x", ast.var("y", s(1, 6, 1, 9))),
+  //     ast.var("z", s(1, 11, 1, 15)),
+  //     s(1, 1, 1, 15),
+  //   ))
+  // assert parse("%fn<x: y> => z")
+  //   == Ok(ast.lam_implicit(
+  //     #("x", ast.var("y", s(1, 6, 1, 9))),
+  //     ast.var("z", s(1, 11, 1, 15)),
+  //     s(1, 1, 1, 15),
+  // ))
 }
 
 // ============================================================================
@@ -300,18 +304,19 @@ pub fn lex_pi_test() {
 }
 
 pub fn parse_pi_test() {
-  assert parse("%pi(x: y) -> z")
-    == Ok(ast.pi(
-      #("x", ast.var("y", s(1, 6, 1, 9))),
-      ast.var("z", s(1, 11, 1, 15)),
-      s(1, 1, 1, 15),
-    ))
-  assert parse("%pi<x: y> -> z")
-    == Ok(ast.pi_implicit(
-      #("x", ast.var("y", s(1, 6, 1, 9))),
-      ast.var("z", s(1, 11, 1, 15)),
-      s(1, 1, 1, 15),
-    ))
+  todo
+  // assert parse("%pi(x: y) -> z")
+  //   == Ok(ast.fun_t(
+  //     #("x", ast.var("y", s(1, 6, 1, 9))),
+  //     ast.var("z", s(1, 11, 1, 15)),
+  //     s(1, 1, 1, 15),
+  //   ))
+  // assert parse("%pi<x: y> -> z")
+  //   == Ok(ast.pi_implicit(
+  //     #("x", ast.var("y", s(1, 6, 1, 9))),
+  //     ast.var("z", s(1, 11, 1, 15)),
+  //     s(1, 1, 1, 15),
+  //   ))
 }
 
 // ============================================================================
@@ -330,18 +335,19 @@ pub fn parse_fix_test() {
 // App
 // ============================================================================
 pub fn parse_app_test() {
-  assert parse("f(x)")
-    == Ok(ast.app(
-      ast.var("f", s(1, 1, 1, 2)),
-      ast.var("x", s(1, 2, 1, 4)),
-      s(1, 1, 1, 4),
-    ))
-  assert parse("f<x>")
-    == Ok(ast.app_implicit(
-      ast.var("f", s(1, 1, 1, 2)),
-      ast.var("x", s(1, 2, 1, 4)),
-      s(1, 1, 1, 4),
-    ))
+  todo
+  // assert parse("f(x)")
+  //   == Ok(ast.app(
+  //     ast.var("f", s(1, 1, 1, 2)),
+  //     ast.var("x", s(1, 2, 1, 4)),
+  //     s(1, 1, 1, 4),
+  //   ))
+  // assert parse("f<x>")
+  //   == Ok(ast.app_implicit(
+  //     ast.var("f", s(1, 1, 1, 2)),
+  //     ast.var("x", s(1, 2, 1, 4)),
+  //     s(1, 1, 1, 4),
+  //   ))
 }
 
 // ============================================================================
@@ -358,7 +364,7 @@ pub fn lex_let_test() {
 pub fn parse_let_test() {
   assert parse("%let x: a = y; z")
     == Ok(ast.let_(
-      #("x", ast.var("a", s(1, 7, 1, 10)), ast.var("y", s(1, 11, 1, 14))),
+      #("x", Some(ast.var("a", s(1, 7, 1, 10))), ast.var("y", s(1, 11, 1, 14))),
       ast.var("z", s(1, 14, 1, 17)),
       s(1, 1, 1, 17),
     ))

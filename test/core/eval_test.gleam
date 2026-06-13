@@ -43,8 +43,8 @@ pub fn eval_var_undefined_test() {
 
 pub fn eval_app_beta_reduction_test() {
   // ($fn(x: $Int) => x) 42 ~> 42
-  let fun = tm.Lam(#("x", tm.LitT(lit.IntT)), tm.Var(0))
-  let term = tm.App(fun, tm.Lit(lit.Int(42)))
+  let fun = tm.Lam(False, #("x", tm.LitT(lit.IntT)), tm.Var(0))
+  let term = tm.App(False, fun, tm.Lit(lit.Int(42)))
   let result = eval([], [], term)
   assert result == v.int(42)
 }
@@ -52,7 +52,7 @@ pub fn eval_app_beta_reduction_test() {
 pub fn eval_app_neutral_test() {
   // ?10 42 ~> ?10 42 (neutral spine)
   let fun = tm.Hole(10)
-  let term = tm.App(fun, tm.Lit(lit.Int(42)))
+  let term = tm.App(False, fun, tm.Lit(lit.Int(42)))
   let result = eval([], [], term)
   assert result == v.app(v.NHole(10), v.int(42))
 }
@@ -60,7 +60,7 @@ pub fn eval_app_neutral_test() {
 pub fn eval_app_not_a_function_test() {
   // Applying a non-lambda value yields Err
   let fun = tm.Typ(0)
-  let term = tm.App(fun, tm.Lit(lit.Int(42)))
+  let term = tm.App(False, fun, tm.Lit(lit.Int(42)))
   let result = eval([], [], term)
   assert result == v.Err
 }

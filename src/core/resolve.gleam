@@ -45,10 +45,10 @@ pub fn resolve(ffi: FFI, subst: Subst, size: Int, term: Term) -> Term {
       let type_ = resolve(ffi, subst, size, type_)
       tm.Ann(term, type_)
     }
-    tm.Lam(#(name, param), body) -> {
+    tm.Lam(implicit, #(name, param), body) -> {
       let param = resolve(ffi, subst, size, param)
       let body = resolve(ffi, subst, size, body)
-      tm.Lam(#(name, param), body)
+      tm.Lam(implicit, #(name, param), body)
     }
     tm.Pi(implicit, #(name, domain), codomain) -> {
       let domain = resolve(ffi, subst, size, domain)
@@ -59,10 +59,10 @@ pub fn resolve(ffi: FFI, subst: Subst, size: Int, term: Term) -> Term {
       let body = resolve(ffi, subst, size, body)
       tm.Fix(name, body)
     }
-    tm.App(fun, arg) -> {
+    tm.App(implicit, fun, arg) -> {
       let fun = resolve(ffi, subst, size, fun)
       let arg = resolve(ffi, subst, size, arg)
-      tm.App(fun, arg)
+      tm.App(implicit, fun, arg)
     }
     tm.TypeDef(type_def) -> todo
     tm.Match(arg, cases) -> {
