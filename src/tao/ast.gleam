@@ -27,7 +27,6 @@ pub type ExprData {
   App(fun: Expr, implicits: List(Arg), args: List(Arg))
   Match(arg: Expr, cases: List(Case))
   Call(name: Label, ret: Type, args: List(Expr))
-  Let(def: #(Pattern, Option(Type), Expr), body: Expr)
   Do(List(Stmt))
   Err
 }
@@ -37,6 +36,8 @@ pub type Stmt {
 }
 
 pub type StmtData {
+  Let(pattern: Pattern, type_: Option(Type), value: Expr)
+  LetMut(name: String, type_: Option(Type), value: Expr)
   FnDef(
     name: Label,
     implicits: List(Param),
@@ -45,7 +46,11 @@ pub type StmtData {
     body: Expr,
   )
   TypeDef(type_def: TypeDefinition)
+  For(iterator: Pattern, range: Expr, body: Expr)
+  While(condition: Expr, body: Expr)
   Return(Expr)
+  Break
+  Continue
 }
 
 pub type Label =

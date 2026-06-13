@@ -15,7 +15,6 @@ pub fn desugar_expr(expr: Expr) -> AST {
     tao.App(fun, implicits, args) -> todo
     tao.Match(arg, cases) -> todo
     tao.Call(name, ret, args) -> todo
-    tao.Let(def, body) -> todo
     tao.Do(stmts) -> todo
     tao.Err -> core.Err
   }
