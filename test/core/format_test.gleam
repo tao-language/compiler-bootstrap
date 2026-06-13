@@ -93,11 +93,10 @@ pub fn format_rcdt_single_test() {
 }
 
 pub fn format_rcdt_with_default_test() {
-  todo
-  // let fields = [
-  //   #("a", #(ast.var("x", s), Some(ast.int(42, s)))),
-  // ]
-  // assert format(ast.rcd_t(fields, s), 80) == "%{a: x = 42}"
+  let fields = [
+    #("a", #(Some(ast.var("x", s)), Some(ast.int(42, s)))),
+  ]
+  assert format(ast.rcd_t(fields, s), 80) == "%{a: x = 42}"
 }
 
 // ============================================================================
@@ -116,19 +115,17 @@ pub fn format_ann_test() {
 // ============================================================================
 
 pub fn format_lam_explicit_test() {
-  todo
-  // let param = #("x", ast.var("y", s))
-  // let body = ast.var("z", s)
-  // let lam = ast.fun(param, body, s)
-  // assert format(lam, 80) == "%fn(x: y) => z"
+  let param = #("x", Some(ast.var("y", s)))
+  let body = ast.var("z", s)
+  let lam = ast.lam(param, body, s)
+  assert format(lam, 80) == "%fn(x: y) => z"
 }
 
 pub fn format_lam_implicit_test() {
-  todo
-  // let param = #("x", ast.var("y", s))
-  // let body = ast.var("z", s)
-  // let lam = ast.lam_implicit(param, body, s)
-  // assert format(lam, 80) == "%fn<x: y> => z"
+  let param = #("x", Some(ast.var("y", s)))
+  let body = ast.var("z", s)
+  let lam = ast.lam_implicit(param, body, s)
+  assert format(lam, 80) == "%fn<x: y> => z"
 }
 
 // ============================================================================
@@ -136,19 +133,17 @@ pub fn format_lam_implicit_test() {
 // ============================================================================
 
 pub fn format_pi_explicit_test() {
-  todo
-  // let param = #("x", ast.var("y", s))
-  // let codomain = ast.var("z", s)
-  // let pi = ast.fun_t(param, codomain, s)
-  // assert format(pi, 80) == "%pi(x: y) -> z"
+  let param = #("x", Some(ast.var("y", s)))
+  let codomain = ast.var("z", s)
+  let pi = ast.pi(param, codomain, s)
+  assert format(pi, 80) == "%pi(x: y) -> z"
 }
 
 pub fn format_pi_implicit_test() {
-  todo
-  // let param = #("x", ast.var("y", s))
-  // let codomain = ast.var("z", s)
-  // let pi = ast.pi_implicit(param, codomain, s)
-  // assert format(pi, 80) == "%pi<x: y> -> z"
+  let param = #("x", Some(ast.var("y", s)))
+  let codomain = ast.var("z", s)
+  let pi = ast.pi_implicit(param, codomain, s)
+  assert format(pi, 80) == "%pi<x: y> -> z"
 }
 
 // ============================================================================
@@ -166,19 +161,17 @@ pub fn format_fix_test() {
 // ============================================================================
 
 pub fn format_app_explicit_test() {
-  todo
-  // let fun = ast.var("f", s)
-  // let arg = ast.var("x", s)
-  // let app = ast.app(fun, arg, s)
-  // assert format(app, 80) == "f(x)"
+  let fun = ast.var("f", s)
+  let arg = ast.var("x", s)
+  let app = ast.app(fun, arg, s)
+  assert format(app, 80) == "f(x)"
 }
 
 pub fn format_app_implicit_test() {
-  todo
-  // let fun = ast.var("f", s)
-  // let arg = ast.var("x", s)
-  // let app = ast.app_implicit(fun, arg, s)
-  // assert format(app, 80) == "f<x>"
+  let fun = ast.var("f", s)
+  let arg = ast.var("x", s)
+  let app = ast.app_implicit(fun, arg, s)
+  assert format(app, 80) == "f<x>"
 }
 
 // ============================================================================

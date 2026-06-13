@@ -280,19 +280,26 @@ pub fn lex_lam_test() {
 }
 
 pub fn parse_lam_test() {
-  todo
-  // assert parse("%fn(x: y) => z")
-  //   == Ok(ast.lam(
-  //     #("x", ast.var("y", s(1, 6, 1, 9))),
-  //     ast.var("z", s(1, 11, 1, 15)),
-  //     s(1, 1, 1, 15),
-  //   ))
-  // assert parse("%fn<x: y> => z")
-  //   == Ok(ast.lam_implicit(
-  //     #("x", ast.var("y", s(1, 6, 1, 9))),
-  //     ast.var("z", s(1, 11, 1, 15)),
-  //     s(1, 1, 1, 15),
-  // ))
+  assert parse("%fn(x) => z")
+    == Ok(ast.lam(#("x", None), ast.var("z", s(1, 11, 1, 15)), s(1, 1, 1, 15)))
+  assert parse("%fn(x: y) => z")
+    == Ok(ast.lam(
+      #("x", Some(ast.var("y", s(1, 6, 1, 9)))),
+      ast.var("z", s(1, 11, 1, 15)),
+      s(1, 1, 1, 15),
+    ))
+  assert parse("%fn<x> => z")
+    == Ok(ast.lam_implicit(
+      #("x", None),
+      ast.var("z", s(1, 11, 1, 15)),
+      s(1, 1, 1, 15),
+    ))
+  assert parse("%fn<x: y> => z")
+    == Ok(ast.lam_implicit(
+      #("x", Some(ast.var("y", s(1, 6, 1, 9)))),
+      ast.var("z", s(1, 11, 1, 15)),
+      s(1, 1, 1, 15),
+    ))
 }
 
 // ============================================================================
@@ -304,19 +311,26 @@ pub fn lex_pi_test() {
 }
 
 pub fn parse_pi_test() {
-  todo
-  // assert parse("%pi(x: y) -> z")
-  //   == Ok(ast.fun_t(
-  //     #("x", ast.var("y", s(1, 6, 1, 9))),
-  //     ast.var("z", s(1, 11, 1, 15)),
-  //     s(1, 1, 1, 15),
-  //   ))
-  // assert parse("%pi<x: y> -> z")
-  //   == Ok(ast.pi_implicit(
-  //     #("x", ast.var("y", s(1, 6, 1, 9))),
-  //     ast.var("z", s(1, 11, 1, 15)),
-  //     s(1, 1, 1, 15),
-  //   ))
+  assert parse("%pi(x) -> z")
+    == Ok(ast.pi(#("x", None), ast.var("z", s(1, 11, 1, 15)), s(1, 1, 1, 15)))
+  assert parse("%pi(x: y) -> z")
+    == Ok(ast.pi(
+      #("x", Some(ast.var("y", s(1, 6, 1, 9)))),
+      ast.var("z", s(1, 11, 1, 15)),
+      s(1, 1, 1, 15),
+    ))
+  assert parse("%pi<x> -> z")
+    == Ok(ast.pi_implicit(
+      #("x", None),
+      ast.var("z", s(1, 11, 1, 15)),
+      s(1, 1, 1, 15),
+    ))
+  assert parse("%pi<x: y> -> z")
+    == Ok(ast.pi_implicit(
+      #("x", Some(ast.var("y", s(1, 6, 1, 9)))),
+      ast.var("z", s(1, 11, 1, 15)),
+      s(1, 1, 1, 15),
+    ))
 }
 
 // ============================================================================
@@ -335,19 +349,18 @@ pub fn parse_fix_test() {
 // App
 // ============================================================================
 pub fn parse_app_test() {
-  todo
-  // assert parse("f(x)")
-  //   == Ok(ast.app(
-  //     ast.var("f", s(1, 1, 1, 2)),
-  //     ast.var("x", s(1, 2, 1, 4)),
-  //     s(1, 1, 1, 4),
-  //   ))
-  // assert parse("f<x>")
-  //   == Ok(ast.app_implicit(
-  //     ast.var("f", s(1, 1, 1, 2)),
-  //     ast.var("x", s(1, 2, 1, 4)),
-  //     s(1, 1, 1, 4),
-  //   ))
+  assert parse("f(x)")
+    == Ok(ast.app(
+      ast.var("f", s(1, 1, 1, 2)),
+      ast.var("x", s(1, 2, 1, 4)),
+      s(1, 1, 1, 4),
+    ))
+  assert parse("f<x>")
+    == Ok(ast.app_implicit(
+      ast.var("f", s(1, 1, 1, 2)),
+      ast.var("x", s(1, 2, 1, 4)),
+      s(1, 1, 1, 4),
+    ))
 }
 
 // ============================================================================
