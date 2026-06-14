@@ -1,4 +1,5 @@
 import core/literals.{type Literal, type LiteralType} as lit
+import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
@@ -176,6 +177,29 @@ pub fn lam_implicit(param: Param, body: Term, span: Span) {
   Term(Lam(True, param, body), span)
 }
 
+pub fn fun(
+  param_name: String,
+  args: List(#(String, #(Option(Term), Option(Term)))),
+  args_span: Span,
+  body: Term,
+  span: Span,
+) {
+  let param = #(param_name, Some(rcd_t(args, args_span)))
+  let pvars =
+    list.map(args, fn(arg) {
+      let #(name, _) = arg
+      // TODO: add span to arg name and get it from there
+      #(name, pvar(name, span))
+    })
+  let body =
+    match(
+      var(param_name, args_span),
+      [Case(prcd(pvars, args_span), None, body)],
+      span,
+    )
+  lam(param, body, span)
+}
+
 pub fn pi(param: Param, body: Term, span: Span) {
   Term(Pi(False, param, body), span)
 }
@@ -236,6 +260,14 @@ pub fn pint(value: Int, span: Span) {
 
 pub fn pfloat(value: Float, span: Span) {
   Pattern(PLit(lit.Float(value)), span)
+}
+
+pub fn prcd(fields: List(#(String, Pattern)), span: Span) {
+  Pattern(PRcd(fields), span)
+}
+
+pub fn prcd_t(fields: List(#(String, Pattern)), span: Span) {
+  Pattern(PRcdT(fields), span)
 }
 
 pub fn pctr(tag: String, arg: Pattern, span: Span) {

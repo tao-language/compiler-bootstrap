@@ -63,6 +63,7 @@ pub type Pattern {
   PAlias(name: String, pattern: Pattern)
   PCtr(tag: String, pattern: Pattern)
   PRcd(fields: List(#(String, Pattern)))
+  PRcdT(fields: List(#(String, Pattern)))
   PErr
 }
 
@@ -94,6 +95,7 @@ pub fn bindings(p: Pattern) -> List(String) {
     PAlias(name, p) -> [name, ..bindings(p)]
     PCtr(_, p) -> bindings(p)
     PRcd(fields) -> list.flat_map(fields, fn(kv) { bindings(kv.1) })
+    PRcdT(fields) -> list.flat_map(fields, fn(kv) { bindings(kv.1) })
     PErr -> []
   }
 }

@@ -1,4 +1,6 @@
 import core/ast.{type Term, Term} as core
+import core/format
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span, Span}
@@ -21,7 +23,7 @@ pub const new_block_ctx = BlockCtx(
 pub fn desugar_expr(expr: Expr) -> Term {
   case expr.data {
     tao.Hole(id) -> core.hole(id, expr.span)
-    tao.Lit(value) -> core.Term(core.Lit(value), expr.span)
+    tao.Lit(value) -> Term(core.Lit(value), expr.span)
     tao.Var(name) -> core.var(name, expr.span)
     tao.Ctr(tag, args) -> {
       let core_args = desugar_args(args)
@@ -44,8 +46,8 @@ pub fn desugar_expr(expr: Expr) -> Term {
       desugar_fn(implicits, params, returns, body, expr.span)
     tao.FnT(implicits, params, body) ->
       desugar_fnt(implicits, params, body, expr.span)
-    tao.App(fun, implicits, args) ->
-      desugar_app(fun, implicits, args, expr.span)
+    tao.App(fun, args) -> desugar_app(False, fun, args, expr.span)
+    tao.AppImplicits(fun, args) -> desugar_app(True, fun, args, expr.span)
     tao.Match(arg, cases) -> {
       let core_arg = desugar_expr(arg)
       let core_cases = desugar_case_list(cases)
@@ -61,20 +63,70 @@ pub fn desugar_expr(expr: Expr) -> Term {
   }
 }
 
+fn desugar_args(args: List(#(String, Expr))) -> Term {
+  let core_params =
+    core.Rcd(
+      list.map(args, fn(arg) {
+        let #(name, expr) = arg
+        #(name, desugar_expr(expr))
+      }),
+    )
+  // TODO: span.merge(first_span, last_span)
+  Term(core_params, Span("", 0, 0, 0, 0))
+}
+
+fn desugar_params(params: List(tao.Param)) -> Term {
+  let core_params =
+    core.RcdT(
+      list.map(params, fn(param) {
+        let #(name, #(opt_type, opt_default)) = param
+        let core_type = option.map(opt_type, desugar_expr)
+        let core_default = option.map(opt_type, desugar_expr)
+        #("_", #(core_type, core_default))
+      }),
+    )
+  // TODO: span.merge(first_span, last_span)
+  Term(core_params, Span("", 0, 0, 0, 0))
+}
+
 fn desugar_fn(
   implicits: List(tao.Param),
   params: List(tao.Param),
-  returns: Option(tao.Type),
+  opt_returns: Option(tao.Type),
   body: Expr,
   span: Span,
-) -> core.Term {
-  case implicits, params {
-    [], [] ->
-      case returns {
-        Some(type_) -> desugar_expr(tao.ann(body, type_, body.span))
-        None -> desugar_expr(body)
+) -> Term {
+  case implicits {
+    [] -> {
+      let param_name = "_"
+      // TODO: infer span from args
+      let args_span = span
+      let param_fields =
+        list.index_map(params, fn(param, index) {
+          let #(_, #(opt_type, opt_default)) = param
+          let core_type = option.map(opt_type, desugar_expr)
+          let core_default = option.map(opt_default, desugar_expr)
+          #(int.to_string(index + 1), #(core_type, core_default))
+        })
+      let core_param_type = core.rcd_t(param_fields, args_span)
+      let bindings =
+        list.index_map(params, fn(param, index) {
+          let #(pattern, _) = param
+          #(int.to_string(index + 1), pattern)
+        })
+      let unpack = tao.Case(tao.prcd(bindings, args_span), body)
+      let core_body =
+        desugar_expr(tao.match(tao.var(param_name, args_span), [unpack], span))
+      let core_body = case opt_returns {
+        None -> core_body
+        Some(returns) -> {
+          let core_body_type = desugar_expr(returns)
+          core.ann(core_body, core_body_type, returns.span)
+        }
       }
-    _, _ -> todo
+      core.lam(#(param_name, Some(core_param_type)), core_body, span)
+    }
+    _ -> todo
   }
 }
 
@@ -83,17 +135,19 @@ fn desugar_fnt(
   params: List(tao.Param),
   body: Expr,
   span: Span,
-) -> core.Term {
+) -> Term {
   todo
 }
 
 fn desugar_app(
+  implicit: Bool,
   fun: Expr,
-  implicits: List(#(String, Expr)),
   args: List(#(String, Expr)),
   span: Span,
-) -> core.Term {
-  todo
+) -> Term {
+  let core_fun = desugar_expr(fun)
+  let core_args = desugar_args(args)
+  core.Term(core.App(implicit, core_fun, core_args), span)
 }
 
 fn desugar_case_list(cases: List(tao.Case)) -> List(core.Case) {
@@ -131,26 +185,38 @@ fn desugar_pattern(p: Pattern) -> core.Pattern {
     tao.PVar(name) -> core.pvar(name, p.span)
     tao.PLit(l) -> core.Pattern(core.PLit(l), p.span)
     tao.PLitT(t) -> core.Pattern(core.PLitT(t), p.span)
+    tao.PRcd(fields) -> {
+      let core_fields =
+        list.map(fields, fn(field) {
+          let #(name, pattern) = field
+          #(name, desugar_pattern(pattern))
+        })
+      core.prcd(core_fields, p.span)
+    }
+    tao.PRcdT(fields) -> {
+      let core_fields =
+        list.map(fields, fn(field) {
+          let #(name, pattern) = field
+          #(name, desugar_pattern(pattern))
+        })
+      core.prcd_t(core_fields, p.span)
+    }
     tao.PCtr(tag, args) -> {
-      let inner = case args {
-        [] -> core.pany(p.span)
-        [#(_, inner_pat)] -> desugar_pattern(inner_pat)
-        _ -> core.pany(p.span)
-      }
-      core.pctr(tag, inner, p.span)
+      let core_fields =
+        list.map(args, fn(field) {
+          let #(name, pattern) = field
+          #(name, desugar_pattern(pattern))
+        })
+      core.pctr(tag, core.prcd(core_fields, p.span), p.span)
     }
   }
 }
 
-pub fn desugar_block(block: List(Stmt), span: Span) -> core.Term {
+pub fn desugar_block(block: List(Stmt), span: Span) -> Term {
   desugar_stmt_list(new_block_ctx, block, span)
 }
 
-pub fn desugar_stmt_list(
-  ctx: BlockCtx,
-  stmts: List(Stmt),
-  span: Span,
-) -> core.Term {
+pub fn desugar_stmt_list(ctx: BlockCtx, stmts: List(Stmt), span: Span) -> Term {
   case stmts {
     [] -> core.rcd([], span)
     [stmt, ..stmts] -> {
@@ -160,7 +226,7 @@ pub fn desugar_stmt_list(
   }
 }
 
-pub fn desugar_stmt(ctx: BlockCtx, stmt: Stmt, next: core.Term) -> core.Term {
+pub fn desugar_stmt(ctx: BlockCtx, stmt: Stmt, next: Term) -> Term {
   case stmt.data {
     tao.Let(pattern, opt_type, value) -> todo
     tao.LetMut(name, opt_type, value) -> todo
@@ -176,17 +242,6 @@ pub fn desugar_stmt(ctx: BlockCtx, stmt: Stmt, next: core.Term) -> core.Term {
     tao.Break -> todo
     tao.Continue -> todo
   }
-}
-
-fn desugar_args(args: List(#(String, Expr))) -> Term {
-  let rcd =
-    core.Rcd(
-      list.map(args, fn(arg) {
-        let #(name, expr) = arg
-        #(name, desugar_expr(expr))
-      }),
-    )
-  core.Term(rcd, Span("", 0, 0, 0, 0))
 }
 
 fn desugar_rcd_fields(fields: List(#(String, Expr))) -> List(#(String, Term)) {

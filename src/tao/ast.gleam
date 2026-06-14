@@ -24,7 +24,8 @@ pub type ExprData {
     body: Expr,
   )
   FnT(implicits: List(Param), params: List(Param), body: Expr)
-  App(fun: Expr, implicits: List(#(String, Expr)), args: List(#(String, Expr)))
+  App(fun: Expr, args: List(#(String, Expr)))
+  AppImplicits(fun: Expr, args: List(#(String, Expr)))
   Match(arg: Expr, cases: List(Case))
   Call(name: String, ret: Type, args: List(Expr))
   Do(Block)
@@ -86,6 +87,8 @@ pub type PatternData {
   PVar(name: String)
   PLit(lit: Literal)
   PLitT(lit_t: LiteralType)
+  PRcd(fields: List(#(String, Pattern)))
+  PRcdT(fields: List(#(String, Pattern)))
   PCtr(tag: String, args: List(PArg))
 }
 
@@ -141,7 +144,11 @@ pub fn ann(expr: Expr, type_: Type, span: Span) {
 }
 
 pub fn app(fun: Expr, args: List(#(String, Expr)), span: Span) {
-  Expr(App(fun, [], args), span)
+  Expr(App(fun, args), span)
+}
+
+pub fn app_implicits(fun: Expr, args: List(#(String, Expr)), span: Span) {
+  Expr(AppImplicits(fun, args), span)
 }
 
 pub fn match(arg: Expr, cases: List(Case), span: Span) {
@@ -174,6 +181,10 @@ pub fn pint(value: Int, span: Span) {
 
 pub fn pfloat(value: Float, span: Span) {
   Pattern(PLit(lit.Float(value)), span)
+}
+
+pub fn prcd(fields: List(#(String, Pattern)), span: Span) {
+  Pattern(PRcd(fields), span)
 }
 
 pub fn pctr(tag: String, args: List(#(String, Pattern)), span: Span) {

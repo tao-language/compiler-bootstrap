@@ -499,9 +499,37 @@ fn infer_pattern(
       let #(pattern, type_, ctx) = infer_pattern(ctx, pattern_ast)
       #(tm.PCtr(tag, pattern), v.Ctr(tag, type_), ctx)
     }
-    ast.PRcd(fields) -> todo
-    ast.PRcdT(fields) -> todo
+    ast.PRcd(fields_ast) -> {
+      let #(fields, fields_type, ctx) = infer_pattern_fields(ctx, fields_ast)
+      #(tm.PRcd(fields), v.RcdT(fields_type), ctx)
+    }
+    ast.PRcdT(fields_ast) -> {
+      let #(fields, _, ctx) = infer_pattern_fields(ctx, fields_ast)
+      #(tm.PRcdT(fields), v.Typ(0), ctx)
+    }
     ast.PErr -> #(tm.PErr, v.Err, ctx)
+  }
+}
+
+fn infer_pattern_fields(
+  ctx: Context,
+  fields_ast: List(#(String, ast.Pattern)),
+) -> #(
+  List(#(String, tm.Pattern)),
+  List(#(String, #(Value, Option(Value)))),
+  Context,
+) {
+  case fields_ast {
+    [] -> #([], [], ctx)
+    [#(name, pattern_ast), ..fields_ast] -> {
+      let #(pattern, type_, ctx) = infer_pattern(ctx, pattern_ast)
+      let #(fields, fields_type, ctx) = infer_pattern_fields(ctx, fields_ast)
+      #(
+        [#(name, pattern), ..fields],
+        [#(name, #(type_, None)), ..fields_type],
+        ctx,
+      )
+    }
   }
 }
 

@@ -29,7 +29,7 @@ fn doc_term(term: Term, indent: Int) -> Document {
         doc_opt_type(opt_type, indent),
         doc_text(" = "),
         doc_term(value, indent),
-        doc_text("; "),
+        doc.line,
         doc_term(body, indent),
       ])
     // Base cases
@@ -47,14 +47,15 @@ fn doc_term(term: Term, indent: Int) -> Document {
       }
     ast.LitT(t_) -> format_lit_type(t_)
     ast.Var(name) -> doc_text(name)
+    ast.Ctr(tag, ast.Term(ast.Rcd([]), _)) -> doc_text("#" <> tag)
     ast.Ctr(tag, arg) ->
       doc.concat([
         doc_text("#" <> tag <> "("),
         doc_term(arg, indent),
         doc_text(")"),
       ])
-    ast.Rcd(fields) -> format_rcd(fields, indent)
-    ast.RcdT(fields) -> format_rcdt(fields, indent)
+    ast.Rcd(fields) -> doc_rcd(fields, indent)
+    ast.RcdT(fields) -> doc_rcdt(fields, indent)
     ast.Ann(term, type_) ->
       doc.concat([
         doc_text("%("),
@@ -101,8 +102,7 @@ fn doc_term(term: Term, indent: Int) -> Document {
         doc_text("%match "),
         doc_term(arg, indent),
         doc_text(" {"),
-        doc.line,
-        doc.nest(doc.join(case_docs, doc.concat([doc_text("|"), doc.line])), 2),
+        doc.concat(case_docs),
         doc.line,
         doc_text("}"),
       ])
@@ -117,7 +117,7 @@ fn doc_term(term: Term, indent: Int) -> Document {
         doc_term(returns, indent),
         doc_text(">"),
         doc_text("("),
-        doc.join(arg_docs, doc.concat([doc_text(", "), doc.space])),
+        doc.join(arg_docs, doc_text(", ")),
         doc_text(")"),
       ])
     }
@@ -150,39 +150,20 @@ fn doc_param(
   ])
 }
 
-fn format_rcd(fields: List(#(String, Term)), indent: Int) -> Document {
-  case fields {
-    [] -> doc_text("{}")
-    [field] -> {
-      let field_doc =
-        doc.concat([doc_text(field.0 <> ": "), doc_term(field.1, indent)])
-      doc.concat([doc_text("{"), field_doc, doc_text("}")])
-    }
-    _ -> {
-      let field_docs =
-        fields
-        |> list.map(fn(f) {
-          doc.concat([doc_text(f.0 <> ": "), doc_term(f.1, indent)])
-        })
-      doc.group(
-        doc.concat([
-          doc_text("{"),
-          doc.nest(
-            doc.concat([
-              doc.line,
-              doc.join(field_docs, doc.concat([doc_text(","), doc.line])),
-            ]),
-            2,
-          ),
-          doc.line,
-          doc_text("}"),
-        ]),
-      )
-    }
-  }
+fn doc_rcd(fields: List(#(String, Term)), indent: Int) -> Document {
+  let doc_fields =
+    list.map(fields, fn(field) {
+      let #(name, term) = field
+      doc.concat([doc_text(name <> ": "), doc_term(term, indent)])
+    })
+  doc.concat([
+    doc_text("{"),
+    doc.nest(doc.join(doc_fields, doc_text(", ")), indent),
+    doc_text("}"),
+  ])
 }
 
-fn format_rcdt(
+fn doc_rcdt(
   fields: List(#(String, #(Option(Term), Option(Term)))),
   indent: Int,
 ) -> Document {
@@ -240,11 +221,12 @@ fn format_lit_type(lt: LiteralType) -> Document {
 
 fn format_case(c: Case, indent: Int) -> Document {
   doc.concat([
+    doc.line,
     doc_text("| "),
     doc_pattern(c.pattern, indent),
     doc_case_guard(c.guard, indent),
     doc_text(" => "),
-    doc_term(c.body, indent),
+    doc.nest(doc_term(c.body, indent), indent),
   ])
 }
 
@@ -275,12 +257,12 @@ fn doc_pattern(pattern: Pattern, indent: Int) -> Document {
         l.Float(f) -> doc_text(float.to_string(f))
       }
     PLitT(doc_text) -> format_lit_type(doc_text)
+    PAlias(ast.Pattern(PAny, _), name) -> doc_text(name)
     PAlias(inner, name) ->
       doc.concat([
-        doc_text("_@"),
-        doc_text(name),
-        doc_text("@"),
         doc_pattern(inner, indent),
+        doc_text("@"),
+        doc_text(name),
       ])
     PCtr(tag, inner) ->
       doc.concat([

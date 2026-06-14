@@ -1,10 +1,14 @@
-import core/context.{new_ctx}
+import core/context.{Context, new_ctx}
+import core/ffi
+import core/format.{format}
 import core/term as tm
 import core/value as v
+import gleam/io
 import gleam/option.{None, Some}
 import syntax/span.{Span}
 import tao/ast as tao
 import tao/check.{check_expr}
+import tao/desugar
 
 const s = Span("tao/examples_test", 0, 0, 0, 0)
 
@@ -37,6 +41,12 @@ pub fn tao_factorial_test() {
       s,
     )
   }
-  let ctx = new_ctx
-  assert check_expr(ctx, factorial(0)) == #(tm.int(0), v.int_t, ctx)
+  io.println("\n")
+  tao.do([tao.Stmt(fn_def, s), tao.return(f, s)], s)
+  |> desugar.desugar_expr
+  |> format(80, 2)
+  |> io.println
+  let ctx = Context(..new_ctx, ffi: ffi.build)
+  // assert check_expr(ctx, factorial(0)) == #(tm.int(0), v.int_t, ctx)
+  todo
 }
