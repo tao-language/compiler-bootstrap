@@ -18,6 +18,7 @@ import core/value.{type Value} as v
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/string
 import syntax/span.{type Span}
 
 /// Infer the type of a term (synthesis).
@@ -39,16 +40,18 @@ pub fn infer(ctx: Context, term_ast: ast.Term) -> #(Term, Value, Context) {
     ast.Call(name, returns, args) -> infer_call(ctx, name, returns, args)
     ast.Ann(inner, type_) -> infer_ann(ctx, inner, type_)
     ast.Lam(implicit, param, body) -> infer_lam(ctx, implicit, param, body)
-    // ast.Pi(implicit, domain, codomain) ->
-    //   infer_pi(ctx, implicit, domain, codomain, ast.span)
+    ast.Pi(implicit, param, body) -> infer_pi(ctx, implicit, param, body)
     ast.Fix(name, body) -> infer_fix(ctx, name, body, term_ast.span)
     ast.App(implicit, fun, arg) ->
       infer_app(ctx, implicit, fun, arg, term_ast.span)
     // ast.TypeDef(params, constructors) ->
-    //   infer_type_def(ctx, params, constructors, span)
+    //   infer_type_def(ctx, params, constructors, term_ast.span)
     ast.Match(arg, cases) -> infer_match(ctx, arg, cases)
     ast.Err -> infer_err(ctx)
-    _ -> todo
+    x -> {
+      let msg = string.inspect(x)
+      todo as msg
+    }
   }
 }
 
@@ -266,38 +269,55 @@ fn infer_lam(
   param: #(String, Option(ast.Type)),
   body: AST,
 ) -> #(Term, Value, Context) {
-  todo
-  // let #(name, param_ast) = params
-  // let #(param, _, ctx) = infer(ctx, param_ast)
-  // let param_val = eval(ctx.ffi, ctx.env, param)
-  // let level = list.length(ctx.env)
-  // let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(param_val)))
-  // let #(body, body_type_val, ctx) = infer(ctx, body)
-  // let body_type_val = unwrap(ctx.ffi, ctx.subst, body_type_val)
-  // let body_type = quote(ctx.ffi, level + 1, body_type_val)
-  // let ctx = context.pop_vars(ctx, 1)
-  // let param_val = unwrap(ctx.ffi, ctx.subst, param_val)
-  // #(
-  //   tm.Lam(#(name, param), body),
-  //   v.Pi(ctx.env, implicit, #(name, param_val), body_type),
-  //   ctx,
-  // )
+  let #(name, opt_type_ast) = param
+  let #(type_, ctx) = case opt_type_ast {
+    Some(type_ast) -> {
+      let #(param, _, ctx) = infer(ctx, type_ast)
+      #(param, ctx)
+    }
+    None -> {
+      let #(hole_id, ctx) = context.new_hole(ctx)
+      #(tm.Hole(hole_id), ctx)
+    }
+  }
+  let type_val = eval(ctx.ffi, ctx.env, type_)
+  let level = list.length(ctx.env)
+  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(type_val)))
+  let #(body, body_type_val, ctx) = infer(ctx, body)
+  let body_type_val = unwrap(ctx.ffi, ctx.subst, body_type_val)
+  let body_type = quote(ctx.ffi, level + 1, body_type_val)
+  let ctx = context.pop_vars(ctx, 1)
+  let param_val = unwrap(ctx.ffi, ctx.subst, type_val)
+  #(
+    tm.Lam(implicit, #(name, type_), body),
+    v.Pi(ctx.env, implicit, #(name, param_val), body_type),
+    ctx,
+  )
 }
 
-/// Infer a Pi type: $pi<implicits>(domain: param_type) -> codomain
 fn infer_pi(
   ctx: Context,
-  implicits: List(ast.Param),
-  params: List(ast.Param),
+  implicit: Bool,
+  param: ast.Param,
   body: AST,
-  span: Span,
 ) -> #(Term, Value, Context) {
-  // let #(implicits, _, ctx) = push_param_list(ctx, implicits)
-  // let #(domain, _, ctx) = push_param(ctx, domain)
-  // let #(codomain, _, ctx) = infer(ctx, codomain)
-  // let ctx = pop_params(ctx, list.length(implicits) + 1)
-  // #(ast.Pi(implicits, domain, codomain, span), ast.VTyp(0), ctx)
-  todo
+  let #(name, opt_type_ast) = param
+  let #(type_, ctx) = case opt_type_ast {
+    Some(type_ast) -> {
+      let #(param, _, ctx) = infer(ctx, type_ast)
+      #(param, ctx)
+    }
+    None -> {
+      let #(hole_id, ctx) = context.new_hole(ctx)
+      #(tm.Hole(hole_id), ctx)
+    }
+  }
+  let type_val = eval(ctx.ffi, ctx.env, type_)
+  let level = list.length(ctx.env)
+  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(type_val)))
+  let #(body, _, ctx) = infer(ctx, body)
+  let ctx = context.pop_vars(ctx, 1)
+  #(tm.Pi(implicit, #(name, type_), body), v.Typ(0), ctx)
 }
 
 fn infer_fix(
@@ -444,45 +464,48 @@ fn infer_match_case(
 ) -> #(tm.Case, tm.Case, Context) {
   let old_env_size = list.length(ctx.env)
   let #(pattern, ctx) = check_pattern(ctx, case_ast.pattern, arg_type)
-  // let #(guard, ctx) = bind_guard(ctx, case_ast.guard)
-  // let #(body, body_type_val, ctx) = infer(ctx, case_ast.body)
-  // let body_type = quote(ctx.ffi, list.length(ctx.env), body_type_val)
-  // let ctx = context.pop_vars(ctx, list.length(ctx.env) - old_env_size)
-  // #(tm.Case(pattern, guard, body), tm.Case(pattern, guard, body_type), ctx)
-  todo
+  let #(guard, ctx) = bind_guard(ctx, case_ast.guard)
+  let #(body, body_type_val, ctx) = infer(ctx, case_ast.body)
+  let body_type = quote(ctx.ffi, list.length(ctx.env), body_type_val)
+  let ctx = context.pop_vars(ctx, list.length(ctx.env) - old_env_size)
+  #(tm.Case(pattern, guard, body), tm.Case(pattern, guard, body_type), ctx)
 }
 
 fn infer_pattern(
   ctx: Context,
   pattern_ast: ast.Pattern,
 ) -> #(tm.Pattern, Value, Context) {
-  case pattern_ast {
-    ast.PAny(_) -> {
+  case pattern_ast.data {
+    ast.PAny -> {
       let #(id, ctx) = context.new_hole(ctx)
       #(tm.PAny, v.hole(id), ctx)
     }
-    ast.PTyp(u, _) -> #(tm.PTyp(u), v.Typ(u + 1), ctx)
-    ast.PLit(lit, _) -> {
+    ast.PVar(name) -> {
+      let s = pattern_ast.span
+      infer_pattern(ctx, ast.palias(ast.pany(s), name, s))
+    }
+    ast.PTyp(u) -> #(tm.PTyp(u), v.Typ(u + 1), ctx)
+    ast.PLit(lit) -> {
       let type_ = case lit {
         lit.Int(_) -> v.int_t
         lit.Float(_) -> v.float_t
       }
       #(tm.PLit(lit), type_, ctx)
     }
-    ast.PLitT(lit, _) -> #(tm.PLitT(lit), v.Typ(0), ctx)
-    ast.PAlias(name, pattern_ast, _) -> {
+    ast.PLitT(lit) -> #(tm.PLitT(lit), v.Typ(0), ctx)
+    ast.PAlias(pattern_ast, name) -> {
       let #(pattern, type_, ctx) = infer_pattern(ctx, pattern_ast)
       let var = #(name, Some(v.var(list.length(ctx.env))), Some(type_))
       let ctx = context.push_var(ctx, var)
       #(tm.PAlias(name, pattern), type_, ctx)
     }
-    ast.PCtr(tag, pattern_ast, _) -> {
+    ast.PCtr(tag, pattern_ast) -> {
       let #(pattern, type_, ctx) = infer_pattern(ctx, pattern_ast)
       #(tm.PCtr(tag, pattern), v.Ctr(tag, type_), ctx)
     }
-    ast.PRcd(fields, _) -> todo
-    ast.PRcdT(fields, _) -> todo
-    ast.PErr(_) -> #(tm.PErr, v.Err, ctx)
+    ast.PRcd(fields) -> todo
+    ast.PRcdT(fields) -> todo
+    ast.PErr -> #(tm.PErr, v.Err, ctx)
   }
 }
 
@@ -492,9 +515,8 @@ fn check_pattern(
   expected: #(Value, Span),
 ) -> #(tm.Pattern, Context) {
   let #(pattern, inferred, ctx) = infer_pattern(ctx, pattern_ast)
-  // let ctx = unify(ctx, #(inferred, ast.pattern_span(pattern_ast)), expected)
-  // #(pattern, ctx)
-  todo
+  let ctx = unify(ctx, #(inferred, pattern_ast.span), expected)
+  #(pattern, ctx)
 }
 
 fn bind_guard(

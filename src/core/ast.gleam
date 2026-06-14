@@ -46,20 +46,24 @@ pub type Param =
   #(String, Option(Type))
 
 pub type Pattern {
-  PAny(span: Span)
-  PTyp(universe: Int, span: Span)
-  PLit(value: Literal, span: Span)
-  PLitT(lit_type: LiteralType, span: Span)
-  PAlias(name: String, pattern: Pattern, span: Span)
-  PCtr(tag: String, pattern: Pattern, span: Span)
-  PRcd(fields: List(#(String, Pattern)), span: Span)
-  PRcdT(fields: List(#(String, Pattern)), span: Span)
-  PErr(span: Span)
+  Pattern(data: PatternData, span: Span)
+}
+
+pub type PatternData {
+  PAny
+  PVar(name: String)
+  PTyp(universe: Int)
+  PLit(value: Literal)
+  PLitT(lit_type: LiteralType)
+  PAlias(pattern: Pattern, name: String)
+  PCtr(tag: String, pattern: Pattern)
+  PRcd(fields: List(#(String, Pattern)))
+  PRcdT(fields: List(#(String, Pattern)))
+  PErr
 }
 
 pub type Case {
-  Case(pattern: Pattern, body: Term)
-  CaseIfMatch(pattern: Pattern, guard: #(Term, Pattern), body: Term)
+  Case(pattern: Pattern, guard: Option(#(Term, Pattern)), body: Term)
 }
 
 pub type TypeDefinition {
@@ -76,19 +80,19 @@ pub type Variant {
 
 // Syntax sugar
 
-pub fn typ(universe: Int, span: Span) -> Term {
+pub fn typ(universe: Int, span: Span) {
   Term(Typ(universe), span)
 }
 
-pub fn hole(id: Option(Int), span: Span) -> Term {
+pub fn hole(id: Option(Int), span: Span) {
   Term(Hole(id), span)
 }
 
-pub fn int(value: Int, span: Span) -> Term {
+pub fn int(value: Int, span: Span) {
   Term(Lit(lit.Int(value)), span)
 }
 
-pub fn float(value: Float, span: Span) -> Term {
+pub fn float(value: Float, span: Span) {
   Term(Lit(lit.Float(value)), span)
 }
 
@@ -215,15 +219,26 @@ pub fn err(span: Span) {
   Term(Err, span)
 }
 
-/// Syntax sugar for `_@name`.
-pub fn pvar(name: String, span: Span) -> Pattern {
-  PAlias(name, PAny(span), span)
+pub fn pany(span: Span) {
+  Pattern(PAny, span)
 }
 
-pub fn pint(value: Int, span: Span) -> Pattern {
-  PLit(lit.Int(value), span)
+pub fn pvar(name: String, span: Span) {
+  Pattern(PVar(name), span)
 }
 
-pub fn pfloat(value: Float, span: Span) -> Pattern {
-  PLit(lit.Float(value), span)
+pub fn pint(value: Int, span: Span) {
+  Pattern(PLit(lit.Int(value)), span)
+}
+
+pub fn pfloat(value: Float, span: Span) {
+  Pattern(PLit(lit.Float(value)), span)
+}
+
+pub fn pctr(tag: String, arg: Pattern, span: Span) {
+  Pattern(PCtr(tag, arg), span)
+}
+
+pub fn palias(pattern: Pattern, name: String, span: Span) {
+  Pattern(PAlias(pattern, name), span)
 }

@@ -118,14 +118,14 @@ pub fn format_lam_explicit_test() {
   let param = #("x", Some(ast.var("y", s)))
   let body = ast.var("z", s)
   let lam = ast.lam(param, body, s)
-  assert format(lam, 80, 2) == "%fn(x: y) => z"
+  assert format(lam, 80, 2) == "%lam(x: y) => z"
 }
 
 pub fn format_lam_implicit_test() {
   let param = #("x", Some(ast.var("y", s)))
   let body = ast.var("z", s)
   let lam = ast.lam_implicit(param, body, s)
-  assert format(lam, 80, 2) == "%fn<x: y> => z"
+  assert format(lam, 80, 2) == "%lam<x: y> => z"
 }
 
 // ============================================================================

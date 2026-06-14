@@ -100,6 +100,18 @@ pub type Case {
 
 // Syntax sugar
 
+pub fn true(span: Span) {
+  ctr0("True", span)
+}
+
+pub fn false(span: Span) {
+  ctr0("False", span)
+}
+
+pub fn bool(span: Span) {
+  ctr0("Bool", span)
+}
+
 pub fn int(value: Int, span: Span) {
   Expr(Lit(lit.Int(value)), span)
 }
@@ -114,6 +126,18 @@ pub fn int_t(span: Span) {
 
 pub fn var(name: String, span: Span) {
   Expr(Var(name), span)
+}
+
+pub fn ctr(tag: String, args: List(#(String, Expr)), span: Span) {
+  Expr(Ctr(tag, args), span)
+}
+
+pub fn ctr0(tag: String, span: Span) {
+  ctr(tag, [], span)
+}
+
+pub fn ann(expr: Expr, type_: Type, span: Span) {
+  Expr(Ann(expr, type_), span)
 }
 
 pub fn app(fun: Expr, args: List(#(String, Expr)), span: Span) {
@@ -150,6 +174,10 @@ pub fn pint(value: Int, span: Span) {
 
 pub fn pfloat(value: Float, span: Span) {
   Pattern(PLit(lit.Float(value)), span)
+}
+
+pub fn pctr(tag: String, args: List(#(String, Pattern)), span: Span) {
+  Pattern(PCtr(tag, args), span)
 }
 
 pub fn return(expr: Expr, span: Span) {

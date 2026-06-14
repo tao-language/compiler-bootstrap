@@ -42,7 +42,7 @@ fn doc_term(term: Term, indent: Int) -> Document {
         doc_text(")"),
       ])
     ast.Rcd(fields) -> format_rcd(fields, indent)
-    ast.RcdT(fields) -> format_rcdt(fields)
+    ast.RcdT(fields) -> format_rcdt(fields, indent)
     ast.Ann(term, type_) ->
       doc.concat([
         doc_text("%("),
@@ -53,7 +53,7 @@ fn doc_term(term: Term, indent: Int) -> Document {
       ])
     ast.Lam(implicit, #(name, opt_type), body) -> {
       doc.concat([
-        doc_text("%fn"),
+        doc_text("%lam"),
         doc_param(implicit, name, opt_type, indent),
         doc_text(" => "),
         doc_term(body, indent),
@@ -84,7 +84,7 @@ fn doc_term(term: Term, indent: Int) -> Document {
     }
     ast.TypeDef(type_def) -> format_typedef(type_def, indent)
     ast.Match(arg, cases) -> {
-      let case_docs = list.map(cases, format_case)
+      let case_docs = list.map(cases, fn(c) { format_case(c, indent) })
       doc.concat([
         doc_text("%match "),
         doc_term(arg, indent),
@@ -172,8 +172,47 @@ fn format_rcd(fields: List(#(String, Term)), indent: Int) -> Document {
         |> list.map(fn(f) {
           doc.concat([doc_text(f.0 <> ": "), doc_term(f.1, indent)])
         })
-      doc.group(doc.concat([
-        doc_text("{"),
+      doc.group(
+        doc.concat([
+          doc_text("{"),
+          doc.nest(
+            doc.concat([
+              doc.line,
+              doc.join(field_docs, doc.concat([doc_text(","), doc.line])),
+            ]),
+            2,
+          ),
+          doc.line,
+          doc_text("}"),
+        ]),
+      )
+    }
+  }
+}
+
+fn format_rcdt(
+  fields: List(#(String, #(Option(Term), Option(Term)))),
+  indent: Int,
+) -> Document {
+  let format_field = fn(f: #(String, #(Option(Term), Option(Term)))) {
+    let type_doc = case f.1.0 {
+      Some(t) -> doc_term(t, indent)
+      None -> doc_text("?")
+    }
+    let field_str = doc.concat([doc_text(f.0 <> ": "), type_doc])
+    case f.1.1 {
+      Some(default_) ->
+        doc.concat([field_str, doc_text(" = "), doc_term(default_, indent)])
+      None -> field_str
+    }
+  }
+  case fields {
+    [] -> doc_text("%{}")
+    [field] -> doc.concat([doc_text("%{"), format_field(field), doc_text("}")])
+    _ -> {
+      let field_docs = list.map(fields, format_field)
+      doc.concat([
+        doc_text("%{"),
         doc.nest(
           doc.concat([
             doc.line,
@@ -183,54 +222,10 @@ fn format_rcd(fields: List(#(String, Term)), indent: Int) -> Document {
         ),
         doc.line,
         doc_text("}"),
-      ]))
+      ])
+      |> doc.group
     }
   }
-}
-
-fn format_rcdt(
-  fields: List(#(String, #(Option(Term), Option(Term)))),
-) -> Document {
-  todo
-  // case fields {
-  //   [] -> doc_text("%{}")
-  //   [field] -> {
-  //     let field_doc = case field.1.1 {
-  //       Some(default_) ->
-  //         doc.concat([
-  //           doc_text(field.0 <> ": "),
-  //           doc_term(field.1.0),
-  //           doc_text(" = "),
-  //           doc_term(default_),
-  //         ])
-  //       None -> doc.concat([doc_text(field.0 <> ": "), doc_term(field.1.0)])
-  //     }
-  //     doc.concat([doc_text("%{"), field_doc, doc_text("}")])
-  //   }
-  //   _ -> {
-  //     let field_docs =
-  //       fields
-  //       |> list.map(fn(f) {
-  //         let field_str = doc.concat([doc_text(f.0 <> ": "), doc_term(f.1.0)])
-  //         case f.1.1 {
-  //           Some(default_) -> doc.concat([field_str, doc_text(" = "), doc_term(default_)])
-  //           None -> field_str
-  //         }
-  //       })
-  //     doc.concat([
-  //       doc_text("%{"),
-  //       nest(
-  //         doc.concat([
-  //           doc.line(),
-  //           doc.join(field_docs, doc.concat([doc_text(","), doc.line()])),
-  //         ]),
-  //       ),
-  //       doc.line(),
-  //       doc_text("}"),
-  //     ])
-  //     |> doc.group
-  //   }
-  // }
 }
 
 fn format_lit_type(lt: LiteralType) -> Document {
@@ -251,51 +246,58 @@ fn format_lit_type(lt: LiteralType) -> Document {
   }
 }
 
-fn format_case(c: Case) -> Document {
-  todo
-  // let guard_doc = case c.guard {
-  //   Some(#(guard, pass)) ->
-  //     doc.concat([doc_text(" ? "), doc_term(guard), doc_text(" ~ "), doc_pattern(pass)])
-  //   None -> doc_text("")
-  // }
-  // doc.concat([
-  //   doc_text("| "),
-  //   doc_pattern(c.pattern),
-  //   guard_doc,
-  //   doc_text(" => "),
-  //   doc_term(c.body),
-  // ])
+fn format_case(c: Case, indent: Int) -> Document {
+  doc.concat([
+    doc_text("| "),
+    doc_pattern(c.pattern, indent),
+    doc_case_guard(c.guard, indent),
+    doc_text(" => "),
+    doc_term(c.body, indent),
+  ])
+}
+
+fn doc_case_guard(guard: Option(#(Term, Pattern)), indent: Int) -> Document {
+  case guard {
+    Some(#(term, pattern)) ->
+      doc.concat([
+        doc_text(" ? "),
+        doc_term(term, indent),
+        doc_text(" ~ "),
+        doc_pattern(pattern, indent),
+      ])
+    None -> doc.empty
+  }
 }
 
 fn doc_pattern(pattern: Pattern, indent: Int) -> Document {
-  case pattern {
-    PAny(_) -> doc_text("_")
-    PTyp(u, _) ->
+  case pattern.data {
+    PAny -> doc_text("_")
+    PTyp(u) ->
       case u {
         0 -> doc_text("%Type")
         n -> doc_text("%Type<" <> int.to_string(n) <> ">")
       }
-    PLit(l, _) ->
+    PLit(l) ->
       case l {
         l.Int(n) -> doc_text(int.to_string(n))
         l.Float(f) -> doc_text(float.to_string(f))
       }
-    PLitT(doc_text, _) -> format_lit_type(doc_text)
-    PAlias(name, inner, _) ->
+    PLitT(doc_text) -> format_lit_type(doc_text)
+    PAlias(inner, name) ->
       doc.concat([
         doc_text("_@"),
         doc_text(name),
         doc_text("@"),
         doc_pattern(inner, indent),
       ])
-    PCtr(tag, inner, _) ->
+    PCtr(tag, inner) ->
       doc.concat([
         doc_text("#" <> tag <> "("),
         doc_pattern(inner, indent),
         doc_text(")"),
       ])
-    PRcd(fields, _) -> doc_pattern_rcd(fields, indent)
-    PErr(_) -> doc_text("%error")
+    PRcd(fields) -> doc_pattern_rcd(fields, indent)
+    PErr -> doc_text("%error")
     _ -> todo
   }
 }

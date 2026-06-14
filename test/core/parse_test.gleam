@@ -253,9 +253,9 @@ pub fn parse_ann_test() {
 // Lam
 // ============================================================================
 pub fn lex_lam_test() {
-  assert lex("%fn") == Ok([p.KwFn])
+  assert lex("%lam") == Ok([p.KwFn])
   assert lex("=>") == Ok([p.FatArrow])
-  assert lex("%fn(x:y)=>z")
+  assert lex("%lam(x:y)=>z")
     == Ok([
       p.KwFn,
       p.LParen,
@@ -266,7 +266,7 @@ pub fn lex_lam_test() {
       p.FatArrow,
       p.Name("z"),
     ])
-  assert lex("%fn ( x : y ) => z ")
+  assert lex("%lam ( x : y ) => z ")
     == Ok([
       p.KwFn,
       p.LParen,
@@ -280,25 +280,25 @@ pub fn lex_lam_test() {
 }
 
 pub fn parse_lam_test() {
-  assert parse("%fn(x) => z")
-    == Ok(ast.lam(#("x", None), ast.var("z", s(1, 11, 1, 15)), s(1, 1, 1, 15)))
-  assert parse("%fn(x: y) => z")
+  assert parse("%lam(x) => z")
+    == Ok(ast.lam(#("x", None), ast.var("z", s(1, 9, 1, 13)), s(1, 1, 1, 13)))
+  assert parse("%lam(x: y) => z")
     == Ok(ast.lam(
-      #("x", Some(ast.var("y", s(1, 6, 1, 9)))),
-      ast.var("z", s(1, 11, 1, 15)),
-      s(1, 1, 1, 15),
+      #("x", Some(ast.var("y", s(1, 7, 1, 10)))),
+      ast.var("z", s(1, 12, 1, 16)),
+      s(1, 1, 1, 16),
     ))
-  assert parse("%fn<x> => z")
+  assert parse("%lam<x> => z")
     == Ok(ast.lam_implicit(
       #("x", None),
-      ast.var("z", s(1, 11, 1, 15)),
-      s(1, 1, 1, 15),
+      ast.var("z", s(1, 9, 1, 13)),
+      s(1, 1, 1, 13),
     ))
-  assert parse("%fn<x: y> => z")
+  assert parse("%lam<x: y> => z")
     == Ok(ast.lam_implicit(
-      #("x", Some(ast.var("y", s(1, 6, 1, 9)))),
-      ast.var("z", s(1, 11, 1, 15)),
-      s(1, 1, 1, 15),
+      #("x", Some(ast.var("y", s(1, 7, 1, 10)))),
+      ast.var("z", s(1, 12, 1, 16)),
+      s(1, 1, 1, 16),
     ))
 }
 
@@ -312,7 +312,7 @@ pub fn lex_pi_test() {
 
 pub fn parse_pi_test() {
   assert parse("%pi(x) -> z")
-    == Ok(ast.pi(#("x", None), ast.var("z", s(1, 11, 1, 15)), s(1, 1, 1, 15)))
+    == Ok(ast.pi(#("x", None), ast.var("z", s(1, 8, 1, 12)), s(1, 1, 1, 12)))
   assert parse("%pi(x: y) -> z")
     == Ok(ast.pi(
       #("x", Some(ast.var("y", s(1, 6, 1, 9)))),
@@ -322,8 +322,8 @@ pub fn parse_pi_test() {
   assert parse("%pi<x> -> z")
     == Ok(ast.pi_implicit(
       #("x", None),
-      ast.var("z", s(1, 11, 1, 15)),
-      s(1, 1, 1, 15),
+      ast.var("z", s(1, 8, 1, 12)),
+      s(1, 1, 1, 12),
     ))
   assert parse("%pi<x: y> -> z")
     == Ok(ast.pi_implicit(

@@ -6,13 +6,17 @@ import core/ast.{type Term}
 import core/format.{format}
 import core/parse as p
 import gleam/list
+import gleam/string
 
 const filename = "syntax_test"
 
 fn parse(src: String) -> Term {
   case p.parse(filename, src) {
     Ok(ast) -> ast
-    Error(_) -> panic as "parse failed"
+    Error(e) -> {
+      let msg = string.inspect(e)
+      panic as msg
+    }
   }
 }
 
@@ -120,12 +124,12 @@ pub fn roundtrip_ann_test() {
 // ============================================================================
 
 pub fn roundtrip_lam_explicit_test() {
-  let source = "%fn(x: y) => z"
+  let source = "%lam(x: y) => z"
   assert format(parse(source), 80, 2) == source
 }
 
 pub fn roundtrip_lam_implicit_test() {
-  let source = "%fn<x: y> => z"
+  let source = "%lam<x: y> => z"
   assert format(parse(source), 80, 2) == source
 }
 
