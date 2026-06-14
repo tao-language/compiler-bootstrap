@@ -21,6 +21,18 @@ fn doc_text(text: String) -> Document {
 
 fn doc_term(term: Term, indent: Int) -> Document {
   case term.data {
+    // Syntax sugar
+    ast.App(_, ast.Term(ast.Lam(_, #(name, opt_type), body), _), value) ->
+      doc.concat([
+        doc_text("%let "),
+        doc_text(name),
+        doc_opt_type(opt_type, indent),
+        doc_text(" = "),
+        doc_term(value, indent),
+        doc_text("; "),
+        doc_term(body, indent),
+      ])
+    // Base cases
     ast.Typ(u) ->
       case u {
         0 -> doc_text("%Type")
@@ -109,26 +121,6 @@ fn doc_term(term: Term, indent: Int) -> Document {
         doc_text(")"),
       ])
     }
-    ast.Let(#(name, opt_type, value), body) ->
-      doc.concat([
-        doc_text("%let "),
-        doc_text(name),
-        doc_opt_type(opt_type, indent),
-        doc_text(" = "),
-        doc_term(value, indent),
-        doc_text("; "),
-        doc_term(body, indent),
-      ])
-    ast.LetP(#(pattern, opt_type, value), body) ->
-      doc.concat([
-        doc_text("%let "),
-        doc_pattern(pattern, indent),
-        doc_opt_type(opt_type, indent),
-        doc_text(" = "),
-        doc_term(value, indent),
-        doc_text("; "),
-        doc_term(body, indent),
-      ])
     ast.Err -> doc_text("%error")
   }
 }

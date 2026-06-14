@@ -44,9 +44,9 @@ pub fn infer(ctx: Context, term_ast: ast.Term) -> #(Term, Value, Context) {
     ast.Fix(name, body) -> infer_fix(ctx, name, body, term_ast.span)
     ast.App(implicit, fun, arg) ->
       infer_app(ctx, implicit, fun, arg, term_ast.span)
+    ast.Match(arg, cases) -> infer_match(ctx, arg, cases)
     // ast.TypeDef(params, constructors) ->
     //   infer_type_def(ctx, params, constructors, term_ast.span)
-    ast.Match(arg, cases) -> infer_match(ctx, arg, cases)
     ast.Err -> infer_err(ctx)
     x -> {
       let msg = string.inspect(x)
@@ -479,10 +479,6 @@ fn infer_pattern(
     ast.PAny -> {
       let #(id, ctx) = context.new_hole(ctx)
       #(tm.PAny, v.hole(id), ctx)
-    }
-    ast.PVar(name) -> {
-      let s = pattern_ast.span
-      infer_pattern(ctx, ast.palias(ast.pany(s), name, s))
     }
     ast.PTyp(u) -> #(tm.PTyp(u), v.Typ(u + 1), ctx)
     ast.PLit(lit) -> {

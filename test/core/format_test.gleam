@@ -183,6 +183,6 @@ pub fn format_let_test() {
   let value = ast.var("y", s)
   let body = ast.var("z", s)
   let def = #("x", Some(type_), value)
-  let let_ = ast.let_(def, body, s)
+  let let_ = ast.let_var(def, body, s)
   assert format(let_, 80, 2) == "%let x: a = y; z"
 }

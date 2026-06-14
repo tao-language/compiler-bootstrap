@@ -376,7 +376,7 @@ pub fn lex_let_test() {
 
 pub fn parse_let_test() {
   assert parse("%let x: a = y; z")
-    == Ok(ast.let_(
+    == Ok(ast.let_var(
       #("x", Some(ast.var("a", s(1, 7, 1, 10))), ast.var("y", s(1, 11, 1, 14))),
       ast.var("z", s(1, 14, 1, 17)),
       s(1, 1, 1, 17),

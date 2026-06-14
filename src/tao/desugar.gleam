@@ -154,59 +154,7 @@ fn desugar_pattern(p: Pattern) -> core.Pattern {
 }
 
 pub fn desugar_block(block: List(Stmt)) -> core.TermData {
-  case block {
-    [] -> core.Err
-    [stmt, ..rest] ->
-      case stmt.data {
-        tao.Let(pattern, type_, value) -> {
-          let pattern_name = case pattern.data {
-            tao.PVar(n) -> n
-            _ -> "_"
-          }
-          let value_term = desugar_expr(value)
-          let body_term = desugar_block(rest)
-          let opt_type = case type_ {
-            None -> None
-            Some(t) -> Some(desugar_expr(t))
-          }
-          core.Let(
-            #(pattern_name, opt_type, value_term),
-            core.Term(body_term, stmt.span),
-          )
-        }
-        tao.LetMut(name, type_, value) -> {
-          let value_term = desugar_expr(value)
-          let body_term = desugar_block(rest)
-          let opt_type = case type_ {
-            None -> None
-            Some(t) -> Some(desugar_expr(t))
-          }
-          core.Let(
-            #(name, opt_type, value_term),
-            core.Term(body_term, stmt.span),
-          )
-        }
-        tao.Mut(name, value) -> {
-          let _value_term = desugar_expr(value)
-          desugar_block(rest)
-        }
-        tao.FnDef(name, implicits, params, returns, body) -> {
-          let fn_body =
-            desugar_fn_data(implicits, params, returns, body, stmt.span)
-          let rest_data = desugar_block(rest)
-          core.Let(
-            #(name, None, core.Term(fn_body, stmt.span)),
-            core.Term(rest_data, stmt.span),
-          )
-        }
-        tao.TypeDef(_) -> desugar_block(rest)
-        tao.For(_, _, _) -> desugar_block(rest)
-        tao.While(_, _) -> desugar_block(rest)
-        tao.Return(expr) -> desugar_expr(expr).data
-        tao.Break -> core.Err
-        tao.Continue -> core.Err
-      }
-  }
+  todo
 }
 
 fn desugar_args(args: List(#(String, Expr))) -> Term {

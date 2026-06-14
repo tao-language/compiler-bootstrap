@@ -1,5 +1,5 @@
 import core/literals.{type Literal, type LiteralType} as lit
-import gleam/option.{type Option}
+import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
 // ============================================================================
@@ -36,8 +36,6 @@ pub type TermData {
   App(implicit: Bool, fun: Term, arg: Term)
   Match(arg: Term, cases: List(Case))
   Call(name: String, returns: Type, args: List(Term))
-  Let(def: #(String, Option(Type), Term), body: Term)
-  LetP(def: #(Pattern, Option(Type), Term), body: Term)
   TypeDef(type_def: TypeDefinition)
   Err
 }
@@ -51,7 +49,6 @@ pub type Pattern {
 
 pub type PatternData {
   PAny
-  PVar(name: String)
   PTyp(universe: Int)
   PLit(value: Literal)
   PLitT(lit_type: LiteralType)
@@ -207,12 +204,18 @@ pub fn call(name: String, returns: Type, args: List(Term), span: Span) {
   Term(Call(name, returns, args), span)
 }
 
-pub fn let_(def: #(String, Option(Type), Term), body: Term, span: Span) {
-  Term(Let(def, body), span)
+pub fn let_var(def: #(String, Option(Type), Term), body: Term, span: Span) {
+  let #(name, opt_type, value) = def
+  app(lam(#(name, opt_type), body, span), value, span)
 }
 
-pub fn let_p(def: #(Pattern, Option(Type), Term), body: Term, span: Span) {
-  Term(LetP(def, body), span)
+pub fn let_pat(def: #(Pattern, Option(Type), Term), body: Term, span: Span) {
+  let #(pattern, opt_type, value) = def
+  let body = case opt_type {
+    Some(type_) -> ann(body, type_, type_.span)
+    None -> body
+  }
+  match(value, [Case(pattern, None, body)], span)
 }
 
 pub fn err(span: Span) {
@@ -224,7 +227,7 @@ pub fn pany(span: Span) {
 }
 
 pub fn pvar(name: String, span: Span) {
-  Pattern(PVar(name), span)
+  palias(pany(span), name, span)
 }
 
 pub fn pint(value: Int, span: Span) {
