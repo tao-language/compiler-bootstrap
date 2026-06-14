@@ -29,7 +29,7 @@ pub fn debug_core(source: String, width: Int) {
       ast.err(Span("<syntax error>", 0, 0, 0, 0))
     }
   }
-  io.println(format(ast, width))
+  io.println(format(ast, width, 2))
   io.println("")
 
   io.println(">> infer(ast) -> (Term, Type)")
@@ -57,24 +57,24 @@ pub fn debug_core(source: String, width: Int) {
   io.println("// Type")
   let type_term = quote(ctx.ffi, 0, type_)
   let type_ast = term.to_ast(type_term, [])
-  io.println(format(type_ast, width))
+  io.println(format(type_ast, width, 2))
   io.println("")
 
   io.println("// Term (raw)")
   let term_ast = term.to_ast(term, [])
-  io.println(format(term_ast, width))
+  io.println(format(term_ast, width, 2))
   io.println("")
 
   io.println("// Term (holes resolved)")
   let term = resolve(ctx.ffi, ctx.subst, 0, term)
   let term_ast = term.to_ast(term, [])
-  io.println(format(term_ast, width))
+  io.println(format(term_ast, width, 2))
   io.println("")
 
   io.println(">> eval(term) -> Value")
   let result_val = eval(ctx.ffi, [], term)
   let result_term = quote(ctx.ffi, 0, result_val)
   let result_ast = term.to_ast(result_term, [])
-  io.println(format(result_ast, width))
+  io.println(format(result_ast, width, 2))
   io.println("")
 }

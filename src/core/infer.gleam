@@ -343,11 +343,17 @@ fn infer_app_args(
         // pi_implicit, app_implicit | pi_explicit, app_explicit
         True, True | False, False -> {
           // Matching implicit/explicit argument application
+          // When implicit arg matches implicit param, the result is explicit
+          // (the implicitness has been resolved)
+          let result_implicit = case pi_implicit {
+            True -> False
+            False -> False
+          }
           let #(arg, _, ctx) = check(ctx, arg_ast, #(domain_val, fun_span))
           let pi_env = [eval(ctx.ffi, ctx.env, arg), ..pi_env]
           let type_ = eval(ctx.ffi, pi_env, codomain)
           #(
-            tm.App(app_implicit, fun, arg),
+            tm.App(result_implicit, fun, arg),
             unwrap(ctx.ffi, ctx.subst, type_),
             ctx,
           )
@@ -356,7 +362,7 @@ fn infer_app_args(
         True, False as app_explicit -> {
           // Implicit argument expansion
           let #(hole_id, ctx) = context.new_hole(ctx)
-          let fun = tm.App(pi_implicit, fun, tm.Hole(hole_id))
+          let fun = tm.App(False, fun, tm.Hole(hole_id))
           let pi_env = [v.hole(hole_id), ..pi_env]
           let fun_type = eval(ctx.ffi, pi_env, codomain)
           let fun_data = #(fun, fun_type, fun_span)

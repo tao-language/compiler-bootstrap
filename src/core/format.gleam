@@ -113,7 +113,6 @@ fn doc_term(term: Term, indent: Int) -> Document {
       doc.concat([
         doc_text("%let "),
         doc_text(name),
-        doc_text(": "),
         doc_opt_type(opt_type, indent),
         doc_text(" = "),
         doc_term(value, indent),
@@ -173,19 +172,18 @@ fn format_rcd(fields: List(#(String, Term)), indent: Int) -> Document {
         |> list.map(fn(f) {
           doc.concat([doc_text(f.0 <> ": "), doc_term(f.1, indent)])
         })
-      doc.concat([
+      doc.group(doc.concat([
         doc_text("{"),
         doc.nest(
           doc.concat([
             doc.line,
             doc.join(field_docs, doc.concat([doc_text(","), doc.line])),
           ]),
-          indent,
+          2,
         ),
         doc.line,
         doc_text("}"),
-      ])
-      |> doc.group
+      ]))
     }
   }
 }

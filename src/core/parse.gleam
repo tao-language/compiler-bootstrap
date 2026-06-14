@@ -194,20 +194,20 @@ fn term(file: String) -> Parser(Term, Token, Nil) {
     ]),
   )
   nibble.one_of([
-    // {
-    //   // Explicit application: f(x)
-    //   use _ <- do(nibble.token(LParen))
-    //   use arg <- do(term(file))
-    //   use _ <- do(nibble.token(RParen))
-    //   return(ast.app(fun, arg, span.merge(fun.span, arg.span)))
-    // },
-    // {
-    //   // Implicit application: f<x>
-    //   use _ <- do(nibble.token(LAngle))
-    //   use arg <- do(term(file))
-    //   use _ <- do(nibble.token(RAngle))
-    //   return(ast.app_implicit(fun, arg, span.merge(fun.span, arg.span)))
-    // },
+    {
+      // Explicit application: f(x)
+      use _ <- do(nibble.token(LParen))
+      use arg <- do(term(file))
+      use _ <- do(nibble.token(RParen))
+      return(ast.app(fun, arg, span.merge(fun.span, arg.span)))
+    },
+    {
+      // Implicit application: f<x>
+      use _ <- do(nibble.token(LAngle))
+      use arg <- do(term(file))
+      use _ <- do(nibble.token(RAngle))
+      return(ast.app_implicit(fun, arg, span.merge(fun.span, arg.span)))
+    },
     // No application
     return(fun),
   ])
