@@ -39,8 +39,8 @@ pub type Stmt {
 }
 
 pub type StmtData {
-  Let(pattern: Pattern, type_: Option(Type), value: Expr)
-  LetMut(name: String, type_: Option(Type), value: Expr)
+  Let(pattern: Pattern, opt_type: Option(Type), value: Expr)
+  LetMut(name: String, opt_type: Option(Type), value: Expr)
   Mut(name: String, value: Expr)
   FnDef(
     name: String,
@@ -52,7 +52,7 @@ pub type StmtData {
   TypeDef(type_def: TypeDefinition)
   For(iterator: Pattern, range: Expr, body: Expr)
   While(condition: Expr, body: Expr)
-  Return(Expr)
+  Return(expr: Expr)
   Break
   Continue
 }
