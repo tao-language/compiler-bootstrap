@@ -55,6 +55,8 @@ pub fn desugar_expr(expr: Expr) -> Term {
       let core_cases = desugar_case_list(cases)
       core.match(core_arg, core_cases, expr.span)
     }
+    tao.Op1(op, expr) -> todo
+    tao.Op2(op, lhs, rhs) -> todo
     tao.Call(name, ret, args) -> {
       let core_ret = desugar_expr(ret)
       let core_args = list.map(args, desugar_expr)

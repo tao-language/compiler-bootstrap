@@ -27,9 +27,22 @@ pub type ExprData {
   App(fun: Expr, args: List(#(String, Expr)))
   AppImplicits(fun: Expr, args: List(#(String, Expr)))
   Match(arg: Expr, cases: List(Case))
+  Op1(op: UnaryOp, expr: Expr)
+  Op2(op: BinaryOp, lhs: Expr, rhs: Expr)
   Call(name: String, ret: Type, args: List(Expr))
   Do(Block)
   Err
+}
+
+pub type UnaryOp {
+  Neg
+}
+
+pub type BinaryOp {
+  Add
+  Sub
+  Mul
+  Div
 }
 
 pub type Block =
@@ -153,6 +166,34 @@ pub fn app_implicits(fun: Expr, args: List(#(String, Expr)), span: Span) {
 
 pub fn match(arg: Expr, cases: List(Case), span: Span) {
   Expr(Match(arg, cases), span)
+}
+
+pub fn op1(op: UnaryOp, expr: Expr, span: Span) {
+  Expr(Op1(op, expr), span)
+}
+
+pub fn neg(expr: Expr, span: Span) {
+  op1(Neg, expr, span)
+}
+
+pub fn op2(op: BinaryOp, lhs: Expr, rhs: Expr, span: Span) {
+  Expr(Op2(op, lhs, rhs), span)
+}
+
+pub fn add(lhs: Expr, rhs: Expr, span: Span) {
+  op2(Add, lhs, rhs, span)
+}
+
+pub fn sub(lhs: Expr, rhs: Expr, span: Span) {
+  op2(Sub, lhs, rhs, span)
+}
+
+pub fn mul(lhs: Expr, rhs: Expr, span: Span) {
+  op2(Mul, lhs, rhs, span)
+}
+
+pub fn div(lhs: Expr, rhs: Expr, span: Span) {
+  op2(Div, lhs, rhs, span)
 }
 
 pub fn call(name: String, ret: Type, args: List(Expr), span: Span) {
