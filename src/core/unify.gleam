@@ -3,7 +3,7 @@ import core/context.{type Context, Context, with_err}
 import core/error as e
 import core/eval.{eval}
 import core/occurs.{occurs}
-import core/term.{type Term}
+import core/term.{type Case, type Term} as tm
 import core/unwrap.{unwrap}
 import core/value.{type Env, type Neut, type TypeDefinition, type Value} as v
 import gleam/list
@@ -72,12 +72,39 @@ fn unify_concrete_neut(
   a: #(Value, Span),
   b: #(Neut, Span),
 ) -> Context {
+  // TODO: switch (a, b)
   let #(value, s1) = a
   let #(neut, s2) = b
   case neut {
-    v.NMatch(env, arg, cases) -> todo
-    v.NCall(name, returns, args) -> todo
+    v.NMatch(env, arg, cases) ->
+      unify_concrete_neut_cases(ctx, env, arg, a, #(cases, s2))
+    v.NCall(_, returns, _) -> unify(ctx, #(value, s1), #(returns, s2))
     _ -> with_err(ctx, e.TypeMismatch(#(value, s1), #(v.Neut(neut), s2)))
+  }
+}
+
+fn unify_concrete_neut_cases(
+  ctx: Context,
+  env: Env,
+  arg: Neut,
+  a: #(Value, Span),
+  b: #(List(Case), Span),
+) -> Context {
+  // TODO: switch (a, b)
+  let #(cases, s2) = b
+  case cases {
+    [] -> ctx
+    [c, ..cases] -> {
+      let num_vars = list.length(tm.bindings(c.pattern))
+      let num_vars = case c.guard {
+        None -> num_vars
+        Some(#(_, g_pattern)) -> num_vars + list.length(tm.bindings(g_pattern))
+      }
+      let env = v.env_push(env, num_vars)
+      let body_val = eval(ctx.ffi, env, c.body)
+      let ctx = unify(ctx, a, #(body_val, s2))
+      unify_concrete_neut_cases(ctx, env, arg, a, #(cases, s2))
+    }
   }
 }
 
