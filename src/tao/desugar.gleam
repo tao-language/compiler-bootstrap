@@ -25,6 +25,8 @@ pub fn desugar_expr(expr: Expr) -> Term {
     tao.Hole(id) -> core.hole(id, expr.span)
     tao.Lit(value) -> Term(core.Lit(value), expr.span)
     tao.Var(name) -> core.var(name, expr.span)
+    tao.Ctr("Int", []) -> core.int_t(expr.span)
+    tao.Ctr("Float", []) -> core.float_t(expr.span)
     tao.Ctr(tag, args) -> {
       let core_args = desugar_args(args)
       core.ctr(tag, core_args, expr.span)
