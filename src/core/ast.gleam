@@ -252,29 +252,6 @@ pub fn lam_implicit(param: Param, body: Term, span: Span) {
   Term(Lam(True, param, body), span)
 }
 
-pub fn fun(
-  param_name: String,
-  args: List(#(String, #(Option(Term), Option(Term)))),
-  args_span: Span,
-  body: Term,
-  span: Span,
-) {
-  let param = #(param_name, Some(rcd_t(args, args_span)))
-  let pvars =
-    list.map(args, fn(arg) {
-      let #(name, _) = arg
-      // TODO: add span to arg name and get it from there
-      #(name, pvar(name, span))
-    })
-  let body =
-    match(
-      var(param_name, args_span),
-      [Case(prcd(pvars, args_span), None, body)],
-      span,
-    )
-  lam(param, body, span)
-}
-
 pub fn pi(param: Param, body: Term, span: Span) {
   Term(Pi(False, param, body), span)
 }

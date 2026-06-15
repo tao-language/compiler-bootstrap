@@ -81,20 +81,6 @@ fn desugar_args(args: List(#(String, Expr))) -> Term {
   Term(core_params, Span("", 0, 0, 0, 0))
 }
 
-fn desugar_params(params: List(tao.Param)) -> Term {
-  let core_params =
-    core.RcdT(
-      list.map(params, fn(param) {
-        let #(name, #(opt_type, opt_default)) = param
-        let core_type = option.map(opt_type, desugar_expr)
-        let core_default = option.map(opt_type, desugar_expr)
-        #("_", #(core_type, core_default))
-      }),
-    )
-  // TODO: span.merge(first_span, last_span)
-  Term(core_params, Span("", 0, 0, 0, 0))
-}
-
 fn desugar_fn(
   opt_fun_name: Option(String),
   implicits: List(tao.Param),
