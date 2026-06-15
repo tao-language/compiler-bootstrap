@@ -1,14 +1,12 @@
 import core/context.{Context, new_ctx}
+import core/eval.{eval}
 import core/ffi
-import core/format.{format}
-import core/term as tm
 import core/value as v
 import gleam/io
 import gleam/option.{None, Some}
 import syntax/span.{Span}
 import tao/ast as tao
 import tao/check.{check_expr}
-import tao/desugar
 
 const s = Span("tao/examples_test", 0, 0, 0, 0)
 
@@ -44,7 +42,26 @@ pub fn tao_factorial_test() {
   }
   io.println("\n")
   let ctx = Context(..new_ctx, ffi: ffi.build)
+  // factorial(0) = 1
   let #(term, type_, ctx) = check_expr(ctx, factorial(0))
   assert ctx.errors == []
   assert type_ == v.int_t
+  assert eval(ctx.ffi, ctx.env, term) == v.int(1)
+  // factorial(1) = 1
+  let #(term, type_, ctx) = check_expr(ctx, factorial(1))
+  assert ctx.errors == []
+  assert type_ == v.int_t
+  assert eval(ctx.ffi, ctx.env, term) == v.int(1)
+  // factorial(2) = 2
+  let #(term, _, ctx) = check_expr(ctx, factorial(2))
+  assert eval(ctx.ffi, ctx.env, term) == v.int(2)
+  // factorial(3) = 6
+  let #(term, _, ctx) = check_expr(ctx, factorial(3))
+  assert eval(ctx.ffi, ctx.env, term) == v.int(6)
+  // factorial(4) = 24
+  let #(term, _, ctx) = check_expr(ctx, factorial(4))
+  assert eval(ctx.ffi, ctx.env, term) == v.int(24)
+  // factorial(5) = 120
+  let #(term, _, ctx) = check_expr(ctx, factorial(5))
+  assert eval(ctx.ffi, ctx.env, term) == v.int(120)
 }
