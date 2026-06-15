@@ -152,7 +152,7 @@ pub fn roundtrip_pi_implicit_test() {
 // ============================================================================
 
 pub fn roundtrip_fix_test() {
-  let source = "%fix f. x"
+  let source = "%fix f. f"
   assert format(parse(source), 80, 2) == source
 }
 
@@ -175,7 +175,7 @@ pub fn roundtrip_app_implicit_test() {
 // ============================================================================
 
 pub fn roundtrip_let_test() {
-  let source = "%let x: a = y; z"
+  let source = "%let x: a = y\nz"
   assert format(parse(source), 80, 2) == source
 }
 

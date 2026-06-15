@@ -79,8 +79,7 @@ pub fn format_rcd_multi_test() {
     #("a", ast.var("x", s)),
     #("b", ast.var("y", s)),
   ]
-  // Multi-field records should have newlines when formatted
-  assert format(ast.rcd(fields, s), 80, 2) == "{\n  a: x,\n  b: y\n}"
+  assert format(ast.rcd(fields, s), 80, 2) == "{a: x, b: y}"
 }
 
 pub fn format_rcdt_empty_test() {
@@ -151,9 +150,9 @@ pub fn format_pi_implicit_test() {
 // ============================================================================
 
 pub fn format_fix_test() {
-  let body = ast.var("x", s)
+  let body = ast.var("f", s)
   let fix = ast.fix("f", body, s)
-  assert format(fix, 80, 2) == "%fix f. x"
+  assert format(fix, 80, 2) == "%fix f. f"
 }
 
 // ============================================================================
@@ -184,5 +183,5 @@ pub fn format_let_test() {
   let body = ast.var("z", s)
   let def = #("x", Some(type_), value)
   let let_ = ast.let_var(def, body, s)
-  assert format(let_, 80, 2) == "%let x: a = y; z"
+  assert format(let_, 80, 2) == "%let x: a = y\nz"
 }

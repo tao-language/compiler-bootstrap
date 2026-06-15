@@ -154,11 +154,15 @@ fn doc_rcd(fields: List(#(String, Term)), indent: Int) -> Document {
   let doc_fields =
     list.map(fields, fn(field) {
       let #(name, term) = field
+      let name = case name {
+        "" -> "\"\""
+        _ -> name
+      }
       doc.concat([doc_text(name <> ": "), doc_term(term, indent)])
     })
   doc.concat([
     doc_text("{"),
-    doc.nest(doc.join(doc_fields, doc_text(", ")), indent),
+    doc.nest(doc.join(doc_fields, doc.break(", ", ",")), indent),
     doc_text("}"),
   ])
 }

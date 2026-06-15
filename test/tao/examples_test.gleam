@@ -23,7 +23,8 @@ pub fn tao_factorial_test() {
   let sub = fn(x, y) { tao.call("int_sub", tao.int_t(s), [x, y], s) }
   let mul = fn(x, y) { tao.call("int_mul", tao.int_t(s), [x, y], s) }
   let case0 = tao.Case(tao.pint(0, s), i1)
-  let case_ = tao.Case(tao.pany(s), mul(n, tao.app(f, [#("", sub(n, i1))], s)))
+  let case_ =
+    tao.Case(tao.pvar("n", s), mul(n, tao.app(f, [#("", sub(n, i1))], s)))
   let fn_def =
     tao.FnDef(
       name: "f",
@@ -42,11 +43,8 @@ pub fn tao_factorial_test() {
     )
   }
   io.println("\n")
-  tao.do([tao.Stmt(fn_def, s), tao.return(f, s)], s)
-  |> desugar.desugar_expr
-  |> format(80, 2)
-  |> io.println
   let ctx = Context(..new_ctx, ffi: ffi.build)
-  // assert check_expr(ctx, factorial(0)) == #(tm.int(0), v.int_t, ctx)
-  todo
+  let #(term, type_, ctx) = check_expr(ctx, factorial(0))
+  assert ctx.errors == []
+  assert type_ == v.int_t
 }

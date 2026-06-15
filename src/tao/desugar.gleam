@@ -43,7 +43,7 @@ pub fn desugar_expr(expr: Expr) -> Term {
       core.ann(core_value, core_type, expr.span)
     }
     tao.Fn(implicits, params, returns, body) ->
-      desugar_fn(implicits, params, returns, body, expr.span)
+      desugar_fn(None, implicits, params, returns, body, expr.span)
     tao.FnT(implicits, params, body) ->
       desugar_fnt(implicits, params, body, expr.span)
     tao.App(fun, args) -> desugar_app(False, fun, args, expr.span)
@@ -66,8 +66,12 @@ pub fn desugar_expr(expr: Expr) -> Term {
 fn desugar_args(args: List(#(String, Expr))) -> Term {
   let core_params =
     core.Rcd(
-      list.map(args, fn(arg) {
+      list.index_map(args, fn(arg, index) {
         let #(name, expr) = arg
+        let name = case name {
+          "" -> int.to_string(index + 1)
+          _ -> name
+        }
         #(name, desugar_expr(expr))
       }),
     )
@@ -90,6 +94,7 @@ fn desugar_params(params: List(tao.Param)) -> Term {
 }
 
 fn desugar_fn(
+  opt_fun_name: Option(String),
   implicits: List(tao.Param),
   params: List(tao.Param),
   opt_returns: Option(tao.Type),
@@ -124,7 +129,12 @@ fn desugar_fn(
           core.ann(core_body, core_body_type, returns.span)
         }
       }
-      core.lam(#(param_name, Some(core_param_type)), core_body, span)
+      let core_fun =
+        core.lam(#(param_name, Some(core_param_type)), core_body, span)
+      case opt_fun_name {
+        Some(fun_name) -> core.fix(fun_name, core_fun, span)
+        None -> core_fun
+      }
     }
     _ -> todo
   }
@@ -232,7 +242,8 @@ pub fn desugar_stmt(ctx: BlockCtx, stmt: Stmt, next: Term) -> Term {
     tao.LetMut(name, opt_type, value) -> todo
     tao.Mut(name, value) -> todo
     tao.FnDef(name, implicits, params, returns, body) -> {
-      let core_fn = desugar_fn(implicits, params, returns, body, stmt.span)
+      let core_fn =
+        desugar_fn(Some(name), implicits, params, returns, body, stmt.span)
       core.let_var(#(name, None, core_fn), next, stmt.span)
     }
     tao.TypeDef(type_def) -> todo

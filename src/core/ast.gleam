@@ -76,6 +76,81 @@ pub type Variant {
   Variant(params: List(#(String, Term)), arg: Term, returns: Term)
 }
 
+// Helper functions
+
+pub fn bindings(pattern: Pattern) -> List(String) {
+  case pattern.data {
+    PAlias(pattern, x) -> [x, ..bindings(pattern)]
+    PCtr(_, pattern) -> bindings(pattern)
+    PRcd(fields) ->
+      list.flat_map(fields, fn(field) {
+        let #(x, pattern) = field
+        [x, ..bindings(pattern)]
+      })
+    PRcdT(fields) ->
+      list.flat_map(fields, fn(field) {
+        let #(x, pattern) = field
+        [x, ..bindings(pattern)]
+      })
+    _ -> []
+  }
+}
+
+pub fn contains(term: Term, name: String) -> Bool {
+  case term.data {
+    Var(x) if x == name -> True
+    Ctr(_, arg) -> contains(arg, name)
+    Rcd(fields) ->
+      list.any(fields, fn(field) {
+        let #(_, term) = field
+        contains(term, name)
+      })
+    RcdT(fields) ->
+      list.any(fields, fn(field) {
+        let #(_, #(opt_type, opt_default)) = field
+        opt_contains(opt_type, name) || opt_contains(opt_default, name)
+      })
+    Ann(term, type_) -> contains(term, name) || contains(type_, name)
+    Lam(_, #(x, type_), body) ->
+      opt_contains(type_, name) || x != name && contains(body, name)
+    Pi(_, #(x, type_), body) ->
+      opt_contains(type_, name) || x != name && contains(body, name)
+    Fix(x, body) if x != name -> contains(body, name)
+    App(_, fun, arg) -> contains(fun, name) || contains(arg, name)
+    Match(arg, cases) ->
+      contains(arg, name) || list.any(cases, contains_case(_, name))
+    Call(name, returns, args) -> todo
+    TypeDef(type_def) -> todo
+    _ -> False
+  }
+}
+
+fn contains_case(c: Case, name: String) -> Bool {
+  !list.contains(bindings(c.pattern), name)
+  || contains_case_body(c.guard, c.body, name)
+}
+
+fn contains_case_body(
+  guard: Option(#(Term, Pattern)),
+  body: Term,
+  name: String,
+) -> Bool {
+  case guard {
+    Some(#(term, pattern)) ->
+      contains(term, name)
+      || !list.contains(bindings(pattern), name)
+      && contains(body, name)
+    None -> contains(body, name)
+  }
+}
+
+fn opt_contains(opt_term: Option(Term), name: String) -> Bool {
+  case opt_term {
+    Some(term) -> contains(term, name)
+    None -> False
+  }
+}
+
 // Syntax sugar
 
 pub fn typ(universe: Int, span: Span) {
@@ -209,7 +284,10 @@ pub fn pi_implicit(param: Param, body: Term, span: Span) {
 }
 
 pub fn fix(name: String, body: Term, span: Span) {
-  Term(Fix(name, body), span)
+  case contains(body, name) {
+    True -> Term(Fix(name, body), span)
+    False -> body
+  }
 }
 
 pub fn app(fun: Term, arg: Term, span: Span) {

@@ -414,7 +414,7 @@ fn let_(file: String) -> Parser(Term, Token, Nil) {
   use type_ <- do(nibble.optional(term(file)))
   use _ <- do(nibble.token(Equals))
   use value <- do(term(file))
-  use _ <- do(nibble.token(Semicolon))
+  use _ <- do(nibble.optional(nibble.token(Semicolon)))
   use body <- do(term(file))
   use end <- do(get_span(file))
   return(ast.let_var(#(name, type_, value), body, span.merge(start, end)))
