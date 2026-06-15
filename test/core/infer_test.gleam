@@ -421,7 +421,7 @@ pub fn infer_match_dependent_motive_test() {
       tm.Case(tm.pint(2), None, tm.float_t),
       tm.Case(tm.pvar("x"), None, tm.int_t),
     ])
-  assert ctx.subst == [#(2, v.hole(1)), #(1, v.int_t)]
+  assert ctx.subst == [#(2, v.int_t), #(1, v.int_t)]
 }
 
 // ============================================================================

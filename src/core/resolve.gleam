@@ -38,8 +38,11 @@ pub fn resolve(ffi: FFI, subst: Subst, size: Int, term: Term) -> Term {
         })
       tm.RcdT(fields)
     }
-    tm.Call(name, args) ->
-      tm.Call(name, list.map(args, resolve(ffi, subst, size, _)))
+    tm.Call(name, returns, args) -> {
+      let returns = resolve(ffi, subst, size, returns)
+      let args = list.map(args, resolve(ffi, subst, size, _))
+      tm.Call(name, returns, args)
+    }
     tm.Ann(term, type_) -> {
       let term = resolve(ffi, subst, size, term)
       let type_ = resolve(ffi, subst, size, type_)

@@ -43,17 +43,20 @@ pub type Term {
   Var(index: Int)
   Ctr(tag: String, arg: Term)
   Rcd(fields: List(#(String, Term)))
-  RcdT(fields: List(#(String, #(Term, Option(Term)))))
-  Call(name: String, args: List(Term))
-  Ann(term: Term, type_: Term)
-  Lam(implicit: Bool, param: #(String, Term), body: Term)
-  Pi(implicit: Bool, domain: #(String, Term), codomain: Term)
+  RcdT(fields: List(#(String, #(Type, Option(Term)))))
+  Call(name: String, returns: Type, args: List(Term))
+  Ann(term: Term, type_: Type)
+  Lam(implicit: Bool, param: #(String, Type), body: Term)
+  Pi(implicit: Bool, domain: #(String, Type), codomain: Term)
   Fix(name: String, body: Term)
   App(implicit: Bool, fun: Term, arg: Term)
   Match(arg: Term, cases: List(Case))
   TypeDef(type_def: TypeDefinition)
   Err
 }
+
+pub type Type =
+  Term
 
 pub type Pattern {
   PAny
@@ -116,7 +119,7 @@ pub fn to_ast(term: Term, names: List(String)) -> ast.Term {
     Ctr(tag, arg) -> ast.Term(ast.Ctr(tag, to_ast(arg, names)), s)
     Rcd(fields) -> todo
     RcdT(fields) -> todo
-    Call(name, args) -> todo
+    Call(name, returns, args) -> todo
     Ann(term, type_) -> todo
     Lam(implicit, #(name, type_), body) -> {
       let type_ast = to_ast(type_, names)

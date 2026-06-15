@@ -71,7 +71,7 @@ pub fn eval_app_not_a_function_test() {
 
 pub fn eval_call_ffi_some_test() {
   let ffi: FFI = [#("f", fn(_) { Some(v.int(42)) })]
-  let term = tm.Call("f", [])
+  let term = tm.Call("f", tm.int_t, [])
   let result = eval(ffi, [], term)
   assert result == v.int(42)
 }
@@ -79,9 +79,9 @@ pub fn eval_call_ffi_some_test() {
 pub fn eval_call_ffi_none_test() {
   // FFI returns None → falls back to neutral call value
   let ffi: FFI = [#("f", fn(_) { None })]
-  let term = tm.Call("f", [])
+  let term = tm.Call("f", tm.int_t, [])
   let result = eval(ffi, [], term)
-  assert result == v.call("f", [])
+  assert result == v.call("f", v.int_t, [])
 }
 
 // ============================================================================

@@ -17,9 +17,12 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   case unwrap(ctx.ffi, ctx.subst, value1), unwrap(ctx.ffi, ctx.subst, value2) {
     // Try to solve holes before unifying any concrete values
     v.Neut(v.NHole(id1)), v.Neut(v.NHole(id2)) if id1 == id2 -> ctx
-    _, v.Neut(v.NHole(id)) -> solve_hole(ctx, id, value1, s1)
-    v.Neut(v.NHole(id)), _ -> solve_hole(ctx, id, value2, s2)
+    value1, v.Neut(v.NHole(id)) -> solve_hole(ctx, id, value1, s1)
+    v.Neut(v.NHole(id)), value2 -> solve_hole(ctx, id, value2, s2)
     v.Neut(n1), v.Neut(n2) -> unify_neut(ctx, #(n1, s1), #(n2, s2))
+    // Try to unify neutrals with concrete values
+    value1, v.Neut(neut) -> unify_concrete_neut(ctx, #(value1, s1), #(neut, s2))
+    v.Neut(neut), value2 -> unify_concrete_neut(ctx, #(value2, s2), #(neut, s1))
     // Unify concrete values
     v.Typ(u1), v.Typ(u2) if u1 == u2 -> ctx
     v.Lit(v1), v.Lit(v2) if v1 == v2 -> ctx
@@ -61,6 +64,20 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     v.Err, v.Err -> ctx
     value1, value2 ->
       with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)))
+  }
+}
+
+fn unify_concrete_neut(
+  ctx: Context,
+  a: #(Value, Span),
+  b: #(Neut, Span),
+) -> Context {
+  let #(value, s1) = a
+  let #(neut, s2) = b
+  case neut {
+    v.NMatch(env, arg, cases) -> todo
+    v.NCall(name, returns, args) -> todo
+    _ -> with_err(ctx, e.TypeMismatch(#(value, s1), #(v.Neut(neut), s2)))
   }
 }
 
@@ -234,7 +251,8 @@ fn unify_neut(ctx: Context, a: #(Neut, Span), b: #(Neut, Span)) -> Context {
       let ctx = unify_neut(ctx, #(fun1, s1), #(fun2, s2))
       unify(ctx, #(arg1, s1), #(arg2, s2))
     }
-    v.NCall(name1, args1), v.NCall(name2, args2) if name1 == name2 -> {
+    v.NCall(x, ret1, args1), v.NCall(y, ret2, args2) if x == y -> {
+      let ctx = unify(ctx, #(ret1, s1), #(ret2, s2))
       let ctx = case list.length(args1), list.length(args2) {
         len1, len2 if len1 == len2 -> ctx
         len1, len2 ->

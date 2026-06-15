@@ -18,14 +18,17 @@ pub type Value {
   LitT(literal: LiteralType)
   Ctr(tag: String, arg: Value)
   Rcd(fields: List(#(String, Value)))
-  RcdT(fields: List(#(String, #(Value, Option(Value)))))
+  RcdT(fields: List(#(String, #(Type, Option(Value)))))
   Neut(neutral: Neut)
-  Lam(env: Env, param: #(String, Value), body: Term)
-  Pi(env: Env, implicit: Bool, domain: #(String, Value), codomain: Term)
+  Lam(env: Env, param: #(String, Type), body: Term)
+  Pi(env: Env, implicit: Bool, domain: #(String, Type), codomain: Term)
   Fix(env: Env, name: String, body: Term)
   TypeDef(env: Env, type_def: TypeDefinition)
   Err
 }
+
+pub type Type =
+  Value
 
 pub type TypeDefinition {
   TypeDefinition(
@@ -44,7 +47,7 @@ pub type Neut {
   NHole(id: Int)
   NApp(fun: Neut, arg: Value)
   NMatch(env: Env, arg: Neut, cases: List(Case))
-  NCall(name: String, args: List(Value))
+  NCall(name: String, returns: Type, args: List(Value))
 }
 
 pub type Env =
@@ -81,8 +84,8 @@ pub fn match(env: Env, arg: Neut, cases: List(Case)) -> Value {
   Neut(NMatch(env, arg, cases))
 }
 
-pub fn call(name: String, args: List(Value)) -> Value {
-  Neut(NCall(name, args))
+pub fn call(name: String, returns: Type, args: List(Value)) -> Value {
+  Neut(NCall(name, returns, args))
 }
 
 pub fn int(value: Int) -> Value {

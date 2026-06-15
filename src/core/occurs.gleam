@@ -59,7 +59,8 @@ fn occurs_neut(ctx: Context, hole_id: Int, neut: Neut) -> Bool {
     v.NMatch(env, arg, cases) ->
       occurs_neut(ctx, hole_id, arg)
       || list.any(cases, occurs_case(ctx, env, hole_id, _))
-    v.NCall(_, args) -> list.any(args, occurs(ctx, hole_id, _))
+    v.NCall(_, returns, args) ->
+      occurs(ctx, hole_id, returns) || list.any(args, occurs(ctx, hole_id, _))
   }
 }
 

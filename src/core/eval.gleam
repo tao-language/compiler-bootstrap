@@ -1,7 +1,7 @@
 import core/ffi.{type FFI}
 import core/term.{type Case, type Pattern, type Term} as tm
 import core/utils
-import core/value.{type Env, type Value} as v
+import core/value.{type Env, type Type, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
 
@@ -33,9 +33,10 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
           #(name, #(value, default))
         }),
       )
-    tm.Call(name, args) -> {
+    tm.Call(name, returns, args) -> {
+      let returns_val = eval(ffi, env, returns)
       let args_val = list.map(args, eval(ffi, env, _))
-      do_call(ffi, name, args_val)
+      do_call(ffi, name, returns_val, args_val)
     }
     tm.Ann(term, _) -> eval(ffi, env, term)
     tm.Lam(_, #(name, param), body) -> {
@@ -80,14 +81,19 @@ pub fn do_app(ffi: FFI, fun_val: Value, arg_val: Value) -> Value {
   }
 }
 
-pub fn do_call(ffi: FFI, name: String, args_val: List(Value)) -> Value {
+pub fn do_call(
+  ffi: FFI,
+  name: String,
+  returns: Type,
+  args_val: List(Value),
+) -> Value {
   let result = case list.key_find(ffi, name) {
     Ok(call) -> call(args_val)
     Error(Nil) -> None
   }
   case result {
     Some(value) -> value
-    None -> v.call(name, args_val)
+    None -> v.call(name, returns, args_val)
   }
 }
 

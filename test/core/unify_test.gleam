@@ -225,7 +225,7 @@ pub fn unify_ctr_gadt_vec_test() {
   let cons_arg =
     tm.Rcd([#("x", a), #("xs", tm.ctr("Vec", [#("n", m), #("a", a)]))])
   let cons_ret =
-    tm.ctr("Vec", [#("n", tm.Call("+", [m, tm.int(1)])), #("a", a)])
+    tm.ctr("Vec", [#("n", tm.Call("+", tm.int_t, [m, tm.int(1)])), #("a", a)])
   let tdef =
     v.TypeDefinition(
       params: [#("n", v.int_t), #("a", v.Typ(0))],
@@ -459,30 +459,38 @@ pub fn unify_neut_napp_test() {
 // ============================================================================
 
 pub fn unify_neut_ncall_empty_args_test() {
-  let a = v.Neut(v.NCall("f", []))
-  let b = v.Neut(v.NCall("f", []))
+  let a = v.Neut(v.NCall("f", v.int_t, []))
+  let b = v.Neut(v.NCall("f", v.int_t, []))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
 
 pub fn unify_neut_ncall_same_test() {
-  let a = v.Neut(v.NCall("f", []))
-  let b = v.Neut(v.NCall("f", []))
+  let a = v.Neut(v.NCall("f", v.int_t, []))
+  let b = v.Neut(v.NCall("f", v.int_t, []))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
 
 pub fn unify_neut_ncall_name_mismatch_test() {
-  let a = v.Neut(v.NCall("f", []))
-  let b = v.Neut(v.NCall("g", []))
+  let a = v.Neut(v.NCall("f", v.int_t, []))
+  let b = v.Neut(v.NCall("g", v.int_t, []))
   let ctx0 = new_ctx
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
   assert ctx.errors != []
 }
 
+pub fn unify_neut_ncall_return_mismatch_test() {
+  let a = v.Neut(v.NCall("f", v.int_t, []))
+  let b = v.Neut(v.NCall("f", v.float_t, []))
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2))
+    == with_err(ctx0, e.TypeMismatch(#(v.int_t, s1), #(v.float_t, s2)))
+}
+
 pub fn unify_neut_ncall_arity_mismatch_test() {
-  let a = v.Neut(v.NCall("f", [v.int_t, v.float_t]))
-  let b = v.Neut(v.NCall("f", [v.int_t, v.float_t, v.i64]))
+  let a = v.Neut(v.NCall("f", v.int_t, [v.int_t, v.float_t]))
+  let b = v.Neut(v.NCall("f", v.int_t, [v.int_t, v.float_t, v.i64]))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
     == with_err(ctx0, e.CallArityMismatch(#(2, s1), #(3, s2)))

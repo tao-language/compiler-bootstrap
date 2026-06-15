@@ -47,9 +47,12 @@ pub fn core_factorial_test() {
           tm.Case(
             tm.pvar("n"),
             None,
-            tm.Call("int_mul", [
+            tm.Call("int_mul", tm.int_t, [
               tm.Var(0),
-              tm.app(tm.Var(2), tm.Call("int_sub", [tm.Var(0), tm.int(1)])),
+              tm.app(
+                tm.Var(2),
+                tm.Call("int_sub", tm.int_t, [tm.Var(0), tm.int(1)]),
+              ),
             ]),
           ),
         ]),

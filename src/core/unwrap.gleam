@@ -39,9 +39,10 @@ fn unwrap_neut(ffi: FFI, subst: Subst, neut: Neut) -> Value {
       let cases = list.map(cases, unwrap_case(ffi, subst, env, _))
       eval.do_match(ffi, env, arg, cases)
     }
-    v.NCall(name, args) -> {
+    v.NCall(name, returns, args) -> {
+      let returns = unwrap(ffi, subst, returns)
       let args = list.map(args, unwrap(ffi, subst, _))
-      eval.do_call(ffi, name, args)
+      eval.do_call(ffi, name, returns, args)
     }
   }
 }

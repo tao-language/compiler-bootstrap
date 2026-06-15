@@ -237,14 +237,14 @@ fn infer_rcd_type_fields(
 fn infer_call(
   ctx: Context,
   name: String,
-  returns: AST,
+  returns_ast: AST,
   args: List(AST),
 ) -> #(Term, Value, Context) {
   let #(args, ctx) = check_call_args(ctx, args)
-  let #(return_type, _, ctx) = infer(ctx, returns)
-  let return_type_val = eval(ctx.ffi, ctx.env, return_type)
-  let return_type_val = unwrap(ctx.ffi, ctx.subst, return_type_val)
-  #(tm.Call(name, args), return_type_val, ctx)
+  let #(returns, _, ctx) = infer(ctx, returns_ast)
+  let returns_val = eval(ctx.ffi, ctx.env, returns)
+  let returns_val = unwrap(ctx.ffi, ctx.subst, returns_val)
+  #(tm.Call(name, returns, args), returns_val, ctx)
 }
 
 fn check_call_args(ctx: Context, args: List(AST)) -> #(List(Term), Context) {

@@ -13,7 +13,7 @@ import tao/desugar
 const s = Span("tao/examples_test", 0, 0, 0, 0)
 
 pub fn tao_factorial_test() {
-  // fn f(x)
+  // fn f(x) -> Int
   // = match x {
   // | 0 => 1
   // | n => @int_mul<Int>(n, f(@int_sub<Int>(n, 1)))
@@ -30,7 +30,7 @@ pub fn tao_factorial_test() {
       name: "f",
       implicits: [],
       params: [#(tao.pvar("x", s), #(None, None))],
-      returns: None,
+      returns: Some(tao.int_t(s)),
       body: tao.match(x, [case0, case_], s),
     )
   let factorial = fn(n) {
