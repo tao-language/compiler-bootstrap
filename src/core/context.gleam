@@ -8,10 +8,10 @@
 /// recovery after type errors.
 import core/error.{type Error}
 import core/ffi.{type FFI}
-import core/utils
 import core/value.{type Env, type TypeDefinition, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import utils/list_utils.{list_at}
 
 // ============================================================================
 // CONTEXT
@@ -71,7 +71,7 @@ pub fn lookup_type_def(
 
 fn lookup_in_env(ctx: Context, name: String) -> Option(Value) {
   case lookup(ctx, name) {
-    Some(#(index, _)) -> utils.list_at(ctx.env, index)
+    Some(#(index, _)) -> list_at(ctx.env, index)
     None -> None
   }
 }

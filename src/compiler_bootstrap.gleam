@@ -4,6 +4,7 @@ import cli/debug_core.{debug_core}
 import cli/debug_expr.{debug_expr}
 import cli/test_.{test_}
 import gleam/io
+import utils/glob.{glob_compile}
 
 const help = "Tao compiler bootstrap
 
@@ -26,9 +27,9 @@ pub fn main() {
       exit(0)
     }
     ["test", ..] -> {
-      let paths = ["*"]
-      let patterns = ["*"]
-      test_(paths, patterns)
+      let paths_re = glob_compile([])
+      let patterns_re = glob_compile([])
+      test_(paths_re, patterns_re)
     }
     // ["-c", expr, ..rest] ->
     //   case rest {

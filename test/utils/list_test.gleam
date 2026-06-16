@@ -1,9 +1,6 @@
 /// Tests for the utils module.
-///
-/// Tests:
-/// - `list_at`: index-based list access returning Option
-import core/utils.{list_at}
 import gleam/option.{None, Some}
+import utils/list_utils.{list_at}
 
 pub fn list_at_index_0_test() {
   assert list_at([1, 2, 3], 0) == Some(1)

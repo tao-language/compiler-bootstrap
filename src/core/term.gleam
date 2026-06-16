@@ -21,11 +21,11 @@
 /// This means quoting a level to an index is the identity conversion.
 import core/ast
 import core/literals.{type Literal, type LiteralType} as lit
-import core/utils
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span
+import utils/list_utils.{list_at}
 
 // ============================================================================
 // TERMS (Syntax level - De Bruijn indices)
@@ -112,7 +112,7 @@ pub fn to_ast(term: Term, names: List(String)) -> ast.Term {
     Lit(lit) -> ast.Term(ast.Lit(lit), s)
     LitT(lit_t) -> ast.Term(ast.LitT(lit_t), s)
     Var(index) ->
-      case utils.list_at(names, index) {
+      case list_at(names, index) {
         Some(name) -> ast.var(name, s)
         None -> ast.var("`undefined " <> int.to_string(index) <> "`", s)
       }

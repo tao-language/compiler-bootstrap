@@ -1,9 +1,9 @@
 import core/ffi.{type FFI}
 import core/term.{type Case, type Pattern, type Term} as tm
-import core/utils
 import core/value.{type Env, type Type, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import utils/list_utils.{list_at}
 
 pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
   case term {
@@ -12,7 +12,7 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
     tm.Lit(value) -> v.Lit(value)
     tm.LitT(value) -> v.LitT(value)
     tm.Var(index) ->
-      case utils.list_at(env, index) {
+      case list_at(env, index) {
         Some(value) -> value
         None -> v.Err
       }

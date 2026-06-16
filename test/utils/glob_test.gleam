@@ -1,4 +1,4 @@
-import cli/glob.{glob_to_regex}
+import utils/glob.{glob_to_regex}
 
 pub fn glob_to_regex_double_star_test() {
   assert glob_to_regex("a**b") == "a.*?b"
