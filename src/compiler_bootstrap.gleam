@@ -1,24 +1,20 @@
 /// Compiler Bootstrap CLI — entry point
-///
-/// Usage:
-///   gleam run <file.core>
-///   gleam run -c 'expression'
-///   gleam run --help
-///   gleam run check <file.core>
 import argv.{Argv}
 import cli/debug_core.{debug_core}
 import cli/debug_expr.{debug_expr}
+import cli/test_.{test_}
 import gleam/io
 
 const help = "Tao compiler bootstrap
 
 Usage:
-  tao                           Enter interactive REPL mode
-  tao <filename>                Run a .tao or .core file
-  tao -c 'expression'           Run a Tao expression
-  tao debug-expr 'expression'   Debug a Tao expression
-  tao debug-core 'core-term'    Debug a Core term
-  tao --help                    Show this help
+  tao                                   Enter interactive REPL mode
+  tao <filename>                        Run a .tao or .core file
+  tao -c 'expression'                   Run a Tao expression
+  tao test [..path] [--name='pattern']  Run tests
+  tao debug-expr 'expression'           Debug a Tao expression
+  tao debug-core 'core-term'            Debug a Core term
+  tao --help                            Show this help
 "
 
 pub fn main() {
@@ -28,6 +24,11 @@ pub fn main() {
     ["--help", ..] -> {
       io.print(help)
       exit(0)
+    }
+    ["test", ..] -> {
+      let paths = ["*"]
+      let patterns = ["*"]
+      test_(paths, patterns)
     }
     // ["-c", expr, ..rest] ->
     //   case rest {
