@@ -13,12 +13,13 @@ version = "1.0.0"
 # https://gleam.run/writing-gleam/gleam-toml/.
 
 [dependencies]
-gleam_stdlib = ">= 0.44.0 and < 2.0.0"
+gleam_stdlib = ">= 0.71.0 and < 1.0.0"
 argv = ">= 1.0.2 and < 2.0.0"
 simplifile = ">= 2.4.0 and < 3.0.0"
 glam = ">= 2.0.4 and < 3.0.0"
 nibble = ">= 1.1.4 and < 2.0.0"
 gleam_regexp = ">= 1.1.1 and < 2.0.0"
+filepath = ">= 1.1.2 and < 2.0.0"
 
 [dev-dependencies]
 gleeunit = ">= 1.9.0 and < 2.0.0"
