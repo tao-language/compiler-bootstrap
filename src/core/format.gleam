@@ -1,5 +1,5 @@
 import core/ast.{
-  type Case, type Pattern, type Term, type Type, type TypeDefinition,
+  type Case, type Expr, type Pattern, type Type, type TypeDefinition,
   type Variant, PAlias, PAny, PCtr, PErr, PLit, PLitT, PRcd, PTyp,
 }
 import core/literals.{type LiteralType} as l
@@ -10,7 +10,7 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
 
-pub fn format(term: Term, width: Int, indent: Int) -> String {
+pub fn format(term: Expr, width: Int, indent: Int) -> String {
   doc_term(term, indent)
   |> doc.to_string(width)
 }
@@ -19,10 +19,10 @@ fn doc_text(text: String) -> Document {
   doc.from_string(text)
 }
 
-fn doc_term(term: Term, indent: Int) -> Document {
+fn doc_term(term: Expr, indent: Int) -> Document {
   case term.data {
     // Syntax sugar
-    ast.App(_, ast.Term(ast.Lam(_, #(name, opt_type), body), _), value) ->
+    ast.App(_, ast.Expr(ast.Lam(_, #(name, opt_type), body), _), value) ->
       doc.concat([
         doc_text("%let "),
         doc_text(name),
@@ -47,7 +47,7 @@ fn doc_term(term: Term, indent: Int) -> Document {
       }
     ast.LitT(t_) -> format_lit_type(t_)
     ast.Var(name) -> doc_text(name)
-    ast.Ctr(tag, ast.Term(ast.Rcd([]), _)) -> doc_text("#" <> tag)
+    ast.Ctr(tag, ast.Expr(ast.Rcd([]), _)) -> doc_text("#" <> tag)
     ast.Ctr(tag, arg) ->
       doc.concat([
         doc_text("#" <> tag <> "("),
@@ -150,7 +150,7 @@ fn doc_param(
   ])
 }
 
-fn doc_rcd(fields: List(#(String, Term)), indent: Int) -> Document {
+fn doc_rcd(fields: List(#(String, Expr)), indent: Int) -> Document {
   let doc_fields =
     list.map(fields, fn(field) {
       let #(name, term) = field
@@ -168,10 +168,10 @@ fn doc_rcd(fields: List(#(String, Term)), indent: Int) -> Document {
 }
 
 fn doc_rcdt(
-  fields: List(#(String, #(Option(Term), Option(Term)))),
+  fields: List(#(String, #(Option(Expr), Option(Expr)))),
   indent: Int,
 ) -> Document {
-  let format_field = fn(f: #(String, #(Option(Term), Option(Term)))) {
+  let format_field = fn(f: #(String, #(Option(Expr), Option(Expr)))) {
     let type_doc = case f.1.0 {
       Some(t) -> doc_term(t, indent)
       None -> doc_text("?")
@@ -234,7 +234,7 @@ fn format_case(c: Case, indent: Int) -> Document {
   ])
 }
 
-fn doc_case_guard(guard: Option(#(Term, Pattern)), indent: Int) -> Document {
+fn doc_case_guard(guard: Option(#(Expr, Pattern)), indent: Int) -> Document {
   case guard {
     Some(#(term, pattern)) ->
       doc.concat([

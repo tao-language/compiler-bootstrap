@@ -2,7 +2,7 @@
 ///
 /// Parses Core source text into AST using the nibble parser combinator library.
 import core/ast.{
-  type Case, type Pattern, type Term, type TypeDefinition, type Variant,
+  type Case, type Expr, type Pattern, type TypeDefinition, type Variant,
 }
 import core/error.{type Error} as e
 import core/literals.{type LiteralType} as lit
@@ -85,9 +85,9 @@ pub fn lex(
   }
 }
 
-pub fn parse(file: String, source: String) -> Result(Term, Error) {
+pub fn parse(file: String, source: String) -> Result(Expr, Error) {
   use tokens <- try(lex(file, source))
-  case nibble.run(tokens, term(file)) {
+  case nibble.run(tokens, expr(file)) {
     Ok(ast) -> Ok(ast)
     Error(dead_ends) ->
       case dead_ends {
@@ -182,7 +182,7 @@ fn core_lexer() -> Lexer(Token, Nil) {
 // PARSER
 // ============================================================================
 
-fn term(file: String) -> Parser(Term, Token, Nil) {
+fn expr(file: String) -> Parser(Expr, Token, Nil) {
   use fun <- do(
     nibble.one_of([
       typ(file),
@@ -209,14 +209,14 @@ fn term(file: String) -> Parser(Term, Token, Nil) {
     {
       // Explicit application: f(x)
       use _ <- do(nibble.token(LParen))
-      use arg <- do(term(file))
+      use arg <- do(expr(file))
       use _ <- do(nibble.token(RParen))
       return(ast.app(fun, arg, span.merge(fun.span, arg.span)))
     },
     {
       // Implicit application: f<x>
       use _ <- do(nibble.token(LAngle))
-      use arg <- do(term(file))
+      use arg <- do(expr(file))
       use _ <- do(nibble.token(RAngle))
       return(ast.app_implicit(fun, arg, span.merge(fun.span, arg.span)))
     },
@@ -225,7 +225,7 @@ fn term(file: String) -> Parser(Term, Token, Nil) {
   ])
 }
 
-fn typ(file: String) -> Parser(Term, Token, Nil) {
+fn typ(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use _ <- do(nibble.token(KwType))
   use universe <- do(
@@ -238,7 +238,7 @@ fn typ(file: String) -> Parser(Term, Token, Nil) {
   return(ast.typ(universe, span.merge(start, end)))
 }
 
-fn hole(file: String) -> Parser(Term, Token, Nil) {
+fn hole(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use _ <- do(nibble.token(Question))
   use id <- do(nibble.optional(angle_brackets(take_int())))
@@ -246,46 +246,46 @@ fn hole(file: String) -> Parser(Term, Token, Nil) {
   return(ast.hole(id, span.merge(start, end)))
 }
 
-fn int(file: String) -> Parser(Term, Token, Nil) {
+fn int(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use n <- do(take_int())
   use end <- do(get_span(file))
   return(ast.int(n, span.merge(start, end)))
 }
 
-fn float(file: String) -> Parser(Term, Token, Nil) {
+fn float(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use num <- do(take_float())
   use end <- do(get_span(file))
   return(ast.float(num, span.merge(start, end)))
 }
 
-fn lit_t(file: String) -> Parser(Term, Token, Nil) {
+fn lit_t(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use type_ <- do(take_lit_type())
   use end <- do(get_span(file))
-  return(ast.Term(ast.LitT(type_), span.merge(start, end)))
+  return(ast.Expr(ast.LitT(type_), span.merge(start, end)))
 }
 
-fn var(file: String) -> Parser(Term, Token, Nil) {
+fn var(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use name <- do(take_ident())
   use end <- do(get_span(file))
   return(ast.var(name, span.merge(start, end)))
 }
 
-fn tag(file: String) -> Parser(Term, Token, Nil) {
+fn tag(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use _ <- do(nibble.token(Hash))
   use tag <- do(take_ident())
   use _ <- do(nibble.token(LParen))
-  use arg <- do(term(file))
+  use arg <- do(expr(file))
   use _ <- do(nibble.token(RParen))
   use end <- do(get_span(file))
   return(ast.ctr(tag, arg, span.merge(start, end)))
 }
 
-fn rcd(file: String) -> Parser(Term, Token, Nil) {
+fn rcd(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use _ <- do(nibble.token(LBrace))
   use fields <- do(
@@ -293,7 +293,7 @@ fn rcd(file: String) -> Parser(Term, Token, Nil) {
       comma_separated({
         use name <- do(take_ident())
         use _ <- do(nibble.token(Colon))
-        use value <- do(term(file))
+        use value <- do(expr(file))
         return(#(name, value))
       }),
       return([]),
@@ -304,7 +304,7 @@ fn rcd(file: String) -> Parser(Term, Token, Nil) {
   return(ast.rcd(fields, span.merge(start, end)))
 }
 
-fn rcd_t(file: String) -> Parser(Term, Token, Nil) {
+fn rcd_t(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use _ <- do(nibble.token(RcdTOpen))
   use fields <- do(
@@ -312,11 +312,11 @@ fn rcd_t(file: String) -> Parser(Term, Token, Nil) {
       comma_separated({
         use name <- do(take_ident())
         use _ <- do(nibble.token(Colon))
-        use value <- do(nibble.optional(term(file)))
+        use value <- do(nibble.optional(expr(file)))
         use default <- do(
           nibble.optional({
             use _ <- do(nibble.token(Equals))
-            term(file)
+            expr(file)
           }),
         )
         return(#(name, #(value, default)))
@@ -329,16 +329,16 @@ fn rcd_t(file: String) -> Parser(Term, Token, Nil) {
   return(ast.rcd_t(fields, span.merge(start, end)))
 }
 
-fn ann(file: String) -> Parser(Term, Token, Nil) {
+fn ann(file: String) -> Parser(Expr, Token, Nil) {
   use _ <- do(nibble.token(AnnOpen))
-  use expr <- do(term(file))
+  use value <- do(expr(file))
   use _ <- do(nibble.token(Colon))
-  use typ <- do(term(file))
+  use typ <- do(expr(file))
   use _ <- do(nibble.token(RParen))
-  return(ast.ann(expr, typ, span.merge(expr.span, typ.span)))
+  return(ast.ann(value, typ, span.merge(value.span, typ.span)))
 }
 
-fn lam(file: String) -> Parser(Term, Token, Nil) {
+fn lam(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use _ <- do(nibble.token(KwFn))
   use #(implicit, param) <- do(
@@ -362,12 +362,12 @@ fn lam(file: String) -> Parser(Term, Token, Nil) {
     ]),
   )
   use _ <- do(nibble.token(FatArrow))
-  use body <- do(term(file))
+  use body <- do(expr(file))
   use end <- do(get_span(file))
-  return(ast.Term(ast.Lam(implicit, param, body), span.merge(start, end)))
+  return(ast.Expr(ast.Lam(implicit, param, body), span.merge(start, end)))
 }
 
-fn pi_expr(file: String) -> Parser(Term, Token, Nil) {
+fn pi_expr(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use _ <- do(nibble.token(KwPi))
   use #(implicit, param) <- do(
@@ -391,31 +391,31 @@ fn pi_expr(file: String) -> Parser(Term, Token, Nil) {
     ]),
   )
   use _ <- do(nibble.token(ThinArrow))
-  use body <- do(term(file))
+  use body <- do(expr(file))
   use end <- do(get_span(file))
-  return(ast.Term(ast.Pi(implicit, param, body), span.merge(start, end)))
+  return(ast.Expr(ast.Pi(implicit, param, body), span.merge(start, end)))
 }
 
-fn fix(file: String) -> Parser(Term, Token, Nil) {
+fn fix(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use _ <- do(nibble.token(KwFix))
   use name <- do(take_ident())
   use _ <- do(nibble.token(Dot))
-  use body <- do(term(file))
+  use body <- do(expr(file))
   use end <- do(get_span(file))
   return(ast.fix(name, body, span.merge(start, end)))
 }
 
-fn let_(file: String) -> Parser(Term, Token, Nil) {
+fn let_(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use _ <- do(nibble.token(KwLet))
   use name <- do(take_ident())
   use _ <- do(nibble.token(Colon))
-  use type_ <- do(nibble.optional(term(file)))
+  use type_ <- do(nibble.optional(expr(file)))
   use _ <- do(nibble.token(Equals))
-  use value <- do(term(file))
+  use value <- do(expr(file))
   use _ <- do(nibble.optional(nibble.token(Semicolon)))
-  use body <- do(term(file))
+  use body <- do(expr(file))
   use end <- do(get_span(file))
   return(ast.let_var(#(name, type_, value), body, span.merge(start, end)))
 }
@@ -496,9 +496,9 @@ fn comma_separated(item: Parser(a, Token, Nil)) -> Parser(List(a), Token, Nil) {
   return([first, ..rest])
 }
 
-fn optional_type(file: String) -> Parser(Option(Term), Token, Nil) {
+fn optional_type(file: String) -> Parser(Option(Expr), Token, Nil) {
   nibble.optional({
     use _ <- do(nibble.token(Colon))
-    term(file)
+    expr(file)
   })
 }

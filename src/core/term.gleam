@@ -103,20 +103,20 @@ pub fn bindings(p: Pattern) -> List(String) {
   }
 }
 
-pub fn to_ast(term: Term, names: List(String)) -> ast.Term {
+pub fn to_ast(term: Term, names: List(String)) -> ast.Expr {
   let s = span.empty("", 0, 0)
   case term {
     Typ(u) -> ast.typ(u, s)
     Hole(id) if id < 0 -> ast.hole(None, s)
     Hole(id) -> ast.hole(Some(id), s)
-    Lit(lit) -> ast.Term(ast.Lit(lit), s)
-    LitT(lit_t) -> ast.Term(ast.LitT(lit_t), s)
+    Lit(lit) -> ast.Expr(ast.Lit(lit), s)
+    LitT(lit_t) -> ast.Expr(ast.LitT(lit_t), s)
     Var(index) ->
       case list_at(names, index) {
         Some(name) -> ast.var(name, s)
         None -> ast.var("`undefined " <> int.to_string(index) <> "`", s)
       }
-    Ctr(tag, arg) -> ast.Term(ast.Ctr(tag, to_ast(arg, names)), s)
+    Ctr(tag, arg) -> ast.Expr(ast.Ctr(tag, to_ast(arg, names)), s)
     Rcd(fields) -> todo
     RcdT(fields) -> todo
     Call(name, returns, args) -> todo
@@ -124,12 +124,12 @@ pub fn to_ast(term: Term, names: List(String)) -> ast.Term {
     Lam(implicit, #(name, type_), body) -> {
       let type_ast = to_ast(type_, names)
       let body_ast = to_ast(body, names)
-      ast.Term(ast.Lam(implicit, #(name, Some(type_ast)), body_ast), s)
+      ast.Expr(ast.Lam(implicit, #(name, Some(type_ast)), body_ast), s)
     }
     Pi(implicit, #(name, type_), body) -> {
       let type_ast = to_ast(type_, names)
       let body_ast = to_ast(body, names)
-      ast.Term(ast.Pi(implicit, #(name, Some(type_ast)), body_ast), s)
+      ast.Expr(ast.Pi(implicit, #(name, Some(type_ast)), body_ast), s)
     }
     Fix(name, body) -> todo
     App(implicit, fun, arg) -> todo

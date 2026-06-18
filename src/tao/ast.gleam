@@ -3,6 +3,9 @@ import gleam/list
 import gleam/option.{type Option}
 import syntax/span.{type Span}
 
+pub type Module =
+  #(String, List(Stmt))
+
 pub type Expr {
   Expr(data: ExprData, span: Span)
 }

@@ -4,7 +4,7 @@
 /// language. Every term can be synthesized (inferred), and `check` is a
 /// thin wrapper that synthesizes the term then unifies its type with
 /// the expected type.
-import core/ast.{type Term as AST}
+import core/ast.{type Expr}
 import core/coerce.{coerce}
 import core/context.{type Context}
 import core/error as e
@@ -27,7 +27,7 @@ import syntax/span.{type Span}
 /// - result_term is the original term with holes filled and implicit args expanded
 /// - type_value is the inferred type (a Value)
 /// - ctx is the updated ctx with any new bindings
-pub fn infer(ctx: Context, term_ast: ast.Term) -> #(Term, Value, Context) {
+pub fn infer(ctx: Context, term_ast: ast.Expr) -> #(Term, Value, Context) {
   case term_ast.data {
     ast.Typ(level) -> infer_typ(ctx, level)
     ast.Hole(id) -> infer_hole(ctx, id)
@@ -61,7 +61,7 @@ pub fn infer(ctx: Context, term_ast: ast.Term) -> #(Term, Value, Context) {
 /// record defaults at the value level before unifying.
 pub fn check(
   ctx: Context,
-  ast: AST,
+  ast: Expr,
   expected: #(Value, Span),
 ) -> #(Term, Value, Context) {
   let #(expected_type, type_span) = expected
@@ -98,8 +98,8 @@ pub fn check(
 
 fn check_on_ast(
   ctx: Context,
-  ast: AST,
-  type_: AST,
+  ast: Expr,
+  type_: Expr,
 ) -> #(Term, #(Term, Value), Context) {
   let #(type_term, _, ctx) = infer(ctx, type_)
   let type_val = eval(ctx.ffi, ctx.env, type_term)
@@ -152,14 +152,14 @@ fn infer_var(
   }
 }
 
-fn infer_ctr(ctx: Context, tag: String, arg: AST) -> #(Term, Value, Context) {
+fn infer_ctr(ctx: Context, tag: String, arg: Expr) -> #(Term, Value, Context) {
   let #(arg, arg_type, ctx) = infer(ctx, arg)
   #(tm.Ctr(tag, arg), v.Ctr(tag, arg_type), ctx)
 }
 
 fn infer_rcd(
   ctx: Context,
-  fields: List(#(String, AST)),
+  fields: List(#(String, Expr)),
 ) -> #(Term, Value, Context) {
   let #(fields, field_types, ctx) = infer_rcd_fields(ctx, fields)
   let field_types =
@@ -174,7 +174,7 @@ fn infer_rcd(
 
 fn infer_rcd_fields(
   ctx: Context,
-  fields: List(#(String, AST)),
+  fields: List(#(String, Expr)),
 ) -> #(List(#(String, Term)), List(#(String, #(Value, Option(Value)))), Context) {
   case fields {
     [] -> #([], [], ctx)
@@ -192,7 +192,7 @@ fn infer_rcd_fields(
 
 fn infer_rcd_type(
   ctx: Context,
-  fields: List(#(String, #(Option(AST), Option(AST)))),
+  fields: List(#(String, #(Option(Expr), Option(Expr)))),
 ) -> #(Term, Value, Context) {
   let #(fields, ctx) = infer_rcd_type_fields(ctx, fields)
   #(tm.RcdT(fields), v.Typ(0), ctx)
@@ -200,7 +200,7 @@ fn infer_rcd_type(
 
 fn infer_rcd_type_fields(
   ctx: Context,
-  fields: List(#(String, #(Option(AST), Option(AST)))),
+  fields: List(#(String, #(Option(Expr), Option(Expr)))),
 ) -> #(List(#(String, #(Term, Option(Term)))), Context) {
   case fields {
     [] -> #([], ctx)
@@ -237,8 +237,8 @@ fn infer_rcd_type_fields(
 fn infer_call(
   ctx: Context,
   name: String,
-  returns_ast: AST,
-  args: List(AST),
+  returns_ast: Expr,
+  args: List(Expr),
 ) -> #(Term, Value, Context) {
   let #(args, ctx) = check_call_args(ctx, args)
   let #(returns, _, ctx) = infer(ctx, returns_ast)
@@ -247,7 +247,7 @@ fn infer_call(
   #(tm.Call(name, returns, args), returns_val, ctx)
 }
 
-fn check_call_args(ctx: Context, args: List(AST)) -> #(List(Term), Context) {
+fn check_call_args(ctx: Context, args: List(Expr)) -> #(List(Term), Context) {
   case args {
     [] -> #([], ctx)
     [arg, ..args] -> {
@@ -258,7 +258,7 @@ fn check_call_args(ctx: Context, args: List(AST)) -> #(List(Term), Context) {
   }
 }
 
-fn infer_ann(ctx: Context, ast: AST, type_: AST) -> #(Term, Value, Context) {
+fn infer_ann(ctx: Context, ast: Expr, type_: Expr) -> #(Term, Value, Context) {
   let #(term, #(_, type_val), ctx) = check_on_ast(ctx, ast, type_)
   #(term, type_val, ctx)
 }
@@ -267,7 +267,7 @@ fn infer_lam(
   ctx: Context,
   implicit: Bool,
   param: #(String, Option(ast.Type)),
-  body: AST,
+  body: Expr,
 ) -> #(Term, Value, Context) {
   let #(name, opt_type_ast) = param
   let #(type_, ctx) = case opt_type_ast {
@@ -299,7 +299,7 @@ fn infer_pi(
   ctx: Context,
   implicit: Bool,
   param: ast.Param,
-  body: AST,
+  body: Expr,
 ) -> #(Term, Value, Context) {
   let #(name, opt_type_ast) = param
   let #(type_, ctx) = case opt_type_ast {
@@ -323,7 +323,7 @@ fn infer_pi(
 fn infer_fix(
   ctx: Context,
   name: String,
-  body: AST,
+  body: Expr,
   span: Span,
 ) -> #(Term, Value, Context) {
   let level = list.length(ctx.env)
@@ -340,8 +340,8 @@ fn infer_fix(
 fn infer_app(
   ctx: Context,
   app_implicit: Bool,
-  fun_ast: AST,
-  arg_ast: AST,
+  fun_ast: Expr,
+  arg_ast: Expr,
   span: Span,
 ) -> #(Term, Value, Context) {
   let #(fun, fun_type, ctx) = infer(ctx, fun_ast)
@@ -353,7 +353,7 @@ fn infer_app_args(
   ctx: Context,
   app_implicit: Bool,
   fun_typed: #(Term, Value, Span),
-  arg_ast: AST,
+  arg_ast: Expr,
   span: Span,
 ) -> #(Term, Value, Context) {
   let #(fun, fun_type, fun_span) = fun_typed
@@ -425,7 +425,7 @@ fn infer_app_args(
 
 fn infer_match(
   ctx: Context,
-  arg_ast: AST,
+  arg_ast: Expr,
   cases_ast: List(ast.Case),
 ) -> #(Term, Value, Context) {
   let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
@@ -545,7 +545,7 @@ fn check_pattern(
 
 fn bind_guard(
   ctx: Context,
-  guard_ast: Option(#(AST, ast.Pattern)),
+  guard_ast: Option(#(Expr, ast.Pattern)),
 ) -> #(Option(#(tm.Term, tm.Pattern)), Context) {
   case guard_ast {
     None -> #(None, ctx)

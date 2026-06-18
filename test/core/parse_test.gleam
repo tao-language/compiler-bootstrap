@@ -1,5 +1,5 @@
 /// Tests for the Core language parser.
-import core/ast
+import core/ast.{type Expr}
 import core/error.{type Error} as e
 import core/parse as p
 import gleam/list
@@ -18,7 +18,7 @@ fn lex(source: String) -> Result(List(p.Token), Error) {
   Ok(list.map(tokens, fn(tok) { tok.value }))
 }
 
-fn parse(source: String) -> Result(ast.Term, Error) {
+fn parse(source: String) -> Result(Expr, Error) {
   p.parse(filename, source)
 }
 

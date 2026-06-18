@@ -2,7 +2,7 @@
 ///
 /// These tests verify that the parser and formatter work correctly together
 /// by checking that format(parse(source), 80, 2) == source for various inputs.
-import core/ast.{type Term}
+import core/ast.{type Expr}
 import core/format.{format}
 import core/parse as p
 import gleam/list
@@ -10,7 +10,7 @@ import gleam/string
 
 const filename = "syntax_test"
 
-fn parse(src: String) -> Term {
+fn parse(src: String) -> Expr {
   case p.parse(filename, src) {
     Ok(ast) -> ast
     Error(e) -> {

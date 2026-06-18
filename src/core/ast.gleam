@@ -14,29 +14,29 @@ import syntax/span.{type Span}
 /// De Bruijn indices and desugaring syntax sugar like %let.
 ///
 /// This separates parsing from index calculation, making both simpler.
-pub type Term {
-  Term(data: TermData, span: Span)
+pub type Expr {
+  Expr(data: ExprData, span: Span)
 }
 
 pub type Type =
-  Term
+  Expr
 
-pub type TermData {
+pub type ExprData {
   Typ(universe: Int)
   Hole(id: Option(Int))
   Lit(value: Literal)
   LitT(t: LiteralType)
   Var(name: String)
-  Ctr(tag: String, arg: Term)
-  Rcd(fields: List(#(String, Term)))
-  RcdT(fields: List(#(String, #(Option(Term), Option(Term)))))
-  Ann(term: Term, type_: Type)
-  Lam(implicit: Bool, param: Param, body: Term)
-  Pi(implicit: Bool, param: Param, body: Term)
-  Fix(name: String, body: Term)
-  App(implicit: Bool, fun: Term, arg: Term)
-  Match(arg: Term, cases: List(Case))
-  Call(name: String, returns: Type, args: List(Term))
+  Ctr(tag: String, arg: Expr)
+  Rcd(fields: List(#(String, Expr)))
+  RcdT(fields: List(#(String, #(Option(Expr), Option(Expr)))))
+  Ann(term: Expr, type_: Type)
+  Lam(implicit: Bool, param: Param, body: Expr)
+  Pi(implicit: Bool, param: Param, body: Expr)
+  Fix(name: String, body: Expr)
+  App(implicit: Bool, fun: Expr, arg: Expr)
+  Match(arg: Expr, cases: List(Case))
+  Call(name: String, returns: Type, args: List(Expr))
   TypeDef(type_def: TypeDefinition)
   Err
 }
@@ -61,19 +61,19 @@ pub type PatternData {
 }
 
 pub type Case {
-  Case(pattern: Pattern, guard: Option(#(Term, Pattern)), body: Term)
+  Case(pattern: Pattern, guard: Option(#(Expr, Pattern)), body: Expr)
 }
 
 pub type TypeDefinition {
   TypeDefinition(
-    params: List(#(String, Term)),
-    arg: Term,
+    params: List(#(String, Expr)),
+    arg: Expr,
     variants: List(#(String, Variant)),
   )
 }
 
 pub type Variant {
-  Variant(params: List(#(String, Term)), arg: Term, returns: Term)
+  Variant(params: List(#(String, Expr)), arg: Expr, returns: Expr)
 }
 
 // Helper functions
@@ -96,7 +96,7 @@ pub fn bindings(pattern: Pattern) -> List(String) {
   }
 }
 
-pub fn contains(term: Term, name: String) -> Bool {
+pub fn contains(term: Expr, name: String) -> Bool {
   case term.data {
     Var(x) if x == name -> True
     Ctr(_, arg) -> contains(arg, name)
@@ -131,8 +131,8 @@ fn contains_case(c: Case, name: String) -> Bool {
 }
 
 fn contains_case_body(
-  guard: Option(#(Term, Pattern)),
-  body: Term,
+  guard: Option(#(Expr, Pattern)),
+  body: Expr,
   name: String,
 ) -> Bool {
   case guard {
@@ -144,7 +144,7 @@ fn contains_case_body(
   }
 }
 
-fn opt_contains(opt_term: Option(Term), name: String) -> Bool {
+fn opt_contains(opt_term: Option(Expr), name: String) -> Bool {
   case opt_term {
     Some(term) -> contains(term, name)
     None -> False
@@ -154,83 +154,83 @@ fn opt_contains(opt_term: Option(Term), name: String) -> Bool {
 // Syntax sugar
 
 pub fn typ(universe: Int, span: Span) {
-  Term(Typ(universe), span)
+  Expr(Typ(universe), span)
 }
 
 pub fn hole(id: Option(Int), span: Span) {
-  Term(Hole(id), span)
+  Expr(Hole(id), span)
 }
 
 pub fn int(value: Int, span: Span) {
-  Term(Lit(lit.Int(value)), span)
+  Expr(Lit(lit.Int(value)), span)
 }
 
 pub fn float(value: Float, span: Span) {
-  Term(Lit(lit.Float(value)), span)
+  Expr(Lit(lit.Float(value)), span)
 }
 
 pub fn int_t(span: Span) {
-  Term(LitT(lit.IntT), span)
+  Expr(LitT(lit.IntT), span)
 }
 
 pub fn float_t(span: Span) {
-  Term(LitT(lit.FloatT), span)
+  Expr(LitT(lit.FloatT), span)
 }
 
 pub fn i8(span: Span) {
-  Term(LitT(lit.I8), span)
+  Expr(LitT(lit.I8), span)
 }
 
 pub fn i16(span: Span) {
-  Term(LitT(lit.I16), span)
+  Expr(LitT(lit.I16), span)
 }
 
 pub fn i32(span: Span) {
-  Term(LitT(lit.I32), span)
+  Expr(LitT(lit.I32), span)
 }
 
 pub fn i64(span: Span) {
-  Term(LitT(lit.I64), span)
+  Expr(LitT(lit.I64), span)
 }
 
 pub fn u8(span: Span) {
-  Term(LitT(lit.U8), span)
+  Expr(LitT(lit.U8), span)
 }
 
 pub fn u16(span: Span) {
-  Term(LitT(lit.U16), span)
+  Expr(LitT(lit.U16), span)
 }
 
 pub fn u32(span: Span) {
-  Term(LitT(lit.U32), span)
+  Expr(LitT(lit.U32), span)
 }
 
 pub fn u64(span: Span) {
-  Term(LitT(lit.U64), span)
+  Expr(LitT(lit.U64), span)
 }
 
 pub fn f16(span: Span) {
-  Term(LitT(lit.F16), span)
+  Expr(LitT(lit.F16), span)
 }
 
 pub fn f32(span: Span) {
-  Term(LitT(lit.F32), span)
+  Expr(LitT(lit.F32), span)
 }
 
 pub fn f64(span: Span) {
-  Term(LitT(lit.F64), span)
+  Expr(LitT(lit.F64), span)
 }
 
 pub fn var(name: String, span: Span) {
-  Term(Var(name), span)
+  Expr(Var(name), span)
 }
 
-pub fn ctr(tag: String, arg: Term, span: Span) {
-  Term(Ctr(tag, arg), span)
+pub fn ctr(tag: String, arg: Expr, span: Span) {
+  Expr(Ctr(tag, arg), span)
 }
 
-pub fn rcd(fields: List(#(String, Term)), span: Span) {
-  Term(Rcd(fields), span)
+pub fn rcd(fields: List(#(String, Expr)), span: Span) {
+  Expr(Rcd(fields), span)
 }
 
 pub fn rcd_vars(vars: List(String), span: Span) {
@@ -238,61 +238,61 @@ pub fn rcd_vars(vars: List(String), span: Span) {
 }
 
 pub fn rcd_t(
-  fields: List(#(String, #(Option(Type), Option(Term)))),
+  fields: List(#(String, #(Option(Type), Option(Expr)))),
   span: Span,
 ) {
-  Term(RcdT(fields), span)
+  Expr(RcdT(fields), span)
 }
 
-pub fn ann(value: Term, type_: Term, span: Span) {
-  Term(Ann(value, type_), span)
+pub fn ann(value: Expr, type_: Expr, span: Span) {
+  Expr(Ann(value, type_), span)
 }
 
-pub fn lam(param: Param, body: Term, span: Span) {
-  Term(Lam(False, param, body), span)
+pub fn lam(param: Param, body: Expr, span: Span) {
+  Expr(Lam(False, param, body), span)
 }
 
-pub fn lam_implicit(param: Param, body: Term, span: Span) {
-  Term(Lam(True, param, body), span)
+pub fn lam_implicit(param: Param, body: Expr, span: Span) {
+  Expr(Lam(True, param, body), span)
 }
 
-pub fn pi(param: Param, body: Term, span: Span) {
-  Term(Pi(False, param, body), span)
+pub fn pi(param: Param, body: Expr, span: Span) {
+  Expr(Pi(False, param, body), span)
 }
 
-pub fn pi_implicit(param: Param, body: Term, span: Span) {
-  Term(Pi(True, param, body), span)
+pub fn pi_implicit(param: Param, body: Expr, span: Span) {
+  Expr(Pi(True, param, body), span)
 }
 
-pub fn fix(name: String, body: Term, span: Span) {
+pub fn fix(name: String, body: Expr, span: Span) {
   case contains(body, name) {
-    True -> Term(Fix(name, body), span)
+    True -> Expr(Fix(name, body), span)
     False -> body
   }
 }
 
-pub fn app(fun: Term, arg: Term, span: Span) {
-  Term(App(False, fun, arg), span)
+pub fn app(fun: Expr, arg: Expr, span: Span) {
+  Expr(App(False, fun, arg), span)
 }
 
-pub fn app_implicit(fun: Term, arg: Term, span: Span) {
-  Term(App(True, fun, arg), span)
+pub fn app_implicit(fun: Expr, arg: Expr, span: Span) {
+  Expr(App(True, fun, arg), span)
 }
 
-pub fn match(arg: Term, cases: List(Case), span: Span) {
-  Term(Match(arg, cases), span)
+pub fn match(arg: Expr, cases: List(Case), span: Span) {
+  Expr(Match(arg, cases), span)
 }
 
-pub fn call(name: String, returns: Type, args: List(Term), span: Span) {
-  Term(Call(name, returns, args), span)
+pub fn call(name: String, returns: Type, args: List(Expr), span: Span) {
+  Expr(Call(name, returns, args), span)
 }
 
-pub fn let_var(def: #(String, Option(Type), Term), body: Term, span: Span) {
+pub fn let_var(def: #(String, Option(Type), Expr), body: Expr, span: Span) {
   let #(name, opt_type, value) = def
   app(lam(#(name, opt_type), body, span), value, span)
 }
 
-pub fn let_pat(def: #(Pattern, Option(Type), Term), body: Term, span: Span) {
+pub fn let_pat(def: #(Pattern, Option(Type), Expr), body: Expr, span: Span) {
   let #(pattern, opt_type, value) = def
   let body = case opt_type {
     Some(type_) -> ann(body, type_, type_.span)
@@ -302,7 +302,7 @@ pub fn let_pat(def: #(Pattern, Option(Type), Term), body: Term, span: Span) {
 }
 
 pub fn err(span: Span) {
-  Term(Err, span)
+  Expr(Err, span)
 }
 
 pub fn pany(span: Span) {
