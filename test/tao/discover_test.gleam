@@ -1,7 +1,7 @@
 import gleam/option.{None}
 import syntax/span.{Span}
 import tao/ast as tao
-import tao/discover.{definitions, definitions_public, tests}
+import tao/discover
 
 const s = Span("discover_test", 0, 0, 0, 0)
 

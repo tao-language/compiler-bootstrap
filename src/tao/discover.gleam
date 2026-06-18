@@ -1,14 +1,23 @@
 import gleam/list
-import gleam/string
-import tao/ast.{type Stmt}
+import tao/ast.{type Stmt} as tao
 
 pub fn definitions(stmts: List(Stmt)) -> List(String) {
-  todo
+  list.flat_map(stmts, definitions_stmt)
 }
 
-pub fn definitions_public(stmts: List(Stmt)) -> List(String) {
-  definitions(stmts)
-  |> list.filter(fn(name) { !string.starts_with(name, "_") })
+fn definitions_stmt(stmt: Stmt) -> List(String) {
+  case stmt.data {
+    tao.Let(pattern, opt_type, value) -> todo
+    tao.LetMut(name, opt_type, value) -> todo
+    tao.Mut(name, value) -> todo
+    tao.FnDef(name, implicits, params, returns, body) -> todo
+    tao.TypeDef(type_def) -> todo
+    tao.For(iterator, range, body) -> todo
+    tao.While(condition, body) -> todo
+    tao.Return(expr) -> todo
+    tao.Break -> todo
+    tao.Continue -> todo
+  }
 }
 
 pub fn tests(stmts: List(Stmt)) -> List(String) {
