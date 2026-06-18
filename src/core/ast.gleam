@@ -233,6 +233,10 @@ pub fn rcd(fields: List(#(String, Term)), span: Span) {
   Term(Rcd(fields), span)
 }
 
+pub fn rcd_vars(vars: List(String), span: Span) {
+  rcd(list.map(vars, fn(name) { #(name, var(name, span)) }), span)
+}
+
 pub fn rcd_t(
   fields: List(#(String, #(Option(Type), Option(Term)))),
   span: Span,

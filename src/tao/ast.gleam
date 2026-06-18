@@ -1,4 +1,5 @@
 import core/literals.{type Literal, type LiteralType} as lit
+import gleam/list
 import gleam/option.{type Option}
 import syntax/span.{type Span}
 
@@ -128,6 +129,10 @@ pub fn bool(span: Span) {
   ctr0("Bool", span)
 }
 
+pub fn hole(id: Option(Int), span: Span) {
+  Expr(Hole(id), span)
+}
+
 pub fn int(value: Int, span: Span) {
   Expr(Lit(lit.Int(value)), span)
 }
@@ -142,6 +147,21 @@ pub fn int_t(span: Span) {
 
 pub fn var(name: String, span: Span) {
   Expr(Var(name), span)
+}
+
+pub fn rcd(fields: List(#(String, Expr)), span: Span) {
+  Expr(Rcd(fields), span)
+}
+
+pub fn rcd_vars(vars: List(String), span: Span) {
+  rcd(list.map(vars, fn(name) { #(name, var(name, span)) }), span)
+}
+
+pub fn rcd_t(
+  fields: List(#(String, #(Option(Type), Option(Expr)))),
+  span: Span,
+) {
+  Expr(RcdT(fields), span)
 }
 
 pub fn ctr(tag: String, args: List(#(String, Expr)), span: Span) {
@@ -230,6 +250,10 @@ pub fn prcd(fields: List(#(String, Pattern)), span: Span) {
 
 pub fn pctr(tag: String, args: List(#(String, Pattern)), span: Span) {
   Pattern(PCtr(tag, args), span)
+}
+
+pub fn let_(pattern: Pattern, opt_type: Option(Type), value: Expr, span: Span) {
+  Stmt(Let(pattern, opt_type, value), span)
 }
 
 pub fn return(expr: Expr, span: Span) {

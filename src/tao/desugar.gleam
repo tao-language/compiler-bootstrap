@@ -62,7 +62,10 @@ pub fn desugar_expr(expr: Expr) -> Term {
       let core_args = list.map(args, desugar_expr)
       core.call(name, core_ret, core_args, expr.span)
     }
-    tao.Do(block) -> desugar_stmt_list(new_block_ctx, block, expr.span)
+    tao.Do(block) -> {
+      let return = core.rcd([], expr.span)
+      desugar_stmt_list(new_block_ctx, block, return)
+    }
     tao.Err -> core.err(expr.span)
   }
 }
@@ -212,11 +215,15 @@ fn desugar_pattern(p: Pattern) -> core.Pattern {
   }
 }
 
-pub fn desugar_stmt_list(ctx: BlockCtx, stmts: List(Stmt), span: Span) -> Term {
+pub fn desugar_stmt_list(
+  ctx: BlockCtx,
+  stmts: List(Stmt),
+  return: Term,
+) -> Term {
   case stmts {
-    [] -> core.rcd([], span)
+    [] -> return
     [stmt, ..stmts] -> {
-      let next = desugar_stmt_list(ctx, stmts, span)
+      let next = desugar_stmt_list(ctx, stmts, return)
       desugar_stmt(ctx, stmt, next)
     }
   }
