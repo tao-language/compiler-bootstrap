@@ -7,6 +7,7 @@ pub fn definitions(stmts: List(Stmt)) -> List(String) {
 
 fn definitions_stmt(stmt: Stmt) -> List(String) {
   case stmt.data {
+    tao.Import(_, _, _) -> []
     tao.Let(pattern, _, _) -> definitions_pattern(pattern)
     tao.LetMut(name, opt_type, value) -> todo
     tao.Mut(name, value) -> todo

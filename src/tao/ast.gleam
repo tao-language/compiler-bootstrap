@@ -57,6 +57,11 @@ pub type Stmt {
 }
 
 pub type StmtData {
+  Import(
+    path: String,
+    alias: Option(String),
+    names: List(#(String, Option(String))),
+  )
   Let(pattern: Pattern, opt_type: Option(Type), value: Expr)
   LetMut(name: String, opt_type: Option(Type), value: Expr)
   Mut(name: String, value: Expr)
@@ -253,6 +258,15 @@ pub fn prcd(fields: List(#(String, Pattern)), span: Span) {
 
 pub fn pctr(tag: String, args: List(#(String, Pattern)), span: Span) {
   Pattern(PCtr(tag, args), span)
+}
+
+pub fn import_(
+  path: String,
+  alias: Option(String),
+  names: List(#(String, Option(String))),
+  span: Span,
+) {
+  Stmt(Import(path, alias, names), span)
 }
 
 pub fn let_(pattern: Pattern, opt_type: Option(Type), value: Expr, span: Span) {
