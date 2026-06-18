@@ -70,6 +70,10 @@ pub fn desugar_expr(expr: tao.Expr) -> core.Expr {
   }
 }
 
+fn desugar_opt_expr(opt_expr: Option(tao.Expr)) -> Option(core.Expr) {
+  option.map(opt_expr, desugar_expr)
+}
+
 fn desugar_args(args: List(#(String, tao.Expr))) -> core.Expr {
   let core_params =
     core.Rcd(
@@ -102,8 +106,8 @@ fn desugar_fn(
       let param_fields =
         list.index_map(params, fn(param, index) {
           let #(_, #(opt_type, opt_default)) = param
-          let core_type = option.map(opt_type, desugar_expr)
-          let core_default = option.map(opt_default, desugar_expr)
+          let core_type = desugar_opt_expr(opt_type)
+          let core_default = desugar_opt_expr(opt_default)
           #(int.to_string(index + 1), #(core_type, core_default))
         })
       let core_param_type = core.rcd_t(param_fields, args_span)
@@ -231,7 +235,12 @@ pub fn desugar_stmt_list(
 
 pub fn desugar_stmt(ctx: BlockCtx, stmt: Stmt, next: core.Expr) -> core.Expr {
   case stmt.data {
-    tao.Let(pattern, opt_type, value) -> todo
+    tao.Let(pattern, opt_type, value) -> {
+      let core_pattern = desugar_pattern(pattern)
+      let core_type = desugar_opt_expr(opt_type)
+      let core_value = desugar_expr(value)
+      core.let_pat(#(core_pattern, core_type, core_value), next, stmt.span)
+    }
     tao.LetMut(name, opt_type, value) -> todo
     tao.Mut(name, value) -> todo
     tao.FnDef(name, implicits, params, returns, body) -> {
