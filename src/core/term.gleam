@@ -177,6 +177,14 @@ pub fn ctr(tag: String, args: List(#(String, Term))) -> Term {
   Ctr(tag, Rcd(args))
 }
 
+pub fn lam(param: #(String, Type), body: Term) -> Term {
+  Lam(False, param, body)
+}
+
+pub fn lam_implicit(param: #(String, Type), body: Term) -> Term {
+  Lam(True, param, body)
+}
+
 pub fn app(fun: Term, arg: Term) -> Term {
   App(False, fun, arg)
 }
@@ -185,7 +193,27 @@ pub fn app_implicit(fun: Term, arg: Term) -> Term {
   App(True, fun, arg)
 }
 
-/// Syntax sugar for `_@name`.
+pub fn let_var(def: #(String, Type, Term), body: Term) -> Term {
+  let #(name, type_, value) = def
+  app(lam(#(name, type_), body), value)
+}
+
+pub fn let_var_list(defs: List(#(String, Type, Term)), body: Term) -> Term {
+  case defs {
+    [] -> body
+    [def, ..defs] -> let_var(def, let_var_list(defs, body))
+  }
+}
+
+pub fn let_pat(def: #(Pattern, Term), body: Term) -> Term {
+  let #(pattern, value) = def
+  Match(value, [Case(pattern, None, body)])
+}
+
+pub fn dot(term: Term, field: String) -> Term {
+  Match(term, [Case(PRcd([#(field, pvar(field))]), None, Var(0))])
+}
+
 pub fn pvar(name: String) -> Pattern {
   PAlias(name, PAny)
 }

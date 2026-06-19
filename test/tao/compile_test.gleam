@@ -43,10 +43,23 @@ pub fn compile_package_imports_test() {
   ]
   let #(mods, ctx) = compile.package(ctx0, [#("m1", m1), #("m2", m2)])
   assert ctx.errors == []
+  let tm_m1_value =
+    tm.let_var(#("x", tm.int_t, tm.int(42)), tm.Rcd([#("x", tm.Var(0))]))
+  let tm_m1_type = tm.RcdT([#("x", #(tm.int_t, None))])
   assert list.map(mods, fn(m) { #(m.0, m.1.0) })
     == [
-      #("m1", tm.Rcd([#("x", tm.int(42))])),
-      #("m2", tm.Rcd([#("y", tm.int(42))])),
+      #("m1", tm_m1_value),
+      #(
+        "m2",
+        tm.let_var_list(
+          [
+            #("m1", tm_m1_type, tm.Rcd([#("x", tm.int(42))])),
+            #("x", tm.int_t, tm.int(42)),
+            #("y", tm.int_t, tm.Var(0)),
+          ],
+          tm.Rcd([#("y", tm.Var(0))]),
+        ),
+      ),
     ]
   assert list.map(mods, fn(m) { #(m.0, m.1.1) })
     == [

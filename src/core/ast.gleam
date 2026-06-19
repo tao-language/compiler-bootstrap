@@ -294,11 +294,17 @@ pub fn let_var(def: #(String, Option(Type), Expr), body: Expr, span: Span) {
 
 pub fn let_pat(def: #(Pattern, Option(Type), Expr), body: Expr, span: Span) {
   let #(pattern, opt_type, value) = def
-  let body = case opt_type {
-    Some(type_) -> ann(body, type_, type_.span)
-    None -> body
+  case pattern.data {
+    PAlias(Pattern(PAny, _), name) ->
+      let_var(#(name, opt_type, value), body, span)
+    _ -> {
+      let body = case opt_type {
+        Some(type_) -> ann(body, type_, type_.span)
+        None -> body
+      }
+      match(value, [Case(pattern, None, body)], span)
+    }
   }
-  match(value, [Case(pattern, None, body)], span)
 }
 
 pub fn dot(expr: Expr, field: String, span: Span) {

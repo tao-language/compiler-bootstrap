@@ -64,10 +64,7 @@ fn resolve_modules(
 ) -> List(#(String, #(Term, Type))) {
   list.map(typed_mods, fn(tmod) {
     let #(name, #(term, type_)) = tmod
-    let term =
-      resolve.resolve(ctx.ffi, ctx.subst, list.length(ctx.env), term)
-      |> eval(ctx.ffi, ctx.env, _)
-      |> quote(ctx.ffi, list.length(ctx.env), _)
+    let term = resolve.resolve(ctx.ffi, ctx.subst, list.length(ctx.env), term)
     let type_ = resolve.resolve_value(ctx.ffi, ctx.subst, ctx.env, type_)
     #(name, #(term, type_))
   })
