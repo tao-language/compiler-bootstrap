@@ -1,18 +1,14 @@
-import core/ast as core
 import core/context.{type Context, Context}
 import core/eval.{eval}
-import core/ffi.{type FFI}
 import core/infer.{infer}
 import core/quote.{quote}
 import core/resolve
 import core/term.{type Term}
-import core/value.{type Env, type Type, type Value} as v
+import core/value.{type Type} as v
 import gleam/list
-import gleam/option.{None, Some}
-import gleam/string
-import syntax/span.{Span}
-import tao/ast.{type Block, type Module, type Stmt} as tao
-import tao/desugar.{new_block_ctx, statement_list}
+import gleam/option.{Some}
+import tao/ast.{type Module, type Stmt}
+import tao/desugar
 
 pub fn package(
   ctx: Context,
@@ -20,17 +16,7 @@ pub fn package(
 ) -> #(List(#(String, #(Term, Type))), Context) {
   let #(pkg_mods, ctx) = define_modules(ctx, mods)
   let #(typed_mods, ctx) = infer_modules(ctx, pkg_mods)
-  let typed_mods =
-    list.map(typed_mods, fn(tmod) {
-      let #(name, #(term, type_)) = tmod
-      let term =
-        resolve.resolve(ctx.ffi, ctx.subst, list.length(ctx.env), term)
-        |> eval(ctx.ffi, ctx.env, _)
-        |> quote(ctx.ffi, list.length(ctx.env), _)
-      let type_ =
-        resolve.resolve_value(ctx.ffi, ctx.subst, list.length(ctx.env), type_)
-      #(name, #(term, type_))
-    })
+  let typed_mods = resolve_modules(ctx, typed_mods)
   #(typed_mods, ctx)
 }
 
@@ -70,4 +56,20 @@ fn infer_modules(
       #([#(name, #(term, type_)), ..typed_mods], ctx)
     }
   }
+}
+
+fn resolve_modules(
+  ctx: Context,
+  typed_mods: List(#(String, #(Term, Type))),
+) -> List(#(String, #(Term, Type))) {
+  list.map(typed_mods, fn(tmod) {
+    let #(name, #(term, type_)) = tmod
+    let term =
+      resolve.resolve(ctx.ffi, ctx.subst, list.length(ctx.env), term)
+      |> eval(ctx.ffi, ctx.env, _)
+      |> quote(ctx.ffi, list.length(ctx.env), _)
+    let type_ =
+      resolve.resolve_value(ctx.ffi, ctx.subst, list.length(ctx.env), type_)
+    #(name, #(term, type_))
+  })
 }
