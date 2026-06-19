@@ -22,8 +22,16 @@ pub fn compile_package_modules_empty_test() {
   let m2 = []
   let #(mods, ctx) = compile.package(ctx0, [#("m1", m1), #("m2", m2)])
   assert ctx.errors == []
-  assert mods
-    == [#("m1", #(tm.Rcd([]), v.RcdT([]))), #("m2", #(tm.Rcd([]), v.RcdT([])))]
+  assert list.map(mods, fn(m) { #(m.0, m.1.0) })
+    == [
+      #("m1", tm.Rcd([])),
+      #("m2", tm.Rcd([])),
+    ]
+  assert list.map(mods, fn(m) { #(m.0, m.1.1) })
+    == [
+      #("m1", v.RcdT([])),
+      #("m2", v.RcdT([])),
+    ]
 }
 
 pub fn compile_package_imports_test() {
