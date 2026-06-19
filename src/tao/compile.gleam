@@ -23,11 +23,11 @@ fn define_modules(
   case mods {
     [] -> #([], ctx)
     [#(name, stmts), ..mods] -> {
+      let #(core_mods, ctx) = define_modules(ctx, mods)
       let #(value_id, ctx) = context.new_hole(ctx)
       let #(type_id, ctx) = context.new_hole(ctx)
       let var = #("@" <> name, Some(v.hole(value_id)), Some(v.hole(type_id)))
       let ctx = context.push_var(ctx, var)
-      let #(core_mods, ctx) = define_modules(ctx, mods)
       #([#(name, value_id, type_id, stmts), ..core_mods], ctx)
     }
   }
