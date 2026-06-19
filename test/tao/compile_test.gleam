@@ -7,7 +7,7 @@ import syntax/span.{Span}
 import tao/ast as tao
 import tao/compile
 
-const s = Span("discover_test", 1, 1, 1, 1)
+const s = Span("compile_test", 1, 1, 1, 1)
 
 pub fn compile_package_empty_test() {
   let ctx0 = new_ctx

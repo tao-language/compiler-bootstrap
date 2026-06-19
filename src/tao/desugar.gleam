@@ -221,6 +221,12 @@ pub fn module(mod: Module) -> core.Expr {
   statement_list(new_block_ctx, stmts, mod_return)
 }
 
+pub fn tests(mod: Module) -> List(#(String, core.Expr)) {
+  let #(name, stmts) = mod
+  let exports = discover.tests(stmts)
+  todo
+}
+
 pub fn statement_list(
   ctx: BlockCtx,
   stmts: List(Stmt),
