@@ -1,102 +1,117 @@
-import core/context.{type Subst}
+import core/context.{type Context, type Subst, Context}
+import core/error.{type Error}
 import core/eval.{eval}
 import core/ffi.{type FFI}
-import core/parse
 import core/quote.{quote}
 import core/term.{type Case, type Term} as tm
-import core/unwrap.{unwrap_neut}
-import core/value.{type Env, type Value} as v
+import core/value.{type Env, type Value}
 import gleam/list
 import gleam/option.{None, Some}
 
-pub fn resolve(ffi: FFI, subst: Subst, size: Int, term: Term) -> Term {
-  case term {
-    tm.Typ(_) -> term
+pub fn context(ctx: Context) -> Context {
+  Context(
+    ..ctx,
+    env: list.map(ctx.env, value(ctx.ffi, ctx.subst, ctx.env, _)),
+    types: list.map(ctx.types, fn(name_type) {
+      let #(name, type_) = name_type
+      #(name, value(ctx.ffi, ctx.subst, ctx.env, type_))
+    }),
+    errors: list.map(ctx.errors, error(ctx.ffi, ctx.subst, ctx.env, _)),
+  )
+}
+
+pub fn term(ffi: FFI, subst: Subst, size: Int, t: Term) -> Term {
+  case t {
+    tm.Typ(_) -> t
     tm.Hole(id) ->
       case list.key_find(subst, id) {
-        Error(Nil) -> term
+        Error(Nil) -> t
         Ok(value) -> {
-          let term = quote(ffi, size, value)
-          resolve(ffi, subst, size, term)
+          let t = quote(ffi, size, value)
+          term(ffi, subst, size, t)
         }
       }
-    tm.Lit(_) -> term
-    tm.LitT(_) -> term
-    tm.Var(_) -> term
-    tm.Ctr(tag, arg) -> tm.Ctr(tag, resolve(ffi, subst, size, arg))
+    tm.Lit(_) -> t
+    tm.LitT(_) -> t
+    tm.Var(_) -> t
+    tm.Ctr(tag, arg) -> tm.Ctr(tag, term(ffi, subst, size, arg))
     tm.Rcd(fields) -> {
       let fields =
         list.map(fields, fn(field) {
-          let #(name, term) = field
-          #(name, resolve(ffi, subst, size, term))
+          let #(name, t) = field
+          #(name, term(ffi, subst, size, t))
         })
       tm.Rcd(fields)
     }
     tm.RcdT(fields) -> {
       let fields =
         list.map(fields, fn(field) {
-          let #(name, #(term, default)) = field
-          let term = resolve(ffi, subst, size, term)
-          let default = option.map(default, resolve(ffi, subst, size, _))
-          #(name, #(term, default))
+          let #(name, #(t, default)) = field
+          let t = term(ffi, subst, size, t)
+          let default = option.map(default, term(ffi, subst, size, _))
+          #(name, #(t, default))
         })
       tm.RcdT(fields)
     }
     tm.Call(name, returns, args) -> {
-      let returns = resolve(ffi, subst, size, returns)
-      let args = list.map(args, resolve(ffi, subst, size, _))
+      let returns = term(ffi, subst, size, returns)
+      let args = list.map(args, term(ffi, subst, size, _))
       tm.Call(name, returns, args)
     }
-    tm.Ann(term, type_) -> {
-      let term = resolve(ffi, subst, size, term)
-      let type_ = resolve(ffi, subst, size, type_)
-      tm.Ann(term, type_)
+    tm.Ann(t, type_) -> {
+      let t = term(ffi, subst, size, t)
+      let type_ = term(ffi, subst, size, type_)
+      tm.Ann(t, type_)
     }
     tm.Lam(implicit, #(name, param), body) -> {
-      let param = resolve(ffi, subst, size, param)
-      let body = resolve(ffi, subst, size, body)
+      let param = term(ffi, subst, size, param)
+      let body = term(ffi, subst, size, body)
       tm.Lam(implicit, #(name, param), body)
     }
     tm.Pi(implicit, #(name, domain), codomain) -> {
-      let domain = resolve(ffi, subst, size, domain)
-      let codomain = resolve(ffi, subst, size, codomain)
+      let domain = term(ffi, subst, size, domain)
+      let codomain = term(ffi, subst, size, codomain)
       tm.Pi(implicit, #(name, domain), codomain)
     }
     tm.Fix(name, body) -> {
-      let body = resolve(ffi, subst, size, body)
+      let body = term(ffi, subst, size, body)
       tm.Fix(name, body)
     }
     tm.App(implicit, fun, arg) -> {
-      let fun = resolve(ffi, subst, size, fun)
-      let arg = resolve(ffi, subst, size, arg)
+      let fun = term(ffi, subst, size, fun)
+      let arg = term(ffi, subst, size, arg)
       tm.App(implicit, fun, arg)
     }
     tm.TypeDef(type_def) -> todo
     tm.Match(arg, cases) -> {
-      let arg = resolve(ffi, subst, size, arg)
+      let arg = term(ffi, subst, size, arg)
       let cases = list.map(cases, resolve_case(ffi, subst, size, _))
       tm.Match(arg, cases)
     }
-    tm.Err -> term
+    tm.Err -> t
   }
 }
 
-pub fn resolve_value(ffi: FFI, subst: Subst, env: Env, value: Value) -> Value {
+pub fn value(ffi: FFI, subst: Subst, env: Env, val: Value) -> Value {
   let size = list.length(env)
-  quote(ffi, size, value)
-  |> resolve(ffi, subst, size, _)
+  quote(ffi, size, val)
+  |> term(ffi, subst, size, _)
   |> eval(ffi, env, _)
 }
 
-pub fn resolve_case(ffi: FFI, subst: Subst, size: Int, c: Case) -> Case {
+pub fn error(ffi: FFI, subst: Subst, env: Env, error: Error) -> Error {
+  todo
+}
+
+fn resolve_case(ffi: FFI, subst: Subst, size: Int, c: Case) -> Case {
   let size = size + list.length(tm.bindings(c.pattern))
   let #(guard, size) = case c.guard {
     Some(#(g_term, g_pattern)) -> {
       let size = size + list.length(tm.bindings(g_pattern))
-      let g_term = resolve(ffi, subst, size, g_term)
+      let g_term = term(ffi, subst, size, g_term)
       #(Some(#(g_term, g_pattern)), size)
     }
     None -> #(None, size)
   }
-  tm.Case(c.pattern, guard, resolve(ffi, subst, size, c.body))
+  tm.Case(c.pattern, guard, term(ffi, subst, size, c.body))
 }

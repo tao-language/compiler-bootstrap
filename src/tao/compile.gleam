@@ -4,20 +4,16 @@ import core/infer.{infer}
 import core/quote.{quote}
 import core/resolve
 import core/term.{type Term}
-import core/value.{type Type} as v
+import core/value.{type Env, type Type} as v
 import gleam/list
 import gleam/option.{Some}
 import tao/ast.{type Module, type Stmt}
 import tao/desugar
 
-pub fn package(
-  ctx: Context,
-  mods: List(Module),
-) -> #(List(#(String, #(Term, Type))), Context) {
-  let #(pkg_mods, ctx) = define_modules(ctx, mods)
-  let #(typed_mods, ctx) = infer_modules(ctx, pkg_mods)
-  let typed_mods = resolve_modules(ctx, typed_mods)
-  #(typed_mods, ctx)
+pub fn package(ctx: Context, mods: List(Module)) -> Context {
+  let #(mod_holes, ctx) = define_modules(ctx, mods)
+  let ctx = infer_modules(ctx, mod_holes)
+  resolve.context(ctx)
 }
 
 fn define_modules(
@@ -39,10 +35,10 @@ fn define_modules(
 
 fn infer_modules(
   ctx: Context,
-  pkg_mods: List(#(String, Int, Int, List(Stmt))),
-) -> #(List(#(String, #(Term, Type))), Context) {
-  case pkg_mods {
-    [] -> #([], ctx)
+  mod_holes: List(#(String, Int, Int, List(Stmt))),
+) -> Context {
+  case mod_holes {
+    [] -> ctx
     [#(name, value_id, type_id, stmts), ..core_mods] -> {
       let core_expr = desugar.module(#(name, stmts))
       let #(term, type_, ctx) = infer(ctx, core_expr)
@@ -52,20 +48,7 @@ fn infer_modules(
           #(type_id, type_),
           ..ctx.subst
         ])
-      let #(typed_mods, ctx) = infer_modules(ctx, core_mods)
-      #([#(name, #(term, type_)), ..typed_mods], ctx)
+      infer_modules(ctx, core_mods)
     }
   }
-}
-
-fn resolve_modules(
-  ctx: Context,
-  typed_mods: List(#(String, #(Term, Type))),
-) -> List(#(String, #(Term, Type))) {
-  list.map(typed_mods, fn(tmod) {
-    let #(name, #(term, type_)) = tmod
-    let term = resolve.resolve(ctx.ffi, ctx.subst, list.length(ctx.env), term)
-    let type_ = resolve.resolve_value(ctx.ffi, ctx.subst, ctx.env, type_)
-    #(name, #(term, type_))
-  })
 }

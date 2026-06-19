@@ -11,27 +11,20 @@ const s = Span("compile_test", 1, 1, 1, 1)
 
 pub fn compile_package_empty_test() {
   let ctx0 = new_ctx
-  let #(mods, ctx) = compile.package(ctx0, [])
+  let ctx = compile.package(ctx0, [])
   assert ctx.errors == []
-  assert mods == []
+  assert ctx.env == []
+  assert ctx.types == []
 }
 
 pub fn compile_package_modules_empty_test() {
   let ctx0 = new_ctx
   let m1 = []
   let m2 = []
-  let #(mods, ctx) = compile.package(ctx0, [#("m1", m1), #("m2", m2)])
+  let ctx = compile.package(ctx0, [#("m1", m1), #("m2", m2)])
   assert ctx.errors == []
-  assert list.map(mods, fn(m) { #(m.0, m.1.0) })
-    == [
-      #("m1", tm.Rcd([])),
-      #("m2", tm.Rcd([])),
-    ]
-  assert list.map(mods, fn(m) { #(m.0, m.1.1) })
-    == [
-      #("m1", v.RcdT([])),
-      #("m2", v.RcdT([])),
-    ]
+  assert ctx.env == [v.Rcd([]), v.Rcd([])]
+  assert ctx.types == [#("@m2", v.RcdT([])), #("@m1", v.RcdT([]))]
 }
 
 pub fn compile_package_import_test() {
@@ -41,32 +34,13 @@ pub fn compile_package_import_test() {
     tao.import_("m1", None, [#("x", None)], s),
     tao.let_(tao.pvar("y", s), None, tao.var("x", s), s),
   ]
-  let #(mods, ctx) = compile.package(ctx0, [#("m1", m1), #("m2", m2)])
+  let ctx = compile.package(ctx0, [#("m1", m1), #("m2", m2)])
   assert ctx.errors == []
-  let tm_m1_value =
-    tm.let_var(#("x", tm.int_t, tm.int(42)), tm.Rcd([#("x", tm.Var(0))]))
-  let tm_m1_type = tm.RcdT([#("x", #(tm.int_t, None))])
-  assert list.map(mods, fn(m) { #(m.0, m.1.0) })
+  assert ctx.env == [v.Rcd([#("y", v.int(42))]), v.Rcd([#("x", v.int(42))])]
+  assert ctx.types
     == [
-      #("m1", tm_m1_value),
-      #(
-        "m2",
-        tm.let_var_list(
-          [
-            // import m1 {x}
-            #("m1", tm_m1_type, tm.Rcd([#("x", tm.int(42))])),
-            #("x", tm.int_t, tm.int(42)),
-            // let y = x
-            #("y", tm.int_t, tm.Var(0)),
-          ],
-          tm.Rcd([#("y", tm.Var(0))]),
-        ),
-      ),
-    ]
-  assert list.map(mods, fn(m) { #(m.0, m.1.1) })
-    == [
-      #("m1", v.RcdT([#("x", #(v.int_t, None))])),
-      #("m2", v.RcdT([#("y", #(v.int_t, None))])),
+      #("@m2", v.RcdT([#("y", #(v.int_t, None))])),
+      #("@m1", v.RcdT([#("x", #(v.int_t, None))])),
     ]
 }
 
@@ -77,31 +51,12 @@ pub fn compile_package_import_alias_test() {
     tao.import_("m1", Some("m"), [#("x", Some("z"))], s),
     tao.let_(tao.pvar("y", s), None, tao.var("z", s), s),
   ]
-  let #(mods, ctx) = compile.package(ctx0, [#("m1", m1), #("m2", m2)])
+  let ctx = compile.package(ctx0, [#("m1", m1), #("m2", m2)])
   assert ctx.errors == []
-  let tm_m1_value =
-    tm.let_var(#("x", tm.int_t, tm.int(42)), tm.Rcd([#("x", tm.Var(0))]))
-  let tm_m1_type = tm.RcdT([#("x", #(tm.int_t, None))])
-  assert list.map(mods, fn(m) { #(m.0, m.1.0) })
+  assert ctx.env == [v.Rcd([#("y", v.int(42))]), v.Rcd([#("x", v.int(42))])]
+  assert ctx.types
     == [
-      #("m1", tm_m1_value),
-      #(
-        "m2",
-        tm.let_var_list(
-          [
-            // import m1 as m {x as z}
-            #("m", tm_m1_type, tm.Rcd([#("x", tm.int(42))])),
-            #("z", tm.int_t, tm.int(42)),
-            // let y = z
-            #("y", tm.int_t, tm.Var(0)),
-          ],
-          tm.Rcd([#("y", tm.Var(0))]),
-        ),
-      ),
-    ]
-  assert list.map(mods, fn(m) { #(m.0, m.1.1) })
-    == [
-      #("m1", v.RcdT([#("x", #(v.int_t, None))])),
-      #("m2", v.RcdT([#("y", #(v.int_t, None))])),
+      #("@m2", v.RcdT([#("y", #(v.int_t, None))])),
+      #("@m1", v.RcdT([#("x", #(v.int_t, None))])),
     ]
 }

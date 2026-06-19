@@ -6,7 +6,7 @@ import core/format.{format}
 import core/infer.{infer}
 import core/parse.{parse}
 import core/quote.{quote}
-import core/resolve.{resolve}
+import core/resolve
 import core/term
 import gleam/int
 import gleam/io
@@ -66,7 +66,7 @@ pub fn debug_core(source: String, width: Int) {
   io.println("")
 
   io.println("// Term (holes resolved)")
-  let term = resolve(ctx.ffi, ctx.subst, 0, term)
+  let term = resolve.term(ctx.ffi, ctx.subst, 0, term)
   let term_ast = term.to_ast(term, [])
   io.println(format(term_ast, width, 2))
   io.println("")

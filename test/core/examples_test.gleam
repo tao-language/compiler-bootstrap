@@ -6,7 +6,7 @@ import core/context.{Context, new_ctx}
 import core/eval.{eval}
 import core/ffi
 import core/infer.{infer}
-import core/resolve.{resolve}
+import core/resolve
 import core/term as tm
 import core/value as v
 import gleam/list
@@ -35,7 +35,7 @@ pub fn core_factorial_test() {
   let ctx0 = Context(..new_ctx, ffi: ffi.build)
   let #(term, type_, ctx) = infer(ctx0, ast_fn)
   assert ctx.errors == []
-  let term = resolve(ctx.ffi, ctx.subst, list.length(ctx.env), term)
+  let term = resolve.term(ctx.ffi, ctx.subst, list.length(ctx.env), term)
   assert term
     == tm.Fix(
       "f",
