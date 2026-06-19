@@ -5,7 +5,7 @@ import core/parse
 import core/quote.{quote}
 import core/term.{type Case, type Term} as tm
 import core/unwrap.{unwrap_neut}
-import core/value.{type Value} as v
+import core/value.{type Env, type Value} as v
 import gleam/list
 import gleam/option.{None, Some}
 
@@ -81,42 +81,11 @@ pub fn resolve(ffi: FFI, subst: Subst, size: Int, term: Term) -> Term {
   }
 }
 
-pub fn resolve_value(ffi: FFI, subst: Subst, size: Int, value: Value) -> Value {
-  case value {
-    v.Typ(_) -> value
-    v.Lit(_) -> value
-    v.LitT(_) -> value
-    v.Ctr(tag, arg) -> {
-      let arg = resolve_value(ffi, subst, size, arg)
-      v.Ctr(tag, arg)
-    }
-    v.Rcd(fields) -> {
-      let fields =
-        list.map(fields, fn(field) {
-          let #(name, value) = field
-          let value = resolve_value(ffi, subst, size, value)
-          #(name, value)
-        })
-      v.Rcd(fields)
-    }
-    v.RcdT(fields) -> {
-      let fields =
-        list.map(fields, fn(field) {
-          let #(name, #(type_, opt_default)) = field
-          let type_ = resolve_value(ffi, subst, size, type_)
-          let opt_default =
-            option.map(opt_default, resolve_value(ffi, subst, size, _))
-          #(name, #(type_, opt_default))
-        })
-      v.RcdT(fields)
-    }
-    v.Neut(neutral) -> unwrap_neut(ffi, subst, neutral)
-    v.Lam(env, param, body) -> todo
-    v.Pi(env, implicit, domain, codomain) -> todo
-    v.Fix(env, name, body) -> todo
-    v.TypeDef(env, type_def) -> todo
-    v.Err -> todo
-  }
+pub fn resolve_value(ffi: FFI, subst: Subst, env: Env, value: Value) -> Value {
+  let size = list.length(env)
+  quote(ffi, size, value)
+  |> resolve(ffi, subst, size, _)
+  |> eval(ffi, env, _)
 }
 
 pub fn resolve_case(ffi: FFI, subst: Subst, size: Int, c: Case) -> Case {

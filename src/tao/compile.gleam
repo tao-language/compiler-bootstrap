@@ -68,8 +68,7 @@ fn resolve_modules(
       resolve.resolve(ctx.ffi, ctx.subst, list.length(ctx.env), term)
       |> eval(ctx.ffi, ctx.env, _)
       |> quote(ctx.ffi, list.length(ctx.env), _)
-    let type_ =
-      resolve.resolve_value(ctx.ffi, ctx.subst, list.length(ctx.env), type_)
+    let type_ = resolve.resolve_value(ctx.ffi, ctx.subst, ctx.env, type_)
     #(name, #(term, type_))
   })
 }
