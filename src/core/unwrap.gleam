@@ -22,7 +22,7 @@ pub fn unwrap_term(ffi: FFI, subst: Subst, env: Env, term: Term) -> Term {
   |> quote(ffi, list.length(env), _)
 }
 
-fn unwrap_neut(ffi: FFI, subst: Subst, neut: Neut) -> Value {
+pub fn unwrap_neut(ffi: FFI, subst: Subst, neut: Neut) -> Value {
   case neut {
     v.NVar(level) -> v.var(level)
     v.NHole(id) ->

@@ -1,6 +1,7 @@
 import core/context.{new_ctx}
 import core/term as tm
 import core/value as v
+import gleam/list
 import gleam/option.{None}
 import syntax/span.{Span}
 import tao/ast as tao
@@ -34,15 +35,14 @@ pub fn compile_package_imports_test() {
   ]
   let #(mods, ctx) = compile.package(ctx0, [#("m1", m1), #("m2", m2)])
   assert ctx.errors == []
-  assert mods
+  assert list.map(mods, fn(m) { #(m.0, m.1.0) })
     == [
-      #(
-        "m1",
-        #(tm.Rcd([#("x", tm.int(42))]), v.RcdT([#("x", #(v.int_t, None))])),
-      ),
-      #(
-        "m2",
-        #(tm.Rcd([#("y", tm.int(42))]), v.RcdT([#("y", #(v.int_t, None))])),
-      ),
+      #("m1", tm.Rcd([#("x", tm.int(42))])),
+      #("m2", tm.Rcd([#("y", tm.int(42))])),
+    ]
+  assert list.map(mods, fn(m) { #(m.0, m.1.1) })
+    == [
+      #("m1", v.RcdT([#("x", #(v.int_t, None))])),
+      #("m2", v.RcdT([#("y", #(v.int_t, None))])),
     ]
 }

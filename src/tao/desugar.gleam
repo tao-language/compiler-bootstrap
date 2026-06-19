@@ -212,14 +212,13 @@ fn pattern(p: Pattern) -> core.Pattern {
   }
 }
 
-pub fn module(mod: Module) -> #(String, core.Expr) {
+pub fn module(mod: Module) -> core.Expr {
   let #(name, stmts) = mod
   let exports =
     discover.definitions(stmts)
     |> list.filter(fn(name) { !string.starts_with(name, "_") })
   let mod_return = core.rcd_vars(exports, Span(name, 0, 0, 0, 0))
-  let expr = statement_list(new_block_ctx, stmts, mod_return)
-  #(name, expr)
+  statement_list(new_block_ctx, stmts, mod_return)
 }
 
 pub fn statement_list(
@@ -252,8 +251,8 @@ pub fn statement(ctx: BlockCtx, stmt: Stmt, next: core.Expr) -> core.Expr {
         Some(alias) -> alias
         None -> name
       }
-      let def = #(name_alias, None, core.var(name, stmt.span))
-      let next = core.let_var(def, next, stmt.span)
+      let access = core.dot(core.var("@" <> path, stmt.span), name, stmt.span)
+      let next = core.let_var(#(name_alias, None, access), next, stmt.span)
       statement(ctx, stmt, next)
     }
     tao.Let(p, opt_type, value) -> {

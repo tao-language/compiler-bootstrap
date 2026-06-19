@@ -301,6 +301,12 @@ pub fn let_pat(def: #(Pattern, Option(Type), Expr), body: Expr, span: Span) {
   match(value, [Case(pattern, None, body)], span)
 }
 
+pub fn dot(expr: Expr, field: String, span: Span) {
+  let pattern = prcd([#(field, pvar(field, span))], span)
+  let body = var(field, span)
+  match(expr, [Case(pattern, None, body)], span)
+}
+
 pub fn err(span: Span) {
   Expr(Err, span)
 }
