@@ -212,19 +212,10 @@ fn pattern(p: Pattern) -> core.Pattern {
   }
 }
 
-pub fn module(mod: Module) -> core.Expr {
+pub fn module(mod: Module, exports: List(String)) -> core.Expr {
   let #(name, stmts) = mod
-  let exports =
-    discover.definitions(stmts)
-    |> list.filter(fn(name) { !string.starts_with(name, "_") })
-  let mod_return = core.rcd_vars(exports, Span(name, 0, 0, 0, 0))
-  statement_list(new_block_ctx, stmts, mod_return)
-}
-
-pub fn tests(mod: Module) -> List(#(String, core.Expr)) {
-  let #(name, stmts) = mod
-  let exports = discover.tests(stmts)
-  todo
+  let return_expr = core.rcd_vars(exports, Span(name, 0, 0, 0, 0))
+  statement_list(new_block_ctx, stmts, return_expr)
 }
 
 pub fn statement_list(
@@ -273,6 +264,17 @@ pub fn statement(ctx: BlockCtx, stmt: Stmt, next: core.Expr) -> core.Expr {
       let core_fn =
         function(Some(name), implicits, params, returns, body, stmt.span)
       core.let_var(#(name, None, core_fn), next, stmt.span)
+    }
+    tao.Test(name, arg, expect) -> {
+      let cases = [
+        tao.Case(expect, tao.ctr("Pass", [], arg.span)),
+        tao.Case(
+          tao.pvar("got", expect.span),
+          tao.ctr("Fail", [#("got", tao.var("got", arg.span))], arg.span),
+        ),
+      ]
+      let core_test = expr(tao.match(arg, cases, stmt.span))
+      core.let_var(#("> " <> name, None, core_test), next, stmt.span)
     }
     tao.TypeDef(type_def) -> todo
     tao.For(iterator, range, body) -> todo

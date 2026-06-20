@@ -1,4 +1,5 @@
 import core/context.{new_ctx}
+import core/eval.{eval}
 import core/term as tm
 import core/value as v
 import gleam/list
@@ -7,7 +8,11 @@ import syntax/span.{Span}
 import tao/ast as tao
 import tao/compile
 
-const s = Span("compile_test", 1, 1, 1, 1)
+const s = Span("compile_test", 0, 0, 0, 0)
+
+const s1 = Span("compile_test", 1, 1, 1, 1)
+
+const s2 = Span("compile_test", 2, 2, 2, 2)
 
 pub fn compile_package_empty_test() {
   let ctx0 = new_ctx
@@ -67,4 +72,31 @@ pub fn compile_package_import_alias_test() {
       #("@m1", v.RcdT([#("x", #(v.int_t, None))])),
       #("@m2", v.RcdT([#("y", #(v.int_t, None))])),
     ]
+}
+
+pub fn compile_tests_empty_test() {
+  let ctx0 = new_ctx
+  let m = []
+  let #(tests, ctx) = compile.tests(ctx0, [#("empty", m)])
+  assert ctx.errors == []
+  assert tests == []
+}
+
+pub fn compile_tests_simple_test() {
+  let vars = [
+    #("x", Some(v.int(42)), None),
+  ]
+  let ctx0 = context.push_var_list(new_ctx, vars)
+  let m = [
+    tao.test_("test_pass", tao.var("x", s1), tao.pint(42, s2), s),
+    tao.test_("test_fail", tao.var("x", s1), tao.pint(0, s2), s),
+  ]
+  let #(tests, ctx) = compile.tests(ctx0, [#("simple", m)])
+  assert ctx.errors == []
+  let results = list.map(tests, fn(t) { #(t.0, eval(ctx.ffi, ctx.env, t.1)) })
+  let expected = [
+    #("> test_pass", v.Ctr("Pass", v.Rcd([]))),
+    #("> test_fail", v.Ctr("Fail", v.Rcd([#("got", v.int(42))]))),
+  ]
+  assert results == expected
 }

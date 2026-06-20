@@ -4,6 +4,7 @@ import core/eval.{eval}
 import core/ffi.{type FFI}
 import core/quote.{quote}
 import core/term.{type Case, type Term} as tm
+import core/unwrap.{unwrap}
 import core/value.{type Env, type Value}
 import gleam/list
 import gleam/option.{None, Some}
@@ -27,6 +28,7 @@ pub fn term(ffi: FFI, subst: Subst, size: Int, t: Term) -> Term {
       case list.key_find(subst, id) {
         Error(Nil) -> t
         Ok(value) -> {
+          let value = unwrap(ffi, subst, value)
           let t = quote(ffi, size, value)
           term(ffi, subst, size, t)
         }

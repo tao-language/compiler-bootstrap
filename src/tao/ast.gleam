@@ -65,6 +65,7 @@ pub type StmtData {
   Let(pattern: Pattern, opt_type: Option(Type), value: Expr)
   LetMut(name: String, opt_type: Option(Type), value: Expr)
   Mut(name: String, value: Expr)
+  Test(name: String, expr: Expr, expect: Pattern)
   FnDef(
     name: String,
     implicits: List(Param),
@@ -271,6 +272,10 @@ pub fn import_(
 
 pub fn let_(pattern: Pattern, opt_type: Option(Type), value: Expr, span: Span) {
   Stmt(Let(pattern, opt_type, value), span)
+}
+
+pub fn test_(name: String, expr: Expr, expect: Pattern, span: Span) {
+  Stmt(Test(name, expr, expect), span)
 }
 
 pub fn return(expr: Expr, span: Span) {
