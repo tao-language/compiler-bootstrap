@@ -95,8 +95,8 @@ pub fn compile_tests_simple_test() {
   assert ctx.errors == []
   let results = list.map(tests, fn(t) { #(t.0, eval(ctx.ffi, ctx.env, t.1)) })
   let expected = [
-    #("> test_pass", v.Ctr("Pass", v.Rcd([]))),
-    #("> test_fail", v.Ctr("Fail", v.Rcd([#("got", v.int(42))]))),
+    #("test_pass", v.Ctr("Pass", v.Rcd([]))),
+    #("test_fail", v.Ctr("Fail", v.Rcd([#("got", v.int(42))]))),
   ]
   assert results == expected
 }

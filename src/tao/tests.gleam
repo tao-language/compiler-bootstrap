@@ -13,6 +13,9 @@ pub type TestResultData {
   TestFail(expr: Expr, expect: Pattern, got: Value)
 }
 
-pub fn run(ctx: Context, tests: List(#(String, Term))) -> List(TestResult) {
+pub fn run(
+  ctx: Context,
+  tests: List(#(String, Term, Expr, Pattern)),
+) -> List(TestResult) {
   todo
 }

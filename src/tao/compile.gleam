@@ -20,7 +20,7 @@ pub fn package(ctx: Context, mods: List(Module)) -> Context {
 pub fn tests(
   ctx: Context,
   mods: List(Module),
-) -> #(List(#(String, Term, #(String, Expr, Pattern))), Context) {
+) -> #(List(#(String, Term, Expr, Pattern)), Context) {
   case mods {
     [] -> #([], ctx)
     [#(name, stmts), ..mods] -> {
@@ -30,8 +30,8 @@ pub fn tests(
       let #(mod_term, _, ctx) = infer(ctx, mod_expr)
       let mod_tests =
         list.map(test_defs, fn(tst) {
-          let name = "> " <> tst.0
-          #(name, tm.dot(mod_term, name), tst)
+          let #(name, expr, expect) = tst
+          #(name, tm.dot(mod_term, "> " <> tst.0), expr, expect)
         })
       let #(tail_tests, ctx) = tests(ctx, mods)
       #(list.append(mod_tests, tail_tests), ctx)
