@@ -266,14 +266,20 @@ pub fn statement(ctx: BlockCtx, stmt: Stmt, next: core.Expr) -> core.Expr {
       core.let_var(#(name, None, core_fn), next, stmt.span)
     }
     tao.Test(name, arg, expect) -> {
-      let cases = [
-        tao.Case(expect, tao.ctr("Pass", [], arg.span)),
-        tao.Case(
-          tao.pvar("got", expect.span),
-          tao.ctr("Fail", [#("got", tao.var("got", arg.span))], arg.span),
+      let core_arg = expr(arg)
+      let core_cases = [
+        core.Case(
+          pattern(expect),
+          None,
+          core.ctr("Pass", core.rcd([], arg.span), arg.span),
+        ),
+        core.Case(
+          core.pvar("got", arg.span),
+          None,
+          core.ctr("Fail", core.var("got", arg.span), arg.span),
         ),
       ]
-      let core_test = expr(tao.match(arg, cases, stmt.span))
+      let core_test = core.match(core_arg, core_cases, stmt.span)
       core.let_var(#("> " <> name, None, core_test), next, stmt.span)
     }
     tao.TypeDef(type_def) -> todo

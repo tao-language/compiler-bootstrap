@@ -7,6 +7,7 @@ import gleam/option.{None, Some}
 import syntax/span.{Span}
 import tao/ast as tao
 import tao/compile
+import tao/tests
 
 const s = Span("compile_test", 0, 0, 0, 0)
 
@@ -93,11 +94,10 @@ pub fn compile_tests_simple_test() {
   ]
   let #(tests, ctx) = compile.tests(ctx0, [#("simple", m)])
   assert ctx.errors == []
-  let results =
-    list.map(tests, fn(t) { #(t.name, eval(ctx.ffi, ctx.env, t.term)) })
+  let results = tests.run(ctx, tests)
   let expected = [
-    #("test_pass", v.Ctr("Pass", v.Rcd([]))),
-    #("test_fail", v.Ctr("Fail", v.Rcd([#("got", v.int(42))]))),
+    tests.TestPass("test_pass"),
+    tests.TestFail("test_fail", v.int(42), tao.var("x", s1), tao.pint(0, s2)),
   ]
   assert results == expected
 }
