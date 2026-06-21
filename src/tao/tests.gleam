@@ -15,12 +15,10 @@ pub type TestResult {
   TestNeutral(name: String, got: Value, expr: Expr, expect: Pattern)
 }
 
-pub fn run(ctx: Context, tests: List(TestDef)) -> List(TestResult) {
-  list.map(tests, fn(t) {
-    case eval(ctx.ffi, ctx.env, t.term) {
-      v.Ctr("Pass", _) -> TestPass(t.name)
-      v.Ctr("Fail", got) -> TestFail(t.name, got, t.expr, t.expect)
-      got -> TestNeutral(t.name, got, t.expr, t.expect)
-    }
-  })
+pub fn run(ctx: Context, t: TestDef) -> TestResult {
+  case eval(ctx.ffi, ctx.env, t.term) {
+    v.Ctr("Pass", _) -> TestPass(t.name)
+    v.Ctr("Fail", got) -> TestFail(t.name, got, t.expr, t.expect)
+    got -> TestNeutral(t.name, got, t.expr, t.expect)
+  }
 }

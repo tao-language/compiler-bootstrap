@@ -1,11 +1,15 @@
+import gleam/int
+import gleam/list
 import gleam/option.{None, Some}
 import gleam/result.{try}
 import gleam/set
+import gleam/string
 import nibble.{type Parser, do, return}
 import nibble/lexer.{type Lexer}
 import nibble/pratt
+import simplifile
 import syntax/span.{type Span, Span}
-import tao/ast.{type BinaryOp, type Expr, type UnaryOp} as tao
+import tao/ast.{type BinaryOp, type Expr, type Pattern, type Stmt, type UnaryOp} as tao
 import tao/error.{type Error} as e
 
 pub type Token {
@@ -14,6 +18,7 @@ pub type Token {
   KwAs
   KwFn
   KwLet
+  KwMut
   KwMatch
   KwError
 
@@ -59,8 +64,30 @@ pub fn lex(
   }
 }
 
+pub fn expression(file: String, source: String) -> Result(Expr, Error) {
+  use tokens <- try(lex(file, source))
+  case nibble.run(tokens, expr(file)) {
+    Ok(expr) -> Ok(expr)
+    Error(err) -> {
+      echo err
+      todo
+    }
+  }
+}
+
+pub fn statements(file: String, source: String) -> Result(List(Stmt), Error) {
+  use tokens <- try(lex(file, source))
+  case nibble.run(tokens, nibble.many(stmt(file))) {
+    Ok(stmts) -> Ok(stmts)
+    Error(err) -> {
+      echo err
+      todo
+    }
+  }
+}
+
 fn lexer() -> Lexer(Token, Nil) {
-  let reserved = ["import", "as", "fn", "let", "match", "error"]
+  let reserved = ["import", "as", "fn", "let", "mut", "match", "error"]
   lexer.simple([
     // Keywords
     lexer.keyword("import", "\\W", KwImport),
@@ -105,20 +132,55 @@ fn lexer() -> Lexer(Token, Nil) {
   ])
 }
 
-pub fn parse(file: String, source: String) -> Result(Expr, Error) {
-  use tokens <- try(lex(file, source))
-  case nibble.run(tokens, expr(file)) {
-    Ok(ast) -> Ok(ast)
-    Error(err) -> {
-      echo err
-      todo
-    }
+fn stmt(file: String) -> Parser(Stmt, Token, Nil) {
+  nibble.one_of([let_(file), test_(file)])
+}
+
+fn let_(file: String) -> Parser(Stmt, Token, Nil) {
+  use start <- do(get_span(file))
+  use _ <- do(nibble.token(KwLet))
+  use pat <- do(pattern(file))
+  let typ = None
+  use _ <- do(nibble.token(Equals))
+  use val <- do(expr(file))
+  use end <- do(get_span(file))
+  return(tao.let_(pat, typ, val, span.merge(start, end)))
+}
+
+fn test_(file: String) -> Parser(Stmt, Token, Nil) {
+  use start <- do(get_span(file))
+  use _ <- do(nibble.token(RAngle))
+  use exp <- do(expr(file))
+  use pat <- do(pattern(file))
+  use end <- do(get_span(file))
+  let name = file <> ":" <> int.to_string(end.start_line)
+  return(tao.test_(name, exp, pat, span.merge(start, end)))
+}
+
+fn pattern(file: String) -> Parser(Pattern, Token, Nil) {
+  nibble.one_of([pint(file), pvar(file)])
+}
+
+fn pint(file: String) -> Parser(Pattern, Token, Nil) {
+  use start <- do(get_span(file))
+  use num <- do(take_int())
+  use end <- do(get_span(file))
+  return(tao.pint(num, span.merge(start, end)))
+}
+
+fn pvar(file: String) -> Parser(Pattern, Token, Nil) {
+  use start <- do(get_span(file))
+  use name <- do(take_ident())
+  use end <- do(get_span(file))
+  case name {
+    "_" -> return(tao.pany(span.merge(start, end)))
+    _ -> return(tao.pvar(name, span.merge(start, end)))
   }
 }
 
 fn expr(file: String) -> Parser(Expr, Token, Nil) {
   pratt.expression(
-    one_of: [int(file, _), float(file, _)],
+    one_of: [int(file, _), float(file, _), var(file, _)],
     and_then: [
       pratt.infix_left(1, nibble.token(Add), op2(tao.Add)),
       pratt.infix_left(1, nibble.token(Sub), op2(tao.Sub)),
@@ -141,6 +203,13 @@ fn float(file: String, _) -> Parser(Expr, Token, Nil) {
   use num <- do(take_float())
   use end <- do(get_span(file))
   return(tao.float(num, span.merge(start, end)))
+}
+
+fn var(file: String, _) -> Parser(Expr, Token, Nil) {
+  use start <- do(get_span(file))
+  use name <- do(take_ident())
+  use end <- do(get_span(file))
+  return(tao.var(name, span.merge(start, end)))
 }
 
 fn op2(op: BinaryOp) -> fn(Expr, Expr) -> Expr {

@@ -11,14 +11,21 @@ pub fn list(dir: String) -> Result(List(String), String) {
   }
 }
 
-pub fn list_recursive(dir: String) -> Result(List(String), String) {
+pub fn list_recursive(
+  dir: String,
+  filter: fn(String) -> Bool,
+) -> Result(List(String), String) {
   use paths <- try(list(dir))
   use subpaths <- try(
     list.try_map(paths, fn(path) {
       use is_dir <- try(is_directory(path))
       case is_dir {
-        True -> list_recursive(path)
-        False -> Ok([path])
+        True -> list_recursive(path, filter)
+        False ->
+          case filter(path) {
+            True -> Ok([path])
+            False -> Ok([])
+          }
       }
     }),
   )

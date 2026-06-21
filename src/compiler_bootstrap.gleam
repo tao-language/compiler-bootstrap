@@ -4,6 +4,11 @@ import cli/debug_core.{debug_core}
 import cli/debug_expr.{debug_expr}
 import cli/test_.{test_}
 import gleam/io
+import gleam/list
+import gleam/option
+import gleam/result
+import gleam/string
+import tao/config
 import utils/glob.{glob_compile}
 
 const help = "Tao compiler bootstrap
@@ -26,10 +31,29 @@ pub fn main() {
       io.print(help)
       exit(0)
     }
-    ["test", ..] -> {
-      let paths_re = glob_compile([])
-      let patterns_re = glob_compile([])
-      test_(paths_re, patterns_re)
+    ["test", ..args] -> {
+      // TODO: parse argument flags:
+      // --name for test name patterns
+      // --root for root directory
+      let root =
+        list.find_map(args, fn(arg) {
+          case arg {
+            "--root=" <> root -> Ok(root)
+            _ -> Error(Nil)
+          }
+        })
+        |> option.from_result
+        |> option.or(config.find_project_root("."))
+        |> option.unwrap(".")
+      let paths = list.filter(args, fn(arg) { !string.starts_with(arg, "--") })
+      let patterns =
+        list.filter_map(args, fn(arg) {
+          case arg {
+            "--name=" <> pattern -> Ok(pattern)
+            _ -> Error(Nil)
+          }
+        })
+      test_(root, paths, patterns)
     }
     // ["-c", expr, ..rest] ->
     //   case rest {
