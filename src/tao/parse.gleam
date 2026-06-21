@@ -43,6 +43,7 @@ pub type Token {
   Equals
   FatArrow
   ThinArrow
+  Question
   Pipe
   At
 
@@ -124,6 +125,7 @@ fn lexer() -> Lexer(Token, Nil) {
     lexer.token(",", Comma),
     lexer.token(".", Dot),
     lexer.symbol("=", "[^>]", Equals),
+    lexer.token("?", Question),
     lexer.token("|", Pipe),
     lexer.token("@", At),
 
@@ -180,7 +182,7 @@ fn pvar(file: String) -> Parser(Pattern, Token, Nil) {
 
 fn expr(file: String) -> Parser(Expr, Token, Nil) {
   pratt.expression(
-    one_of: [int(file, _), float(file, _), var(file, _)],
+    one_of: [int(file, _), float(file, _), var(file, _), hole(file, _)],
     and_then: [
       pratt.infix_left(1, nibble.token(Add), op2(tao.Add)),
       pratt.infix_left(1, nibble.token(Sub), op2(tao.Sub)),
@@ -210,6 +212,13 @@ fn var(file: String, _) -> Parser(Expr, Token, Nil) {
   use name <- do(take_ident())
   use end <- do(get_span(file))
   return(tao.var(name, span.merge(start, end)))
+}
+
+fn hole(file: String, _) -> Parser(Expr, Token, Nil) {
+  use start <- do(get_span(file))
+  use _ <- do(nibble.token(Question))
+  use end <- do(get_span(file))
+  return(tao.hole(None, span.merge(start, end)))
 }
 
 fn op2(op: BinaryOp) -> fn(Expr, Expr) -> Expr {

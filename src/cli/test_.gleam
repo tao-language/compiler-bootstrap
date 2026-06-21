@@ -42,17 +42,18 @@ pub fn test_(
   let assert Ok(pattern_re) = string.join(patterns, "|") |> regexp.from_string
   let test_defs = list.filter(tests, fn(t) { regexp.check(pattern_re, t.name) })
   case list.length(test_defs) {
-    1 -> io.println("Found 1 test")
-    n -> io.println("Found " <> int.to_string(n) <> " tests")
+    1 -> io.println("Running 1 test")
+    n -> io.println("Running " <> int.to_string(n) <> " tests")
   }
 
   // Run the tests and print the results.
   let summary = tests.run_all(ctx, test_defs)
   list.map(summary.results, fn(test_result) {
     case test_result {
-      tests.TestPass(name) -> io.println("✅ " <> name)
+      // tests.TestPass(name) -> io.println("✅ " <> name)
+      tests.TestPass(_name) -> Nil
       tests.TestFail(name, got, expr, expect) -> io.println("❌ " <> name)
-      tests.TestNeutral(name, got, expr, expect) -> io.println("⚠️ " <> name)
+      tests.TestNeutral(name, got, expr, expect) -> io.println("⚠️  " <> name)
     }
   })
   io.println("")
@@ -83,7 +84,7 @@ pub fn test_(
   case summary.num_neutral > 0 {
     True ->
       io.println(
-        "⚠️ " <> int.to_string(summary.num_neutral) <> " could not be evaluated",
+        "⚠️  " <> int.to_string(summary.num_neutral) <> " could not be evaluated",
       )
     False -> Nil
   }
