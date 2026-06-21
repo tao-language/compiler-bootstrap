@@ -53,7 +53,11 @@ pub fn main() {
             _ -> Error(Nil)
           }
         })
-      test_(root, paths, patterns)
+      let summary = test_(root, paths, patterns)
+      case summary.num_fail + summary.num_neutral > 0 {
+        True -> exit(1)
+        False -> Nil
+      }
     }
     // ["-c", expr, ..rest] ->
     //   case rest {
