@@ -10,6 +10,7 @@ import gleam/string
 import tao/ast.{type Expr, type Module, type Pattern, type Stmt}
 import tao/desugar
 import tao/discover
+import tao/tests.{type TestDef, TestDef}
 
 pub fn package(ctx: Context, mods: List(Module)) -> Context {
   let #(mod_holes, ctx) = define_modules(ctx, mods)
@@ -17,10 +18,7 @@ pub fn package(ctx: Context, mods: List(Module)) -> Context {
   resolve.context(ctx)
 }
 
-pub fn tests(
-  ctx: Context,
-  mods: List(Module),
-) -> #(List(#(String, Term, Expr, Pattern)), Context) {
+pub fn tests(ctx: Context, mods: List(Module)) -> #(List(TestDef), Context) {
   case mods {
     [] -> #([], ctx)
     [#(name, stmts), ..mods] -> {
@@ -31,7 +29,7 @@ pub fn tests(
       let mod_tests =
         list.map(test_defs, fn(tst) {
           let #(name, expr, expect) = tst
-          #(name, tm.dot(mod_term, "> " <> tst.0), expr, expect)
+          TestDef(name, tm.dot(mod_term, "> " <> tst.0), expr, expect)
         })
       let #(tail_tests, ctx) = tests(ctx, mods)
       #(list.append(mod_tests, tail_tests), ctx)
