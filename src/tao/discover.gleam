@@ -1,5 +1,5 @@
 import gleam/list
-import tao/ast.{type Pattern, type Stmt} as tao
+import tao/ast.{type Expr, type Pattern, type Stmt} as tao
 
 pub fn definitions(stmts: List(Stmt)) -> List(String) {
   list.flat_map(stmts, fn(stmt) {
@@ -20,14 +20,14 @@ pub fn definitions(stmts: List(Stmt)) -> List(String) {
   })
 }
 
-pub fn tests(stmts: List(Stmt)) -> List(String) {
+pub fn tests(stmts: List(Stmt)) -> List(#(String, Expr, Pattern)) {
   list.flat_map(stmts, fn(stmt) {
     case stmt.data {
       tao.Import(..) -> []
       tao.Let(..) -> []
       tao.LetMut(..) -> []
       tao.Mut(..) -> []
-      tao.Test(name, ..) -> ["> " <> name]
+      tao.Test(name, expr, expect) -> [#(name, expr, expect)]
       tao.FnDef(..) -> []
       tao.TypeDef(..) -> []
       tao.For(iterator, range, body) -> todo

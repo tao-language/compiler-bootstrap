@@ -1,16 +1,13 @@
 import core/context.{type Context, Context}
 import core/eval.{eval}
-import core/format
 import core/infer.{infer}
-import core/quote.{quote}
 import core/resolve
 import core/term.{type Term} as tm
-import core/value.{type Env, type Type} as v
-import gleam/io
+import core/value as v
 import gleam/list
 import gleam/option.{Some}
 import gleam/string
-import tao/ast.{type Module, type Stmt}
+import tao/ast.{type Expr, type Module, type Pattern, type Stmt}
 import tao/desugar
 import tao/discover
 
@@ -23,15 +20,19 @@ pub fn package(ctx: Context, mods: List(Module)) -> Context {
 pub fn tests(
   ctx: Context,
   mods: List(Module),
-) -> #(List(#(String, Term)), Context) {
+) -> #(List(#(String, Term, #(String, Expr, Pattern))), Context) {
   case mods {
     [] -> #([], ctx)
     [#(name, stmts), ..mods] -> {
-      let test_names = discover.tests(stmts)
+      let test_defs = discover.tests(stmts)
+      let test_names = list.map(test_defs, fn(tst) { "> " <> tst.0 })
       let mod_expr = desugar.module(#(name, stmts), test_names)
       let #(mod_term, _, ctx) = infer(ctx, mod_expr)
       let mod_tests =
-        list.map(test_names, fn(name) { #(name, tm.dot(mod_term, name)) })
+        list.map(test_defs, fn(tst) {
+          let name = "> " <> tst.0
+          #(name, tm.dot(mod_term, name), tst)
+        })
       let #(tail_tests, ctx) = tests(ctx, mods)
       #(list.append(mod_tests, tail_tests), ctx)
     }
