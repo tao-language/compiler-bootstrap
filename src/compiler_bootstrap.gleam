@@ -30,7 +30,7 @@ pub fn main() {
   case args {
     [] -> todo as "TODO: CLI repl"
     ["--help", ..] -> {
-      io.print(help)
+      io.println(help)
       exit(0)
     }
     ["test", ..args] -> {
@@ -67,7 +67,29 @@ pub fn main() {
     //     _ -> Error("Too many arguments after -c expression")
     //   }
     ["debug-expr", source, ..] -> debug_expr(source, 80)
-    ["debug-file", source, ..] -> debug_file(source, 80)
+    ["debug-file", ..args] -> {
+      let root =
+        list.find_map(args, fn(arg) {
+          case arg {
+            "--root=" <> root -> Ok(root)
+            _ -> Error(Nil)
+          }
+        })
+        |> option.from_result
+        |> option.or(config.find_project_root("."))
+        |> option.unwrap(".")
+      let filename_result =
+        list.filter(args, fn(arg) { !string.starts_with(arg, "--") })
+        |> list.first
+      case filename_result {
+        Ok(filename) -> debug_file(root, filename, 80)
+        Error(Nil) -> {
+          io.println_error("error: no filename provided")
+          io.println(help)
+          exit(1)
+        }
+      }
+    }
     ["debug-core", source, ..] -> debug_core(source, 80)
     // [path, ..rest] ->
     //   case rest {
