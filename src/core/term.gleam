@@ -135,7 +135,7 @@ pub fn to_ast(term: Term, names: List(String)) -> ast.Expr {
     App(implicit, fun, arg) -> todo
     TypeDef(type_def) -> todo
     Match(arg, cases) -> todo
-    Err -> todo
+    Err -> ast.err(s)
   }
 }
 

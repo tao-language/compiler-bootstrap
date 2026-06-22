@@ -28,8 +28,7 @@ pub type ExprData {
     body: Expr,
   )
   FnT(implicits: List(Param), params: List(Param), body: Expr)
-  App(fun: Expr, args: List(#(String, Expr)))
-  AppImplicits(fun: Expr, args: List(#(String, Expr)))
+  App(implicit: Bool, fun: Expr, args: List(#(String, Expr)))
   Match(arg: Expr, cases: List(Case))
   Op1(op: UnaryOp, expr: Expr)
   Op2(op: BinaryOp, lhs: Expr, rhs: Expr)
@@ -47,6 +46,15 @@ pub type BinaryOp {
   Sub
   Mul
   Div
+}
+
+pub fn binop_name(op: BinaryOp) -> String {
+  case op {
+    Add -> "+"
+    Sub -> "-"
+    Mul -> "*"
+    Div -> "/"
+  }
 }
 
 pub type Block =
@@ -185,12 +193,16 @@ pub fn ann(expr: Expr, type_: Type, span: Span) {
   Expr(Ann(expr, type_), span)
 }
 
-pub fn app(fun: Expr, args: List(#(String, Expr)), span: Span) {
-  Expr(App(fun, args), span)
+pub fn app(implicit: Bool, fun: Expr, args: List(#(String, Expr)), span: Span) {
+  Expr(App(implicit, fun, args), span)
 }
 
-pub fn app_implicits(fun: Expr, args: List(#(String, Expr)), span: Span) {
-  Expr(AppImplicits(fun, args), span)
+pub fn app_explicit(fun: Expr, args: List(#(String, Expr)), span: Span) {
+  app(False, fun, args, span)
+}
+
+pub fn app_implicit(fun: Expr, args: List(#(String, Expr)), span: Span) {
+  app(True, fun, args, span)
 }
 
 pub fn match(arg: Expr, cases: List(Case), span: Span) {
@@ -272,6 +284,17 @@ pub fn import_(
 
 pub fn let_(pattern: Pattern, opt_type: Option(Type), value: Expr, span: Span) {
   Stmt(Let(pattern, opt_type, value), span)
+}
+
+pub fn fn_def(
+  name: String,
+  implicits: List(Param),
+  params: List(Param),
+  returns: Option(Type),
+  body: Expr,
+  span: Span,
+) {
+  Stmt(FnDef(name, implicits, params, returns, body), span)
 }
 
 pub fn test_(name: String, expr: Expr, expect: Pattern, span: Span) {

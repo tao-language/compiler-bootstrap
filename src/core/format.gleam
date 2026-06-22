@@ -2,7 +2,11 @@ import core/ast.{
   type Case, type Expr, type Pattern, type Type, type TypeDefinition,
   type Variant, PAlias, PAny, PCtr, PErr, PLit, PLitT, PRcd, PTyp,
 }
+import core/ffi.{type FFI}
 import core/literals.{type LiteralType} as l
+import core/quote.{quote}
+import core/term.{type Term} as tm
+import core/value.{type Env, type Value} as v
 import glam/doc.{type Document}
 import gleam/float
 import gleam/int
@@ -10,9 +14,25 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
 
-pub fn format(term: Expr, width: Int, indent: Int) -> String {
-  doc_term(term, indent)
+pub fn format(expr: Expr, width: Int, indent: Int) -> String {
+  doc_term(expr, indent)
   |> doc.to_string(width)
+}
+
+pub fn term(t: Term, names: List(String), width: Int, indent: Int) -> String {
+  tm.to_ast(t, names)
+  |> format(width, indent)
+}
+
+pub fn value(
+  val: Value,
+  ffi: FFI,
+  names: List(String),
+  width: Int,
+  indent: Int,
+) -> String {
+  quote(ffi, list.length(names), val)
+  |> term(names, width, indent)
 }
 
 fn doc_text(text: String) -> Document {

@@ -50,15 +50,24 @@ pub fn expr(e: tao.Expr) -> core.Expr {
       function(None, implicits, params, returns, body, e.span)
     tao.FnT(implicits, params, body) ->
       function_type(implicits, params, body, e.span)
-    tao.App(fun, args) -> application(False, fun, args, e.span)
-    tao.AppImplicits(fun, args) -> application(True, fun, args, e.span)
+    tao.App(implicit, fun, args) -> application(implicit, fun, args, e.span)
     tao.Match(arg, cases) -> {
       let core_arg = expr(arg)
       let core_cases = case_list(cases)
       core.match(core_arg, core_cases, e.span)
     }
-    tao.Op1(op, expr) -> todo
-    tao.Op2(op, lhs, rhs) -> todo
+    tao.Op1(op, expr) -> {
+      echo e.data
+      todo
+    }
+    tao.Op2(op, lhs, rhs) -> {
+      let op_name = tao.binop_name(op)
+      expr(tao.app_explicit(
+        tao.var(op_name, e.span),
+        [#("", lhs), #("", rhs)],
+        e.span,
+      ))
+    }
     tao.Call(name, ret, args) -> {
       let core_ret = expr(ret)
       let core_args = list.map(args, expr)

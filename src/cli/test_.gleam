@@ -1,4 +1,5 @@
 import core/context.{new_ctx}
+import core/format
 import gleam/float
 import gleam/int
 import gleam/io
@@ -52,7 +53,12 @@ pub fn test_(
     case test_result {
       // tests.TestPass(name) -> io.println("✅ " <> name)
       tests.TestPass(_name) -> Nil
-      tests.TestFail(name, got, expr, expect) -> io.println("❌ " <> name)
+      tests.TestFail(name, got, expr, expect) -> {
+        let names = list.map(ctx.types, fn(entry) { entry.0 })
+        io.println(
+          "❌ " <> name <> ": got " <> format.value(got, ctx.ffi, names, 80, 2),
+        )
+      }
       tests.TestNeutral(name, got, expr, expect) -> io.println("⚠️  " <> name)
     }
   })
