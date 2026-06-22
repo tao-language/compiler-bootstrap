@@ -2,7 +2,7 @@
 import core/ast
 import core/context.{new_ctx}
 import core/eval.{eval}
-import core/format.{format}
+import core/format
 import core/infer.{infer}
 import core/parse.{parse}
 import core/quote.{quote}
@@ -22,18 +22,18 @@ pub fn debug_core(source: String, width: Int) {
   io.println("")
 
   io.println(">> parse(source) -> AST")
-  let ast = case parse("<cli>", source) {
-    Ok(ast) -> ast
+  let expr = case parse("<cli>", source) {
+    Ok(expr) -> expr
     Error(err) -> {
       io.print_error(string.inspect(err))
       ast.err(Span("<syntax error>", 0, 0, 0, 0))
     }
   }
-  io.println(format(ast, width, 2))
+  io.println(format.expr(expr, width, 2))
   io.println("")
 
   io.println(">> infer(ast) -> (Term, Type)")
-  let #(term, type_, ctx) = infer(new_ctx, ast)
+  let #(term, type_, ctx) = infer(new_ctx, expr)
   case list.length(ctx.errors) {
     0 -> Nil
     num_errors -> {
@@ -55,26 +55,25 @@ pub fn debug_core(source: String, width: Int) {
   }
 
   io.println("// Type")
-  let type_term = quote(ctx.ffi, 0, type_)
-  let type_ast = term.to_ast(type_term, [])
-  io.println(format(type_ast, width, 2))
+  let names = list.map(ctx.types, fn(t) { t.0 })
+  io.println(format.value(ctx.ffi, names, type_, width, 2))
   io.println("")
 
   io.println("// Term (raw)")
   let term_ast = term.to_ast(term, [])
-  io.println(format(term_ast, width, 2))
+  io.println(format.expr(term_ast, width, 2))
   io.println("")
 
   io.println("// Term (holes resolved)")
   let term = resolve.term(ctx.ffi, ctx.subst, 0, term)
   let term_ast = term.to_ast(term, [])
-  io.println(format(term_ast, width, 2))
+  io.println(format.expr(term_ast, width, 2))
   io.println("")
 
   io.println(">> eval(term) -> Value")
   let result_val = eval(ctx.ffi, [], term)
   let result_term = quote(ctx.ffi, 0, result_val)
   let result_ast = term.to_ast(result_term, [])
-  io.println(format(result_ast, width, 2))
+  io.println(format.expr(result_ast, width, 2))
   io.println("")
 }

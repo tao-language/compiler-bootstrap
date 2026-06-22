@@ -6,7 +6,7 @@ import core/ffi.{type FFI}
 import core/literals.{type LiteralType} as l
 import core/quote.{quote}
 import core/term.{type Term} as tm
-import core/value.{type Env, type Value} as v
+import core/value.{type Value}
 import glam/doc.{type Document}
 import gleam/float
 import gleam/int
@@ -14,25 +14,25 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
 
-pub fn format(expr: Expr, width: Int, indent: Int) -> String {
-  doc_term(expr, indent)
+pub fn expr(e: Expr, width: Int, indent: Int) -> String {
+  doc_term(e, indent)
   |> doc.to_string(width)
 }
 
-pub fn term(t: Term, names: List(String), width: Int, indent: Int) -> String {
+pub fn term(names: List(String), t: Term, width: Int, indent: Int) -> String {
   tm.to_ast(t, names)
-  |> format(width, indent)
+  |> expr(width, indent)
 }
 
 pub fn value(
-  val: Value,
   ffi: FFI,
   names: List(String),
+  val: Value,
   width: Int,
   indent: Int,
 ) -> String {
   quote(ffi, list.length(names), val)
-  |> term(names, width, indent)
+  |> term(names, _, width, indent)
 }
 
 fn doc_text(text: String) -> Document {

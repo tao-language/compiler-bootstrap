@@ -2,6 +2,7 @@
 import argv.{Argv}
 import cli/debug_core.{debug_core}
 import cli/debug_expr.{debug_expr}
+import cli/debug_file.{debug_file}
 import cli/test_.{test_}
 import gleam/io
 import gleam/list
@@ -19,6 +20,7 @@ Usage:
   tao -c 'expression'                   Run a Tao expression
   tao test [..path] [--name='pattern']  Run tests
   tao debug-expr 'expression'           Debug a Tao expression
+  tao debug-file <filename>             Debug a Tao module
   tao debug-core 'core-term'            Debug a Core term
   tao --help                            Show this help
 "
@@ -65,6 +67,7 @@ pub fn main() {
     //     _ -> Error("Too many arguments after -c expression")
     //   }
     ["debug-expr", source, ..] -> debug_expr(source, 80)
+    ["debug-file", source, ..] -> debug_file(source, 80)
     ["debug-core", source, ..] -> debug_core(source, 80)
     // [path, ..rest] ->
     //   case rest {

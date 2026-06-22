@@ -56,7 +56,7 @@ pub fn test_(
       tests.TestFail(name, got, expr, expect) -> {
         let names = list.map(ctx.types, fn(entry) { entry.0 })
         io.println(
-          "❌ " <> name <> ": got " <> format.value(got, ctx.ffi, names, 80, 2),
+          "❌ " <> name <> ": got " <> format.value(ctx.ffi, names, got, 80, 2),
         )
       }
       tests.TestNeutral(name, got, expr, expect) -> io.println("⚠️  " <> name)
