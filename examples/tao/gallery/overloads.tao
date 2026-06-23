@@ -1,18 +1,23 @@
-fn add_int(x: Int, y: Int) -> Int
-= x + y
+fn no_args()
+= NoArgs
 
-fn add_three(x: Int, y: Int, z: Int) -> Int
-= x + y + z
+fn int_arg(i: Int)
+= IntArg(i)
 
-fn add_float(x: Float, y: Float) -> Float
-= x + y
+fn float_arg(f: Float)
+= FloatArg(f)
 
-fn add {
-| add_int
-| add_three
-| add_float
+fn overloaded {
+| no_args
+| int_arg
+| float_arg
 }
 
-> add(1, 2) ~> 3
-> add(1, 2, 3) ~> 6
-> add(1.1, 2.2) ~> 3.3
+>>> overloaded()
+NoArgs
+
+>>> overloaded(42)
+IntArg(42)
+
+>>> overloaded(3.14)
+FloatArg(3.14)
