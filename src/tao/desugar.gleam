@@ -274,7 +274,7 @@ pub fn statement(ctx: BlockCtx, stmt: Stmt, next: core.Expr) -> core.Expr {
         function(Some(name), implicits, params, returns, body, stmt.span)
       core.let_var(#(name, None, core_fn), next, stmt.span)
     }
-    tao.FnOverload(name, choices) ->
+    tao.FnOverload(name, choices) -> {
       // TODO:
       // 1. Compile: Desugar name into a hole
       // 2. Resolve overloads: For each overload:
@@ -286,7 +286,9 @@ pub fn statement(ctx: BlockCtx, stmt: Stmt, next: core.Expr) -> core.Expr {
       //    | p -> choice(x)
       //    | ... for all choices
       //    }
+      echo #(name, choices)
       todo as "⚠️ TODO: FnOverload, this might need to be resolved on a separate phase because it requires type inference, so the context must be fully available"
+    }
     tao.Test(name, arg, expect) -> {
       let core_arg = expr(arg)
       let core_cases = [

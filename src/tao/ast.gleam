@@ -302,6 +302,10 @@ pub fn fn_def(
   Stmt(FnDef(name, implicits, params, returns, body), span)
 }
 
+pub fn fn_overload(name: String, choices: List(OverloadChoice), span: Span) {
+  Stmt(FnOverload(name, choices), span)
+}
+
 pub fn test_(name: String, expr: Expr, expect: Pattern, span: Span) {
   Stmt(Test(name, expr, expect), span)
 }
