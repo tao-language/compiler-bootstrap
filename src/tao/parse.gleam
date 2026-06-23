@@ -1,4 +1,5 @@
 import gleam/int
+import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result.{try}
@@ -83,9 +84,22 @@ pub fn statements(file: String, source: String) -> Result(List(Stmt), Error) {
   use tokens <- try(lex(file, source))
   case nibble.run(tokens, nibble.many(stmt(file))) {
     Ok(stmts) -> Ok(stmts)
-    Error(err) -> {
-      echo err
-      todo
+    Error(errors) -> {
+      io.println_error("")
+      io.println_error("❌ SYNTAX ERROR: src/tao/parse.gleam::statements")
+      list.map(errors, fn(err) {
+        let msg =
+          file
+          <> ":"
+          <> int.to_string(err.pos.row_start)
+          <> ":"
+          <> int.to_string(err.pos.col_start)
+          <> ": "
+          <> string.inspect(err.problem)
+        io.println_error(msg)
+      })
+      io.println_error("")
+      todo as "convert syntax errors into tao/error.Error, bubble up and defer reporting"
     }
   }
 }
