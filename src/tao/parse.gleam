@@ -266,7 +266,7 @@ fn atom(file: String) -> Parser(Expr, Token, Nil) {
       hole(file),
       int(file),
       float(file),
-      var(file),
+      var_or_ctr(file),
     ]),
   )
   nibble.one_of([
@@ -296,11 +296,36 @@ fn float(file: String) -> Parser(Expr, Token, Nil) {
   return(tao.float(num, span.merge(start, end)))
 }
 
-fn var(file: String) -> Parser(Expr, Token, Nil) {
+fn var_or_ctr(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use name <- do(take_ident())
-  use end <- do(get_span(file))
-  return(tao.var(name, span.merge(start, end)))
+  case is_ctr_name(name) {
+    True -> {
+      use opt_args <- do(
+        nibble.optional({
+          use _ <- do(nibble.token(LParen))
+          use args <- do(arguments(file))
+          use _ <- do(nibble.token(RParen))
+          return(args)
+        }),
+      )
+      let args = option.unwrap(opt_args, [])
+      use end <- do(get_span(file))
+      return(tao.ctr(name, args, span.merge(start, end)))
+    }
+    False -> {
+      use end <- do(get_span(file))
+      return(tao.var(name, span.merge(start, end)))
+    }
+  }
+}
+
+fn is_ctr_name(name: String) -> Bool {
+  case string.pop_grapheme(name) {
+    Ok(#("_", _)) -> is_ctr_name(name)
+    Ok(#(first, _)) -> first == string.uppercase(first)
+    _ -> False
+  }
 }
 
 fn op2(op: BinaryOp) -> fn(Expr, Expr) -> Expr {
@@ -317,19 +342,7 @@ fn app(file: String, fun: Expr) -> Parser(Expr, Token, Nil) {
       nibble.token(LAngle) |> nibble.map(fn(_) { #(True, RAngle) }),
     ]),
   )
-  use args <- do(
-    nibble.many({
-      use opt_name <- do(
-        nibble.optional({
-          use name <- do(take_ident())
-          use _ <- do(nibble.token(Colon))
-          return(name)
-        }),
-      )
-      use arg <- do(expr(file))
-      return(#(option.unwrap(opt_name, ""), arg))
-    }),
-  )
+  use args <- do(arguments(file))
   use _ <- do(nibble.token(close))
   use end <- do(get_span(file))
   return(tao.app(implicit, fun, args, span.merge(start, end)))
@@ -378,6 +391,20 @@ fn take_float() -> Parser(Float, Token, Nil) {
       FloatLit(f) -> Some(f)
       _ -> None
     }
+  })
+}
+
+fn arguments(file: String) -> Parser(List(#(String, Expr)), Token, Nil) {
+  nibble.many({
+    use opt_name <- do(
+      nibble.optional({
+        use name <- do(take_ident())
+        use _ <- do(nibble.token(Colon))
+        return(name)
+      }),
+    )
+    use arg <- do(expr(file))
+    return(#(option.unwrap(opt_name, ""), arg))
   })
 }
 
