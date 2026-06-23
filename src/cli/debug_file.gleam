@@ -1,4 +1,5 @@
 import core/context.{Context, new_ctx}
+import core/error
 import core/eval.{eval}
 import core/ffi
 import core/format as core_format
@@ -112,8 +113,8 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     0 -> Nil
     n -> {
       io.println_error("---- ERRORS (" <> int.to_string(n) <> ") ----")
-      list.map(ctx.errors, fn(e) {
-        let msg = string.inspect(e)
+      list.map(ctx.errors, fn(err) {
+        let msg = error.display(err)
         io.println_error("- " <> msg)
       })
       io.println_error("---- ERRORS END ----")

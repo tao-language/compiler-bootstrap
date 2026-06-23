@@ -1,5 +1,6 @@
 import core/term.{type Term}
 import core/value.{type Neut, type Value, type Variant}
+import gleam/string
 import syntax/span.{type Span}
 
 pub type Error {
@@ -26,4 +27,11 @@ pub type Error {
     span: Span,
   )
   CtorNotFound(tag: String, span: Span)
+}
+
+pub fn display(err: Error) -> String {
+  // TODO: human-friendly error message display
+  // TODO: code snippet with ascii art showing location
+  // TODO: colored output
+  string.inspect(err)
 }

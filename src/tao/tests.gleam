@@ -1,4 +1,5 @@
 import core/context.{type Context}
+import core/error.{type Error}
 import core/eval.{eval}
 import core/term.{type Term}
 import core/value.{type Value} as v
@@ -17,6 +18,7 @@ pub type TestResult {
 
 pub type TestResultSummary {
   TestResultSummary(
+    errors: List(Error),
     results: List(TestResult),
     num_pass: Int,
     num_fail: Int,
@@ -26,7 +28,7 @@ pub type TestResultSummary {
 
 pub fn run_all(ctx: Context, tests: List(TestDef)) -> TestResultSummary {
   case tests {
-    [] -> TestResultSummary([], 0, 0, 0)
+    [] -> TestResultSummary(ctx.errors, [], 0, 0, 0)
     [t, ..tests] -> {
       let res = run(ctx, t)
       let summary = run_all(ctx, tests)

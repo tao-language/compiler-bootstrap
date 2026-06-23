@@ -1,4 +1,5 @@
 import core/context.{new_ctx}
+import core/error
 import core/format
 import gleam/float
 import gleam/int
@@ -49,6 +50,19 @@ pub fn test_(
 
   // Run the tests and print the results.
   let summary = tests.run_all(ctx, test_defs)
+  case summary.errors {
+    [] -> Nil
+    errors -> {
+      let n = list.length(errors)
+      let header = "------ ERRORS (" <> int.to_string(n) <> ") ------"
+      io.println_error(header)
+      list.map(errors, fn(err) {
+        let msg = error.display(err)
+        io.println_error(msg)
+      })
+      io.println_error(string.repeat("-", string.length(header)))
+    }
+  }
   list.map(summary.results, fn(test_result) {
     case test_result {
       // tests.TestPass(name) -> io.println("✅ " <> name)

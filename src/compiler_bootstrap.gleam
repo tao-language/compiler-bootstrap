@@ -56,7 +56,9 @@ pub fn main() {
           }
         })
       let summary = test_(root, paths, patterns)
-      case summary.num_fail + summary.num_neutral > 0 {
+      let num_errors =
+        list.length(summary.errors) + summary.num_fail + summary.num_neutral
+      case num_errors > 0 {
         True -> exit(1)
         False -> Nil
       }
