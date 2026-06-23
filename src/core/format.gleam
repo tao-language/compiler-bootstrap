@@ -12,6 +12,7 @@ import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/regexp
 import gleam/string
 
 pub fn expr(e: Expr, width: Int, indent: Int) -> String {
@@ -20,7 +21,7 @@ pub fn expr(e: Expr, width: Int, indent: Int) -> String {
 }
 
 pub fn term(names: List(String), t: Term, width: Int, indent: Int) -> String {
-  tm.to_ast(t, names)
+  tm.lift(t, names)
   |> expr(width, indent)
 }
 
@@ -39,13 +40,22 @@ fn doc_text(text: String) -> Document {
   doc.from_string(text)
 }
 
+fn var_name(name: String) -> String {
+  let assert Ok(var_re) = regexp.from_string("^[_a-zA-Z][_\\w]*$")
+  case regexp.check(var_re, name) {
+    True -> name
+    False -> "`" <> string.replace(name, "`", "\\`") <> "`"
+  }
+}
+
 fn doc_term(term: Expr, indent: Int) -> Document {
   case term.data {
     // Syntax sugar
+    // %let name: opt_type = value; body
     ast.App(_, ast.Expr(ast.Lam(_, #(name, opt_type), body), _), value) ->
       doc.concat([
         doc_text("%let "),
-        doc_text(name),
+        doc_text(var_name(name)),
         doc_opt_type(opt_type, indent),
         doc_text(" = "),
         doc_term(value, indent),
@@ -66,7 +76,7 @@ fn doc_term(term: Expr, indent: Int) -> Document {
         l.Float(value) -> doc_text(float.to_string(value))
       }
     ast.LitT(t_) -> format_lit_type(t_)
-    ast.Var(name) -> doc_text(name)
+    ast.Var(name) -> doc_text(var_name(name))
     ast.Ctr(tag, ast.Expr(ast.Rcd([]), _)) -> doc_text("#" <> tag)
     ast.Ctr(tag, arg) ->
       doc.concat([
@@ -174,10 +184,7 @@ fn doc_rcd(fields: List(#(String, Expr)), indent: Int) -> Document {
   let doc_fields =
     list.map(fields, fn(field) {
       let #(name, term) = field
-      let name = case name {
-        "" -> "\"\""
-        _ -> name
-      }
+      let name = var_name(name)
       doc.concat([doc_text(name <> ": "), doc_term(term, indent)])
     })
   doc.concat([

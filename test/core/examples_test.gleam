@@ -28,9 +28,13 @@ pub fn core_factorial_test() {
   let sub = fn(x, y) { ast.call("int_sub", ast.int_t(s), [x, y], s) }
   let case0 = ast.Case(ast.pint(0, s), None, ast.int(1, s))
   let case_ =
-    ast.Case(ast.pvar("n", s), None, mul(n, ast.app(f, sub(n, i1), s)))
+    ast.Case(ast.pvar("n", s), None, mul(n, ast.app_explicit(f, sub(n, i1), s)))
   let ast_fn =
-    ast.fix("f", ast.lam(#("x", None), ast.match(x, [case0, case_], s), s), s)
+    ast.fix(
+      "f",
+      ast.lam_explicit(#("x", None), ast.match(x, [case0, case_], s), s),
+      s,
+    )
 
   let ctx0 = Context(..new_ctx, ffi: ffi.build)
   let #(term, type_, ctx) = infer(ctx0, ast_fn)

@@ -116,7 +116,7 @@ pub fn format_ann_test() {
 pub fn format_lam_explicit_test() {
   let param = #("x", Some(ast.var("y", s)))
   let body = ast.var("z", s)
-  let lam = ast.lam(param, body, s)
+  let lam = ast.lam_explicit(param, body, s)
   assert expr(lam, 80, 2) == "%lam(x: y) => z"
 }
 
@@ -134,7 +134,7 @@ pub fn format_lam_implicit_test() {
 pub fn format_pi_explicit_test() {
   let param = #("x", Some(ast.var("y", s)))
   let codomain = ast.var("z", s)
-  let pi = ast.pi(param, codomain, s)
+  let pi = ast.pi_explicit(param, codomain, s)
   assert expr(pi, 80, 2) == "%pi(x: y) -> z"
 }
 
@@ -162,7 +162,7 @@ pub fn format_fix_test() {
 pub fn format_app_explicit_test() {
   let fun = ast.var("f", s)
   let arg = ast.var("x", s)
-  let app = ast.app(fun, arg, s)
+  let app = ast.app_explicit(fun, arg, s)
   assert expr(app, 80, 2) == "f(x)"
 }
 

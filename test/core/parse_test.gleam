@@ -281,9 +281,13 @@ pub fn lex_lam_test() {
 
 pub fn parse_lam_test() {
   assert parse("%lam(x) => z")
-    == Ok(ast.lam(#("x", None), ast.var("z", s(1, 9, 1, 13)), s(1, 1, 1, 13)))
+    == Ok(ast.lam_explicit(
+      #("x", None),
+      ast.var("z", s(1, 9, 1, 13)),
+      s(1, 1, 1, 13),
+    ))
   assert parse("%lam(x: y) => z")
-    == Ok(ast.lam(
+    == Ok(ast.lam_explicit(
       #("x", Some(ast.var("y", s(1, 7, 1, 10)))),
       ast.var("z", s(1, 12, 1, 16)),
       s(1, 1, 1, 16),
@@ -312,9 +316,13 @@ pub fn lex_pi_test() {
 
 pub fn parse_pi_test() {
   assert parse("%pi(x) -> z")
-    == Ok(ast.pi(#("x", None), ast.var("z", s(1, 8, 1, 12)), s(1, 1, 1, 12)))
+    == Ok(ast.pi_explicit(
+      #("x", None),
+      ast.var("z", s(1, 8, 1, 12)),
+      s(1, 1, 1, 12),
+    ))
   assert parse("%pi(x: y) -> z")
-    == Ok(ast.pi(
+    == Ok(ast.pi_explicit(
       #("x", Some(ast.var("y", s(1, 6, 1, 9)))),
       ast.var("z", s(1, 11, 1, 15)),
       s(1, 1, 1, 15),
@@ -350,7 +358,7 @@ pub fn parse_fix_test() {
 // ============================================================================
 pub fn parse_app_test() {
   assert parse("f(x)")
-    == Ok(ast.app(
+    == Ok(ast.app_explicit(
       ast.var("f", s(1, 1, 1, 2)),
       ast.var("x", s(1, 2, 1, 4)),
       s(1, 1, 1, 4),

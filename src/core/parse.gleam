@@ -211,7 +211,7 @@ fn expr(file: String) -> Parser(Expr, Token, Nil) {
       use _ <- do(nibble.token(LParen))
       use arg <- do(expr(file))
       use _ <- do(nibble.token(RParen))
-      return(ast.app(fun, arg, span.merge(fun.span, arg.span)))
+      return(ast.app_explicit(fun, arg, span.merge(fun.span, arg.span)))
     },
     {
       // Implicit application: f<x>

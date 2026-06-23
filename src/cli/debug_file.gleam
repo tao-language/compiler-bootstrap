@@ -1,5 +1,7 @@
 import core/context.{new_ctx}
+import core/eval.{eval}
 import core/format as core_format
+import core/infer.{infer}
 import gleam/int
 import gleam/io
 import gleam/list
@@ -8,6 +10,7 @@ import gleam/string
 import syntax/span.{Span}
 import tao/ast as tao
 import tao/compile
+import tao/desugar
 import tao/discover
 import tao/load
 import utils/fs
@@ -71,7 +74,7 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   })
   io.println("")
 
-  io.println("> module = load.module(filename)")
+  io.println("> stmts = load.module(filename)")
   let #(stmts, errors) = load.module(filename)
   case list.length(errors) {
     0 -> Nil
@@ -87,14 +90,32 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     "  definitions: " <> int.to_string(list.length(definitions)) <> " length",
   )
   list.map(definitions, fn(name) { io.println("  - " <> name) })
-
-  let tests = discover.tests(stmts)
-  io.println("  tests: " <> int.to_string(list.length(tests)) <> " length")
-  list.map(tests, fn(t) {
-    let #(name, expr, expect) = t
-    io.println("  - " <> name)
-  })
   io.println("")
 
+  io.println("> test_defs = discover.tests(stmts)")
+  let test_defs = discover.tests(stmts)
+  let test_names = list.map(test_defs, fn(tst) { "> " <> tst.0 })
+  io.println("  total tests: " <> int.to_string(list.length(test_defs)))
+  list.map(test_names, fn(name) { io.println("  - " <> name) })
+  io.println("")
+
+  io.println("> mod_expr = desugar.module(stmts)")
+  let mod_expr = desugar.module(#(filename, stmts), test_names)
+  io.println(core_format.expr(mod_expr, width, 2))
+  io.println("")
+
+  io.println("> tests = compile.tests(stmts)")
+  let #(tests, ctx) = compile.tests(ctx, [#(filename, stmts)])
+  let names = list.map(ctx.types, fn(t) { t.0 })
+  list.map(tests, fn(t) {
+    let value = eval(ctx.ffi, ctx.env, t.term)
+    io.println(
+      "  - "
+      <> t.name
+      <> ": "
+      <> core_format.value(ctx.ffi, names, value, width, 2),
+    )
+  })
+  io.println("")
   todo
 }

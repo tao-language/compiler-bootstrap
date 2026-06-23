@@ -60,20 +60,20 @@ pub fn debug_core(source: String, width: Int) {
   io.println("")
 
   io.println("// Term (raw)")
-  let term_ast = term.to_ast(term, [])
+  let term_ast = term.lift(term, [])
   io.println(format.expr(term_ast, width, 2))
   io.println("")
 
   io.println("// Term (holes resolved)")
   let term = resolve.term(ctx.ffi, ctx.subst, 0, term)
-  let term_ast = term.to_ast(term, [])
+  let term_ast = term.lift(term, [])
   io.println(format.expr(term_ast, width, 2))
   io.println("")
 
   io.println(">> eval(term) -> Value")
   let result_val = eval(ctx.ffi, [], term)
   let result_term = quote(ctx.ffi, 0, result_val)
-  let result_ast = term.to_ast(result_term, [])
+  let result_ast = term.lift(result_term, [])
   io.println(format.expr(result_ast, width, 2))
   io.println("")
 }

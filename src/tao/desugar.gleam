@@ -138,7 +138,7 @@ fn function(
         }
       }
       let core_fun =
-        core.lam(#(param_name, Some(core_param_type)), core_body, span)
+        core.lam_explicit(#(param_name, Some(core_param_type)), core_body, span)
       case opt_fun_name {
         Some(fun_name) -> core.fix(fun_name, core_fun, span)
         None -> core_fun

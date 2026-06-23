@@ -103,7 +103,7 @@ pub fn bindings(p: Pattern) -> List(String) {
   }
 }
 
-pub fn to_ast(term: Term, names: List(String)) -> ast.Expr {
+pub fn lift(term: Term, names: List(String)) -> ast.Expr {
   let s = span.empty("", 0, 0)
   case term {
     Typ(u) -> ast.typ(u, s)
@@ -116,26 +116,78 @@ pub fn to_ast(term: Term, names: List(String)) -> ast.Expr {
         Some(name) -> ast.var(name, s)
         None -> ast.var("`undefined " <> int.to_string(index) <> "`", s)
       }
-    Ctr(tag, arg) -> ast.Expr(ast.Ctr(tag, to_ast(arg, names)), s)
-    Rcd(fields) -> todo
+    Ctr(tag, arg) -> ast.Expr(ast.Ctr(tag, lift(arg, names)), s)
+    Rcd(fields) -> {
+      let fields_ast =
+        list.map(fields, fn(field) {
+          let #(name, term) = field
+          #(name, lift(term, names))
+        })
+      ast.rcd(fields_ast, s)
+    }
     RcdT(fields) -> todo
     Call(name, returns, args) -> todo
     Ann(term, type_) -> todo
     Lam(implicit, #(name, type_), body) -> {
-      let type_ast = to_ast(type_, names)
-      let body_ast = to_ast(body, names)
-      ast.Expr(ast.Lam(implicit, #(name, Some(type_ast)), body_ast), s)
+      let type_ast = lift(type_, names)
+      let body_ast = lift(body, [name, ..names])
+      ast.lam(implicit, #(name, Some(type_ast)), body_ast, s)
     }
     Pi(implicit, #(name, type_), body) -> {
-      let type_ast = to_ast(type_, names)
-      let body_ast = to_ast(body, names)
-      ast.Expr(ast.Pi(implicit, #(name, Some(type_ast)), body_ast), s)
+      let type_ast = lift(type_, names)
+      let body_ast = lift(body, [name, ..names])
+      ast.pi(implicit, #(name, Some(type_ast)), body_ast, s)
     }
     Fix(name, body) -> todo
-    App(implicit, fun, arg) -> todo
+    App(implicit, fun, arg) -> {
+      let fun_ast = lift(fun, names)
+      let arg_ast = lift(fun, names)
+      ast.app(implicit, fun_ast, arg_ast, s)
+    }
     TypeDef(type_def) -> todo
-    Match(arg, cases) -> todo
+    Match(arg, cases) -> {
+      let arg_ast = lift(arg, names)
+      let cases_ast = list.map(cases, lift_case(_, names))
+      ast.match(arg_ast, cases_ast, s)
+    }
     Err -> ast.err(s)
+  }
+}
+
+fn lift_case(c: Case, names: List(String)) -> ast.Case {
+  let pattern_ast = lift_pattern(c.pattern)
+  let names = list.append(bindings(c.pattern), names)
+  let #(names, guard_ast) = case c.guard {
+    Some(#(expr, pattern)) -> {
+      let guard_ast = #(lift(expr, names), lift_pattern(pattern))
+      let names = list.append(bindings(pattern), names)
+      #(names, Some(guard_ast))
+    }
+    None -> #(names, None)
+  }
+  let body_ast = lift(c.body, names)
+  ast.Case(pattern_ast, guard_ast, body_ast)
+}
+
+fn lift_pattern(p: Pattern) -> ast.Pattern {
+  let s = span.empty("", 0, 0)
+  case p {
+    PAny -> ast.pany(s)
+    PTyp(universe) -> todo
+    PLit(value) -> todo
+    PLitT(lit_type) -> todo
+    PAlias(name, pattern) -> ast.palias(lift_pattern(pattern), name, s)
+    PCtr(tag, pattern) -> todo
+    PRcd(fields) -> {
+      let fields_ast =
+        list.map(fields, fn(field) {
+          let #(name, pattern) = field
+          #(name, lift_pattern(pattern))
+        })
+      ast.prcd(fields_ast, s)
+    }
+    PRcdT(fields) -> todo
+    PErr -> todo
   }
 }
 
