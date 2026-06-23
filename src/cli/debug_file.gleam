@@ -1,5 +1,6 @@
-import core/context.{new_ctx}
+import core/context.{Context, new_ctx}
 import core/eval.{eval}
+import core/ffi
 import core/format as core_format
 import core/infer.{infer}
 import gleam/int
@@ -36,7 +37,8 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   io.println("")
 
   io.println("> ctx = compile.package(pkg)")
-  let ctx = compile.package(new_ctx, pkg)
+  let ctx = Context(..new_ctx, ffi: ffi.build)
+  let ctx = compile.package(ctx, pkg)
   case list.length(errors) {
     0 -> Nil
     n -> {
@@ -106,6 +108,17 @@ pub fn debug_file(root: String, filename: String, width: Int) {
 
   io.println("> tests = compile.tests(stmts)")
   let #(tests, ctx) = compile.tests(ctx, [#(filename, stmts)])
+  case list.length(ctx.errors) {
+    0 -> Nil
+    n -> {
+      io.println_error("---- ERRORS (" <> int.to_string(n) <> ") ----")
+      list.map(ctx.errors, fn(e) {
+        let msg = string.inspect(e)
+        io.println_error("- " <> msg)
+      })
+      io.println_error("---- ERRORS END ----")
+    }
+  }
   let names = list.map(ctx.types, fn(t) { t.0 })
   list.map(tests, fn(t) {
     let value = eval(ctx.ffi, ctx.env, t.term)
@@ -117,5 +130,7 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     )
   })
   io.println("")
-  todo
+
+  io.println("---- SUMMARY ----")
+  io.println(int.to_string(list.length(ctx.errors)) <> " build errors")
 }
