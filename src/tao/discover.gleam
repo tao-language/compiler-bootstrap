@@ -10,6 +10,7 @@ pub fn definitions(stmts: List(Stmt)) -> List(String) {
       tao.Mut(name, value) -> todo
       tao.Test(..) -> []
       tao.FnDef(name, ..) -> [name]
+      tao.FnOverload(name, ..) -> [name]
       tao.TypeDef(type_def) -> todo
       tao.For(iterator, range, body) -> todo
       tao.While(condition, body) -> todo
@@ -29,6 +30,7 @@ pub fn tests(stmts: List(Stmt)) -> List(#(String, Expr, Pattern)) {
       tao.Mut(..) -> []
       tao.Test(name, expr, expect) -> [#(name, expr, expect)]
       tao.FnDef(..) -> []
+      tao.FnOverload(..) -> []
       tao.TypeDef(..) -> []
       tao.For(iterator, range, body) -> todo
       tao.While(condition, body) -> todo

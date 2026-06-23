@@ -81,12 +81,17 @@ pub type StmtData {
     returns: Option(Type),
     body: Expr,
   )
+  FnOverload(name: String, choices: List(OverloadChoice))
   TypeDef(type_def: TypeDefinition)
   For(iterator: Pattern, range: Expr, body: Expr)
   While(condition: Expr, body: Expr)
   Return(expr: Expr)
   Break
   Continue
+}
+
+pub type OverloadChoice {
+  OverloadChoice(expand: Bool, module: Option(String), name: String)
 }
 
 pub type Param =

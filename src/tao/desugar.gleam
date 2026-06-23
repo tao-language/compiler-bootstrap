@@ -274,6 +274,7 @@ pub fn statement(ctx: BlockCtx, stmt: Stmt, next: core.Expr) -> core.Expr {
         function(Some(name), implicits, params, returns, body, stmt.span)
       core.let_var(#(name, None, core_fn), next, stmt.span)
     }
+    tao.FnOverload(name, choices) -> todo
     tao.Test(name, arg, expect) -> {
       let core_arg = expr(arg)
       let core_cases = [
