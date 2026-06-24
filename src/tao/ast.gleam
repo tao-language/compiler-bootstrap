@@ -91,7 +91,13 @@ pub type StmtData {
 }
 
 pub type OverloadChoice {
-  OverloadChoice(expand: Bool, module: Option(String), name: String)
+  OverloadChoice(
+    module: Option(String),
+    name: String,
+    args: List(#(String, Pattern)),
+    guard: Option(#(Expr, Option(Pattern))),
+    span: Span,
+  )
 }
 
 pub type Param =
@@ -132,9 +138,7 @@ pub type PArg =
   #(String, Pattern)
 
 pub type Case {
-  Case(pattern: Pattern, body: Expr)
-  CaseIf(pattern: Pattern, guard: Expr, body: Expr)
-  CaseIfMatch(pattern: Pattern, guard: #(Expr, Pattern), body: Expr)
+  Case(pattern: Pattern, guard: Option(#(Expr, Option(Pattern))), body: Expr)
 }
 
 // Syntax sugar

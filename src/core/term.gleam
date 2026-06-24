@@ -125,7 +125,16 @@ pub fn lift(term: Term, names: List(String)) -> ast.Expr {
         })
       ast.rcd(fields_ast, s)
     }
-    RcdT(fields) -> todo
+    RcdT(fields) -> {
+      let fields_ast =
+        list.map(fields, fn(field) {
+          let #(name, #(type_, opt_default)) = field
+          let type_ast = lift(type_, names)
+          let opt_default_ast = option.map(opt_default, lift(_, names))
+          #(name, #(Some(type_ast), opt_default_ast))
+        })
+      ast.rcd_t(fields_ast, s)
+    }
     Call(name, returns, args) -> todo
     Ann(term, type_) -> todo
     Lam(implicit, #(name, type_), body) -> {
@@ -173,11 +182,11 @@ fn lift_pattern(p: Pattern) -> ast.Pattern {
   let s = span.empty("", 0, 0)
   case p {
     PAny -> ast.pany(s)
-    PTyp(universe) -> todo
-    PLit(value) -> todo
-    PLitT(lit_type) -> todo
+    PTyp(u) -> ast.ptyp(u, s)
+    PLit(value) -> ast.plit(value, s)
+    PLitT(lit_type) -> ast.plit_t(lit_type, s)
     PAlias(name, pattern) -> ast.palias(lift_pattern(pattern), name, s)
-    PCtr(tag, pattern) -> todo
+    PCtr(tag, pattern) -> ast.pctr(tag, lift_pattern(pattern), s)
     PRcd(fields) -> {
       let fields_ast =
         list.map(fields, fn(field) {

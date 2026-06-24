@@ -1,14 +1,20 @@
-import core/context.{Context, new_ctx}
+import core/context.{type Context, Context, new_ctx}
 import core/eval.{eval}
 import core/ffi
-import core/value as v
+import core/infer.{infer}
+import core/term.{type Term}
+import core/value.{type Value} as v
 import gleam/io
 import gleam/option.{None, Some}
 import syntax/span.{Span}
-import tao/ast as tao
-import tao/check.{check_expr}
+import tao/ast.{type Expr} as tao
+import tao/desugar
 
 const s = Span("tao/examples_test", 0, 0, 0, 0)
+
+pub fn check_expr(ctx: Context, expr: Expr) -> #(Term, Value, Context) {
+  infer(ctx, desugar.expr(expr))
+}
 
 pub fn tao_factorial_test() {
   // fn f(x) -> Int
@@ -20,10 +26,11 @@ pub fn tao_factorial_test() {
   let #(f, x, n) = #(tao.var("f", s), tao.var("x", s), tao.var("n", s))
   let sub = fn(x, y) { tao.call("int_sub", tao.int_t(s), [x, y], s) }
   let mul = fn(x, y) { tao.call("int_mul", tao.int_t(s), [x, y], s) }
-  let case0 = tao.Case(tao.pint(0, s), i1)
+  let case0 = tao.Case(tao.pint(0, s), None, i1)
   let case_ =
     tao.Case(
       tao.pvar("n", s),
+      None,
       mul(n, tao.app_explicit(f, [#("", sub(n, i1))], s)),
     )
   let fn_def =

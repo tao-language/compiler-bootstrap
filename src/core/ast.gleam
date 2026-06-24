@@ -127,7 +127,7 @@ pub fn contains(term: Expr, name: String) -> Bool {
 
 fn contains_case(c: Case, name: String) -> Bool {
   !list.contains(bindings(c.pattern), name)
-  || contains_case_body(c.guard, c.body, name)
+  && contains_case_body(c.guard, c.body, name)
 }
 
 fn contains_case_body(
@@ -227,6 +227,14 @@ pub fn var(name: String, span: Span) {
 
 pub fn ctr(tag: String, arg: Expr, span: Span) {
   Expr(Ctr(tag, arg), span)
+}
+
+pub fn ctr_args(tag: String, args: List(#(String, Expr)), span: Span) {
+  ctr(tag, rcd(args, span), span)
+}
+
+pub fn ctr0(tag: String, span: Span) {
+  ctr_args(tag, [], span)
 }
 
 pub fn rcd(fields: List(#(String, Expr)), span: Span) {
@@ -333,8 +341,16 @@ pub fn pany(span: Span) {
   Pattern(PAny, span)
 }
 
+pub fn ptyp(universe: Int, span: Span) {
+  Pattern(PTyp(universe), span)
+}
+
 pub fn pvar(name: String, span: Span) {
   palias(pany(span), name, span)
+}
+
+pub fn plit(k: Literal, span: Span) {
+  Pattern(PLit(k), span)
 }
 
 pub fn pint(value: Int, span: Span) {
@@ -343,6 +359,62 @@ pub fn pint(value: Int, span: Span) {
 
 pub fn pfloat(value: Float, span: Span) {
   Pattern(PLit(lit.Float(value)), span)
+}
+
+pub fn plit_t(k: LiteralType, span: Span) {
+  Pattern(PLitT(k), span)
+}
+
+pub fn pint_t(span: Span) {
+  Pattern(PLitT(lit.IntT), span)
+}
+
+pub fn pfloat_t(span: Span) {
+  Pattern(PLitT(lit.FloatT), span)
+}
+
+pub fn pi8(span: Span) {
+  Pattern(PLitT(lit.I8), span)
+}
+
+pub fn pi16(span: Span) {
+  Pattern(PLitT(lit.I16), span)
+}
+
+pub fn pi32(span: Span) {
+  Pattern(PLitT(lit.I32), span)
+}
+
+pub fn pi64(span: Span) {
+  Pattern(PLitT(lit.I64), span)
+}
+
+pub fn pu8(span: Span) {
+  Pattern(PLitT(lit.U8), span)
+}
+
+pub fn pu16(span: Span) {
+  Pattern(PLitT(lit.U16), span)
+}
+
+pub fn pu32(span: Span) {
+  Pattern(PLitT(lit.U32), span)
+}
+
+pub fn pu64(span: Span) {
+  Pattern(PLitT(lit.U64), span)
+}
+
+pub fn pf16(span: Span) {
+  Pattern(PLitT(lit.F16), span)
+}
+
+pub fn pf32(span: Span) {
+  Pattern(PLitT(lit.F32), span)
+}
+
+pub fn pf64(span: Span) {
+  Pattern(PLitT(lit.F64), span)
 }
 
 pub fn prcd(fields: List(#(String, Pattern)), span: Span) {
@@ -355,6 +427,14 @@ pub fn prcd_t(fields: List(#(String, Pattern)), span: Span) {
 
 pub fn pctr(tag: String, arg: Pattern, span: Span) {
   Pattern(PCtr(tag, arg), span)
+}
+
+pub fn pctr_args(tag: String, args: List(#(String, Pattern)), span: Span) {
+  pctr(tag, prcd(args, span), span)
+}
+
+pub fn pctr0(tag: String, span: Span) {
+  pctr_args(tag, [], span)
 }
 
 pub fn palias(pattern: Pattern, name: String, span: Span) {

@@ -1,9 +1,11 @@
+import core/ast as core
 import core/context.{Context, new_ctx}
 import core/error
 import core/eval.{eval}
 import core/ffi
 import core/format as core_format
 import core/infer.{infer}
+import core/resolve
 import gleam/int
 import gleam/io
 import gleam/list
@@ -17,15 +19,18 @@ import tao/discover
 import tao/load
 import utils/fs
 
+const s = Span("debug_file", 0, 0, 0, 0)
+
 pub fn debug_file(root: String, filename: String, width: Int) {
   io.println("root: " <> root)
   io.println("filename: " <> filename)
   io.println("")
 
-  io.println("> pkg = load.package(root)")
+  echo "> pkg = load.package(root)"
   let #(pkg, errors) =
     fs.list_recursive(root, string.ends_with(_, ".tao"))
     |> result.unwrap([])
+    |> list.prepend(filename)
     |> load.package
   case list.length(errors) {
     0 -> Nil
@@ -37,7 +42,7 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   }
   io.println("")
 
-  io.println("> ctx = compile.package(pkg)")
+  echo "> ctx = compile.package(pkg)"
   let ctx = Context(..new_ctx, ffi: ffi.build)
   let ctx = compile.package(ctx, pkg)
   case list.length(errors) {
@@ -77,7 +82,7 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   })
   io.println("")
 
-  io.println("> stmts = load.module(filename)")
+  echo "> stmts = load.module(filename)"
   let #(stmts, errors) = load.module(filename)
   case list.length(errors) {
     0 -> Nil
@@ -87,7 +92,6 @@ pub fn debug_file(root: String, filename: String, width: Int) {
       io.println("")
     }
   }
-
   let definitions = discover.definitions(stmts)
   io.println(
     "  definitions: " <> int.to_string(list.length(definitions)) <> " length",
@@ -95,19 +99,36 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   list.map(definitions, fn(name) { io.println("  - " <> name) })
   io.println("")
 
-  io.println("> test_defs = discover.tests(stmts)")
+  echo "> test_defs = discover.tests(stmts)"
   let test_defs = discover.tests(stmts)
   let test_names = list.map(test_defs, fn(tst) { "> " <> tst.0 })
   io.println("  total tests: " <> int.to_string(list.length(test_defs)))
   list.map(test_names, fn(name) { io.println("  - " <> name) })
   io.println("")
 
-  io.println("> mod_expr = desugar.module(stmts)")
-  let mod_expr = desugar.module(#(filename, stmts), test_names)
+  echo "> mod_expr = desugar.module(stmts, definitions + test_names)"
+  let exports = list.append(definitions, test_names)
+  let mod_expr = desugar.module(#(filename, stmts), exports)
   io.println(core_format.expr(mod_expr, width, 2))
   io.println("")
 
-  io.println("> tests = compile.tests(stmts)")
+  echo "> definition types"
+  list.map(definitions, fn(name) {
+    let def_expr = core.dot(mod_expr, name, s)
+    let #(term, def_type, ctx) = infer(ctx, def_expr)
+    let def_type = resolve.value(ctx.ffi, ctx.subst, ctx.env, def_type)
+    let names = list.map(ctx.types, fn(t) { t.0 })
+    io.println(
+      "- "
+      <> name
+      <> ": "
+      // <> core_format.value(ctx.ffi, names, def_type, width, 2),
+      <> core_format.term(names, term, width, 2),
+    )
+  })
+  io.println("")
+
+  echo "> tests = compile.tests(stmts)"
   let #(tests, ctx) = compile.tests(ctx, [#(filename, stmts)])
   case list.length(ctx.errors) {
     0 -> Nil

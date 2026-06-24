@@ -1,7 +1,7 @@
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 import gleam/result.{try}
 import gleam/set
 import gleam/string
@@ -16,6 +16,18 @@ import tao/ast.{
 } as tao
 import tao/error.{type Error} as e
 
+const reserved = [
+  "import",
+  "as",
+  "fn",
+  "let",
+  "mut",
+  "match",
+  "if",
+  "else",
+  "error",
+]
+
 pub type Token {
   // Keywords
   KwImport
@@ -24,6 +36,8 @@ pub type Token {
   KwLet
   KwMut
   KwMatch
+  KwIf
+  KwElse
   KwError
 
   // Values
@@ -108,7 +122,6 @@ pub fn statements(file: String, source: String) -> Result(List(Stmt), Error) {
 }
 
 fn lexer() -> Lexer(Token, Nil) {
-  let reserved = ["import", "as", "fn", "let", "mut", "match", "error"]
   lexer.simple([
     // Keywords
     lexer.keyword("import", "\\W", KwImport),
@@ -256,11 +269,7 @@ fn fn_overload(
   use choices <- do(
     nibble.many({
       use _ <- do(nibble.token(Pipe))
-      use opt_spread <- do(nibble.optional(nibble.token(Spread)))
-      let expand = case opt_spread {
-        Some(_) -> True
-        None -> False
-      }
+      use start <- do(get_span(file))
       use opt_module <- do(
         nibble.optional({
           use mod <- do(take_var())
@@ -269,7 +278,13 @@ fn fn_overload(
         }),
       )
       use name <- do(take_var())
-      return(tao.OverloadChoice(expand, opt_module, name))
+      use _ <- do(nibble.token(LParen))
+      use args <- do(arguments_pat(file))
+      use _ <- do(nibble.token(RParen))
+      use opt_guard <- do(nibble.optional(guard(file)))
+      use end <- do(get_span(file))
+      let s = span.merge(start, end)
+      return(tao.OverloadChoice(opt_module, name, args, opt_guard, s))
     }),
   )
   use _ <- do(nibble.token(RBrace))
@@ -446,9 +461,22 @@ fn match(file: String) -> Parser(Expr, Token, Nil) {
 fn match_case(file: String) -> Parser(Case, Token, Nil) {
   use _ <- do(nibble.token(Pipe))
   use pat <- do(pattern(file))
+  use opt_guard <- do(nibble.optional(guard(file)))
   use _ <- do(nibble.token(FatArrow))
   use body <- do(expr(file))
-  return(tao.Case(pat, body))
+  return(tao.Case(pat, opt_guard, body))
+}
+
+fn guard(file: String) -> Parser(#(Expr, Option(Pattern)), Token, Nil) {
+  use _ <- do(nibble.token(KwIf))
+  use cond <- do(expr(file))
+  use opt_pat <- do(
+    nibble.optional({
+      use _ <- do(nibble.token(KwMatch))
+      pattern(file)
+    }),
+  )
+  return(#(cond, opt_pat))
 }
 
 fn take_var() -> Parser(String, Token, Nil) {

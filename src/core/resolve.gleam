@@ -101,8 +101,9 @@ pub fn value(ffi: FFI, subst: Subst, env: Env, val: Value) -> Value {
   |> eval(ffi, env, _)
 }
 
-pub fn error(ffi: FFI, subst: Subst, env: Env, error: Error) -> Error {
-  todo
+pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
+  // todo
+  err
 }
 
 fn resolve_case(ffi: FFI, subst: Subst, size: Int, c: Case) -> Case {

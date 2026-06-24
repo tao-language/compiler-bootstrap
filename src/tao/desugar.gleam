@@ -1,12 +1,12 @@
 import core/ast as core
+import core/format
 import filepath
 import gleam/int
+import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import gleam/string
 import syntax/span.{type Span, Span}
 import tao/ast.{type Case, type Module, type Pattern, type Stmt} as tao
-import tao/discover
 
 pub type BlockCtx {
   BlockCtx(
@@ -21,6 +21,12 @@ pub const new_block_ctx = BlockCtx(
   on_continue: None,
   mutables: [],
 )
+
+pub fn module(mod: Module, exports: List(String)) -> core.Expr {
+  let #(mod_name, stmts) = mod
+  let return_expr = core.rcd_vars(exports, Span(mod_name, 0, 0, 0, 0))
+  statement_list(new_block_ctx, stmts, return_expr)
+}
 
 pub fn expr(e: tao.Expr) -> core.Expr {
   case e.data {
@@ -86,7 +92,7 @@ fn opt_expr(opt_expr: Option(tao.Expr)) -> Option(core.Expr) {
 }
 
 fn arguments(args: List(#(String, tao.Expr))) -> core.Expr {
-  let core_params =
+  let core_args =
     core.Rcd(
       list.index_map(args, fn(named_arg, index) {
         let #(name, arg) = named_arg
@@ -98,7 +104,23 @@ fn arguments(args: List(#(String, tao.Expr))) -> core.Expr {
       }),
     )
   // TODO: span.merge(first_span, last_span)
-  core.Expr(core_params, Span("", 0, 0, 0, 0))
+  core.Expr(core_args, Span("TODO: get span from args", 0, 0, 0, 0))
+}
+
+fn arguments_pat(args: List(#(String, tao.Pattern))) -> core.Pattern {
+  let core_args =
+    core.PRcd(
+      list.index_map(args, fn(named_arg, index) {
+        let #(name, arg) = named_arg
+        let name = case name {
+          "" -> int.to_string(index + 1)
+          _ -> name
+        }
+        #(name, pattern(arg))
+      }),
+    )
+  // TODO: span.merge(first_span, last_span)
+  core.Pattern(core_args, Span("TODO: get span from args", 0, 0, 0, 0))
 }
 
 fn function(
@@ -127,9 +149,9 @@ fn function(
           let #(p, _) = param
           #(int.to_string(index + 1), p)
         })
-      let unpack = tao.Case(tao.prcd(bindings, args_span), body)
-      let core_body =
-        expr(tao.match(tao.var(param_name, args_span), [unpack], span))
+      let unpack = tao.Case(tao.prcd(bindings, args_span), None, body)
+      let match_expr = tao.match(tao.var(param_name, args_span), [unpack], span)
+      let core_body = expr(match_expr)
       let core_body = case opt_returns {
         None -> core_body
         Some(returns) -> {
@@ -174,16 +196,29 @@ fn case_list(cases: List(tao.Case)) -> List(core.Case) {
 
 fn case_(c: tao.Case) -> core.Case {
   case c {
-    tao.Case(p, body) -> core.Case(pattern(p), None, expr(body))
-    tao.CaseIf(p, guard, body) -> {
-      let guard = tao.ann(guard, tao.bool(guard.span), guard.span)
-      let guard_pat = tao.pctr("True", [], guard.span)
-      case_(tao.CaseIfMatch(p, #(guard, guard_pat), body))
+    tao.Case(pat, opt_guard, body) -> {
+      let core_pat = pattern(pat)
+      let core_guard = option.map(opt_guard, case_guard)
+      let core_body = expr(body)
+      core.Case(core_pat, core_guard, core_body)
     }
-    tao.CaseIfMatch(p, #(guard_expr, guard_pattern), body) -> {
-      let guard_tm = expr(guard_expr)
-      let guard_pat = pattern(guard_pattern)
-      core.Case(pattern(p), Some(#(guard_tm, guard_pat)), expr(body))
+  }
+}
+
+fn case_guard(
+  guard: #(tao.Expr, Option(tao.Pattern)),
+) -> #(core.Expr, core.Pattern) {
+  case guard {
+    #(cond, None) -> {
+      let cond = tao.ann(cond, tao.bool(cond.span), cond.span)
+      let core_cond = expr(cond)
+      let core_expect = core.pctr0("True", cond.span)
+      #(core_cond, core_expect)
+    }
+    #(cond, Some(expect)) -> {
+      let core_cond = expr(cond)
+      let core_expect = pattern(expect)
+      #(core_cond, core_expect)
     }
   }
 }
@@ -210,6 +245,9 @@ fn pattern(p: Pattern) -> core.Pattern {
         })
       core.prcd_t(core_fields, p.span)
     }
+    tao.PCtr("Int", []) -> core.pint_t(p.span)
+    tao.PCtr("Float", []) -> core.pfloat_t(p.span)
+    tao.PCtr("I8", []) -> core.pi8(p.span)
     tao.PCtr(tag, args) -> {
       let core_fields =
         list.map(args, fn(field) {
@@ -221,27 +259,25 @@ fn pattern(p: Pattern) -> core.Pattern {
   }
 }
 
-pub fn module(mod: Module, exports: List(String)) -> core.Expr {
-  let #(name, stmts) = mod
-  let return_expr = core.rcd_vars(exports, Span(name, 0, 0, 0, 0))
-  statement_list(new_block_ctx, stmts, return_expr)
-}
-
 pub fn statement_list(
-  ctx: BlockCtx,
+  block_ctx: BlockCtx,
   stmts: List(Stmt),
   return: core.Expr,
 ) -> core.Expr {
   case stmts {
     [] -> return
     [stmt, ..stmts] -> {
-      let next = statement_list(ctx, stmts, return)
-      statement(ctx, stmt, next)
+      let next = statement_list(block_ctx, stmts, return)
+      statement(block_ctx, stmt, next)
     }
   }
 }
 
-pub fn statement(ctx: BlockCtx, stmt: Stmt, next: core.Expr) -> core.Expr {
+pub fn statement(
+  block_ctx: BlockCtx,
+  stmt: Stmt,
+  next: core.Expr,
+) -> core.Expr {
   case stmt.data {
     tao.Import(path, opt_alias, []) -> {
       let alias = case opt_alias {
@@ -259,7 +295,7 @@ pub fn statement(ctx: BlockCtx, stmt: Stmt, next: core.Expr) -> core.Expr {
       }
       let access = core.dot(core.var("@" <> path, stmt.span), name, stmt.span)
       let next = core.let_var(#(name_alias, None, access), next, stmt.span)
-      statement(ctx, stmt, next)
+      statement(block_ctx, stmt, next)
     }
     tao.Let(p, opt_type, value) -> {
       let core_pattern = pattern(p)
@@ -274,8 +310,15 @@ pub fn statement(ctx: BlockCtx, stmt: Stmt, next: core.Expr) -> core.Expr {
         function(Some(name), implicits, params, returns, body, stmt.span)
       core.let_var(#(name, None, core_fn), next, stmt.span)
     }
-    tao.FnOverload(name, _) ->
-      core.let_var(#(name, None, core.hole(None, stmt.span)), next, stmt.span)
+    tao.FnOverload(name, choices) -> {
+      let s = stmt.span
+      let param1 = #("$type", Some(core.typ(0, s)))
+      let body =
+        list.map(choices, overload_choice)
+        |> core.match(core.var("$type", s), _, s)
+      let core_expr = core.lam_implicit(param1, body, s)
+      core.let_var(#(name, None, core_expr), next, s)
+    }
     tao.Test(name, arg, expect) -> {
       let core_arg = expr(arg)
       let core_cases = [
@@ -300,6 +343,17 @@ pub fn statement(ctx: BlockCtx, stmt: Stmt, next: core.Expr) -> core.Expr {
     tao.Break -> todo
     tao.Continue -> todo
   }
+}
+
+fn overload_choice(choice: tao.OverloadChoice) -> core.Case {
+  let tao.OverloadChoice(opt_mod_name, name, args, opt_guard, s) = choice
+  let core_pat = arguments_pat(args)
+  let core_guard = option.map(opt_guard, case_guard)
+  let core_body = case opt_mod_name {
+    Some(mod_name) -> core.dot(core.var(mod_name, s), name, s)
+    None -> core.var(name, s)
+  }
+  core.Case(core_pat, core_guard, core_body)
 }
 
 fn rcd_fields(fields: List(#(String, tao.Expr))) -> List(#(String, core.Expr)) {

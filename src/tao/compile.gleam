@@ -1,12 +1,13 @@
 import core/context.{type Context, Context}
 import core/eval.{eval}
-import core/infer.{infer}
+import core/infer.{check, infer}
 import core/resolve
 import core/term.{type Term} as tm
 import core/value as v
 import gleam/list
 import gleam/option.{Some}
 import gleam/string
+import syntax/span.{Span}
 import tao/ast.{type Expr, type Module, type Pattern, type Stmt}
 import tao/desugar
 import tao/discover
@@ -63,13 +64,12 @@ fn infer_modules(
     [#(name, value_id, type_id, stmts), ..mod_holes] -> {
       let mod_expr =
         discover.definitions(stmts)
-        |> list.filter(fn(name) { !string.starts_with(name, "_") })
         |> desugar.module(#(name, stmts), _)
-      let #(defs_term, defs_type, ctx) = infer(ctx, mod_expr)
+      let #(defs_term, _, ctx) =
+        check(ctx, mod_expr, #(v.hole(type_id), mod_expr.span))
       let ctx =
         Context(..ctx, subst: [
           #(value_id, eval(ctx.ffi, ctx.env, defs_term)),
-          #(type_id, defs_type),
           ..ctx.subst
         ])
       infer_modules(ctx, mod_holes)
