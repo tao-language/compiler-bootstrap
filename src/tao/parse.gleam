@@ -289,6 +289,7 @@ fn test_(file: String) -> Parser(Stmt, Token, Nil) {
 
 fn pattern(file: String) -> Parser(Pattern, Token, Nil) {
   nibble.one_of([
+    pfloat(file),
     pint(file),
     pvar(file),
     pctr(file),
@@ -300,6 +301,13 @@ fn pint(file: String) -> Parser(Pattern, Token, Nil) {
   use num <- do(take_int())
   use end <- do(get_span(file))
   return(tao.pint(num, span.merge(start, end)))
+}
+
+fn pfloat(file: String) -> Parser(Pattern, Token, Nil) {
+  use start <- do(get_span(file))
+  use num <- do(take_float())
+  use end <- do(get_span(file))
+  return(tao.pfloat(num, span.merge(start, end)))
 }
 
 fn pvar(file: String) -> Parser(Pattern, Token, Nil) {
@@ -315,7 +323,14 @@ fn pvar(file: String) -> Parser(Pattern, Token, Nil) {
 fn pctr(file: String) -> Parser(Pattern, Token, Nil) {
   use start <- do(get_span(file))
   use name <- do(take_tag())
-  use opt_args <- do(nibble.optional(arguments_pat(file)))
+  use opt_args <- do(
+    nibble.optional({
+      use _ <- do(nibble.token(LParen))
+      use args <- do(arguments_pat(file))
+      use _ <- do(nibble.token(RParen))
+      return(args)
+    }),
+  )
   let args = option.unwrap(opt_args, [])
   use end <- do(get_span(file))
   return(tao.pctr(name, args, span.merge(start, end)))
@@ -341,8 +356,8 @@ fn atom(file: String) -> Parser(Expr, Token, Nil) {
   use expr <- do(
     nibble.one_of([
       hole(file),
-      int(file),
       float(file),
+      int(file),
       var(file),
       ctr(file),
     ]),
