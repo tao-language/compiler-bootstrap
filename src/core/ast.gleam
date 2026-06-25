@@ -119,7 +119,8 @@ pub fn contains(term: Expr, name: String) -> Bool {
     App(_, fun, arg) -> contains(fun, name) || contains(arg, name)
     Match(arg, cases) ->
       contains(arg, name) || list.any(cases, contains_case(_, name))
-    Call(name, returns, args) -> todo
+    Call(_, returns, args) ->
+      contains(returns, name) || list.any(args, contains(_, name))
     TypeDef(type_def) -> todo
     _ -> False
   }

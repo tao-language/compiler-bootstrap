@@ -130,9 +130,11 @@ pub fn debug_file(root: String, filename: String, width: Int) {
 
   echo "> tests = compile.tests(stmts)"
   let #(tests, ctx) = compile.tests(ctx, [#(filename, stmts)])
-  case list.length(ctx.errors) {
-    0 -> Nil
-    n -> {
+  // case list.unique(ctx.errors) {
+  case ctx.errors {
+    [] -> Nil
+    errors -> {
+      let n = list.length(errors)
       io.println_error("---- ERRORS (" <> int.to_string(n) <> ") ----")
       list.map(ctx.errors, fn(err) {
         let msg = error.display(err)

@@ -36,7 +36,7 @@ pub fn expr(e: tao.Expr) -> core.Expr {
     tao.Ctr("Int", []) -> core.int_t(e.span)
     tao.Ctr("Float", []) -> core.float_t(e.span)
     tao.Ctr(tag, args) -> {
-      let core_args = arguments(args)
+      let core_args = arguments(args, e.span)
       core.ctr(tag, core_args, e.span)
     }
     tao.Rcd(fields) -> {
@@ -91,7 +91,7 @@ fn opt_expr(opt_expr: Option(tao.Expr)) -> Option(core.Expr) {
   option.map(opt_expr, expr)
 }
 
-fn arguments(args: List(#(String, tao.Expr))) -> core.Expr {
+fn arguments(args: List(#(String, tao.Expr)), span: Span) -> core.Expr {
   let core_args =
     core.Rcd(
       list.index_map(args, fn(named_arg, index) {
@@ -104,10 +104,13 @@ fn arguments(args: List(#(String, tao.Expr))) -> core.Expr {
       }),
     )
   // TODO: span.merge(first_span, last_span)
-  core.Expr(core_args, Span("TODO: get span from args", 0, 0, 0, 0))
+  core.Expr(core_args, span)
 }
 
-fn arguments_pat(args: List(#(String, tao.Pattern))) -> core.Pattern {
+fn arguments_pat(
+  args: List(#(String, tao.Pattern)),
+  span: Span,
+) -> core.Pattern {
   let core_args =
     core.PRcd(
       list.index_map(args, fn(named_arg, index) {
@@ -120,7 +123,7 @@ fn arguments_pat(args: List(#(String, tao.Pattern))) -> core.Pattern {
       }),
     )
   // TODO: span.merge(first_span, last_span)
-  core.Pattern(core_args, Span("TODO: get span from args", 0, 0, 0, 0))
+  core.Pattern(core_args, span)
 }
 
 fn function(
@@ -186,7 +189,7 @@ fn application(
   span: Span,
 ) -> core.Expr {
   let core_fun = expr(fun)
-  let core_args = arguments(args)
+  let core_args = arguments(args, fun.span)
   core.Expr(core.App(implicit, core_fun, core_args), span)
 }
 
@@ -312,7 +315,7 @@ pub fn statement(
     }
     tao.FnOverload(name, choices) -> {
       let s = stmt.span
-      let param1 = #("$type", Some(core.typ(0, s)))
+      let param1 = #("$type", None)
       let body =
         list.map(choices, overload_choice)
         |> core.match(core.var("$type", s), _, s)
@@ -347,7 +350,7 @@ pub fn statement(
 
 fn overload_choice(choice: tao.OverloadChoice) -> core.Case {
   let tao.OverloadChoice(opt_mod_name, name, args, opt_guard, s) = choice
-  let core_pat = arguments_pat(args)
+  let core_pat = arguments_pat(args, s)
   let core_guard = option.map(opt_guard, case_guard)
   let core_body = case opt_mod_name {
     Some(mod_name) -> core.dot(core.var(mod_name, s), name, s)

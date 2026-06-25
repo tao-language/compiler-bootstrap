@@ -358,6 +358,25 @@ fn infer_app_args(
 ) -> #(Term, Value, Context) {
   let #(fun, fun_type, fun_span) = fun_typed
   case unwrap(ctx.ffi, ctx.subst, fun_type) {
+    // Hole expansion
+    v.Neut(v.NHole(id)) -> {
+      let #(id, ctx) = case id >= 0 {
+        True -> #(id, ctx)
+        False -> context.new_hole(ctx)
+      }
+      let #(body_type_id, ctx) = context.new_hole(ctx)
+      let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
+      let expected =
+        v.Pi([], app_implicit, #("", arg_type), tm.Hole(body_type_id))
+      let ctx = unify(ctx, #(v.hole(id), fun_span), #(expected, fun_span))
+      let type_ = unwrap(ctx.ffi, ctx.subst, v.hole(body_type_id))
+      #(tm.App(app_implicit, fun, arg), type_, ctx)
+    }
+    v.Neut(neut) -> {
+      echo neut
+      todo as "TODO: infer App on Neut function"
+    }
+    // Function application
     v.Pi(pi_env, pi_implicit, #(_, domain_val), codomain) ->
       case pi_implicit, app_implicit {
         // pi_implicit, app_implicit | pi_explicit, app_explicit
@@ -365,18 +384,10 @@ fn infer_app_args(
           // Matching implicit/explicit argument application
           // When implicit arg matches implicit param, the result is explicit
           // (the implicitness has been resolved)
-          let result_implicit = case pi_implicit {
-            True -> False
-            False -> False
-          }
           let #(arg, _, ctx) = check(ctx, arg_ast, #(domain_val, fun_span))
           let pi_env = [eval(ctx.ffi, ctx.env, arg), ..pi_env]
           let type_ = eval(ctx.ffi, pi_env, codomain)
-          #(
-            tm.App(result_implicit, fun, arg),
-            unwrap(ctx.ffi, ctx.subst, type_),
-            ctx,
-          )
+          #(tm.App(False, fun, arg), unwrap(ctx.ffi, ctx.subst, type_), ctx)
         }
         // pi_implicit, app_explicit
         True, False as app_explicit -> {
@@ -398,20 +409,6 @@ fn infer_app_args(
           #(tm.Err, v.Err, context.with_err(ctx, error))
         }
       }
-    // Hole expansion
-    v.Neut(v.NHole(id)) -> {
-      let #(id, ctx) = case id >= 0 {
-        True -> #(id, ctx)
-        False -> context.new_hole(ctx)
-      }
-      let #(body_type_id, ctx) = context.new_hole(ctx)
-      let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
-      let expected =
-        v.Pi([], app_implicit, #("", arg_type), tm.Hole(body_type_id))
-      let ctx = unify(ctx, #(v.hole(id), fun_span), #(expected, fun_span))
-      let type_ = unwrap(ctx.ffi, ctx.subst, v.hole(body_type_id))
-      #(tm.App(app_implicit, fun, arg), type_, ctx)
-    }
     // Not a function type
     _ -> {
       // Still infer the arg to get as much additional information as possible in
