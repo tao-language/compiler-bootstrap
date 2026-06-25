@@ -8,7 +8,7 @@ pub fn definitions(stmts: List(Stmt)) -> List(String) {
       tao.Let(pattern, ..) -> definitions_pattern(pattern)
       tao.LetMut(name, opt_type, value) -> todo
       tao.Mut(name, value) -> todo
-      tao.Test(..) -> []
+      tao.Test(name, ..) -> [">>> " <> name]
       tao.FnDef(name, ..) -> [name]
       tao.FnOverload(name, ..) -> [name]
       tao.TypeDef(type_def) -> todo

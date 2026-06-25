@@ -226,7 +226,7 @@ fn case_guard(
   }
 }
 
-fn pattern(p: Pattern) -> core.Pattern {
+pub fn pattern(p: Pattern) -> core.Pattern {
   case p.data {
     tao.PAny -> core.pany(p.span)
     tao.PVar(name) -> core.pvar(name, p.span)
@@ -337,7 +337,7 @@ pub fn statement(
         ),
       ]
       let core_test = core.match(core_arg, core_cases, stmt.span)
-      core.let_var(#("> " <> name, None, core_test), next, stmt.span)
+      core.let_var(#(">>> " <> name, None, core_test), next, stmt.span)
     }
     tao.TypeDef(type_def) -> todo
     tao.For(iterator, range, body) -> todo

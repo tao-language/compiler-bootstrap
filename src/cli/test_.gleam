@@ -38,7 +38,8 @@ pub fn test_(
       }
     })
     |> load.package
-  let #(tests, ctx) = compile.tests(ctx, tests_pkg)
+  // let #(tests, ctx) = compile.tests(ctx, tests_pkg)
+  let tests = compile.tests(tests_pkg)
 
   // Filter tests by patterns.
   let assert Ok(pattern_re) = string.join(patterns, "|") |> regexp.from_string

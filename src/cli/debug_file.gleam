@@ -45,41 +45,45 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   echo "> ctx = compile.package(pkg)"
   let ctx = Context(..new_ctx, ffi: ffi.build)
   let ctx = compile.package(ctx, pkg)
-  case list.length(errors) {
-    0 -> Nil
-    n -> {
-      io.println("--- " <> int.to_string(n) <> " errors ---")
-      todo as "print errors"
-      io.println("")
+  case ctx.errors {
+    [] -> Nil
+    errors -> {
+      let n = list.length(errors)
+      io.println_error("---- BUILD ERRORS (" <> int.to_string(n) <> ") ----")
+      list.map(ctx.errors, fn(err) {
+        let msg = error.display(ctx.ffi, ctx.types, err)
+        io.println_error(msg)
+      })
+      io.println_error("---- BUILD ERRORS END ----")
     }
   }
   let names = list.map(ctx.types, fn(t) { t.0 })
-  io.println("  env:   " <> int.to_string(list.length(ctx.env)) <> " length")
-  io.println("  types: " <> int.to_string(list.length(ctx.types)) <> " length")
+  io.println("ffi: " <> int.to_string(list.length(ctx.ffi)) <> " length")
+  list.map(ctx.ffi, fn(entry) {
+    let #(name, _) = entry
+    io.println("- " <> name)
+  })
+  io.println("env:   " <> int.to_string(list.length(ctx.env)) <> " length")
+  io.println("types: " <> int.to_string(list.length(ctx.types)) <> " length")
   list.map(ctx.types, fn(entry) {
     let #(name, type_) = entry
     io.println(
-      "  - \""
+      "- \""
       <> name
       <> "\": "
       <> core_format.value(ctx.ffi, names, type_, width, 2),
     )
   })
-  io.println("  subst: " <> int.to_string(list.length(ctx.subst)) <> " length")
-  list.map(ctx.subst, fn(entry) {
-    let #(id, value) = entry
-    io.println(
-      "  - "
-      <> int.to_string(id)
-      <> ": "
-      <> core_format.value(ctx.ffi, names, value, width, 2),
-    )
-  })
-  io.println("  ffi:   " <> int.to_string(list.length(ctx.ffi)) <> " length")
-  list.map(ctx.ffi, fn(entry) {
-    let #(name, _) = entry
-    io.println("  - " <> name)
-  })
+  // io.println("subst: " <> int.to_string(list.length(ctx.subst)) <> " length")
+  // list.map(ctx.subst, fn(entry) {
+  //   let #(id, value) = entry
+  //   io.println(
+  //     "  - "
+  //     <> int.to_string(id)
+  //     <> ": "
+  //     <> core_format.value(ctx.ffi, names, value, width, 2),
+  //   )
+  // })
   io.println("")
 
   echo "> stmts = load.module(filename)"
@@ -94,66 +98,53 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   }
   let definitions = discover.definitions(stmts)
   io.println(
-    "  definitions: " <> int.to_string(list.length(definitions)) <> " length",
+    "definitions: " <> int.to_string(list.length(definitions)) <> " length",
   )
-  list.map(definitions, fn(name) { io.println("  - " <> name) })
+  list.map(definitions, fn(name) { io.println("- " <> name) })
   io.println("")
 
-  echo "> test_defs = discover.tests(stmts)"
-  let test_defs = discover.tests(stmts)
-  let test_names = list.map(test_defs, fn(tst) { "> " <> tst.0 })
-  io.println("  total tests: " <> int.to_string(list.length(test_defs)))
-  list.map(test_names, fn(name) { io.println("  - " <> name) })
-  io.println("")
-
-  echo "> mod_expr = desugar.module(stmts, definitions + test_names)"
-  let exports = list.append(definitions, test_names)
-  let mod_expr = desugar.module(#(filename, stmts), exports)
+  echo "> mod_expr = desugar.module(stmts, definitions)"
+  let mod_expr = desugar.module(#(filename, stmts), definitions)
   io.println(core_format.expr(mod_expr, width, 2))
   io.println("")
 
   echo "> definition types"
   list.map(definitions, fn(name) {
     let def_expr = core.dot(mod_expr, name, s)
-    let #(term, def_type, ctx) = infer(ctx, def_expr)
+    // DO NOT update the ctx, it's already been fully resolved.
+    // Updating the context will cause duplicate errors.
+    // This is only to debug/view the definition types.
+    let #(term, def_type, _) = infer(ctx, def_expr)
     let def_type = resolve.value(ctx.ffi, ctx.subst, ctx.env, def_type)
-    let names = list.map(ctx.types, fn(t) { t.0 })
+    let names = list.map(ctx.types, fn(entry) { entry.0 })
+    io.println("name: " <> name)
     io.println(
-      "- "
-      <> name
-      <> ": "
-      // <> core_format.value(ctx.ffi, names, def_type, width, 2),
-      <> core_format.term(names, term, width, 2),
+      "type: " <> core_format.value(ctx.ffi, names, def_type, width, 2),
     )
+    io.println("value: " <> core_format.term(names, term, width, 2))
+    io.println("")
   })
-  io.println("")
 
   echo "> tests = compile.tests(stmts)"
-  let #(tests, ctx) = compile.tests(ctx, [#(filename, stmts)])
-  // case list.unique(ctx.errors) {
-  case ctx.errors {
-    [] -> Nil
-    errors -> {
-      let n = list.length(errors)
-      io.println_error("---- ERRORS (" <> int.to_string(n) <> ") ----")
-      list.map(ctx.errors, fn(err) {
-        let msg = error.display(ctx.ffi, ctx.types, err)
-        io.println_error(msg)
-      })
-      io.println_error("---- ERRORS END ----")
-    }
-  }
-  let names = list.map(ctx.types, fn(t) { t.0 })
+  let tests = compile.tests([#(filename, stmts)])
+  let names = list.map(ctx.types, fn(entry) { entry.0 })
   list.map(tests, fn(t) {
+    let core_expr = desugar.expr(t.expr)
+    let core_expect = desugar.pattern(t.expect)
+    // DO NOT update the ctx, it's already been fully resolved.
+    // Updating the context will cause duplicate errors.
+    // This is only to debug/view the definition types.
+    let #(_, def_type, _) = infer(ctx, core_expr)
     let value = eval(ctx.ffi, ctx.env, t.term)
+    io.println("/// " <> t.name)
+    io.println(">>> " <> core_format.expr(core_expr, width, 2))
     io.println(
-      "  - "
-      <> t.name
-      <> ": "
-      <> core_format.value(ctx.ffi, names, value, width, 2),
+      "type:   " <> core_format.value(ctx.ffi, names, def_type, width, 2),
     )
+    io.println("expect: " <> core_format.pattern(core_expect, width, 2))
+    io.println("got:    " <> core_format.value(ctx.ffi, names, value, width, 2))
+    io.println("")
   })
-  io.println("")
 
   io.println("---- SUMMARY ----")
   io.println(int.to_string(list.length(ctx.errors)) <> " build errors")

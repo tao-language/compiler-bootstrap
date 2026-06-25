@@ -36,6 +36,11 @@ pub fn value(
   |> term(names, _, width, indent)
 }
 
+pub fn pattern(p: Pattern, width: Int, indent: Int) -> String {
+  doc_pattern(p, indent)
+  |> doc.to_string(width)
+}
+
 fn doc_text(text: String) -> Document {
   doc.from_string(text)
 }

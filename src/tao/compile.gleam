@@ -1,3 +1,4 @@
+import core/ast as core
 import core/context.{type Context, Context}
 import core/eval.{eval}
 import core/infer.{check, infer}
@@ -19,23 +20,17 @@ pub fn package(ctx: Context, mods: List(Module)) -> Context {
   resolve.context(ctx)
 }
 
-pub fn tests(ctx: Context, mods: List(Module)) -> #(List(TestDef), Context) {
-  case mods {
-    [] -> #([], ctx)
-    [#(name, stmts), ..mods] -> {
-      let test_defs = discover.tests(stmts)
-      let test_names = list.map(test_defs, fn(tst) { "> " <> tst.0 })
-      let mod_expr = desugar.module(#(name, stmts), test_names)
-      let #(mod_term, _, ctx) = infer(ctx, mod_expr)
-      let mod_tests =
-        list.map(test_defs, fn(tst) {
-          let #(name, expr, expect) = tst
-          TestDef(name, tm.dot(mod_term, "> " <> tst.0), expr, expect)
-        })
-      let #(tail_tests, ctx) = tests(ctx, mods)
-      #(list.append(mod_tests, tail_tests), ctx)
-    }
-  }
+pub fn tests(mods: List(Module)) -> List(TestDef) {
+  list.index_map(mods, fn(mod, mod_index) {
+    let #(_, stmts) = mod
+    let tm_mod = tm.Var(mod_index)
+    let mod_tests = discover.tests(stmts)
+    list.map(mod_tests, fn(t) {
+      let #(test_name, expr, expect) = t
+      TestDef(test_name, tm.dot(tm_mod, "> " <> test_name), expr, expect)
+    })
+  })
+  |> list.flatten
 }
 
 fn define_modules(
