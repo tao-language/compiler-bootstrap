@@ -137,8 +137,8 @@ pub fn debug_file(root: String, filename: String, width: Int) {
       let n = list.length(errors)
       io.println_error("---- ERRORS (" <> int.to_string(n) <> ") ----")
       list.map(ctx.errors, fn(err) {
-        let msg = error.display(err)
-        io.println_error("- " <> msg)
+        let msg = error.display(ctx.ffi, ctx.types, err)
+        io.println_error(msg)
       })
       io.println_error("---- ERRORS END ----")
     }

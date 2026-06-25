@@ -536,7 +536,13 @@ fn check_pattern(
   expected: #(Value, Span),
 ) -> #(tm.Pattern, Context) {
   let #(pattern, inferred, ctx) = infer_pattern(ctx, pattern_ast)
-  let ctx = unify(ctx, #(inferred, pattern_ast.span), expected)
+  let ctx = case expected {
+    // Don't constrain the expected type when it's neutral —
+    // different match cases may have different pattern types
+    // for function overloading.
+    #(v.Neut(_), _) -> ctx
+    _ -> unify(ctx, #(inferred, pattern_ast.span), expected)
+  }
   #(pattern, ctx)
 }
 

@@ -76,8 +76,10 @@ fn unify_concrete_neut(
   let #(value, s1) = a
   let #(neut, s2) = b
   case neut {
-    v.NMatch(env, arg, cases) ->
-      unify_concrete_neut_cases(ctx, env, arg, a, #(cases, s2))
+    // Don't constrain neutral matches, each case may 
+    // have different pattern types for function overloading.
+    v.NMatch(env, arg, cases) -> ctx
+    // v.NMatch(env, arg, cases) -> unify_concrete_neut_cases(ctx, env, arg, a, #(cases, s2))
     v.NCall(_, returns, _) -> unify(ctx, #(value, s1), #(returns, s2))
     _ -> with_err(ctx, e.TypeMismatch(#(value, s1), #(v.Neut(neut), s2)))
   }

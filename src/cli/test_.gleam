@@ -57,7 +57,7 @@ pub fn test_(
       let header = "------ ERRORS (" <> int.to_string(n) <> ") ------"
       io.println_error(header)
       list.map(errors, fn(err) {
-        let msg = error.display(err)
+        let msg = error.display(ctx.ffi, ctx.types, err)
         io.println_error(msg)
       })
       io.println_error(string.repeat("-", string.length(header)))
