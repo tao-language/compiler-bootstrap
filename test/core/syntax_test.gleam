@@ -95,18 +95,8 @@ pub fn roundtrip_rcd_single_test() {
   assert expr(parse(source), 80, 2) == source
 }
 
-pub fn roundtrip_rcdt_empty_test() {
-  let source = "%{}"
-  assert expr(parse(source), 80, 2) == source
-}
-
-pub fn roundtrip_rcdt_single_test() {
-  let source = "%{a: x}"
-  assert expr(parse(source), 80, 2) == source
-}
-
-pub fn roundtrip_rcdt_with_default_test() {
-  let source = "%{a: x = 42}"
+pub fn roundtrip_rcd_with_default_test() {
+  let source = "{a: x = 42}"
   assert expr(parse(source), 80, 2) == source
 }
 

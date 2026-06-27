@@ -166,18 +166,18 @@ pub fn parse_rcd_test() {
   assert parse("{}") == Ok(ast.rcd([], s(1, 1, 1, 3)))
   assert parse("{a: x}")
     == Ok(ast.rcd_values([#("a", ast.var("x", s(1, 3, 1, 6)))], s(1, 1, 1, 7)))
-  assert parse("%{a: x = 42}")
+  assert parse("{a: x = 42}")
     == Ok(ast.rcd(
       [
         #(
           "a",
           #(
-            Some(ast.var("x", s(1, 4, 1, 7))),
-            Some(ast.int(42, s(1, 8, 1, 12))),
+            Some(ast.var("x", s(1, 3, 1, 6))),
+            Some(ast.int(42, s(1, 7, 1, 11))),
           ),
         ),
       ],
-      s(1, 1, 1, 13),
+      s(1, 1, 1, 12),
     ))
 }
 

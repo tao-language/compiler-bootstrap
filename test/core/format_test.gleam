@@ -66,19 +66,19 @@ pub fn format_ctr_test() {
 }
 
 pub fn format_rcd_empty_test() {
-  assert expr(ast.rcd([], s), 80, 2) == "%{}"
+  assert expr(ast.rcd([], s), 80, 2) == "{}"
 }
 
 pub fn format_rcd_single_test() {
   let fields = [#("a", #(Some(ast.var("x", s)), None))]
-  assert expr(ast.rcd(fields, s), 80, 2) == "%{a: x}"
+  assert expr(ast.rcd(fields, s), 80, 2) == "{a: x}"
 }
 
 pub fn format_rcd_with_default_test() {
   let fields = [
     #("a", #(Some(ast.var("x", s)), Some(ast.int(42, s)))),
   ]
-  assert expr(ast.rcd(fields, s), 80, 2) == "%{a: x = 42}"
+  assert expr(ast.rcd(fields, s), 80, 2) == "{a: x = 42}"
 }
 
 // ============================================================================
