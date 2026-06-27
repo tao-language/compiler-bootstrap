@@ -1,6 +1,6 @@
 import core/literals.{type Literal, type LiteralType} as lit
 import gleam/list
-import gleam/option.{type Option}
+import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
 pub type Module =
@@ -17,18 +17,28 @@ pub type ExprData {
   Hole(id: Option(Int))
   Lit(value: Literal)
   Var(name: String)
-  Ctr(tag: String, args: List(#(String, Expr)))
-  Rcd(fields: List(#(String, Expr)))
-  RcdT(fields: List(#(String, #(Option(Type), Option(Expr)))))
+  Ctr(tag: String, args: List(#(String, Expr)), tail: Option(Expr))
+  Rcd(fields: List(#(String, Option(Expr))), tail: Option(Expr))
+  RcdT(
+    fields: List(#(String, #(Option(Type), Option(Expr)))),
+    tail: Option(Expr),
+  )
   Ann(value: Expr, type_: Type)
   Fn(
     implicits: List(Param),
+    implicits_tail: Option(Type),
     params: List(Param),
+    params_tail: Option(Type),
     returns: Option(Type),
     body: Expr,
   )
   FnT(implicits: List(Param), params: List(Param), body: Expr)
-  App(implicit: Bool, fun: Expr, args: List(#(String, Expr)))
+  App(
+    implicit: Bool,
+    fun: Expr,
+    args: List(#(String, Expr)),
+    tail: Option(Expr),
+  )
   Match(arg: Expr, cases: List(Case))
   Op1(op: UnaryOp, expr: Expr)
   Op2(op: BinaryOp, lhs: Expr, rhs: Expr)
@@ -77,7 +87,9 @@ pub type StmtData {
   FnDef(
     name: String,
     implicits: List(Param),
+    implicits_tail: Option(Type),
     params: List(Param),
+    params_tail: Option(Type),
     returns: Option(Type),
     body: Expr,
   )
@@ -128,14 +140,9 @@ pub type PatternData {
   PAny
   PVar(name: String)
   PLit(lit: Literal)
-  PLitT(lit_t: LiteralType)
-  PRcd(fields: List(#(String, Pattern)))
-  PRcdT(fields: List(#(String, Pattern)))
-  PCtr(tag: String, args: List(PArg))
+  PRcd(fields: List(#(String, Pattern)), tail: Option(Pattern))
+  PCtr(tag: String, args: List(#(String, Pattern)), tail: Option(Pattern))
 }
-
-pub type PArg =
-  #(String, Pattern)
 
 pub type Case {
   Case(pattern: Pattern, guard: Option(#(Expr, Option(Pattern))), body: Expr)
@@ -168,30 +175,45 @@ pub fn float(value: Float, span: Span) {
 }
 
 pub fn int_t(span: Span) {
-  Expr(Ctr("Int", []), span)
+  ctr0("Int", span)
 }
 
 pub fn var(name: String, span: Span) {
   Expr(Var(name), span)
 }
 
-pub fn rcd(fields: List(#(String, Expr)), span: Span) {
-  Expr(Rcd(fields), span)
+pub fn rcd(
+  fields: List(#(String, Option(Expr))),
+  tail: Option(Expr),
+  span: Span,
+) {
+  Expr(Rcd(fields, tail), span)
 }
 
-pub fn rcd_vars(vars: List(String), span: Span) {
-  rcd(list.map(vars, fn(name) { #(name, var(name, span)) }), span)
+pub fn rcd_vars(vars: List(String), tail: Option(Expr), span: Span) {
+  let fields = list.map(vars, fn(name) { #(name, Some(var(name, span))) })
+  rcd(fields, tail, span)
 }
 
 pub fn rcd_t(
   fields: List(#(String, #(Option(Type), Option(Expr)))),
+  tail: Option(Expr),
   span: Span,
 ) {
-  Expr(RcdT(fields), span)
+  Expr(RcdT(fields, tail), span)
 }
 
 pub fn ctr(tag: String, args: List(#(String, Expr)), span: Span) {
-  Expr(Ctr(tag, args), span)
+  ctr_open(tag, args, None, span)
+}
+
+pub fn ctr_open(
+  tag: String,
+  args: List(#(String, Expr)),
+  tail: Option(Expr),
+  span: Span,
+) {
+  Expr(Ctr(tag, args, tail), span)
 }
 
 pub fn ctr0(tag: String, span: Span) {
@@ -203,7 +225,17 @@ pub fn ann(expr: Expr, type_: Type, span: Span) {
 }
 
 pub fn app(implicit: Bool, fun: Expr, args: List(#(String, Expr)), span: Span) {
-  Expr(App(implicit, fun, args), span)
+  app_open(implicit, fun, args, None, span)
+}
+
+pub fn app_open(
+  implicit: Bool,
+  fun: Expr,
+  args: List(#(String, Expr)),
+  args_tail: Option(Expr),
+  span: Span,
+) {
+  Expr(App(implicit, fun, args, args_tail), span)
 }
 
 pub fn app_explicit(fun: Expr, args: List(#(String, Expr)), span: Span) {
@@ -275,11 +307,32 @@ pub fn pfloat(value: Float, span: Span) {
 }
 
 pub fn prcd(fields: List(#(String, Pattern)), span: Span) {
-  Pattern(PRcd(fields), span)
+  prcd_open(fields, Some(pany(span)), span)
+}
+
+pub fn prcd_strict(fields: List(#(String, Pattern)), span: Span) {
+  prcd_open(fields, None, span)
+}
+
+pub fn prcd_open(
+  fields: List(#(String, Pattern)),
+  tail: Option(Pattern),
+  span: Span,
+) {
+  Pattern(PRcd(fields, tail), span)
 }
 
 pub fn pctr(tag: String, args: List(#(String, Pattern)), span: Span) {
-  Pattern(PCtr(tag, args), span)
+  Pattern(PCtr(tag, args, None), span)
+}
+
+pub fn pctr_open(
+  tag: String,
+  args: List(#(String, Pattern)),
+  tail: Option(Pattern),
+  span: Span,
+) {
+  Pattern(PCtr(tag, args, tail), span)
 }
 
 pub fn import_(
@@ -303,7 +356,23 @@ pub fn fn_def(
   body: Expr,
   span: Span,
 ) {
-  Stmt(FnDef(name, implicits, params, returns, body), span)
+  fn_def_open(name, implicits, None, params, None, returns, body, span)
+}
+
+pub fn fn_def_open(
+  name: String,
+  implicits: List(Param),
+  implicits_tail: Option(Type),
+  params: List(Param),
+  params_tail: Option(Type),
+  returns: Option(Type),
+  body: Expr,
+  span: Span,
+) {
+  Stmt(
+    FnDef(name, implicits, implicits_tail, params, params_tail, returns, body),
+    span,
+  )
 }
 
 pub fn fn_overload(name: String, choices: List(OverloadChoice), span: Span) {

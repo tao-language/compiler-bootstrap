@@ -2,7 +2,7 @@ import core/literals.{type Literal, type LiteralType} as lit
 import core/term.{type Case, type Term}
 import gleam/int
 import gleam/list
-import gleam/option.{type Option}
+import gleam/option.{type Option, None}
 
 // ============================================================================
 // VALUES (Semantics level - De Bruijn levels)
@@ -17,7 +17,7 @@ pub type Value {
   Lit(literal: Literal)
   LitT(literal: LiteralType)
   Ctr(tag: String, arg: Value)
-  Rcd(fields: List(#(String, Value)))
+  Rcd(fields: List(#(String, #(Value, Option(Value)))), tail: Option(Value))
   Neut(neutral: Neut)
   Lam(env: Env, param: #(String, Type), body: Term)
   Pi(env: Env, implicit: Bool, domain: #(String, Type), codomain: Term)
@@ -121,6 +121,19 @@ pub const f32 = LitT(lit.F32)
 
 pub const f64 = LitT(lit.F64)
 
+pub fn rcd(fields: List(#(String, Value))) -> Value {
+  rcd_open(fields, None)
+}
+
+pub fn rcd_open(fields: List(#(String, Value)), tail: Option(Value)) -> Value {
+  let fields =
+    list.map(fields, fn(field) {
+      let #(name, value) = field
+      #(name, #(value, None))
+    })
+  Rcd(fields, tail)
+}
+
 pub fn ctr(tag: String, args: List(#(String, Value))) -> Value {
-  Ctr(tag, Rcd(args))
+  Ctr(tag, rcd(args))
 }

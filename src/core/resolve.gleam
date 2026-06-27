@@ -37,13 +37,16 @@ pub fn term(ffi: FFI, subst: Subst, size: Int, t: Term) -> Term {
     tm.LitT(_) -> t
     tm.Var(_) -> t
     tm.Ctr(tag, arg) -> tm.Ctr(tag, term(ffi, subst, size, arg))
-    tm.Rcd(fields) -> {
+    tm.Rcd(fields, tail) -> {
       let fields =
         list.map(fields, fn(field) {
-          let #(name, t) = field
-          #(name, term(ffi, subst, size, t))
+          let #(name, #(v, t)) = field
+          let v = term(ffi, subst, size, v)
+          let t = option.map(t, term(ffi, subst, size, _))
+          #(name, #(v, t))
         })
-      tm.Rcd(fields)
+      let tail = option.map(tail, term(ffi, subst, size, _))
+      tm.Rcd(fields, tail)
     }
     tm.Call(name, returns, args) -> {
       let returns = term(ffi, subst, size, returns)

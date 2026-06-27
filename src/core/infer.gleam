@@ -35,7 +35,7 @@ pub fn infer(ctx: Context, term_ast: ast.Expr) -> #(Term, Value, Context) {
     ast.LitT(t) -> infer_litt(ctx, t)
     ast.Var(name) -> infer_var(ctx, name, term_ast.span)
     ast.Ctr(tag, arg) -> infer_ctr(ctx, tag, arg)
-    ast.Rcd(fields) -> infer_rcd(ctx, fields)
+    ast.Rcd(fields, tail) -> infer_rcd(ctx, fields, tail)
     ast.Call(name, returns, args) -> infer_call(ctx, name, returns, args)
     ast.Ann(inner, type_) -> infer_ann(ctx, inner, type_)
     ast.Lam(implicit, param, body) -> infer_lam(ctx, implicit, param, body)
@@ -159,6 +159,7 @@ fn infer_ctr(ctx: Context, tag: String, arg: Expr) -> #(Term, Value, Context) {
 fn infer_rcd(
   ctx: Context,
   fields: List(#(String, #(Option(Expr), Option(Expr)))),
+  tail: Option(Expr),
 ) -> #(Term, Value, Context) {
   let #(fields, field_types, ctx) = infer_rcd_fields(ctx, fields)
   let field_types =
@@ -166,7 +167,8 @@ fn infer_rcd(
       let #(name, type_) = kv
       #(name, unwrap(ctx.ffi, ctx.subst, type_))
     })
-  #(tm.Rcd(fields), v.Rcd(field_types), ctx)
+  // #(tm.Rcd(fields), v.Rcd(field_types), ctx)
+  todo
 }
 
 fn infer_rcd_fields(
@@ -197,7 +199,8 @@ fn infer_rcd_type(
   fields: List(#(String, #(Option(Expr), Option(Expr)))),
 ) -> #(Term, Value, Context) {
   let #(fields, ctx) = infer_rcd_type_fields(ctx, fields)
-  #(tm.Rcd(fields), v.Typ(0), ctx)
+  // #(tm.Rcd(fields), v.Typ(0), ctx)
+  todo
 }
 
 fn infer_rcd_type_fields(
@@ -498,13 +501,10 @@ fn infer_pattern(
       let #(pattern, type_, ctx) = infer_pattern(ctx, pattern_ast)
       #(tm.PCtr(tag, pattern), v.Ctr(tag, type_), ctx)
     }
-    ast.PRcd(fields_ast) -> {
+    ast.PRcd(fields_ast, tail) -> {
       let #(fields, fields_type, ctx) = infer_pattern_fields(ctx, fields_ast)
-      #(tm.PRcd(fields), v.Rcd(fields_type), ctx)
-    }
-    ast.PRcdT(fields_ast) -> {
-      let #(fields, _, ctx) = infer_pattern_fields(ctx, fields_ast)
-      #(tm.PRcdT(fields), v.Typ(0), ctx)
+      // #(tm.PRcd(fields), v.Rcd(fields_type), ctx)
+      todo
     }
     ast.PErr -> #(tm.PErr, v.Err, ctx)
   }

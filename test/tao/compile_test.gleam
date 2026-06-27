@@ -29,8 +29,8 @@ pub fn compile_package_modules_empty_test() {
   let m2 = []
   let ctx = compile.package(ctx0, [#("m1", m1), #("m2", m2)])
   assert ctx.errors == []
-  assert ctx.env == [v.Rcd([]), v.Rcd([])]
-  assert ctx.types == [#("@m1", v.Rcd([])), #("@m2", v.Rcd([]))]
+  assert ctx.env == [v.rcd([]), v.rcd([])]
+  assert ctx.types == [#("@m1", v.rcd([])), #("@m2", v.rcd([]))]
 }
 
 pub fn compile_package_import_test() {
@@ -44,13 +44,13 @@ pub fn compile_package_import_test() {
   assert ctx.errors == []
   assert ctx.env
     == [
-      v.Rcd([#("x", v.int(42))]),
-      v.Rcd([#("y", v.int(42))]),
+      v.rcd([#("x", v.int(42))]),
+      v.rcd([#("y", v.int(42))]),
     ]
   assert ctx.types
     == [
-      #("@m1", v.Rcd([#("x", v.int_t)])),
-      #("@m2", v.Rcd([#("y", v.int_t)])),
+      #("@m1", v.rcd([#("x", v.int_t)])),
+      #("@m2", v.rcd([#("y", v.int_t)])),
     ]
 }
 
@@ -65,13 +65,13 @@ pub fn compile_package_import_alias_test() {
   assert ctx.errors == []
   assert ctx.env
     == [
-      v.Rcd([#("x", v.int(42))]),
-      v.Rcd([#("y", v.int(42))]),
+      v.rcd([#("x", v.int(42))]),
+      v.rcd([#("y", v.int(42))]),
     ]
   assert ctx.types
     == [
-      #("@m1", v.Rcd([#("x", v.int_t)])),
-      #("@m2", v.Rcd([#("y", v.int_t)])),
+      #("@m1", v.rcd([#("x", v.int_t)])),
+      #("@m2", v.rcd([#("y", v.int_t)])),
     ]
 }
 // pub fn compile_tests_empty_test() {

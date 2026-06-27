@@ -1,9 +1,4 @@
 /// Tests for the `unify` module — higher-order unification for Core values.
-///
-/// These tests verify:
-/// - Basic type/literal unification
-/// - Error handling for mismatches
-/// - Constructor tag and argument unification
 import core/context.{Context, new_ctx, with_err}
 import core/error as e
 import core/literals as lit
@@ -132,13 +127,13 @@ pub fn unify_ctr_gadt_undefined_type_test() {
 pub fn unify_ctr_gadt_undefined_variant_test() {
   let a = v.Ctr("A", v.int_t)
   let b = v.Ctr("T", v.float_t)
-  let tdef = v.TypeDefinition([], tm.Rcd([]), [])
+  let tdef = v.TypeDefinition([], tm.Rcd([], None), [])
   let ctx0 =
     context.push_var(new_ctx, #("T", Some(v.TypeDef([], tdef)), Some(v.Typ(0))))
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
   assert ctx.errors
     == [
-      e.TypeMismatch(#(v.float_t, s2), #(v.Rcd([]), s2)),
+      e.TypeMismatch(#(v.float_t, s2), #(v.rcd([]), s2)),
       e.TypeVariantUndefined(#("A", s1), #([], s2)),
     ]
 }
@@ -152,9 +147,9 @@ pub fn unify_ctr_gadt_bool_test() {
   // | #False {} -> #Bool {}
   // }
   let tdef =
-    v.TypeDefinition(params: [], arg: tm.Rcd([]), variants: [
-      #("True", v.Variant([], tm.Rcd([]), tm.ctr("Bool", []))),
-      #("False", v.Variant([], tm.Rcd([]), tm.ctr("Bool", []))),
+    v.TypeDefinition(params: [], arg: tm.rcd([]), variants: [
+      #("True", v.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
+      #("False", v.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
     ])
   let ctx0 =
     context.push_var(new_ctx, #(
@@ -180,7 +175,7 @@ pub fn unify_ctr_gadt_option_test() {
   // }
   let tdef =
     v.TypeDefinition(params: [#("a", v.Typ(0))], arg: tm.Var(0), variants: [
-      #("None", v.Variant([], tm.Rcd([]), tm.Ctr("Option", tm.Var(0)))),
+      #("None", v.Variant([], tm.rcd([]), tm.Ctr("Option", tm.Var(0)))),
       #("Some", v.Variant([], tm.Var(0), tm.Ctr("Option", tm.Var(0)))),
     ])
   let ctx0 =
@@ -223,15 +218,15 @@ pub fn unify_ctr_gadt_vec_test() {
   let nil_ret = tm.ctr("Vec", [#("n", tm.int(0)), #("a", a)])
   let #(_n, a, m) = #(tm.Var(2), tm.Var(1), tm.Var(0))
   let cons_arg =
-    tm.Rcd([#("x", a), #("xs", tm.ctr("Vec", [#("n", m), #("a", a)]))])
+    tm.rcd([#("x", a), #("xs", tm.ctr("Vec", [#("n", m), #("a", a)]))])
   let cons_ret =
     tm.ctr("Vec", [#("n", tm.Call("+", tm.int_t, [m, tm.int(1)])), #("a", a)])
   let tdef =
     v.TypeDefinition(
       params: [#("n", v.int_t), #("a", v.Typ(0))],
-      arg: tm.Rcd([#("n", tm.Var(1)), #("a", tm.Var(0))]),
+      arg: tm.rcd([#("n", tm.Var(1)), #("a", tm.Var(0))]),
       variants: [
-        #("Nil", v.Variant([], tm.Rcd([]), nil_ret)),
+        #("Nil", v.Variant([], tm.rcd([]), nil_ret)),
         #("Cons", v.Variant([#("m", v.hole(-1))], cons_arg, cons_ret)),
       ],
     )
@@ -288,36 +283,36 @@ pub fn unify_ctr_gadt_vec_test() {
 // ============================================================================
 
 pub fn unify_rcd_empty_test() {
-  let a = v.Rcd([])
-  let b = v.Rcd([])
+  let a = v.rcd([])
+  let b = v.rcd([])
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
 
 pub fn unify_rcd_fields_mismatch_test() {
-  let a = v.Rcd([#("x", v.int_t)])
-  let b = v.Rcd([#("y", v.int_t)])
+  let a = v.rcd([#("x", v.int_t)])
+  let b = v.rcd([#("y", v.int_t)])
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
     == with_err(ctx0, e.RcdFieldsMismatch(#(["x"], s1), #(["y"], s2)))
 }
 
 pub fn unify_rcd_different_order_test() {
-  let a = v.Rcd([#("b", v.int_t), #("a", v.float_t)])
-  let b = v.Rcd([#("a", v.float_t), #("b", v.int_t)])
+  let a = v.rcd([#("b", v.int_t), #("a", v.float_t)])
+  let b = v.rcd([#("a", v.float_t), #("b", v.int_t)])
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
 
 pub fn unify_rcd_nested_same_test() {
-  let inner = v.Rcd([#("x", v.int(42))])
+  let inner = v.rcd([#("x", v.int(42))])
   let a =
-    v.Rcd([
+    v.rcd([
       #("name", v.int(1)),
       #("value", inner),
     ])
   let b =
-    v.Rcd([
+    v.rcd([
       #("value", inner),
       #("name", v.int(1)),
     ])

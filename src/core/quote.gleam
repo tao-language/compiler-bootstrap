@@ -17,13 +17,16 @@ pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
     v.Lit(lit) -> tm.Lit(lit)
     v.LitT(lit) -> tm.LitT(lit)
     v.Ctr(tag, arg_val) -> tm.Ctr(tag, quote(ffi, size, arg_val))
-    v.Rcd(fields_val) -> {
+    v.Rcd(fields_val, tail_val) -> {
       let fields =
         list.map(fields_val, fn(field) {
-          let #(name, value) = field
-          #(name, quote(ffi, size, value))
+          let #(name, #(value, default_val)) = field
+          let term = quote(ffi, size, value)
+          let default = option.map(default_val, quote(ffi, size, _))
+          #(name, #(term, default))
         })
-      tm.Rcd(fields)
+      let tail = option.map(tail_val, quote(ffi, size, _))
+      tm.Rcd(fields, tail)
     }
     v.Neut(neut) -> quote_neut(ffi, size, neut)
     v.Lam(env, #(name, param_val), body) -> {

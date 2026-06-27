@@ -46,9 +46,7 @@ fn definitions_pattern(pattern: Pattern) -> List(String) {
     tao.PAny -> []
     tao.PVar(name) -> [name]
     tao.PLit(_) -> []
-    tao.PLitT(_) -> []
-    tao.PRcd(fields) -> todo
-    tao.PRcdT(fields) -> todo
-    tao.PCtr(_, args) -> todo
+    tao.PRcd(fields, tail) -> todo
+    tao.PCtr(_, args, tail) -> todo
   }
 }

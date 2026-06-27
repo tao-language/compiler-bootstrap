@@ -163,9 +163,13 @@ pub fn lex_rcd_test() {
 }
 
 pub fn parse_rcd_test() {
-  assert parse("{}") == Ok(ast.rcd([], s(1, 1, 1, 3)))
+  assert parse("{}") == Ok(ast.rcd([], None, s(1, 1, 1, 3)))
   assert parse("{a: x}")
-    == Ok(ast.rcd_values([#("a", ast.var("x", s(1, 3, 1, 6)))], s(1, 1, 1, 7)))
+    == Ok(ast.rcd_values(
+      [#("a", ast.var("x", s(1, 3, 1, 6)))],
+      None,
+      s(1, 1, 1, 7),
+    ))
   assert parse("{a: x = 42}")
     == Ok(ast.rcd(
       [
@@ -177,6 +181,7 @@ pub fn parse_rcd_test() {
           ),
         ),
       ],
+      None,
       s(1, 1, 1, 12),
     ))
 }

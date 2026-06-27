@@ -37,7 +37,9 @@ pub fn tao_factorial_test() {
     tao.FnDef(
       name: "f",
       implicits: [],
+      implicits_tail: None,
       params: [#(tao.pvar("x", s), #(None, None))],
+      params_tail: None,
       returns: Some(tao.int_t(s)),
       body: tao.match(x, [case0, case_], s),
     )

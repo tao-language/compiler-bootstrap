@@ -17,13 +17,17 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
         None -> v.Err
       }
     tm.Ctr(tag, arg) -> v.Ctr(tag, eval(ffi, env, arg))
-    tm.Rcd(fields) ->
-      v.Rcd(
+    tm.Rcd(fields, tail) -> {
+      let fields_val =
         list.map(fields, fn(field) {
-          let #(name, term) = field
-          #(name, eval(ffi, env, term))
-        }),
-      )
+          let #(name, #(term, default)) = field
+          let value = eval(ffi, env, term)
+          let default_val = option.map(default, eval(ffi, env, _))
+          #(name, #(value, default_val))
+        })
+      let tail_val = option.map(tail, eval(ffi, env, _))
+      v.Rcd(fields_val, tail_val)
+    }
     tm.Call(name, returns, args) -> {
       let returns_val = eval(ffi, env, returns)
       let args_val = list.map(args, eval(ffi, env, _))
@@ -156,7 +160,9 @@ pub fn match_pattern(pattern: Pattern, value: Value) -> Option(List(Value)) {
       }
     tm.PCtr(tag1, pattern), v.Ctr(tag2, arg) if tag1 == tag2 ->
       match_pattern(pattern, arg)
-    tm.PRcd(pfields), v.Rcd(vfields) -> match_pattern_rcd(pfields, vfields)
+    tm.PRcd(pfields, ptail), v.Rcd(vfields, tail) ->
+      // match_pattern_rcd(pfields, vfields)
+      todo
     tm.PErr, v.Err -> Some([])
     _, _ -> None
   }

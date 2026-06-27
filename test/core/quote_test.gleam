@@ -40,10 +40,13 @@ pub fn quote_vctr_test() {
 }
 
 pub fn quote_vrcd_test() {
-  let value = v.Rcd([#("x", v.int_t), #("y", v.float_t)])
+  let value = v.rcd_open([#("x", v.int_t), #("y", v.float_t)], None)
   let term = quote([], 0, value)
   assert term
-    == tm.Rcd([#("x", tm.LitT(lit.IntT)), #("y", tm.LitT(lit.FloatT))])
+    == tm.rcd_open(
+      [#("x", tm.LitT(lit.IntT)), #("y", tm.LitT(lit.FloatT))],
+      None,
+    )
 }
 
 // ============================================================================

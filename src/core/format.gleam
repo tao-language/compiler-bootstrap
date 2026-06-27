@@ -82,14 +82,14 @@ fn doc_term(term: Expr, indent: Int) -> Document {
       }
     ast.LitT(t_) -> format_lit_type(t_)
     ast.Var(name) -> doc_text(var_name(name))
-    ast.Ctr(tag, ast.Expr(ast.Rcd([]), _)) -> doc_text("#" <> tag)
+    ast.Ctr(tag, ast.Expr(ast.Rcd([], None), _)) -> doc_text("#" <> tag)
     ast.Ctr(tag, arg) ->
       doc.concat([
         doc_text("#" <> tag <> "("),
         doc_term(arg, indent),
         doc_text(")"),
       ])
-    ast.Rcd(fields) -> doc_rcd(fields, indent)
+    ast.Rcd(fields, opt_tail) -> doc_rcd(fields, opt_tail, indent)
     ast.Ann(term, type_) ->
       doc.concat([
         doc_text("%("),
@@ -186,6 +186,7 @@ fn doc_param(
 
 fn doc_rcd(
   fields: List(#(String, #(Option(Expr), Option(Expr)))),
+  opt_tail: Option(Expr),
   indent: Int,
 ) -> Document {
   let doc_fields =
@@ -202,6 +203,11 @@ fn doc_rcd(
       }
       doc.concat([doc_text(name), type_, term])
     })
+  let tail = case opt_tail {
+    None -> []
+    Some(tail) -> [doc.concat([doc_text(".."), doc_term(tail, indent)])]
+  }
+  let doc_fields = list.append(doc_fields, tail)
   doc.concat([
     doc_text("{"),
     doc.nest(doc.join(doc_fields, doc.break(", ", ",")), indent),
@@ -278,39 +284,34 @@ fn doc_pattern(pattern: Pattern, indent: Int) -> Document {
         doc_pattern(inner, indent),
         doc_text(")"),
       ])
-    PRcd(fields) -> doc_pattern_rcd(fields, indent)
+    PRcd(fields, opt_tail) -> doc_pattern_rcd(fields, opt_tail, indent)
     PErr -> doc_text("%error")
     _ -> todo
   }
 }
 
-fn doc_pattern_rcd(fields: List(#(String, Pattern)), indent: Int) -> Document {
-  case fields {
-    [] -> doc_text("{}")
-    [field] -> {
-      let field_doc =
-        doc.concat([doc_text(field.0 <> ": "), doc_pattern(field.1, indent)])
-      doc.concat([doc_text("{"), field_doc, doc_text("}")])
-    }
-    _ -> {
-      let field_docs =
-        fields
-        |> list.map(fn(f) {
-          doc.concat([doc_text(f.0 <> ": "), doc_pattern(f.1, indent)])
-        })
-      doc.concat([
-        doc_text("{"),
-        doc.line,
-        doc.nest(
-          doc.join(field_docs, doc.concat([doc_text(","), doc.line])),
-          indent,
-        ),
-        doc.line,
-        doc_text("}"),
-      ])
-      |> doc.group
-    }
+fn doc_pattern_rcd(
+  fields: List(#(String, Pattern)),
+  opt_tail: Option(Pattern),
+  indent: Int,
+) -> Document {
+  let doc_fields =
+    list.map(fields, fn(field) {
+      let #(name, pattern) = field
+      let name = var_name(name)
+      let pattern = doc_pattern(pattern, indent)
+      doc.concat([doc_text(name), pattern])
+    })
+  let tail = case opt_tail {
+    None -> []
+    Some(tail) -> [doc.concat([doc_text(".."), doc_pattern(tail, indent)])]
   }
+  let doc_fields = list.append(doc_fields, tail)
+  doc.concat([
+    doc_text("{"),
+    doc.nest(doc.join(doc_fields, doc.break(", ", ",")), indent),
+    doc_text("}"),
+  ])
 }
 
 fn format_typedef(td: TypeDefinition, indent: Int) -> Document {

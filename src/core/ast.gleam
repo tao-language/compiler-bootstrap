@@ -28,7 +28,10 @@ pub type ExprData {
   LitT(t: LiteralType)
   Var(name: String)
   Ctr(tag: String, arg: Expr)
-  Rcd(fields: List(#(String, #(Option(Expr), Option(Expr)))))
+  Rcd(
+    fields: List(#(String, #(Option(Expr), Option(Expr)))),
+    tail: Option(Expr),
+  )
   Ann(term: Expr, type_: Type)
   Lam(implicit: Bool, param: Param, body: Expr)
   Pi(implicit: Bool, param: Param, body: Expr)
@@ -54,8 +57,7 @@ pub type PatternData {
   PLitT(lit_type: LiteralType)
   PAlias(pattern: Pattern, name: String)
   PCtr(tag: String, pattern: Pattern)
-  PRcd(fields: List(#(String, Pattern)))
-  PRcdT(fields: List(#(String, Pattern)))
+  PRcd(fields: List(#(String, Pattern)), tail: Option(Pattern))
   PErr
 }
 
@@ -81,16 +83,18 @@ pub fn bindings(pattern: Pattern) -> List(String) {
   case pattern.data {
     PAlias(pattern, x) -> [x, ..bindings(pattern)]
     PCtr(_, pattern) -> bindings(pattern)
-    PRcd(fields) ->
-      list.flat_map(fields, fn(field) {
-        let #(x, pattern) = field
-        [x, ..bindings(pattern)]
-      })
-    PRcdT(fields) ->
-      list.flat_map(fields, fn(field) {
-        let #(x, pattern) = field
-        [x, ..bindings(pattern)]
-      })
+    PRcd(fields, opt_tail) -> {
+      let xs =
+        list.flat_map(fields, fn(field) {
+          let #(x, pattern) = field
+          [x, ..bindings(pattern)]
+        })
+      let ys = case opt_tail {
+        Some(tail) -> bindings(tail)
+        None -> []
+      }
+      list.append(xs, ys)
+    }
     _ -> []
   }
 }
@@ -99,11 +103,12 @@ pub fn contains(term: Expr, name: String) -> Bool {
   case term.data {
     Var(x) if x == name -> True
     Ctr(_, arg) -> contains(arg, name)
-    Rcd(fields) ->
+    Rcd(fields, opt_tail) ->
       list.any(fields, fn(field) {
         let #(_, #(opt_type, opt_default)) = field
         opt_contains(opt_type, name) || opt_contains(opt_default, name)
       })
+      || opt_contains(opt_tail, name)
     Ann(term, type_) -> contains(term, name) || contains(type_, name)
     Lam(_, #(x, type_), body) ->
       opt_contains(type_, name) || x != name && contains(body, name)
@@ -225,29 +230,37 @@ pub fn ctr(tag: String, arg: Expr, span: Span) {
 }
 
 pub fn ctr_args(tag: String, args: List(#(String, Expr)), span: Span) {
-  ctr(tag, rcd_values(args, span), span)
+  ctr(tag, rcd_values(args, None, span), span)
 }
 
 pub fn ctr0(tag: String, span: Span) {
   ctr_args(tag, [], span)
 }
 
-pub fn rcd(fields: List(#(String, #(Option(Type), Option(Expr)))), span: Span) {
-  Expr(Rcd(fields), span)
+pub fn rcd(
+  fields: List(#(String, #(Option(Type), Option(Expr)))),
+  tail: Option(Expr),
+  span: Span,
+) {
+  Expr(Rcd(fields, tail), span)
 }
 
-pub fn rcd_values(fields: List(#(String, Expr)), span: Span) {
+pub fn rcd_values(
+  fields: List(#(String, Expr)),
+  tail: Option(Expr),
+  span: Span,
+) {
   let fields =
     list.map(fields, fn(field) {
       let #(name, value) = field
       #(name, #(Some(value), None))
     })
-  rcd(fields, span)
+  rcd(fields, tail, span)
 }
 
-pub fn rcd_vars(vars: List(String), span: Span) {
+pub fn rcd_vars(vars: List(String), tail: Option(Expr), span: Span) {
   let fields = list.map(vars, fn(name) { #(name, var(name, span)) })
-  rcd_values(fields, span)
+  rcd_values(fields, tail, span)
 }
 
 pub fn ann(value: Expr, type_: Expr, span: Span) {
@@ -326,7 +339,7 @@ pub fn let_pat(def: #(Pattern, Option(Type), Expr), body: Expr, span: Span) {
 }
 
 pub fn dot(expr: Expr, field: String, span: Span) {
-  let pattern = prcd([#(field, pvar(field, span))], span)
+  let pattern = prcd([#(field, pvar(field, span))], Some(pany(span)), span)
   let body = var(field, span)
   match(expr, [Case(pattern, None, body)], span)
 }
@@ -415,12 +428,12 @@ pub fn pf64(span: Span) {
   Pattern(PLitT(lit.F64), span)
 }
 
-pub fn prcd(fields: List(#(String, Pattern)), span: Span) {
-  Pattern(PRcd(fields), span)
-}
-
-pub fn prcd_t(fields: List(#(String, Pattern)), span: Span) {
-  Pattern(PRcdT(fields), span)
+pub fn prcd(
+  fields: List(#(String, Pattern)),
+  tail: Option(Pattern),
+  span: Span,
+) {
+  Pattern(PRcd(fields, tail), span)
 }
 
 pub fn pctr(tag: String, arg: Pattern, span: Span) {
@@ -428,7 +441,7 @@ pub fn pctr(tag: String, arg: Pattern, span: Span) {
 }
 
 pub fn pctr_args(tag: String, args: List(#(String, Pattern)), span: Span) {
-  pctr(tag, prcd(args, span), span)
+  pctr(tag, prcd(args, None, span), span)
 }
 
 pub fn pctr0(tag: String, span: Span) {

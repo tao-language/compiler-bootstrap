@@ -4,7 +4,7 @@ import core/term.{type Case, type Term} as tm
 import core/unwrap.{unwrap}
 import core/value.{type Env, type Neut, type Value} as v
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 
 // TODO: replace ctx with only ffi, do not unwrap
 pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
@@ -13,10 +13,10 @@ pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
     v.Lit(_) -> False
     v.LitT(_) -> False
     v.Ctr(_, arg) -> occurs(ctx, hole_id, arg)
-    v.Rcd(fields) ->
+    v.Rcd(fields, tail) ->
       list.any(fields, fn(field) {
-        let #(_, val) = field
-        occurs(ctx, hole_id, val)
+        let #(_, #(val, default)) = field
+        occurs(ctx, hole_id, val) || occurs_opt(ctx, hole_id, default)
       })
     v.Neut(neut) -> occurs_neut(ctx, hole_id, neut)
     v.Lam(env, #(_, param), body) -> {
@@ -33,6 +33,17 @@ pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
     }
     v.TypeDef(env, v.TypeDefinition(params, arg, variants)) -> todo
     v.Err -> False
+  }
+}
+
+pub fn occurs_opt(
+  ctx: Context,
+  hole_id: Int,
+  opt_value: Option(Value),
+) -> Bool {
+  case opt_value {
+    Some(value) -> occurs(ctx, hole_id, value)
+    None -> False
   }
 }
 

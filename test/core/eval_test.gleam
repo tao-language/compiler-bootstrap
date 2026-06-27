@@ -119,30 +119,42 @@ pub fn eval_match_bindings_test() {
   // $match {x: 10, y: 20} { | {x: a, y: b} => {x: a, y: b} }
   //    a is #1 = 10, b is #0 = 20
   let arg =
-    tm.Rcd([
-      #("x", tm.Lit(lit.Int(10))),
-      #("y", tm.Lit(lit.Int(20))),
-    ])
+    tm.rcd_open(
+      [
+        #("x", tm.Lit(lit.Int(10))),
+        #("y", tm.Lit(lit.Int(20))),
+      ],
+      None,
+    )
   let cases = [
     tm.Case(
-      tm.PRcd([
-        #("x", tm.PAlias("a", tm.PAny)),
-        #("y", tm.PAlias("b", tm.PAny)),
-      ]),
+      tm.PRcd(
+        [
+          #("x", tm.PAlias("a", tm.PAny)),
+          #("y", tm.PAlias("b", tm.PAny)),
+        ],
+        None,
+      ),
       None,
-      tm.Rcd([
-        #("x", tm.Var(1)),
-        #("y", tm.Var(0)),
-      ]),
+      tm.rcd_open(
+        [
+          #("x", tm.Var(1)),
+          #("y", tm.Var(0)),
+        ],
+        None,
+      ),
     ),
   ]
   let term = tm.Match(arg, cases)
   let result = eval([], [], term)
   assert result
-    == v.Rcd([
-      #("x", v.int(10)),
-      #("y", v.int(20)),
-    ])
+    == v.rcd_open(
+      [
+        #("x", v.int(10)),
+        #("y", v.int(20)),
+      ],
+      None,
+    )
 }
 
 // ============================================================================
@@ -186,30 +198,42 @@ pub fn eval_match_guard_bindings_test() {
     tm.Case(
       tm.PAlias("x", tm.PAny),
       Some(#(
-        tm.Rcd([
-          #("x", tm.Lit(lit.Int(20))),
-          #("y", tm.Lit(lit.Int(30))),
-        ]),
-        tm.PRcd([
-          #("x", tm.PAlias("a", tm.PAny)),
-          #("y", tm.PAlias("b", tm.PAny)),
-        ]),
+        tm.rcd_open(
+          [
+            #("x", tm.Lit(lit.Int(20))),
+            #("y", tm.Lit(lit.Int(30))),
+          ],
+          None,
+        ),
+        tm.PRcd(
+          [
+            #("x", tm.PAlias("a", tm.PAny)),
+            #("y", tm.PAlias("b", tm.PAny)),
+          ],
+          None,
+        ),
       )),
-      tm.Rcd([
-        #("x", tm.Var(2)),
-        #("y", tm.Var(1)),
-        #("z", tm.Var(0)),
-      ]),
+      tm.rcd_open(
+        [
+          #("x", tm.Var(2)),
+          #("y", tm.Var(1)),
+          #("z", tm.Var(0)),
+        ],
+        None,
+      ),
     ),
   ]
   let term = tm.Match(tm.Lit(lit.Int(10)), cases)
   let result = eval([], [], term)
   assert result
-    == v.Rcd([
-      #("x", v.int(10)),
-      #("y", v.int(20)),
-      #("z", v.int(30)),
-    ])
+    == v.rcd_open(
+      [
+        #("x", v.int(10)),
+        #("y", v.int(20)),
+        #("z", v.int(30)),
+      ],
+      None,
+    )
 }
 
 pub fn eval_match_err_test() {
@@ -326,14 +350,20 @@ pub fn match_pattern_ctr_nested_fail_test() {
 pub fn match_pattern_rcd_match_test() {
   let result =
     match_pattern(
-      tm.PRcd([
-        #("x", tm.PLit(lit.Int(1))),
-        #("y", tm.PAny),
-      ]),
-      v.Rcd([
-        #("x", v.int(1)),
-        #("y", v.int(2)),
-      ]),
+      tm.PRcd(
+        [
+          #("x", tm.PLit(lit.Int(1))),
+          #("y", tm.PAny),
+        ],
+        None,
+      ),
+      v.rcd_open(
+        [
+          #("x", v.int(1)),
+          #("y", v.int(2)),
+        ],
+        None,
+      ),
     )
   assert result == Some([])
 }
@@ -342,15 +372,21 @@ pub fn match_pattern_rcd_extra_field_test() {
   // Pattern has field not in value
   let result =
     match_pattern(
-      tm.PRcd([
-        #("x", tm.PAny),
-        #("y", tm.PAny),
-        #("z", tm.PAny),
-      ]),
-      v.Rcd([
-        #("x", v.int(1)),
-        #("y", v.int(2)),
-      ]),
+      tm.PRcd(
+        [
+          #("x", tm.PAny),
+          #("y", tm.PAny),
+          #("z", tm.PAny),
+        ],
+        None,
+      ),
+      v.rcd_open(
+        [
+          #("x", v.int(1)),
+          #("y", v.int(2)),
+        ],
+        None,
+      ),
     )
   assert result == None
 }
@@ -359,11 +395,14 @@ pub fn match_pattern_rcd_fewer_fields_test() {
   // Pattern with fewer fields succeeds
   let result =
     match_pattern(
-      tm.PRcd([#("x", tm.PAny)]),
-      v.Rcd([
-        #("x", v.int(1)),
-        #("y", v.int(2)),
-      ]),
+      tm.PRcd([#("x", tm.PAny)], None),
+      v.rcd_open(
+        [
+          #("x", v.int(1)),
+          #("y", v.int(2)),
+        ],
+        None,
+      ),
     )
   assert result == Some([])
 }
@@ -372,31 +411,40 @@ pub fn match_pattern_rcd_bindings_test() {
   // PRcd with alias bindings — DeBruijn ordering: x(#2), y(#1), z(#0)
   let result =
     match_pattern(
-      tm.PRcd([
-        #("x", tm.PAlias("a", tm.PAny)),
-        #("y", tm.PAlias("b", tm.PAny)),
-        #("z", tm.PAlias("c", tm.PAny)),
-      ]),
-      v.Rcd([
-        #("x", v.int(1)),
-        #("y", v.int(2)),
-        #("z", v.int(3)),
-      ]),
+      tm.PRcd(
+        [
+          #("x", tm.PAlias("a", tm.PAny)),
+          #("y", tm.PAlias("b", tm.PAny)),
+          #("z", tm.PAlias("c", tm.PAny)),
+        ],
+        None,
+      ),
+      v.rcd_open(
+        [
+          #("x", v.int(1)),
+          #("y", v.int(2)),
+          #("z", v.int(3)),
+        ],
+        None,
+      ),
     )
   assert result == Some([v.int(3), v.int(2), v.int(1)])
 }
 
 pub fn match_pattern_rcd_wrong_field_name_test() {
   let result =
-    match_pattern(tm.PRcd([#("x", tm.PAny)]), v.Rcd([#("y", v.int(1))]))
+    match_pattern(
+      tm.PRcd([#("x", tm.PAny)], None),
+      v.rcd_open([#("y", v.int(1))], None),
+    )
   assert result == None
 }
 
 pub fn match_pattern_rcd_value_mismatch_test() {
   let result =
     match_pattern(
-      tm.PRcd([#("x", tm.PLit(lit.Int(99)))]),
-      v.Rcd([#("x", v.int(42))]),
+      tm.PRcd([#("x", tm.PLit(lit.Int(99)))], None),
+      v.rcd_open([#("x", v.int(42))], None),
     )
   assert result == None
 }

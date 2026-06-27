@@ -6,7 +6,7 @@ import tao/desugar.{new_block_ctx}
 
 const s = Span("desugar_test", 1, 1, 1, 1)
 
-const unit = core.Expr(core.Rcd([]), s)
+const unit = core.Expr(core.Rcd([], None), s)
 
 pub fn desugar_stmt_import_simple_test() {
   let stmt = tao.import_("m", None, [], s)

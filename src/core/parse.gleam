@@ -62,6 +62,7 @@ pub type Token {
   Equals
   FatArrow
   ThinArrow
+  Spread
   Pipe
   Tilde
   Question
@@ -150,6 +151,7 @@ fn core_lexer() -> Lexer(Token, Nil) {
     lexer.token("%(", AnnOpen),
     lexer.token("=>", FatArrow),
     lexer.token("->", ThinArrow),
+    lexer.token("..", Spread),
     lexer.token("<", LAngle),
     lexer.token(">", RAngle),
 
@@ -163,7 +165,7 @@ fn core_lexer() -> Lexer(Token, Nil) {
     lexer.token(":", Colon),
     lexer.token(";", Semicolon),
     lexer.token(",", Comma),
-    lexer.token(".", Dot),
+    lexer.symbol(".", "[^.]", Dot),
     lexer.symbol("=", "[^>]", Equals),
     lexer.token("|", Pipe),
     lexer.token("~", Tilde),
@@ -306,9 +308,18 @@ fn rcd(file: String) -> Parser(Expr, Token, Nil) {
       return([]),
     ]),
   )
+  use tail <- do(
+    nibble.optional({
+      use _ <- do(nibble.token(Spread))
+      nibble.one_of([
+        expr(file),
+        return(ast.var("", start)),
+      ])
+    }),
+  )
   use _ <- do(nibble.token(RBrace))
   use end <- do(get_span(file))
-  return(ast.rcd(fields, span.merge(start, end)))
+  return(ast.rcd(fields, tail, span.merge(start, end)))
 }
 
 fn ann(file: String) -> Parser(Expr, Token, Nil) {

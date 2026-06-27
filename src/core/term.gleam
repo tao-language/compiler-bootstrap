@@ -42,7 +42,7 @@ pub type Term {
   LitT(typ: LiteralType)
   Var(index: Int)
   Ctr(tag: String, arg: Term)
-  Rcd(fields: List(#(String, Term)))
+  Rcd(fields: List(#(String, #(Term, Option(Term)))), tail: Option(Term))
   Call(name: String, returns: Type, args: List(Term))
   Ann(term: Term, type_: Type)
   Lam(implicit: Bool, param: #(String, Type), body: Term)
@@ -64,8 +64,7 @@ pub type Pattern {
   PLitT(lit_type: LiteralType)
   PAlias(name: String, pattern: Pattern)
   PCtr(tag: String, pattern: Pattern)
-  PRcd(fields: List(#(String, Pattern)))
-  PRcdT(fields: List(#(String, Pattern)))
+  PRcd(fields: List(#(String, Pattern)), tail: Option(Pattern))
   PErr
 }
 
@@ -96,8 +95,14 @@ pub fn bindings(p: Pattern) -> List(String) {
     PLitT(_) -> []
     PAlias(name, p) -> [name, ..bindings(p)]
     PCtr(_, p) -> bindings(p)
-    PRcd(fields) -> list.flat_map(fields, fn(kv) { bindings(kv.1) })
-    PRcdT(fields) -> list.flat_map(fields, fn(kv) { bindings(kv.1) })
+    PRcd(fields, opt_tail) -> {
+      let xs = list.flat_map(fields, fn(kv) { bindings(kv.1) })
+      let ys = case opt_tail {
+        Some(tail) -> bindings(tail)
+        None -> []
+      }
+      list.append(xs, ys)
+    }
     PErr -> []
   }
 }
@@ -116,13 +121,16 @@ pub fn lift(term: Term, names: List(String)) -> ast.Expr {
         None -> ast.var("`undefined " <> int.to_string(index) <> "`", s)
       }
     Ctr(tag, arg) -> ast.Expr(ast.Ctr(tag, lift(arg, names)), s)
-    Rcd(fields) -> {
+    Rcd(fields, tail) -> {
       let fields_ast =
         list.map(fields, fn(field) {
-          let #(name, term) = field
-          #(name, lift(term, names))
+          let #(name, #(term, default)) = field
+          let term_ast = lift(term, names)
+          let default_ast = option.map(default, lift(_, names))
+          #(name, #(Some(term_ast), default_ast))
         })
-      ast.rcd_values(fields_ast, s)
+      let tail_ast = option.map(tail, lift(_, names))
+      ast.rcd(fields_ast, tail_ast, s)
     }
     Call(name, returns, args) -> todo
     Ann(term, type_) -> todo
@@ -176,15 +184,15 @@ fn lift_pattern(p: Pattern) -> ast.Pattern {
     PLitT(lit_type) -> ast.plit_t(lit_type, s)
     PAlias(name, pattern) -> ast.palias(lift_pattern(pattern), name, s)
     PCtr(tag, pattern) -> ast.pctr(tag, lift_pattern(pattern), s)
-    PRcd(fields) -> {
+    PRcd(fields, tail) -> {
       let fields_ast =
         list.map(fields, fn(field) {
           let #(name, pattern) = field
           #(name, lift_pattern(pattern))
         })
-      ast.prcd(fields_ast, s)
+      let tail_ast = option.map(tail, lift_pattern)
+      ast.prcd(fields_ast, tail_ast, s)
     }
-    PRcdT(fields) -> todo
     PErr -> todo
   }
 }
@@ -223,8 +231,21 @@ pub const f32 = LitT(lit.F32)
 
 pub const f64 = LitT(lit.F64)
 
+pub fn rcd(fields: List(#(String, Term))) -> Term {
+  rcd_open(fields, None)
+}
+
+pub fn rcd_open(fields: List(#(String, Term)), tail: Option(Term)) -> Term {
+  let fields =
+    list.map(fields, fn(field) {
+      let #(name, value) = field
+      #(name, #(value, None))
+    })
+  Rcd(fields, tail)
+}
+
 pub fn ctr(tag: String, args: List(#(String, Term))) -> Term {
-  Ctr(tag, Rcd(args))
+  Ctr(tag, rcd(args))
 }
 
 pub fn lam(param: #(String, Type), body: Term) -> Term {
@@ -261,7 +282,8 @@ pub fn let_pat(def: #(Pattern, Term), body: Term) -> Term {
 }
 
 pub fn dot(term: Term, field: String) -> Term {
-  Match(term, [Case(PRcd([#(field, pvar(field))]), None, Var(0))])
+  let pattern = PRcd([#(field, pvar(field))], Some(PAny))
+  Match(term, [Case(pattern, None, Var(0))])
 }
 
 pub fn pvar(name: String) -> Pattern {
