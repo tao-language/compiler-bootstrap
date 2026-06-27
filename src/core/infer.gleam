@@ -14,12 +14,12 @@ import core/quote.{quote}
 import core/term.{type Term} as tm
 import core/unify.{unify}
 import core/unwrap.{unwrap, unwrap_term}
-import core/value.{type Value} as v
+import core/value.{type Type, type Value} as v
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
-import syntax/span.{type Span}
+import syntax/span.{type Span, Span}
 
 /// Infer the type of a term (synthesis).
 ///
@@ -36,7 +36,6 @@ pub fn infer(ctx: Context, term_ast: ast.Expr) -> #(Term, Value, Context) {
     ast.Var(name) -> infer_var(ctx, name, term_ast.span)
     ast.Ctr(tag, arg) -> infer_ctr(ctx, tag, arg)
     ast.Rcd(fields) -> infer_rcd(ctx, fields)
-    ast.RcdT(fields) -> infer_rcd_type(ctx, fields)
     ast.Call(name, returns, args) -> infer_call(ctx, name, returns, args)
     ast.Ann(inner, type_) -> infer_ann(ctx, inner, type_)
     ast.Lam(implicit, param, body) -> infer_lam(ctx, implicit, param, body)
@@ -159,33 +158,36 @@ fn infer_ctr(ctx: Context, tag: String, arg: Expr) -> #(Term, Value, Context) {
 
 fn infer_rcd(
   ctx: Context,
-  fields: List(#(String, Expr)),
+  fields: List(#(String, #(Option(Expr), Option(Expr)))),
 ) -> #(Term, Value, Context) {
   let #(fields, field_types, ctx) = infer_rcd_fields(ctx, fields)
   let field_types =
     list.map(field_types, fn(kv) {
-      let #(name, #(type_, default)) = kv
-      let type_ = unwrap(ctx.ffi, ctx.subst, type_)
-      let default = option.map(default, unwrap(ctx.ffi, ctx.subst, _))
-      #(name, #(type_, default))
+      let #(name, type_) = kv
+      #(name, unwrap(ctx.ffi, ctx.subst, type_))
     })
-  #(tm.Rcd(fields), v.RcdT(field_types), ctx)
+  #(tm.Rcd(fields), v.Rcd(field_types), ctx)
 }
 
 fn infer_rcd_fields(
   ctx: Context,
-  fields: List(#(String, Expr)),
-) -> #(List(#(String, Term)), List(#(String, #(Value, Option(Value)))), Context) {
+  fields: List(#(String, #(Option(Expr), Option(Expr)))),
+) -> #(List(#(String, Term)), List(#(String, Type)), Context) {
+  let s = Span("", 0, 0, 0, 0)
   case fields {
     [] -> #([], [], ctx)
-    [#(name, term), ..fields] -> {
+    [#(name, #(opt_term, _)), ..fields] -> {
+      let #(term, ctx) = case opt_term {
+        Some(term) -> #(term, ctx)
+        None -> {
+          let #(id, ctx) = context.new_hole(ctx)
+          // TODO: get span from field name
+          #(ast.hole(Some(id), s), ctx)
+        }
+      }
       let #(term, type_, ctx) = infer(ctx, term)
       let #(fields, field_types, ctx) = infer_rcd_fields(ctx, fields)
-      #(
-        [#(name, term), ..fields],
-        [#(name, #(type_, None)), ..field_types],
-        ctx,
-      )
+      #([#(name, term), ..fields], [#(name, type_), ..field_types], ctx)
     }
   }
 }
@@ -195,36 +197,36 @@ fn infer_rcd_type(
   fields: List(#(String, #(Option(Expr), Option(Expr)))),
 ) -> #(Term, Value, Context) {
   let #(fields, ctx) = infer_rcd_type_fields(ctx, fields)
-  #(tm.RcdT(fields), v.Typ(0), ctx)
+  #(tm.Rcd(fields), v.Typ(0), ctx)
 }
 
 fn infer_rcd_type_fields(
   ctx: Context,
   fields: List(#(String, #(Option(Expr), Option(Expr)))),
-) -> #(List(#(String, #(Term, Option(Term)))), Context) {
+) -> #(List(#(String, Term)), Context) {
   case fields {
     [] -> #([], ctx)
     [#(name, #(type_, default)), ..fields] -> {
       let #(field, ctx) = case type_, default {
         Some(type_), Some(default) -> {
           let #(default, #(type_tm, _), ctx) = check_on_ast(ctx, default, type_)
-          let field = #(name, #(type_tm, Some(default)))
+          let field = #(name, type_tm)
           #(field, ctx)
         }
         Some(type_), None -> {
           let #(type_tm, _, ctx) = infer(ctx, type_)
-          let field = #(name, #(type_tm, None))
+          let field = #(name, type_tm)
           #(field, ctx)
         }
         None, Some(default) -> {
           let #(default, type_, ctx) = infer(ctx, default)
           let type_tm = quote(ctx.ffi, list.length(ctx.env), type_)
-          let field = #(name, #(type_tm, Some(default)))
+          let field = #(name, type_tm)
           #(field, ctx)
         }
         None, None -> {
           let #(hole_id, ctx) = context.new_hole(ctx)
-          let field = #(name, #(tm.Hole(hole_id), None))
+          let field = #(name, tm.Hole(hole_id))
           #(field, ctx)
         }
       }
@@ -498,7 +500,7 @@ fn infer_pattern(
     }
     ast.PRcd(fields_ast) -> {
       let #(fields, fields_type, ctx) = infer_pattern_fields(ctx, fields_ast)
-      #(tm.PRcd(fields), v.RcdT(fields_type), ctx)
+      #(tm.PRcd(fields), v.Rcd(fields_type), ctx)
     }
     ast.PRcdT(fields_ast) -> {
       let #(fields, _, ctx) = infer_pattern_fields(ctx, fields_ast)
@@ -511,21 +513,13 @@ fn infer_pattern(
 fn infer_pattern_fields(
   ctx: Context,
   fields_ast: List(#(String, ast.Pattern)),
-) -> #(
-  List(#(String, tm.Pattern)),
-  List(#(String, #(Value, Option(Value)))),
-  Context,
-) {
+) -> #(List(#(String, tm.Pattern)), List(#(String, Value)), Context) {
   case fields_ast {
     [] -> #([], [], ctx)
     [#(name, pattern_ast), ..fields_ast] -> {
       let #(pattern, type_, ctx) = infer_pattern(ctx, pattern_ast)
       let #(fields, fields_type, ctx) = infer_pattern_fields(ctx, fields_ast)
-      #(
-        [#(name, pattern), ..fields],
-        [#(name, #(type_, None)), ..fields_type],
-        ctx,
-      )
+      #([#(name, pattern), ..fields], [#(name, type_), ..fields_type], ctx)
     }
   }
 }

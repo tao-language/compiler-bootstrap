@@ -28,8 +28,7 @@ pub type ExprData {
   LitT(t: LiteralType)
   Var(name: String)
   Ctr(tag: String, arg: Expr)
-  Rcd(fields: List(#(String, Expr)))
-  RcdT(fields: List(#(String, #(Option(Expr), Option(Expr)))))
+  Rcd(fields: List(#(String, #(Option(Expr), Option(Expr)))))
   Ann(term: Expr, type_: Type)
   Lam(implicit: Bool, param: Param, body: Expr)
   Pi(implicit: Bool, param: Param, body: Expr)
@@ -101,11 +100,6 @@ pub fn contains(term: Expr, name: String) -> Bool {
     Var(x) if x == name -> True
     Ctr(_, arg) -> contains(arg, name)
     Rcd(fields) ->
-      list.any(fields, fn(field) {
-        let #(_, term) = field
-        contains(term, name)
-      })
-    RcdT(fields) ->
       list.any(fields, fn(field) {
         let #(_, #(opt_type, opt_default)) = field
         opt_contains(opt_type, name) || opt_contains(opt_default, name)
@@ -231,26 +225,29 @@ pub fn ctr(tag: String, arg: Expr, span: Span) {
 }
 
 pub fn ctr_args(tag: String, args: List(#(String, Expr)), span: Span) {
-  ctr(tag, rcd(args, span), span)
+  ctr(tag, rcd_values(args, span), span)
 }
 
 pub fn ctr0(tag: String, span: Span) {
   ctr_args(tag, [], span)
 }
 
-pub fn rcd(fields: List(#(String, Expr)), span: Span) {
+pub fn rcd(fields: List(#(String, #(Option(Type), Option(Expr)))), span: Span) {
   Expr(Rcd(fields), span)
 }
 
-pub fn rcd_vars(vars: List(String), span: Span) {
-  rcd(list.map(vars, fn(name) { #(name, var(name, span)) }), span)
+pub fn rcd_values(fields: List(#(String, Expr)), span: Span) {
+  let fields =
+    list.map(fields, fn(field) {
+      let #(name, value) = field
+      #(name, #(Some(value), None))
+    })
+  rcd(fields, span)
 }
 
-pub fn rcd_t(
-  fields: List(#(String, #(Option(Type), Option(Expr)))),
-  span: Span,
-) {
-  Expr(RcdT(fields), span)
+pub fn rcd_vars(vars: List(String), span: Span) {
+  let fields = list.map(vars, fn(name) { #(name, var(name, span)) })
+  rcd_values(fields, span)
 }
 
 pub fn ann(value: Expr, type_: Expr, span: Span) {

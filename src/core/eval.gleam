@@ -24,15 +24,6 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
           #(name, eval(ffi, env, term))
         }),
       )
-    tm.RcdT(fields) ->
-      v.RcdT(
-        list.map(fields, fn(field) {
-          let #(name, #(term, maybe_default)) = field
-          let value = eval(ffi, env, term)
-          let default = option.map(maybe_default, eval(ffi, env, _))
-          #(name, #(value, default))
-        }),
-      )
     tm.Call(name, returns, args) -> {
       let returns_val = eval(ffi, env, returns)
       let args_val = list.map(args, eval(ffi, env, _))

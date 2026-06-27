@@ -18,15 +18,6 @@ pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
         let #(_, val) = field
         occurs(ctx, hole_id, val)
       })
-    v.RcdT(fields) ->
-      list.any(fields, fn(field) {
-        let #(_, #(type_val, maybe_default_val)) = field
-        occurs(ctx, hole_id, type_val)
-        || case maybe_default_val {
-          Some(default_val) -> occurs(ctx, hole_id, default_val)
-          None -> False
-        }
-      })
     v.Neut(neut) -> occurs_neut(ctx, hole_id, neut)
     v.Lam(env, #(_, param), body) -> {
       let env = v.env_push(env, 1)

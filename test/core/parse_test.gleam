@@ -165,57 +165,9 @@ pub fn lex_rcd_test() {
 pub fn parse_rcd_test() {
   assert parse("{}") == Ok(ast.rcd([], s(1, 1, 1, 3)))
   assert parse("{a: x}")
-    == Ok(ast.rcd([#("a", ast.var("x", s(1, 3, 1, 6)))], s(1, 1, 1, 7)))
-}
-
-// ============================================================================
-// RcdT
-// ============================================================================
-pub fn lex_rcdt_test() {
-  assert lex("%{}") == Ok([p.RcdTOpen, p.RBrace])
-  assert lex("%{a:x=42}")
-    == Ok([
-      p.RcdTOpen,
-      p.Name("a"),
-      p.Colon,
-      p.Name("x"),
-      p.Equals,
-      p.IntLit(42),
-      p.RBrace,
-    ])
-  assert lex("%{ a : x = 42} ")
-    == Ok([
-      p.RcdTOpen,
-      p.Name("a"),
-      p.Colon,
-      p.Name("x"),
-      p.Equals,
-      p.IntLit(42),
-      p.RBrace,
-    ])
-  assert lex("%{a: x, b: y}")
-    == Ok([
-      p.RcdTOpen,
-      p.Name("a"),
-      p.Colon,
-      p.Name("x"),
-      p.Comma,
-      p.Name("b"),
-      p.Colon,
-      p.Name("y"),
-      p.RBrace,
-    ])
-}
-
-pub fn parse_rcdt_test() {
-  assert parse("%{}") == Ok(ast.rcd_t([], s(1, 1, 1, 4)))
-  assert parse("%{a: x}")
-    == Ok(ast.rcd_t(
-      [#("a", #(Some(ast.var("x", s(1, 4, 1, 7))), None))],
-      s(1, 1, 1, 8),
-    ))
+    == Ok(ast.rcd_values([#("a", ast.var("x", s(1, 3, 1, 6)))], s(1, 1, 1, 7)))
   assert parse("%{a: x = 42}")
-    == Ok(ast.rcd_t(
+    == Ok(ast.rcd(
       [
         #(
           "a",

@@ -39,8 +39,6 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       }
     v.Rcd(fields1), v.Rcd(fields2) ->
       unify_rcd(ctx, #(fields1, s1), #(fields2, s2))
-    v.RcdT(fields1), v.RcdT(fields2) ->
-      unify_rcd_type(ctx, #(fields1, s1), #(fields2, s2))
     v.Lam(env1, #(_, a1), b1), v.Lam(env2, #(_, a2), b2) -> {
       let ctx = unify(ctx, #(a1, s1), #(a2, s2))
       let v1 = eval(ctx.ffi, [v.var(list.length(env1)), ..env1], b1)
@@ -225,25 +223,6 @@ fn unify_rcd_fields(
         }
       }
   }
-}
-
-fn unify_rcd_type(
-  ctx: Context,
-  a: #(List(#(String, #(Value, Option(Value)))), Span),
-  b: #(List(#(String, #(Value, Option(Value)))), Span),
-) -> Context {
-  let #(fields1, s1) = a
-  let #(fields2, s2) = b
-  let sorted_names = fn(kvs: List(#(String, #(Value, Option(Value))))) {
-    list.map(kvs, fn(kv) { kv.0 })
-    |> list.sort(by: string.compare)
-  }
-  let ctx = case sorted_names(fields1), sorted_names(fields2) {
-    names1, names2 if names1 != names2 ->
-      with_err(ctx, e.RcdFieldsMismatch(#(names1, s1), #(names2, s2)))
-    _, _ -> ctx
-  }
-  unify_rcd_type_fields(ctx, #(fields1, s1), #(fields2, s2))
 }
 
 fn unify_rcd_type_fields(

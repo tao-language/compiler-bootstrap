@@ -326,55 +326,6 @@ pub fn unify_rcd_nested_same_test() {
 }
 
 // ============================================================================
-// Record type unification
-// ============================================================================
-
-pub fn unify_rcdt_empty_test() {
-  let a = v.RcdT([])
-  let b = v.RcdT([])
-  let ctx0 = new_ctx
-  assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
-}
-
-pub fn unify_rcdt_fields_mismatch_test() {
-  let a = v.RcdT([#("x", #(v.int_t, None))])
-  let b = v.RcdT([#("y", #(v.int_t, None))])
-  let ctx0 = new_ctx
-  assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, e.RcdFieldsMismatch(#(["x"], s1), #(["y"], s2)))
-}
-
-pub fn unify_rcdt_different_order_test() {
-  let a =
-    v.RcdT([
-      #("b", #(v.int_t, None)),
-      #("a", #(v.float_t, None)),
-    ])
-  let b =
-    v.RcdT([
-      #("a", #(v.float_t, None)),
-      #("b", #(v.int_t, None)),
-    ])
-  let ctx0 = new_ctx
-  assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
-}
-
-pub fn unify_rcdt_with_default_test() {
-  let a = v.RcdT([#("x", #(v.int_t, Some(v.int(0))))])
-  let b = v.RcdT([#("x", #(v.int_t, Some(v.int(0))))])
-  let ctx0 = new_ctx
-  assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
-}
-
-pub fn unify_rcdt_default_mismatch_test() {
-  let a = v.RcdT([#("x", #(v.int_t, Some(v.int(0))))])
-  let b = v.RcdT([#("x", #(v.int_t, Some(v.int(1))))])
-  let ctx0 = new_ctx
-  assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, e.TypeMismatch(#(v.int(0), s1), #(v.int(1), s2)))
-}
-
-// ============================================================================
 // Neutral variable unification
 // ============================================================================
 

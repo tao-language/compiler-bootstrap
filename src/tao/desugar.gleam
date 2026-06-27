@@ -41,11 +41,11 @@ pub fn expr(e: tao.Expr) -> core.Expr {
     }
     tao.Rcd(fields) -> {
       let core_fields = rcd_fields(fields)
-      core.rcd(core_fields, e.span)
+      core.rcd_values(core_fields, e.span)
     }
     tao.RcdT(fields) -> {
       let core_fields = rcdt_fields(fields)
-      core.rcd_t(core_fields, e.span)
+      core.rcd(core_fields, e.span)
     }
     tao.Ann(value, type_) -> {
       let core_value = expr(value)
@@ -92,19 +92,13 @@ fn opt_expr(opt_expr: Option(tao.Expr)) -> Option(core.Expr) {
 }
 
 fn arguments(args: List(#(String, tao.Expr)), span: Span) -> core.Expr {
-  let core_args =
-    core.Rcd(
-      list.index_map(args, fn(named_arg, index) {
-        let #(name, arg) = named_arg
-        let name = case name {
-          "" -> int.to_string(index + 1)
-          _ -> name
-        }
-        #(name, expr(arg))
-      }),
-    )
+  let fields =
+    list.map(args, fn(named_arg) {
+      let #(name, arg) = named_arg
+      #(name, expr(arg))
+    })
   // TODO: span.merge(first_span, last_span)
-  core.Expr(core_args, span)
+  core.rcd_values(fields, span)
 }
 
 fn arguments_pat(
@@ -146,7 +140,7 @@ fn function(
           let core_default = opt_expr(opt_default)
           #(int.to_string(index + 1), #(core_type, core_default))
         })
-      let core_param_type = core.rcd_t(param_fields, args_span)
+      let core_param_type = core.rcd(param_fields, args_span)
       let bindings =
         list.index_map(params, fn(param, index) {
           let #(p, _) = param

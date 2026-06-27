@@ -90,7 +90,6 @@ fn doc_term(term: Expr, indent: Int) -> Document {
         doc_text(")"),
       ])
     ast.Rcd(fields) -> doc_rcd(fields, indent)
-    ast.RcdT(fields) -> doc_rcdt(fields, indent)
     ast.Ann(term, type_) ->
       doc.concat([
         doc_text("%("),
@@ -185,56 +184,29 @@ fn doc_param(
   ])
 }
 
-fn doc_rcd(fields: List(#(String, Expr)), indent: Int) -> Document {
+fn doc_rcd(
+  fields: List(#(String, #(Option(Expr), Option(Expr)))),
+  indent: Int,
+) -> Document {
   let doc_fields =
     list.map(fields, fn(field) {
-      let #(name, term) = field
+      let #(name, #(opt_type, opt_term)) = field
       let name = var_name(name)
-      doc.concat([doc_text(name <> ": "), doc_term(term, indent)])
+      let type_ = case opt_type {
+        Some(type_) -> doc.concat([doc_text(": "), doc_term(type_, indent)])
+        None -> doc.empty
+      }
+      let term = case opt_term {
+        Some(term) -> doc.concat([doc_text(" = "), doc_term(term, indent)])
+        None -> doc.empty
+      }
+      doc.concat([doc_text(name), type_, term])
     })
   doc.concat([
     doc_text("{"),
     doc.nest(doc.join(doc_fields, doc.break(", ", ",")), indent),
     doc_text("}"),
   ])
-}
-
-fn doc_rcdt(
-  fields: List(#(String, #(Option(Expr), Option(Expr)))),
-  indent: Int,
-) -> Document {
-  let format_field = fn(f: #(String, #(Option(Expr), Option(Expr)))) {
-    let type_doc = case f.1.0 {
-      Some(t) -> doc_term(t, indent)
-      None -> doc_text("?")
-    }
-    let field_str = doc.concat([doc_text(f.0 <> ": "), type_doc])
-    case f.1.1 {
-      Some(default_) ->
-        doc.concat([field_str, doc_text(" = "), doc_term(default_, indent)])
-      None -> field_str
-    }
-  }
-  case fields {
-    [] -> doc_text("%{}")
-    [field] -> doc.concat([doc_text("%{"), format_field(field), doc_text("}")])
-    _ -> {
-      let field_docs = list.map(fields, format_field)
-      doc.concat([
-        doc_text("%{"),
-        doc.nest(
-          doc.concat([
-            doc.line,
-            doc.join(field_docs, doc.concat([doc_text(","), doc.line])),
-          ]),
-          2,
-        ),
-        doc.line,
-        doc_text("}"),
-      ])
-      |> doc.group
-    }
-  }
 }
 
 fn format_lit_type(lt: LiteralType) -> Document {

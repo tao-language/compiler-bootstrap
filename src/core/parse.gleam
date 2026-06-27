@@ -46,7 +46,6 @@ pub type Token {
   FloatLit(Float)
 
   // Symbols
-  RcdTOpen
   AnnOpen
   LParen
   RParen
@@ -148,7 +147,6 @@ fn core_lexer() -> Lexer(Token, Nil) {
     lexer.comment("//", fn(_) { Nil }) |> lexer.ignore,
 
     // Two-character symbols (must come before single-char)
-    lexer.token("%{", RcdTOpen),
     lexer.token("%(", AnnOpen),
     lexer.token("=>", FatArrow),
     lexer.token("->", ThinArrow),
@@ -193,7 +191,6 @@ fn expr(file: String) -> Parser(Expr, Token, Nil) {
       var(file),
       tag(file),
       rcd(file),
-      rcd_t(file),
       ann(file),
       lam(file),
       pi_expr(file),
@@ -292,27 +289,12 @@ fn rcd(file: String) -> Parser(Expr, Token, Nil) {
     nibble.one_of([
       comma_separated({
         use name <- do(take_ident())
-        use _ <- do(nibble.token(Colon))
-        use value <- do(expr(file))
-        return(#(name, value))
-      }),
-      return([]),
-    ]),
-  )
-  use _ <- do(nibble.token(RBrace))
-  use end <- do(get_span(file))
-  return(ast.rcd(fields, span.merge(start, end)))
-}
-
-fn rcd_t(file: String) -> Parser(Expr, Token, Nil) {
-  use start <- do(get_span(file))
-  use _ <- do(nibble.token(RcdTOpen))
-  use fields <- do(
-    nibble.one_of([
-      comma_separated({
-        use name <- do(take_ident())
-        use _ <- do(nibble.token(Colon))
-        use value <- do(nibble.optional(expr(file)))
+        use value <- do(
+          nibble.optional({
+            use _ <- do(nibble.token(Colon))
+            expr(file)
+          }),
+        )
         use default <- do(
           nibble.optional({
             use _ <- do(nibble.token(Equals))
@@ -326,7 +308,7 @@ fn rcd_t(file: String) -> Parser(Expr, Token, Nil) {
   )
   use _ <- do(nibble.token(RBrace))
   use end <- do(get_span(file))
-  return(ast.rcd_t(fields, span.merge(start, end)))
+  return(ast.rcd(fields, span.merge(start, end)))
 }
 
 fn ann(file: String) -> Parser(Expr, Token, Nil) {

@@ -45,16 +45,6 @@ pub fn term(ffi: FFI, subst: Subst, size: Int, t: Term) -> Term {
         })
       tm.Rcd(fields)
     }
-    tm.RcdT(fields) -> {
-      let fields =
-        list.map(fields, fn(field) {
-          let #(name, #(t, default)) = field
-          let t = term(ffi, subst, size, t)
-          let default = option.map(default, term(ffi, subst, size, _))
-          #(name, #(t, default))
-        })
-      tm.RcdT(fields)
-    }
     tm.Call(name, returns, args) -> {
       let returns = term(ffi, subst, size, returns)
       let args = list.map(args, term(ffi, subst, size, _))

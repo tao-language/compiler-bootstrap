@@ -43,7 +43,6 @@ pub type Term {
   Var(index: Int)
   Ctr(tag: String, arg: Term)
   Rcd(fields: List(#(String, Term)))
-  RcdT(fields: List(#(String, #(Type, Option(Term)))))
   Call(name: String, returns: Type, args: List(Term))
   Ann(term: Term, type_: Type)
   Lam(implicit: Bool, param: #(String, Type), body: Term)
@@ -123,17 +122,7 @@ pub fn lift(term: Term, names: List(String)) -> ast.Expr {
           let #(name, term) = field
           #(name, lift(term, names))
         })
-      ast.rcd(fields_ast, s)
-    }
-    RcdT(fields) -> {
-      let fields_ast =
-        list.map(fields, fn(field) {
-          let #(name, #(type_, opt_default)) = field
-          let type_ast = lift(type_, names)
-          let opt_default_ast = option.map(opt_default, lift(_, names))
-          #(name, #(Some(type_ast), opt_default_ast))
-        })
-      ast.rcd_t(fields_ast, s)
+      ast.rcd_values(fields_ast, s)
     }
     Call(name, returns, args) -> todo
     Ann(term, type_) -> todo
