@@ -23,11 +23,11 @@ pub fn package(ctx: Context, mods: List(Module)) -> Context {
 pub fn tests(mods: List(Module)) -> List(TestDef) {
   list.index_map(mods, fn(mod, mod_index) {
     let #(_, stmts) = mod
-    let tm_mod = tm.Var(mod_index)
     let mod_tests = discover.tests(stmts)
     list.map(mod_tests, fn(t) {
       let #(test_name, expr, expect) = t
-      TestDef(test_name, tm.dot(tm_mod, ">>> " <> test_name), expr, expect)
+      let term = tm.dot(tm.Var(mod_index), ">>> " <> test_name)
+      TestDef(test_name, term, expr, expect)
     })
   })
   |> list.flatten

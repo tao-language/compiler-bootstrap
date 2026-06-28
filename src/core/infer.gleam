@@ -9,6 +9,7 @@ import core/coerce.{coerce}
 import core/context.{type Context}
 import core/error as e
 import core/eval.{eval}
+import core/format
 import core/literals.{type Literal, type LiteralType} as lit
 import core/quote.{quote}
 import core/term.{type Term} as tm
@@ -16,6 +17,7 @@ import core/unify.{unify}
 import core/unwrap.{unwrap, unwrap_term}
 import core/value.{type Type, type Value} as v
 import gleam/int
+import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string

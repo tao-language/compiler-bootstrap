@@ -12,6 +12,8 @@ import gleam/string
 import tao/config
 import utils/glob.{glob_compile}
 
+const format_width = 60
+
 const help = "Tao compiler bootstrap
 
 Usage:
@@ -68,7 +70,7 @@ pub fn main() {
     //     [] -> Ok(Run(Inline(expr), False, False))
     //     _ -> Error("Too many arguments after -c expression")
     //   }
-    ["debug-expr", source, ..] -> debug_expr(source, 80)
+    ["debug-expr", source, ..] -> debug_expr(source, format_width)
     ["debug-file", ..args] -> {
       let root =
         list.find_map(args, fn(arg) {
@@ -84,7 +86,7 @@ pub fn main() {
         list.filter(args, fn(arg) { !string.starts_with(arg, "--") })
         |> list.first
       case filename_result {
-        Ok(filename) -> debug_file(root, filename, 80)
+        Ok(filename) -> debug_file(root, filename, format_width)
         Error(Nil) -> {
           io.println_error("error: no filename provided")
           io.println(help)
@@ -92,7 +94,7 @@ pub fn main() {
         }
       }
     }
-    ["debug-core", source, ..] -> debug_core(source, 80)
+    ["debug-core", source, ..] -> debug_core(source, format_width)
     // [path, ..rest] ->
     //   case rest {
     //     [] -> Ok(Run(File(path), False, False))

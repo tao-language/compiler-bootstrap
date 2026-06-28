@@ -80,7 +80,7 @@ fn doc_term(term: Expr, indent: Int) -> Document {
         l.Int(value) -> doc_text(int.to_string(value))
         l.Float(value) -> doc_text(float.to_string(value))
       }
-    ast.LitT(t_) -> format_lit_type(t_)
+    ast.LitT(t_) -> doc_lit_type(t_)
     ast.Var(name) -> doc_text(var_name(name))
     ast.Ctr(tag, ast.Expr(ast.Rcd([], None), _)) -> doc_text("#" <> tag)
     ast.Ctr(tag, arg) ->
@@ -129,9 +129,9 @@ fn doc_term(term: Expr, indent: Int) -> Document {
         False -> doc.concat([fun_doc, doc_text("("), arg_doc, doc_text(")")])
       }
     }
-    ast.TypeDef(type_def) -> format_typedef(type_def, indent)
+    ast.TypeDef(type_def) -> doc_typedef(type_def, indent)
     ast.Match(arg, cases) -> {
-      let case_docs = list.map(cases, fn(c) { format_case(c, indent) })
+      let case_docs = list.map(cases, fn(c) { doc_case(c, indent) })
       doc.concat([
         doc_text("%match "),
         doc_term(arg, indent),
@@ -207,15 +207,16 @@ fn doc_rcd(
     None -> []
     Some(tail) -> [doc.concat([doc_text(".."), doc_term(tail, indent)])]
   }
-  let doc_fields = list.append(doc_fields, tail)
-  doc.concat([
-    doc_text("{"),
-    doc.nest(doc.join(doc_fields, doc.break(", ", ",")), indent),
-    doc_text("}"),
-  ])
+  list.append(doc_fields, tail)
+  |> doc.join(with: doc.break(", ", ","))
+  |> doc.prepend(doc.break("{", "{"))
+  |> doc.nest(by: indent)
+  |> doc.append(doc.break("", ","))
+  |> doc.append(doc_text("}"))
+  |> doc.group
 }
 
-fn format_lit_type(lt: LiteralType) -> Document {
+fn doc_lit_type(lt: LiteralType) -> Document {
   case lt {
     _ if lt == l.IntT -> doc_text("%Int")
     _ if lt == l.FloatT -> doc_text("%Float")
@@ -233,7 +234,7 @@ fn format_lit_type(lt: LiteralType) -> Document {
   }
 }
 
-fn format_case(c: Case, indent: Int) -> Document {
+fn doc_case(c: Case, indent: Int) -> Document {
   doc.concat([
     doc.line,
     doc_text("| "),
@@ -270,7 +271,7 @@ fn doc_pattern(pattern: Pattern, indent: Int) -> Document {
         l.Int(n) -> doc_text(int.to_string(n))
         l.Float(f) -> doc_text(float.to_string(f))
       }
-    PLitT(doc_text) -> format_lit_type(doc_text)
+    PLitT(doc_text) -> doc_lit_type(doc_text)
     PAlias(ast.Pattern(PAny, _), name) -> doc_text(name)
     PAlias(inner, name) ->
       doc.concat([
@@ -314,14 +315,14 @@ fn doc_pattern_rcd(
   ])
 }
 
-fn format_typedef(td: TypeDefinition, indent: Int) -> Document {
+fn doc_typedef(td: TypeDefinition, indent: Int) -> Document {
   let param_names =
     td.params
     |> list.map(fn(p) { p.0 })
     |> string.join(" ")
   let variant_docs =
     td.variants
-    |> list.map(fn(v) { format_variant(v.1, indent) })
+    |> list.map(fn(v) { doc_variant(v.1, indent) })
   doc.concat([
     doc_text("type "),
     doc_text(param_names),
@@ -337,7 +338,7 @@ fn format_typedef(td: TypeDefinition, indent: Int) -> Document {
   |> doc.group
 }
 
-fn format_variant(v: Variant, indent: Int) -> Document {
+fn doc_variant(v: Variant, indent: Int) -> Document {
   let param_names =
     v.params
     |> list.map(fn(p) { p.0 })
