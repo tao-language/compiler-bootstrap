@@ -19,9 +19,9 @@ import syntax/span.{type Span}
 pub type Error {
   UnexpectedToken(token: String, span: Span)
   VarUndefined(name: String, span: Span)
-  TypeMismatch(#(Value, Span), #(Value, Span))
-  NeutralTypeMismatch(#(Neut, Span), #(Neut, Span))
-  RcdFieldsMismatch(#(List(String), Span), #(List(String), Span))
+  TypeMismatch(a: #(Value, Span), b: #(Value, Span))
+  NeutralTypeMismatch(a: #(Neut, Span), b: #(Neut, Span))
+  RcdFieldNotFound(field: #(String, Span), missing_on: Span)
   CallArityMismatch(#(Int, Span), #(Int, Span))
   InfiniteType(hole_id: Int, type_: Value, span: Span)
   NotAFunction(fun: tm.Term, fun_type: Value, span: Span)
@@ -30,16 +30,6 @@ pub type Error {
     tag: #(String, Span),
     variants: #(List(#(String, Variant)), Span),
   )
-  MatchMissing(patterns: List(String), covered: List(String), span: Span)
-  MatchRedundant(span: Span)
-  StepLimitExceeded(steps: Int, span: Span)
-  CtorArgTypeMismatch(
-    tag: String,
-    expected_pattern: Value,
-    actual_type: Value,
-    span: Span,
-  )
-  CtorNotFound(tag: String, span: Span)
 }
 
 // ============================================================================
@@ -102,24 +92,8 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
       }
     }
 
-    RcdFieldsMismatch(#(fields1, span1), #(fields2, span2)) -> {
-      let only_1 =
-        list.filter(fields1, fn(field) { !list.contains(fields2, field) })
-      let only_2 =
-        list.filter(fields2, fn(field) { !list.contains(fields1, field) })
-      summary(span1, "record fields mismatch")
-      <> detail("Left fields:  {" <> string.join(fields1, ", ") <> "}")
-      <> detail("Right fields: {" <> string.join(fields2, ", ") <> "}")
-      <> case only_1 {
-        [] -> ""
-        extra ->
-          detail("")
-          <> detail("Left has extra fields: " <> string.join(extra, ", "))
-      }
-      <> case only_2 {
-        [] -> ""
-        extra -> detail("Right has extra fields: " <> string.join(extra, ", "))
-      }
+    RcdFieldNotFound(#(name, field_span), span) -> {
+      summary(span, "record field not found: \"" <> name <> "\"")
     }
 
     CallArityMismatch(#(got_arity, span), #(expected_arity, _)) -> {
@@ -179,45 +153,6 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
       <> detail(
         "Did you mean one of: " <> string.join(variant_names, ", ") <> "?",
       )
-    }
-
-    MatchMissing(patterns, covered, span) -> {
-      summary(span, "non-exhaustive pattern match")
-      <> detail("Missing cases: " <> string.join(patterns, ", "))
-      <> case covered {
-        [] -> ""
-        names -> detail("Covered:     " <> string.join(names, ", "))
-      }
-      <> detail("")
-      <> detail("Add pattern(s) for: " <> string.join(patterns, ", "))
-    }
-
-    MatchRedundant(span) -> {
-      summary(span, "redundant pattern match arm")
-      <> detail("This case will never be reached because a previous pattern")
-      <> detail("already covers all remaining values.")
-      <> detail("")
-      <> detail("Consider removing this arm or reordering your patterns.")
-    }
-
-    StepLimitExceeded(steps, span) -> {
-      summary(span, "step limit exceeded")
-      <> detail("Evaluation took " <> int.to_string(steps) <> " steps, which")
-      <> detail("exceeds the configured limit.")
-      <> detail("")
-      <> detail(
-        "This may indicate an infinite loop or very expensive computation.",
-      )
-    }
-
-    CtorArgTypeMismatch(tag, expected, actual, span) -> {
-      summary(span, "constructor argument type mismatch for `" <> tag <> "`")
-      <> detail("Expected: " <> f(expected))
-      <> detail("Got:      " <> f(actual))
-    }
-
-    CtorNotFound(tag, span) -> {
-      summary(span, "constructor not found: `" <> tag <> "`")
     }
   }
 }

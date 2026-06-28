@@ -160,33 +160,41 @@ pub fn match_pattern(pattern: Pattern, value: Value) -> Option(List(Value)) {
       }
     tm.PCtr(tag1, pattern), v.Ctr(tag2, arg) if tag1 == tag2 ->
       match_pattern(pattern, arg)
-    tm.PRcd(pfields, ptail), v.Rcd(vfields, tail) ->
-      // match_pattern_rcd(pfields, vfields)
-      todo
+    tm.PRcd([], None), v.Rcd([], None) -> Some([])
+    tm.PRcd([], Some(ptail)), value -> match_pattern(ptail, value)
+    tm.PRcd([#(name, pat), ..pfields], ptail), value ->
+      match_pattern_rcd_field(name, pat, value)
+      |> option.then(fn(xs_value) {
+        let #(xs, value) = xs_value
+        case match_pattern(tm.PRcd(pfields, ptail), value) {
+          Some(ys) -> Some(list.append(ys, xs))
+          None -> None
+        }
+      })
     tm.PErr, v.Err -> Some([])
     _, _ -> None
   }
 }
 
-fn match_pattern_rcd(
-  pfields: List(#(String, Pattern)),
-  vfields: List(#(String, Value)),
-) -> Option(List(Value)) {
-  case pfields {
-    [] -> Some([])
-    [#(pname, p), ..rest] -> {
-      case list.key_find(vfields, pname) {
-        Error(_) -> None
-        Ok(v) ->
-          case match_pattern(p, v), match_pattern_rcd(rest, vfields) {
-            // Prepend to respect DeBruijn index ordering.
-            // For example, in `{x: a, y: b, z: c}`
-            //    a is #2, b is #1, c is #0
-            // So they should bind like `[c, b, a]`
-            Some(xs), Some(ys) -> Some(list.append(ys, xs))
-            _, _ -> None
-          }
+fn match_pattern_rcd_field(
+  name: String,
+  pattern: Pattern,
+  value: Value,
+) -> Option(#(List(Value), Value)) {
+  case value {
+    v.Rcd(vfields, opt_vtail) ->
+      case list.key_pop(vfields, name) {
+        Ok(#(#(value, _default), vfields)) ->
+          match_pattern(pattern, value)
+          |> option.map(fn(xs) { #(xs, v.Rcd(vfields, opt_vtail)) })
+        Error(Nil) ->
+          opt_vtail
+          |> option.then(match_pattern_rcd_field(name, pattern, _))
+          |> option.map(fn(xs_vtail) {
+            let #(xs, vtail) = xs_vtail
+            #(xs, v.Rcd(vfields, Some(vtail)))
+          })
       }
-    }
+    _ -> None
   }
 }

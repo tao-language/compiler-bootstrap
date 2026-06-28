@@ -289,12 +289,15 @@ pub fn unify_rcd_empty_test() {
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
 
-pub fn unify_rcd_fields_mismatch_test() {
+pub fn unify_rcd_field_not_found_test() {
   let a = v.rcd([#("x", v.int_t)])
   let b = v.rcd([#("y", v.int_t)])
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, e.RcdFieldsMismatch(#(["x"], s1), #(["y"], s2)))
+    == Context(..ctx0, errors: [
+      e.RcdFieldNotFound(#("x", s1), s2),
+      e.RcdFieldNotFound(#("y", s2), s1),
+    ])
 }
 
 pub fn unify_rcd_different_order_test() {

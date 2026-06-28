@@ -297,3 +297,15 @@ pub fn pint(value: Int) -> Pattern {
 pub fn pfloat(value: Float) -> Pattern {
   PLit(lit.Float(value))
 }
+
+pub fn prcd(fields: List(#(String, Pattern))) {
+  prcd_tail(fields, PAny)
+}
+
+pub fn prcd_tail(fields: List(#(String, Pattern)), tail: Pattern) {
+  PRcd(fields, Some(tail))
+}
+
+pub fn prcd_strict(fields: List(#(String, Pattern))) {
+  PRcd(fields, None)
+}

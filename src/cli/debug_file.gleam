@@ -45,18 +45,6 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   echo "> ctx = compile.package(pkg)"
   let ctx = Context(..new_ctx, ffi: ffi.build)
   let ctx = compile.package(ctx, pkg)
-  case ctx.errors {
-    [] -> Nil
-    errors -> {
-      let n = list.length(errors)
-      io.println_error("---- BUILD ERRORS (" <> int.to_string(n) <> ") ----")
-      list.map(ctx.errors, fn(err) {
-        let msg = error.display(ctx.ffi, ctx.types, err)
-        io.println_error(msg)
-      })
-      io.println_error("---- BUILD ERRORS END ----")
-    }
-  }
   let names = list.map(ctx.types, fn(t) { t.0 })
   io.println("ffi: " <> int.to_string(list.length(ctx.ffi)) <> " length")
   list.map(ctx.ffi, fn(entry) {
@@ -146,6 +134,16 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     io.println("")
   })
 
-  io.println("---- SUMMARY ----")
-  io.println(int.to_string(list.length(ctx.errors)) <> " build errors")
+  case ctx.errors {
+    [] -> Nil
+    errors -> {
+      let n = list.length(errors)
+      io.println_error("---- BUILD ERRORS (" <> int.to_string(n) <> ") ----")
+      list.map(ctx.errors, fn(err) {
+        let msg = error.display(ctx.ffi, ctx.types, err)
+        io.println_error(msg)
+      })
+      Nil
+    }
+  }
 }

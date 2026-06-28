@@ -350,20 +350,29 @@ pub fn match_pattern_ctr_nested_fail_test() {
 pub fn match_pattern_rcd_match_test() {
   let result =
     match_pattern(
-      tm.PRcd(
-        [
-          #("x", tm.PLit(lit.Int(1))),
-          #("y", tm.PAny),
-        ],
-        None,
-      ),
-      v.rcd_open(
-        [
-          #("x", v.int(1)),
-          #("y", v.int(2)),
-        ],
-        None,
-      ),
+      tm.prcd([
+        #("x", tm.PLit(lit.Int(1))),
+        #("y", tm.PAny),
+      ]),
+      v.rcd([
+        #("x", v.int(1)),
+        #("y", v.int(2)),
+      ]),
+    )
+  assert result == Some([])
+}
+
+pub fn match_pattern_rcd_match_strict_test() {
+  let result =
+    match_pattern(
+      tm.prcd_strict([
+        #("x", tm.PLit(lit.Int(1))),
+        #("y", tm.PAny),
+      ]),
+      v.rcd([
+        #("x", v.int(1)),
+        #("y", v.int(2)),
+      ]),
     )
   assert result == Some([])
 }
@@ -372,21 +381,15 @@ pub fn match_pattern_rcd_extra_field_test() {
   // Pattern has field not in value
   let result =
     match_pattern(
-      tm.PRcd(
-        [
-          #("x", tm.PAny),
-          #("y", tm.PAny),
-          #("z", tm.PAny),
-        ],
-        None,
-      ),
-      v.rcd_open(
-        [
-          #("x", v.int(1)),
-          #("y", v.int(2)),
-        ],
-        None,
-      ),
+      tm.prcd([
+        #("x", tm.PAny),
+        #("y", tm.PAny),
+        #("z", tm.PAny),
+      ]),
+      v.rcd([
+        #("x", v.int(1)),
+        #("y", v.int(2)),
+      ]),
     )
   assert result == None
 }
@@ -395,56 +398,57 @@ pub fn match_pattern_rcd_fewer_fields_test() {
   // Pattern with fewer fields succeeds
   let result =
     match_pattern(
-      tm.PRcd([#("x", tm.PAny)], None),
-      v.rcd_open(
-        [
-          #("x", v.int(1)),
-          #("y", v.int(2)),
-        ],
-        None,
-      ),
+      tm.prcd([#("x", tm.PAny)]),
+      v.rcd([
+        #("x", v.int(1)),
+        #("y", v.int(2)),
+      ]),
     )
   assert result == Some([])
+}
+
+pub fn match_pattern_rcd_fewer_fields_strict_test() {
+  // Pattern with fewer fields succeeds
+  let result =
+    match_pattern(
+      tm.prcd_strict([#("x", tm.PAny)]),
+      v.rcd([
+        #("x", v.int(1)),
+        #("y", v.int(2)),
+      ]),
+    )
+  assert result == None
 }
 
 pub fn match_pattern_rcd_bindings_test() {
   // PRcd with alias bindings — DeBruijn ordering: x(#2), y(#1), z(#0)
   let result =
     match_pattern(
-      tm.PRcd(
-        [
-          #("x", tm.PAlias("a", tm.PAny)),
-          #("y", tm.PAlias("b", tm.PAny)),
-          #("z", tm.PAlias("c", tm.PAny)),
-        ],
-        None,
-      ),
-      v.rcd_open(
-        [
-          #("x", v.int(1)),
-          #("y", v.int(2)),
-          #("z", v.int(3)),
-        ],
-        None,
-      ),
+      tm.prcd([
+        #("x", tm.PAlias("a", tm.PAny)),
+        #("y", tm.PAlias("b", tm.PAny)),
+        #("z", tm.PAlias("c", tm.PAny)),
+      ]),
+      v.rcd([
+        #("x", v.int(1)),
+        #("y", v.int(2)),
+        #("z", v.int(3)),
+      ]),
     )
   assert result == Some([v.int(3), v.int(2), v.int(1)])
 }
 
 pub fn match_pattern_rcd_wrong_field_name_test() {
   let result =
-    match_pattern(
-      tm.PRcd([#("x", tm.PAny)], None),
-      v.rcd_open([#("y", v.int(1))], None),
-    )
+    match_pattern(tm.prcd([#("x", tm.PAny)]), v.rcd([#("y", v.int(1))]))
   assert result == None
 }
 
 pub fn match_pattern_rcd_value_mismatch_test() {
   let result =
     match_pattern(
-      tm.PRcd([#("x", tm.PLit(lit.Int(99)))], None),
-      v.rcd_open([#("x", v.int(42))], None),
+      tm.prcd([#("x", tm.PLit(lit.Int(99)))]),
+      v.rcd([#("x", v.int(42))]),
     )
   assert result == None
 }

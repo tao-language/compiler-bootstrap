@@ -167,8 +167,14 @@ fn infer_rcd(
       let #(name, type_) = kv
       #(name, unwrap(ctx.ffi, ctx.subst, type_))
     })
-  // #(tm.Rcd(fields), v.Rcd(field_types), ctx)
-  todo
+  let #(tail, tail_type, ctx) = case tail {
+    None -> #(None, None, ctx)
+    Some(tail) -> {
+      let #(tail, tail_type, ctx) = infer(ctx, tail)
+      #(Some(tail), Some(tail_type), ctx)
+    }
+  }
+  #(tm.rcd_open(fields, tail), v.rcd_open(field_types, tail_type), ctx)
 }
 
 fn infer_rcd_fields(
@@ -503,8 +509,14 @@ fn infer_pattern(
     }
     ast.PRcd(fields_ast, tail) -> {
       let #(fields, fields_type, ctx) = infer_pattern_fields(ctx, fields_ast)
-      // #(tm.PRcd(fields), v.Rcd(fields_type), ctx)
-      todo
+      let #(tail, tail_type, ctx) = case tail {
+        None -> #(None, None, ctx)
+        Some(tail) -> {
+          let #(tail, tail_type, ctx) = infer_pattern(ctx, tail)
+          #(Some(tail), Some(tail_type), ctx)
+        }
+      }
+      #(tm.PRcd(fields, tail), v.Rcd(fields_type, tail_type), ctx)
     }
     ast.PErr -> #(tm.PErr, v.Err, ctx)
   }
@@ -513,13 +525,21 @@ fn infer_pattern(
 fn infer_pattern_fields(
   ctx: Context,
   fields_ast: List(#(String, ast.Pattern)),
-) -> #(List(#(String, tm.Pattern)), List(#(String, Value)), Context) {
+) -> #(
+  List(#(String, tm.Pattern)),
+  List(#(String, #(Value, Option(Value)))),
+  Context,
+) {
   case fields_ast {
     [] -> #([], [], ctx)
     [#(name, pattern_ast), ..fields_ast] -> {
       let #(pattern, type_, ctx) = infer_pattern(ctx, pattern_ast)
       let #(fields, fields_type, ctx) = infer_pattern_fields(ctx, fields_ast)
-      #([#(name, pattern), ..fields], [#(name, type_), ..fields_type], ctx)
+      #(
+        [#(name, pattern), ..fields],
+        [#(name, #(type_, None)), ..fields_type],
+        ctx,
+      )
     }
   }
 }

@@ -37,8 +37,18 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
         None, None ->
           with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)))
       }
-    v.Rcd(fields1, tail1), v.Rcd(fields2, tail2) ->
-      unify_rcd(ctx, #(fields1, tail1, s1), #(fields2, tail2, s2))
+    v.Rcd([], None), v.Rcd([], None) -> ctx
+    v.Rcd([], None) as rcd1, v.Rcd([#(name, _), ..fields2], None) -> {
+      let ctx = with_err(ctx, e.RcdFieldNotFound(#(name, s2), s1))
+      unify(ctx, #(rcd1, s1), #(v.Rcd(fields2, None), s2))
+    }
+    v.Rcd([], Some(tail1)), value2 -> unify(ctx, #(tail1, s1), #(value2, s2))
+    value1, v.Rcd([], Some(tail2)) -> unify(ctx, #(value1, s1), #(tail2, s2))
+    v.Rcd([field, ..fields1], tail1) as rcd1, v.Rcd(fields2, tail2) as rcd2 -> {
+      let #(rcd2, ctx) =
+        unify_rcd_field(ctx, #(rcd1, field, s1), #(rcd2, fields2, tail2, s2))
+      unify(ctx, #(v.Rcd(fields1, tail1), s1), #(rcd2, s2))
+    }
     v.Lam(env1, #(_, a1), b1), v.Lam(env2, #(_, a2), b2) -> {
       let ctx = unify(ctx, #(a1, s1), #(a2, s2))
       let v1 = eval(ctx.ffi, [v.var(list.length(env1)), ..env1], b1)
@@ -62,6 +72,32 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     v.Err, v.Err -> ctx
     value1, value2 ->
       with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)))
+  }
+}
+
+fn unify_rcd_field(
+  ctx: Context,
+  a: #(Value, #(String, #(Value, Option(Value))), Span),
+  b: #(Value, List(#(String, #(Value, Option(Value)))), Option(Value), Span),
+) -> #(Value, Context) {
+  let #(rcd1, #(name, #(val1, default1)), s1) = a
+  let #(rcd2, fields2, tail2, s2) = b
+  case list.key_pop(fields2, name) {
+    Ok(#(#(val2, default2), fields2)) -> {
+      let ctx = unify(ctx, #(val1, s1), #(val2, s2))
+      let ctx = case default1, default2 {
+        Some(v1), Some(v2) -> unify(ctx, #(v1, s1), #(v2, s2))
+        _, _ -> ctx
+      }
+      #(v.Rcd(fields2, tail2), ctx)
+    }
+    Error(Nil) -> {
+      let ctx = case tail2 {
+        Some(tail2_val) -> unify(ctx, #(rcd1, s1), #(tail2_val, s2))
+        None -> with_err(ctx, e.RcdFieldNotFound(#(name, s1), s2))
+      }
+      #(rcd2, ctx)
+    }
   }
 }
 
@@ -184,71 +220,6 @@ fn unify_gadt(
   // Pop the type definition's parameter scope.
   // Order matters: pop in reverse order of instantiation (inner → outer).
   context.pop_vars(ctx, list.length(tdef.params))
-}
-
-fn unify_rcd(
-  ctx: Context,
-  a: #(List(#(String, #(Value, Option(Value)))), Option(Value), Span),
-  b: #(List(#(String, #(Value, Option(Value)))), Option(Value), Span),
-) -> Context {
-  let #(fields1, tail1, s1) = a
-  let #(fields2, tail2, s2) = b
-  // let sorted_names = fn(kvs: List(#(String, Value))) {
-  //   list.map(kvs, fn(kv) { kv.0 })
-  //   |> list.sort(by: string.compare)
-  // }
-  // let ctx = case sorted_names(fields1), sorted_names(fields2) {
-  //   names1, names2 if names1 != names2 ->
-  //     with_err(ctx, e.RcdFieldsMismatch(#(names1, s1), #(names2, s2)))
-  //   _, _ -> ctx
-  // }
-  // unify_rcd_fields(ctx, #(fields1, s1), #(fields2, s2))
-  todo
-}
-
-fn unify_rcd_fields(
-  ctx: Context,
-  a: #(List(#(String, Value)), Span),
-  b: #(List(#(String, Value)), Span),
-) -> Context {
-  let #(fields1, s1) = a
-  let #(fields2, s2) = b
-  case fields1 {
-    [] -> ctx
-    [#(name, value1), ..fields1] ->
-      case list.key_find(fields2, name) {
-        Error(Nil) -> ctx
-        Ok(value2) -> {
-          let ctx = unify(ctx, #(value1, s1), #(value2, s2))
-          unify_rcd_fields(ctx, #(fields1, s1), #(fields2, s2))
-        }
-      }
-  }
-}
-
-fn unify_rcd_type_fields(
-  ctx: Context,
-  a: #(List(#(String, #(Value, Option(Value)))), Span),
-  b: #(List(#(String, #(Value, Option(Value)))), Span),
-) -> Context {
-  let #(fields1, s1) = a
-  let #(fields2, s2) = b
-  case fields1 {
-    [] -> ctx
-    [#(name, #(value1, maybe_default)), ..fields1] ->
-      case list.key_find(fields2, name) {
-        Error(Nil) -> ctx
-        Ok(#(value2, maybe_default2)) -> {
-          let ctx = unify(ctx, #(value1, s1), #(value2, s2))
-          let ctx = case maybe_default, maybe_default2 {
-            Some(default1), Some(default2) ->
-              unify(ctx, #(default1, s1), #(default2, s2))
-            _, _ -> ctx
-          }
-          unify_rcd_type_fields(ctx, #(fields1, s1), #(fields2, s2))
-        }
-      }
-  }
 }
 
 fn unify_neut(ctx: Context, a: #(Neut, Span), b: #(Neut, Span)) -> Context {
