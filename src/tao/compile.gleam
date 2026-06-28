@@ -27,7 +27,7 @@ pub fn tests(mods: List(Module)) -> List(TestDef) {
     let mod_tests = discover.tests(stmts)
     list.map(mod_tests, fn(t) {
       let #(test_name, expr, expect) = t
-      TestDef(test_name, tm.dot(tm_mod, "> " <> test_name), expr, expect)
+      TestDef(test_name, tm.dot(tm_mod, ">>> " <> test_name), expr, expect)
     })
   })
   |> list.flatten

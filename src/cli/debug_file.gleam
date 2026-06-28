@@ -104,7 +104,6 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     // This is only to debug/view the definition types.
     let #(term, def_type, _) = infer(ctx, def_expr)
     let def_type = resolve.value(ctx.ffi, ctx.subst, ctx.env, def_type)
-    let names = list.map(ctx.types, fn(entry) { entry.0 })
     io.println("name: " <> name)
     io.println(
       "type: " <> core_format.value(ctx.ffi, names, def_type, width, 2),
@@ -115,7 +114,6 @@ pub fn debug_file(root: String, filename: String, width: Int) {
 
   echo "> tests = compile.tests(stmts)"
   let tests = compile.tests([#(filename, stmts)])
-  let names = list.map(ctx.types, fn(entry) { entry.0 })
   list.map(tests, fn(t) {
     let core_expr = desugar.expr(t.expr)
     let core_expect = desugar.pattern(t.expect)
