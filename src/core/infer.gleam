@@ -164,11 +164,6 @@ fn infer_rcd(
   tail: Option(Expr),
 ) -> #(Term, Value, Context) {
   let #(fields, field_types, ctx) = infer_rcd_fields(ctx, fields)
-  let field_types =
-    list.map(field_types, fn(kv) {
-      let #(name, type_) = kv
-      #(name, unwrap(ctx.ffi, ctx.subst, type_))
-    })
   let #(tail, tail_type, ctx) = case tail {
     None -> #(None, None, ctx)
     Some(tail) -> {

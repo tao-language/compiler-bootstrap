@@ -60,13 +60,10 @@ fn infer_modules(
       let mod_expr =
         discover.definitions(stmts)
         |> desugar.module(#(name, stmts), _)
-      let #(defs_term, _, ctx) =
+      let #(mod_term, _mod_type, ctx) =
         check(ctx, mod_expr, #(v.hole(type_id), mod_expr.span))
-      let ctx =
-        Context(..ctx, subst: [
-          #(value_id, eval(ctx.ffi, ctx.env, defs_term)),
-          ..ctx.subst
-        ])
+      let mod_value = eval(ctx.ffi, ctx.env, mod_term)
+      let ctx = Context(..ctx, subst: [#(value_id, mod_value), ..ctx.subst])
       infer_modules(ctx, mod_holes)
     }
   }

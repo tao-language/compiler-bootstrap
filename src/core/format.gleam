@@ -1,6 +1,6 @@
 import core/ast.{
   type Case, type Expr, type Pattern, type Type, type TypeDefinition,
-  type Variant, PAlias, PAny, PCtr, PErr, PLit, PLitT, PRcd, PTyp,
+  type Variant, PAlias, PAny, PCtr, PErr, PLit, PLitT, PRcd, PTyp, Pattern,
 }
 import core/ffi.{type FFI}
 import core/literals.{type LiteralType} as l
@@ -238,10 +238,13 @@ fn doc_case(c: Case, indent: Int) -> Document {
   doc.concat([
     doc.line,
     doc_text("| "),
-    doc_pattern(c.pattern, indent),
-    doc_case_guard(c.guard, indent),
-    doc_text(" => "),
-    doc.nest(doc_term(c.body, indent), indent),
+    doc.concat([
+      doc_pattern(c.pattern, indent),
+      doc_case_guard(c.guard, indent),
+      doc_text(" => "),
+      doc.nest(doc_term(c.body, indent), indent),
+    ])
+      |> doc.nest(indent),
   ])
 }
 
@@ -272,7 +275,7 @@ fn doc_pattern(pattern: Pattern, indent: Int) -> Document {
         l.Float(f) -> doc_text(float.to_string(f))
       }
     PLitT(doc_text) -> doc_lit_type(doc_text)
-    PAlias(ast.Pattern(PAny, _), name) -> doc_text(name)
+    PAlias(Pattern(PAny, _), name) -> doc_text(var_name(name))
     PAlias(inner, name) ->
       doc.concat([
         doc_pattern(inner, indent),
@@ -285,34 +288,39 @@ fn doc_pattern(pattern: Pattern, indent: Int) -> Document {
         doc_pattern(inner, indent),
         doc_text(")"),
       ])
-    PRcd(fields, opt_tail) -> doc_pattern_rcd(fields, opt_tail, indent)
+    PRcd(fields, opt_tail) -> doc_prcd(fields, opt_tail, indent)
     PErr -> doc_text("%error")
     _ -> todo
   }
 }
 
-fn doc_pattern_rcd(
+fn doc_prcd(
   fields: List(#(String, Pattern)),
   opt_tail: Option(Pattern),
   indent: Int,
 ) -> Document {
   let doc_fields =
     list.map(fields, fn(field) {
-      let #(name, pattern) = field
-      let name = var_name(name)
-      let pattern = doc_pattern(pattern, indent)
-      doc.concat([doc_text(name), pattern])
+      let #(field_name, pat) = field
+      let name = var_name(field_name)
+      case pat.data {
+        PAlias(Pattern(PAny, _), pat_name) if field_name == pat_name ->
+          doc_text(name)
+        _ -> doc.concat([doc_text(name <> ": "), doc_pattern(pat, indent)])
+      }
     })
   let tail = case opt_tail {
     None -> []
+    Some(Pattern(PAny, _)) -> [doc_text("..")]
     Some(tail) -> [doc.concat([doc_text(".."), doc_pattern(tail, indent)])]
   }
-  let doc_fields = list.append(doc_fields, tail)
-  doc.concat([
-    doc_text("{"),
-    doc.nest(doc.join(doc_fields, doc.break(", ", ",")), indent),
-    doc_text("}"),
-  ])
+  list.append(doc_fields, tail)
+  |> doc.join(with: doc.break(", ", ","))
+  |> doc.prepend(doc.break("{", "{"))
+  |> doc.nest(by: indent)
+  |> doc.append(doc.break("", ","))
+  |> doc.append(doc_text("}"))
+  |> doc.group
 }
 
 fn doc_typedef(td: TypeDefinition, indent: Int) -> Document {

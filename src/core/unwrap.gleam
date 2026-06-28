@@ -31,31 +31,26 @@ pub fn unwrap_neut(ffi: FFI, subst: Subst, neut: Neut) -> Value {
         Error(Nil) -> v.hole(id)
       }
     v.NApp(fun_neut, arg) -> {
-      let fun = unwrap_neut(ffi, subst, fun_neut)
-      eval.do_app(ffi, fun, arg)
+      case unwrap_neut(ffi, subst, fun_neut) {
+        v.Neut(fun_neut) -> v.app(fun_neut, arg)
+        fun ->
+          eval.do_app(ffi, fun, arg)
+          |> unwrap(ffi, subst, _)
+      }
     }
     v.NMatch(env, arg_neut, cases) -> {
-      let arg = unwrap_neut(ffi, subst, arg_neut)
-      let cases = list.map(cases, unwrap_case(ffi, subst, env, _))
-      eval.do_match(ffi, env, arg, cases)
+      case unwrap_neut(ffi, subst, arg_neut) {
+        v.Neut(arg_neut) -> v.match(env, arg_neut, cases)
+        arg ->
+          eval.do_match(ffi, env, arg, cases)
+          |> unwrap(ffi, subst, _)
+      }
     }
     v.NCall(name, returns, args) -> {
+      // TODO: should have single arg
       let returns = unwrap(ffi, subst, returns)
       let args = list.map(args, unwrap(ffi, subst, _))
       eval.do_call(ffi, name, returns, args)
     }
   }
-}
-
-fn unwrap_case(ffi: FFI, subst: Subst, env: Env, c: Case) -> Case {
-  let env = v.env_push(env, list.length(tm.bindings(c.pattern)))
-  let #(guard, env) = case c.guard {
-    Some(#(g_term, g_pattern)) -> {
-      let env = v.env_push(env, list.length(tm.bindings(g_pattern)))
-      let g_term = unwrap_term(ffi, subst, env, g_term)
-      #(Some(#(g_term, g_pattern)), env)
-    }
-    None -> #(None, env)
-  }
-  tm.Case(c.pattern, guard, unwrap_term(ffi, subst, env, c.body))
 }

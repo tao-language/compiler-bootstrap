@@ -3,7 +3,7 @@ import core/context.{Context, new_ctx}
 import core/error
 import core/eval.{eval}
 import core/ffi
-import core/format as core_format
+import core/format
 import core/infer.{infer}
 import core/resolve
 import gleam/int
@@ -46,32 +46,30 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   let ctx = Context(..new_ctx, ffi: ffi.build)
   let ctx = compile.package(ctx, pkg)
   let names = list.map(ctx.types, fn(t) { t.0 })
+  let fmt_expr = fn(expr) { format.expr(expr, width, 2) }
+  let fmt_term = fn(term) { format.term(names, term, width, 2) }
+  let fmt_value = fn(val) { format.value(ctx.ffi, names, val, width, 2) }
+  let fmt_pattern = fn(pat) { format.pattern(pat, width, 2) }
+
   io.println("ffi: " <> int.to_string(list.length(ctx.ffi)) <> " length")
   list.map(ctx.ffi, fn(entry) {
     let #(name, _) = entry
     io.println("- " <> name)
   })
   io.println("env:   " <> int.to_string(list.length(ctx.env)) <> " length")
+  list.index_map(ctx.env, fn(value, index) {
+    io.println("- " <> int.to_string(index) <> ": " <> fmt_value(value))
+  })
   io.println("types: " <> int.to_string(list.length(ctx.types)) <> " length")
   list.map(ctx.types, fn(entry) {
     let #(name, type_) = entry
-    io.println(
-      "- \""
-      <> name
-      <> "\": "
-      <> core_format.value(ctx.ffi, names, type_, width, 2),
-    )
+    io.println("- \"" <> name <> "\": " <> fmt_value(type_))
   })
-  // io.println("subst: " <> int.to_string(list.length(ctx.subst)) <> " length")
-  // list.map(ctx.subst, fn(entry) {
-  //   let #(id, value) = entry
-  //   io.println(
-  //     "  - "
-  //     <> int.to_string(id)
-  //     <> ": "
-  //     <> core_format.value(ctx.ffi, names, value, width, 2),
-  //   )
-  // })
+  io.println("subst: " <> int.to_string(list.length(ctx.subst)) <> " length")
+  list.map(ctx.subst, fn(entry) {
+    let #(id, value) = entry
+    io.println("- " <> int.to_string(id) <> ": " <> fmt_value(value))
+  })
   io.println("")
 
   echo "> stmts = load.module(filename)"
@@ -93,7 +91,7 @@ pub fn debug_file(root: String, filename: String, width: Int) {
 
   echo "> mod_expr = desugar.module(stmts, definitions)"
   let mod_expr = desugar.module(#(filename, stmts), definitions)
-  io.println(core_format.expr(mod_expr, width, 2))
+  io.println(fmt_expr(mod_expr))
   io.println("")
 
   echo "> definition types"
@@ -103,12 +101,10 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     // Updating the context will cause duplicate errors.
     // This is only to debug/view the definition types.
     let #(term, def_type, _) = infer(ctx, def_expr)
-    let def_type = resolve.value(ctx.ffi, ctx.subst, ctx.env, def_type)
+    let def_type = resolve.value(ctx.ffi, ctx.subst, def_type)
     io.println("name: " <> name)
-    io.println(
-      "type: " <> core_format.value(ctx.ffi, names, def_type, width, 2),
-    )
-    io.println("value: " <> core_format.term(names, term, width, 2))
+    io.println("type: " <> fmt_value(def_type))
+    io.println("value: " <> fmt_term(term))
     io.println("")
   })
 
@@ -123,12 +119,11 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     let #(_, def_type, _) = infer(ctx, core_expr)
     let value = eval(ctx.ffi, ctx.env, t.term)
     io.println("/// " <> t.name)
-    io.println(">>> " <> core_format.expr(core_expr, width, 2))
-    io.println(
-      "type:   " <> core_format.value(ctx.ffi, names, def_type, width, 2),
-    )
-    io.println("expect: " <> core_format.pattern(core_expect, width, 2))
-    io.println("got:    " <> core_format.value(ctx.ffi, names, value, width, 2))
+    io.println(">>> " <> fmt_expr(core_expr))
+    io.println("type:   " <> fmt_value(def_type))
+    io.println("expect: " <> fmt_pattern(core_expect))
+    io.println("term:   " <> fmt_term(t.term))
+    io.println("got:    " <> fmt_value(value))
     io.println("")
   })
 
