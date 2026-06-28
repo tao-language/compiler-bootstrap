@@ -51,21 +51,29 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   let fmt_value = fn(val) { format.value(ctx.ffi, names, val, width, 2) }
   let fmt_pattern = fn(pat) { format.pattern(pat, width, 2) }
 
-  io.println("ffi: " <> int.to_string(list.length(ctx.ffi)) <> " length")
+  io.println("ffi (" <> int.to_string(list.length(ctx.ffi)) <> ")")
   list.map(ctx.ffi, fn(entry) {
     let #(name, _) = entry
     io.println("- " <> name)
   })
-  io.println("env:   " <> int.to_string(list.length(ctx.env)) <> " length")
-  list.index_map(ctx.env, fn(value, index) {
-    io.println("- " <> int.to_string(index) <> ": " <> fmt_value(value))
+  io.println("")
+
+  io.println("env (" <> int.to_string(list.length(ctx.env)) <> ")")
+  list.zip(ctx.types, ctx.env)
+  |> list.map(fn(entry) {
+    let #(#(name, _), value) = entry
+    io.println("- \"" <> name <> "\": " <> fmt_value(value))
   })
-  io.println("types: " <> int.to_string(list.length(ctx.types)) <> " length")
+  io.println("")
+
+  io.println("types (" <> int.to_string(list.length(ctx.types)) <> ")")
   list.map(ctx.types, fn(entry) {
     let #(name, type_) = entry
     io.println("- \"" <> name <> "\": " <> fmt_value(type_))
   })
-  io.println("subst: " <> int.to_string(list.length(ctx.subst)) <> " length")
+  io.println("")
+
+  io.println("subst (" <> int.to_string(list.length(ctx.subst)) <> ")")
   list.map(ctx.subst, fn(entry) {
     let #(id, value) = entry
     io.println("- " <> int.to_string(id) <> ": " <> fmt_value(value))
@@ -120,18 +128,18 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     let value = eval(ctx.ffi, ctx.env, t.term)
     io.println("/// " <> t.name)
     io.println(">>> " <> fmt_expr(core_expr))
+    io.println("term:   " <> fmt_term(t.term))
     io.println("type:   " <> fmt_value(def_type))
     io.println("expect: " <> fmt_pattern(core_expect))
-    io.println("term:   " <> fmt_term(t.term))
     io.println("got:    " <> fmt_value(value))
     io.println("")
   })
 
   case ctx.errors {
-    [] -> Nil
+    [] -> io.println("0 build errors")
     errors -> {
       let n = list.length(errors)
-      io.println_error("---- BUILD ERRORS (" <> int.to_string(n) <> ") ----")
+      io.println_error("---- " <> int.to_string(n) <> " build errors ----")
       list.map(ctx.errors, fn(err) {
         let msg = error.display(ctx.ffi, ctx.types, err)
         io.println_error(msg)

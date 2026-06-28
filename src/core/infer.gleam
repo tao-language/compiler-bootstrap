@@ -197,51 +197,6 @@ fn infer_rcd_fields(
   }
 }
 
-fn infer_rcd_type(
-  ctx: Context,
-  fields: List(#(String, #(Option(Expr), Option(Expr)))),
-) -> #(Term, Value, Context) {
-  let #(fields, ctx) = infer_rcd_type_fields(ctx, fields)
-  // #(tm.Rcd(fields), v.Typ(0), ctx)
-  todo
-}
-
-fn infer_rcd_type_fields(
-  ctx: Context,
-  fields: List(#(String, #(Option(Expr), Option(Expr)))),
-) -> #(List(#(String, Term)), Context) {
-  case fields {
-    [] -> #([], ctx)
-    [#(name, #(type_, default)), ..fields] -> {
-      let #(field, ctx) = case type_, default {
-        Some(type_), Some(default) -> {
-          let #(default, #(type_tm, _), ctx) = check_on_ast(ctx, default, type_)
-          let field = #(name, type_tm)
-          #(field, ctx)
-        }
-        Some(type_), None -> {
-          let #(type_tm, _, ctx) = infer(ctx, type_)
-          let field = #(name, type_tm)
-          #(field, ctx)
-        }
-        None, Some(default) -> {
-          let #(default, type_, ctx) = infer(ctx, default)
-          let type_tm = quote(ctx.ffi, list.length(ctx.env), type_)
-          let field = #(name, type_tm)
-          #(field, ctx)
-        }
-        None, None -> {
-          let #(hole_id, ctx) = context.new_hole(ctx)
-          let field = #(name, tm.Hole(hole_id))
-          #(field, ctx)
-        }
-      }
-      let #(fields, ctx) = infer_rcd_type_fields(ctx, fields)
-      #([field, ..fields], ctx)
-    }
-  }
-}
-
 fn infer_call(
   ctx: Context,
   name: String,

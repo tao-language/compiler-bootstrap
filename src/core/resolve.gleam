@@ -97,7 +97,9 @@ pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
       let fields =
         list.map(fields, fn(field) {
           let #(name, #(val, default)) = field
-          #(name, #(self(val), option.map(default, self)))
+          let val = self(val)
+          let default = option.map(default, self)
+          #(name, #(val, default))
         })
       let tail = option.map(tail, self)
       v.Rcd(fields, tail)
