@@ -110,9 +110,10 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     // This is only to debug/view the definition types.
     let #(term, def_type, _) = infer(ctx, def_expr)
     let def_type = resolve.value(ctx.ffi, ctx.subst, def_type)
-    io.println("name: " <> name)
+    io.println("/// " <> name)
+    io.println(fmt_expr(def_expr))
+    io.println("term: " <> fmt_term(term))
     io.println("type: " <> fmt_value(def_type))
-    io.println("value: " <> fmt_term(term))
     io.println("")
   })
 
