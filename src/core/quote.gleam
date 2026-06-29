@@ -60,7 +60,7 @@ fn quote_neut(ffi: FFI, size: Int, neut: Neut) -> Term {
       tm.App(False, fun, arg)
     }
     v.NMatch(env, arg_neut, cases) -> {
-      let arg = quote_neut(ffi, size, arg_neut)
+      let arg = quote_neut(ffi, list.length(env), arg_neut)
       let cases = list.map(cases, quote_case(ffi, env, _))
       tm.Match(arg, cases)
     }
