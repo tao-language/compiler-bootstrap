@@ -88,7 +88,8 @@ pub fn term(ffi: FFI, subst: Subst, size: Int, t: Term) -> Term {
 
 pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
   let self = fn(v) { value(ffi, subst, v) }
-  case unwrap(ffi, subst, val) {
+  let val = unwrap(ffi, subst, val)
+  case val {
     v.Typ(_) -> val
     v.Lit(_) -> val
     v.LitT(_) -> val
