@@ -88,11 +88,10 @@ pub fn term(ffi: FFI, subst: Subst, size: Int, t: Term) -> Term {
 
 pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
   let self = fn(v) { value(ffi, subst, v) }
-  let val = unwrap(ffi, subst, val)
-  case val {
-    v.Typ(_) -> val
-    v.Lit(_) -> val
-    v.LitT(_) -> val
+  case unwrap(ffi, subst, val) {
+    v.Typ(u) -> v.Typ(u)
+    v.Lit(k) -> v.Lit(k)
+    v.LitT(k) -> v.LitT(k)
     v.Ctr(tag, arg) -> v.Ctr(tag, self(arg))
     v.Rcd(fields, tail) -> {
       let fields =
@@ -122,7 +121,7 @@ pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
       v.Fix(env, name, body)
     }
     v.TypeDef(env, type_def) -> todo
-    v.Err -> val
+    v.Err -> v.Err
   }
 }
 
