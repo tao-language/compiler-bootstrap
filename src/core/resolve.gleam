@@ -104,6 +104,8 @@ pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
       let tail = option.map(tail, self)
       v.Rcd(fields, tail)
     }
+    // If unwrap still returns a Neut, just reolve its parts.
+    // No need to try to re-evaluate it into a concrete value.
     v.Neut(neut) -> v.Neut(neutral(ffi, subst, neut))
     v.Lam(env, #(name, typ), body) -> {
       let env = list.map(env, self)

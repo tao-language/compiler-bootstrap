@@ -122,17 +122,12 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   list.map(tests, fn(t) {
     let core_expr = desugar.expr(t.expr)
     let core_expect = desugar.pattern(t.expect)
-    // DO NOT update the ctx, it's already been fully resolved.
-    // Updating the context will cause duplicate errors.
-    // This is only to debug/view the definition types.
-    let #(_, def_type, _) = infer(ctx, core_expr)
     let value = eval(ctx.ffi, ctx.env, t.term)
     io.println("/// " <> t.name)
     io.println(">>> " <> fmt_expr(core_expr))
-    io.println("term:   " <> fmt_term(t.term))
-    io.println("type:   " <> fmt_value(def_type))
-    io.println("expect: " <> fmt_pattern(core_expect))
+    io.println(fmt_term(t.term))
     io.println("got:    " <> fmt_value(value))
+    io.println("expect: " <> fmt_pattern(core_expect))
     io.println("")
   })
 
