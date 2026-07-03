@@ -6,9 +6,9 @@ import core/value.{type Env, type Neut, type Value} as v
 import gleam/list
 import gleam/option.{None, Some}
 
-pub fn normalize(ffi: FFI, env: Env, term: Term) -> Term {
-  let value = eval(ffi, env, term)
-  quote(ffi, list.length(env), value)
+fn normalize_term(ffi: FFI, env: Env, term: Term) -> Term {
+  eval(ffi, env, term)
+  |> quote(ffi, list.length(env), _)
 }
 
 pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
@@ -31,16 +31,16 @@ pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
     v.Neut(neut) -> quote_neut(ffi, size, neut)
     v.Lam(env, #(name, param_val), body) -> {
       let param = quote(ffi, size, param_val)
-      let body = normalize(ffi, v.env_push(env, 1), body)
+      let body = normalize_term(ffi, v.env_push(env, 1), body)
       tm.Lam(False, #(name, param), body)
     }
     v.Pi(env, implicit, #(name, param_val), body) -> {
       let param = quote(ffi, size, param_val)
-      let body = normalize(ffi, v.env_push(env, 1), body)
+      let body = normalize_term(ffi, v.env_push(env, 1), body)
       tm.Pi(implicit, #(name, param), body)
     }
     v.Fix(env, name, body) -> {
-      let body = normalize(ffi, v.env_push(env, 1), body)
+      let body = normalize_term(ffi, v.env_push(env, 1), body)
       tm.Fix(name, body)
     }
     v.TypeDef(env, v.TypeDefinition(params, arg, variants)) -> {
@@ -77,11 +77,11 @@ fn quote_case(ffi: FFI, env: Env, c: Case) -> Case {
   let #(guard, env) = case c.guard {
     Some(#(g_term, g_pattern)) -> {
       let env = v.env_push(env, list.length(tm.bindings(g_pattern)))
-      let g_term = normalize(ffi, env, g_term)
+      let g_term = normalize_term(ffi, env, g_term)
       #(Some(#(g_term, g_pattern)), env)
     }
     None -> #(None, env)
   }
-  let body = normalize(ffi, env, c.body)
+  let body = normalize_term(ffi, env, c.body)
   tm.Case(c.pattern, guard, body)
 }
