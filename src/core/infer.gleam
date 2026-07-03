@@ -6,7 +6,7 @@
 /// the expected type.
 import core/ast.{type Expr}
 import core/coerce.{coerce}
-import core/context.{type Context}
+import core/context.{type Context, Context}
 import core/error as e
 import core/eval.{eval}
 import core/format
@@ -245,7 +245,21 @@ fn infer_lam(
   }
   let type_val = eval(ctx.ffi, ctx.env, type_)
   let level = list.length(ctx.env)
-  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(type_val)))
+  // For explicit lambdas, create a hole for the param value instead of
+  // a neutral variable. When beta reduction happens in infer_app, the
+  // hole is filled with the concrete arg. Captured envs in neutrals
+  // (e.g. NMatch) contain this hole, which resolves during resolve.
+  // Implicit lambdas use the old NVar approach since they're filled
+  // by implicit argument expansion, not direct Pi application.
+  let ctx = case implicit {
+    False -> {
+      let #(param_hole, ctx) = context.new_hole(ctx)
+      let ctx =
+        Context(..ctx, pending_params: [param_hole, ..ctx.pending_params])
+      context.push_var(ctx, #(name, Some(v.hole(param_hole)), Some(type_val)))
+    }
+    True -> context.push_var(ctx, #(name, Some(v.var(level)), Some(type_val)))
+  }
   let #(body, body_type_val, ctx) = infer(ctx, body)
   let body_type_val = unwrap(ctx.ffi, ctx.subst, body_type_val)
   let body_type = quote(ctx.ffi, level + 1, body_type_val)
@@ -307,83 +321,9 @@ fn infer_app(
   arg_ast: Expr,
   span: Span,
 ) -> #(Term, Value, Context) {
-  // Direct beta reduction: when the function is a syntactic lambda,
-  // infer the argument FIRST to get its concrete value, then push
-  // that concrete value (not a neutral variable) before inferring
-  // the body. This is essential for dependent types where the body's
-  // type depends on the argument's value.
-  //
-  // Only applies to explicit lambdas — implicit lambdas must go through
-  // the normal path for implicit argument expansion.
-  case fun_ast.data {
-    ast.Lam(False, param, body) ->
-      infer_beta_reduction(ctx, param, body, arg_ast, span)
-    _ -> {
-      let #(fun, fun_type, ctx) = infer(ctx, fun_ast)
-      let fun_data = #(fun, fun_type, fun_ast.span)
-      infer_app_args(ctx, app_implicit, fun_data, arg_ast, span)
-    }
-  }
-}
-
-/// Direct beta reduction: (%lam (x:T) => body)(arg)
-fn infer_beta_reduction(
-  ctx: Context,
-  param: #(String, Option(ast.Type)),
-  body: Expr,
-  arg_ast: Expr,
-  span: Span,
-) -> #(Term, Value, Context) {
-  let #(name, opt_type_ast) = param
-
-  // Infer the parameter type
-  let #(param_type, ctx) = case opt_type_ast {
-    Some(type_ast) -> {
-      let #(param, _, ctx) = infer(ctx, type_ast)
-      #(param, ctx)
-    }
-    None -> {
-      let #(hole_id, ctx) = context.new_hole(ctx)
-      #(tm.Hole(hole_id), ctx)
-    }
-  }
-  let param_type_val = eval(ctx.ffi, ctx.env, param_type)
-
-  // Infer the argument FIRST, checking against the parameter type
-  let #(arg, arg_type, ctx) = case opt_type_ast {
-    Some(_) -> check(ctx, arg_ast, #(param_type_val, span))
-    None -> infer(ctx, arg_ast)
-  }
-
-  // Get the concrete value of the argument
-  let arg_val = eval(ctx.ffi, ctx.env, arg)
-
-  // Push the CONCRETE value (not a neutral variable) to the context
-  let level = list.length(ctx.env)
-  let ctx = context.push_var(ctx, #(name, Some(arg_val), Some(arg_type)))
-
-  // Infer the body with the concrete value in scope
-  let #(body_term, body_type_val, ctx) = infer(ctx, body)
-  let body_type_val = unwrap(ctx.ffi, ctx.subst, body_type_val)
-  let body_type = quote(ctx.ffi, level + 1, body_type_val)
-
-  // Pop the binding
-  let ctx = context.pop_vars(ctx, 1)
-
-  // Build the lambda and application terms
-  let param_val = unwrap(ctx.ffi, ctx.subst, param_type_val)
-  let arg_val_final = unwrap(ctx.ffi, ctx.subst, arg_val)
-  let lam = tm.Lam(False, #(name, param_type), body_term)
-
-  // Compute result type by applying the body type to the concrete argument
-  let result_env = [arg_val_final, ..ctx.env]
-  let result_type = eval(ctx.ffi, result_env, body_type)
-
-  #(
-    tm.App(False, lam, arg),
-    unwrap(ctx.ffi, ctx.subst, result_type),
-    ctx,
-  )
+  let #(fun, fun_type, ctx) = infer(ctx, fun_ast)
+  let fun_data = #(fun, fun_type, fun_ast.span)
+  infer_app_args(ctx, app_implicit, fun_data, arg_ast, span)
 }
 
 fn infer_app_args(
@@ -409,9 +349,14 @@ fn infer_app_args(
       let type_ = unwrap(ctx.ffi, ctx.subst, v.hole(body_type_id))
       #(tm.App(app_implicit, fun, arg), type_, ctx)
     }
+    // Neutral function type
     v.Neut(neut) -> {
-      echo neut
-      todo as "TODO: infer App on Neut function"
+      // let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
+      // let arg_val = eval(ctx.ffi, ctx.env, arg)
+      // let neut_type = v.Neut(v.NApp(neut, arg_val))
+      // #(tm.App(app_implicit, fun, arg), neut_type, ctx)
+      // Each Neut type (NApp, NMatch, NCall) must be handled differently
+      todo
     }
     // Function application
     v.Pi(pi_env, pi_implicit, #(_, domain_val), codomain) ->
@@ -422,7 +367,17 @@ fn infer_app_args(
           // When implicit arg matches implicit param, the result is explicit
           // (the implicitness has been resolved)
           let #(arg, _, ctx) = check(ctx, arg_ast, #(domain_val, fun_span))
-          let pi_env = [eval(ctx.ffi, ctx.env, arg), ..pi_env]
+          let arg_val = eval(ctx.ffi, ctx.env, arg)
+          let ctx = case ctx.pending_params {
+            [hole_id, ..rest] ->
+              Context(
+                ..ctx,
+                subst: [#(hole_id, arg_val), ..ctx.subst],
+                pending_params: rest,
+              )
+            [] -> ctx
+          }
+          let pi_env = [arg_val, ..pi_env]
           let type_ = eval(ctx.ffi, pi_env, codomain)
           #(tm.App(False, fun, arg), unwrap(ctx.ffi, ctx.subst, type_), ctx)
         }
