@@ -41,7 +41,7 @@ pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
       let tail = option.map(tail_val, quote(ffi, size, _))
       tm.Rcd(fields, tail)
     }
-    v.Neut(neut) -> quote_neut(ffi, [], neut)
+    v.Neut(neut) -> quote_neut(ffi, v.env_push([], size), neut)
     v.Lam(env, #(name, param_val), body) -> {
       let param = quote(ffi, size, param_val)
       let body = normalize_term(ffi, v.env_push(env, 1), body)
