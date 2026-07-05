@@ -9,28 +9,47 @@ import gleam/list
 import gleam/option.{None, Some}
 
 pub fn context(ctx: Context) -> Context {
+  let env = list.map(ctx.env, value(ctx.ffi, ctx.subst, _))
+  let types = list.map(ctx.types, fn(name_type) {
+    let #(name, type_) = name_type
+    #(name, value(ctx.ffi, ctx.subst, type_))
+  })
   Context(
     ..ctx,
-    env: list.map(ctx.env, value(ctx.ffi, ctx.subst, _)),
-    types: list.map(ctx.types, fn(name_type) {
-      let #(name, type_) = name_type
-      #(name, value(ctx.ffi, ctx.subst, type_))
-    }),
+    env: env,
+    types: types,
     errors: list.map(ctx.errors, error(ctx.ffi, ctx.subst, ctx.env, _)),
   )
 }
 
+/// Resolve all holes in a term using the substitution.
+///
+/// The `seen` argument tracks hole IDs currently being resolved to detect
+/// self-referential cycles. This happens when a term-level hole is unified
+/// with a value (e.g., a Lam) whose body term still contains that same hole.
 pub fn term(ffi: FFI, subst: Subst, size: Int, t: Term) -> Term {
-  let self = fn(size, t) { term(ffi, subst, size, t) }
+  term_seen(ffi, subst, size, t, [])
+}
+
+fn term_seen(ffi: FFI, subst: Subst, size: Int, t: Term, seen: List(Int)) -> Term {
+  let self = fn(size, t) { term_seen(ffi, subst, size, t, seen) }
   case t {
     tm.Typ(_) -> t
     tm.Hole(id) ->
-      case list.key_find(subst, id) {
-        Error(Nil) -> t
-        Ok(value) -> {
-          let value = unwrap(ffi, subst, value)
-          self(size, quote(ffi, size, value))
-        }
+      // Cycle detection: if this hole is already being resolved,
+      // return it as-is to break the infinite loop.
+      case list.contains(seen, id) {
+        True -> t
+        False ->
+          case list.key_find(subst, id) {
+            Error(Nil) -> t
+            Ok(value) -> {
+              let value = unwrap(ffi, subst, value)
+              let quoted = quote(ffi, size, value)
+              // Add this hole ID to the seen set for this resolution chain.
+              term_seen(ffi, subst, size, quoted, [id, ..seen])
+            }
+          }
       }
     tm.Lit(_) -> t
     tm.LitT(_) -> t
@@ -79,7 +98,7 @@ pub fn term(ffi: FFI, subst: Subst, size: Int, t: Term) -> Term {
     tm.TypeDef(type_def) -> todo
     tm.Match(arg, cases) -> {
       let arg = self(size, arg)
-      let cases = list.map(cases, resolve_case(ffi, subst, size, _))
+      let cases = list.map(cases, resolve_case(ffi, subst, size, seen, _))
       tm.Match(arg, cases)
     }
     tm.Err -> t
@@ -108,17 +127,20 @@ pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
     // No need to try to re-evaluate it into a concrete value.
     v.Neut(neut) -> v.Neut(neutral(ffi, subst, neut))
     v.Lam(env, #(name, typ), body) -> {
-      let env = list.map(env, self)
+      // Do NOT resolve env: it contains param holes and captured variables
+      // that are substituted at application time (beta reduction), not
+      // at definition time. Resolving env eagerly creates infinite loops
+      // when the env references values that contain this same Lam.
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Lam(env, #(name, self(typ)), body)
     }
     v.Pi(env, implicit, #(name, typ), body) -> {
-      let env = list.map(env, self)
+      // Same reasoning as Lam: skip env resolution.
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Pi(env, implicit, #(name, self(typ)), body)
     }
     v.Fix(env, name, body) -> {
-      let env = list.map(env, self)
+      // Same reasoning as Lam: skip env resolution.
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Fix(env, name, body)
     }
@@ -165,15 +187,15 @@ pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
   err
 }
 
-fn resolve_case(ffi: FFI, subst: Subst, size: Int, c: Case) -> Case {
+fn resolve_case(ffi: FFI, subst: Subst, size: Int, seen: List(Int), c: Case) -> Case {
   let size = size + list.length(tm.bindings(c.pattern))
   let #(guard, size) = case c.guard {
     Some(#(g_term, g_pattern)) -> {
       let size = size + list.length(tm.bindings(g_pattern))
-      let g_term = term(ffi, subst, size, g_term)
+      let g_term = term_seen(ffi, subst, size, g_term, seen)
       #(Some(#(g_term, g_pattern)), size)
     }
     None -> #(None, size)
   }
-  tm.Case(c.pattern, guard, term(ffi, subst, size, c.body))
+  tm.Case(c.pattern, guard, term_seen(ffi, subst, size, c.body, seen))
 }
