@@ -121,15 +121,15 @@ fn arguments(
 
 fn arguments_pat(
   args: List(#(String, tao.Pattern)),
-  tail: Option(Pattern),
+  opt_tail: Option(Pattern),
   span: Span,
 ) -> core.Pattern {
   let core_fields =
-    list.map(args, fn(named_arg) {
-      let #(name, arg) = named_arg
-      #(name, pattern(arg))
+    list.index_map(args, fn(named_arg, index) {
+      let #(_, arg) = named_arg
+      #(int.to_string(index + 1), pattern(arg))
     })
-  let core_tail = option.map(tail, pattern)
+  let core_tail = option.map(opt_tail, pattern)
   // TODO: span.merge(first_span, last_span)
   core.prcd(core_fields, core_tail, span)
 }
@@ -146,7 +146,7 @@ fn function(
 ) -> core.Expr {
   case implicits {
     [] -> {
-      let param_name = "_"
+      let param_name = "$args"
       // TODO: infer span from args
       let args_span = span
       let param_fields =
@@ -163,7 +163,7 @@ fn function(
           let #(p, _) = param
           #(int.to_string(index + 1), p)
         })
-      let unpack = tao.Case(tao.prcd(bindings, args_span), None, body)
+      let unpack = tao.Case(tao.prcd_strict(bindings, args_span), None, body)
       let match_expr = tao.match(tao.var(param_name, args_span), [unpack], span)
       let core_body = expr(match_expr)
       let core_body = case opt_returns {
@@ -373,7 +373,7 @@ pub fn statement(
 
 fn overload_choice(choice: tao.OverloadChoice) -> core.Case {
   let tao.OverloadChoice(opt_mod_name, name, args, opt_guard, s) = choice
-  let core_pat = arguments_pat(args, Some(tao.pany(s)), s)
+  let core_pat = arguments_pat(args, None, s)
   let core_guard = option.map(opt_guard, case_guard)
   let core_body = case opt_mod_name {
     Some(mod_name) -> core.dot(core.var(mod_name, s), name, s)

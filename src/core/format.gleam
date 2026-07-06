@@ -178,7 +178,7 @@ fn doc_param(
   }
   doc.concat([
     doc_text(open),
-    doc_text(name),
+    doc_text(var_name(name)),
     doc_opt_type(opt_type, indent),
     doc_text(close),
   ])
@@ -207,13 +207,17 @@ fn doc_rcd(
     None -> []
     Some(tail) -> [doc.concat([doc_text(".."), doc_term(tail, indent)])]
   }
-  list.append(doc_fields, tail)
-  |> doc.join(with: doc.break(", ", ","))
-  |> doc.prepend(doc.break("{", "{"))
-  |> doc.nest(by: indent)
-  |> doc.append(doc.break("", ","))
-  |> doc.append(doc_text("}"))
-  |> doc.group
+  case list.append(doc_fields, tail) {
+    [] -> doc_text("{}")
+    items ->
+      items
+      |> doc.join(with: doc.break(", ", ","))
+      |> doc.prepend(doc.break("{", "{"))
+      |> doc.nest(by: indent)
+      |> doc.append(doc.break("", ","))
+      |> doc.append(doc_text("}"))
+      |> doc.group
+  }
 }
 
 fn doc_lit_type(lt: LiteralType) -> Document {
