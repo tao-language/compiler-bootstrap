@@ -10,10 +10,11 @@ import gleam/option.{None, Some}
 
 pub fn context(ctx: Context) -> Context {
   let env = list.map(ctx.env, value(ctx.ffi, ctx.subst, _))
-  let types = list.map(ctx.types, fn(name_type) {
-    let #(name, type_) = name_type
-    #(name, value(ctx.ffi, ctx.subst, type_))
-  })
+  let types =
+    list.map(ctx.types, fn(name_type) {
+      let #(name, type_) = name_type
+      #(name, value(ctx.ffi, ctx.subst, type_))
+    })
   Context(
     ..ctx,
     env: env,
@@ -31,7 +32,13 @@ pub fn term(ffi: FFI, subst: Subst, size: Int, t: Term) -> Term {
   term_seen(ffi, subst, size, t, [])
 }
 
-fn term_seen(ffi: FFI, subst: Subst, size: Int, t: Term, seen: List(Int)) -> Term {
+fn term_seen(
+  ffi: FFI,
+  subst: Subst,
+  size: Int,
+  t: Term,
+  seen: List(Int),
+) -> Term {
   let self = fn(size, t) { term_seen(ffi, subst, size, t, seen) }
   case t {
     tm.Typ(_) -> t
@@ -127,20 +134,17 @@ pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
     // No need to try to re-evaluate it into a concrete value.
     v.Neut(neut) -> v.Neut(neutral(ffi, subst, neut))
     v.Lam(env, #(name, typ), body) -> {
-      // Do NOT resolve env: it contains param holes and captured variables
-      // that are substituted at application time (beta reduction), not
-      // at definition time. Resolving env eagerly creates infinite loops
-      // when the env references values that contain this same Lam.
+      // TODO: resolve env
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Lam(env, #(name, self(typ)), body)
     }
     v.Pi(env, implicit, #(name, typ), body) -> {
-      // Same reasoning as Lam: skip env resolution.
+      // TODO: resolve env
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Pi(env, implicit, #(name, self(typ)), body)
     }
     v.Fix(env, name, body) -> {
-      // Same reasoning as Lam: skip env resolution.
+      // TODO: resolve env
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Fix(env, name, body)
     }
@@ -187,7 +191,13 @@ pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
   err
 }
 
-fn resolve_case(ffi: FFI, subst: Subst, size: Int, seen: List(Int), c: Case) -> Case {
+fn resolve_case(
+  ffi: FFI,
+  subst: Subst,
+  size: Int,
+  seen: List(Int),
+  c: Case,
+) -> Case {
   let size = size + list.length(tm.bindings(c.pattern))
   let #(guard, size) = case c.guard {
     Some(#(g_term, g_pattern)) -> {
