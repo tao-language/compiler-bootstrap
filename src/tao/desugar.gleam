@@ -339,10 +339,12 @@ pub fn statement(
     tao.FnOverload(name, choices) -> {
       let s = stmt.span
       let param1 = #("$type", None)
-      let body =
+      let match_body =
         list.map(choices, overload_choice)
         |> core.match(core.var("$type", s), _, s)
-      let core_expr = core.lam_implicit(param1, body, s)
+      let param2 = #("$args", Some(core.var("$type", s)))
+      let core_expr = core.lam_explicit(param2, match_body, s)
+      let core_expr = core.lam_implicit(param1, core_expr, s)
       core.let_var(#(name, None, core_expr), next, s)
     }
     tao.Test(name, arg, expect) -> {
