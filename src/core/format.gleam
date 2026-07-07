@@ -247,8 +247,7 @@ fn doc_case(c: Case, indent: Int) -> Document {
       doc_case_guard(c.guard, indent),
       doc_text(" => "),
       doc.nest(doc_term(c.body, indent), indent),
-    ])
-      |> doc.nest(indent),
+    ]),
   ])
 }
 

@@ -243,14 +243,12 @@ fn infer_lam(
       #(tm.Hole(hole_id), ctx)
     }
   }
-  let type_val = eval(ctx.ffi, ctx.env, type_)
+  let param_val = eval(ctx.ffi, ctx.env, type_)
   let level = list.length(ctx.env)
-  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(type_val)))
+  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(param_val)))
   let #(body, body_type_val, ctx) = infer(ctx, body)
-  let body_type_val = unwrap(ctx.ffi, ctx.subst, body_type_val)
   let body_type = quote(ctx.ffi, level + 1, body_type_val)
   let ctx = context.pop_vars(ctx, 1)
-  let param_val = unwrap(ctx.ffi, ctx.subst, type_val)
   #(
     tm.Lam(implicit, #(name, type_), body),
     v.Pi(ctx.env, implicit, #(name, param_val), body_type),
