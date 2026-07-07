@@ -35,18 +35,13 @@ pub type Context {
     errors: List(Error),
     ffi: FFI,
     hole_counter: Int,
-    /// Hole IDs for lambda params awaiting beta reduction.
-    /// When infer_app sees App(Lam, arg), it fills these holes
-    /// so that captured environments in neutrals (e.g. NMatch)
-    /// resolve to concrete values during resolve.
-    pending_params: List(Int),
   )
 }
 
 pub type Subst =
   List(#(Int, Value))
 
-pub const new_ctx = Context([], [], [], [], [], 0, [])
+pub const new_ctx = Context([], [], [], [], [], 0)
 
 pub fn lookup(ctx: Context, name: String) -> Option(#(Int, Value)) {
   lookup_loop(ctx.types, name, 0)

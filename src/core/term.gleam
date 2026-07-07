@@ -84,8 +84,24 @@ pub type Variant {
   Variant(params: List(#(String, Term)), arg: Term, return_type: Term)
 }
 
-//
 // Helper functions
+
+pub fn pop_field(
+  fields: List(#(String, a)),
+  name: String,
+) -> Option(#(a, List(#(String, a)))) {
+  case fields {
+    [] -> None
+    [#("", value), ..fields] -> Some(#(value, fields))
+    [#(key, value), ..fields] if name == "" || name == key ->
+      Some(#(value, fields))
+    [entry, ..fields] ->
+      case pop_field(fields, name) {
+        None -> None
+        Some(#(value, fields)) -> Some(#(value, [entry, ..fields]))
+      }
+  }
+}
 
 pub fn bindings(p: Pattern) -> List(String) {
   case p {

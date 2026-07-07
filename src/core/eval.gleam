@@ -183,11 +183,11 @@ fn match_pattern_rcd_field(
 ) -> Option(#(List(Value), Value)) {
   case value {
     v.Rcd(vfields, opt_vtail) ->
-      case list.key_pop(vfields, name) {
-        Ok(#(#(value, _default), vfields)) ->
+      case tm.pop_field(vfields, name) {
+        Some(#(#(value, _default), vfields)) ->
           match_pattern(pattern, value)
           |> option.map(fn(xs) { #(xs, v.Rcd(vfields, opt_vtail)) })
-        Error(Nil) ->
+        None ->
           opt_vtail
           |> option.then(match_pattern_rcd_field(name, pattern, _))
           |> option.map(fn(xs_vtail) {

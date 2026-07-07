@@ -340,7 +340,7 @@ pub fn statement(
       let s = stmt.span
       let param1 = #("$type", None)
       let match_body =
-        list.map(choices, overload_choice)
+        list.map(choices, overload_choice(_, core.var("$args", s)))
         |> core.match(core.var("$type", s), _, s)
       let param2 = #("$args", Some(core.var("$type", s)))
       let core_expr = core.lam_explicit(param2, match_body, s)
@@ -373,14 +373,18 @@ pub fn statement(
   }
 }
 
-fn overload_choice(choice: tao.OverloadChoice) -> core.Case {
+fn overload_choice(
+  choice: tao.OverloadChoice,
+  core_arg: core.Expr,
+) -> core.Case {
   let tao.OverloadChoice(opt_mod_name, name, args, opt_guard, s) = choice
   let core_pat = arguments_pat(args, None, s)
   let core_guard = option.map(opt_guard, case_guard)
-  let core_body = case opt_mod_name {
+  let core_body_fun = case opt_mod_name {
     Some(mod_name) -> core.dot(core.var(mod_name, s), name, s)
     None -> core.var(name, s)
   }
+  let core_body = core.app_explicit(core_body_fun, core_arg, s)
   core.Case(core_pat, core_guard, core_body)
 }
 

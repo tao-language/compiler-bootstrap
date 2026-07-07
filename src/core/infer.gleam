@@ -245,21 +245,7 @@ fn infer_lam(
   }
   let type_val = eval(ctx.ffi, ctx.env, type_)
   let level = list.length(ctx.env)
-  // For explicit lambdas, create a hole for the param value instead of
-  // a neutral variable. When beta reduction happens in infer_app, the
-  // hole is filled with the concrete arg. Captured envs in neutrals
-  // (e.g. NMatch) contain this hole, which resolves during resolve.
-  // Implicit lambdas use the old NVar approach since they're filled
-  // by implicit argument expansion, not direct Pi application.
-  let ctx = case implicit {
-    False -> {
-      let #(param_hole, ctx) = context.new_hole(ctx)
-      let ctx =
-        Context(..ctx, pending_params: [param_hole, ..ctx.pending_params])
-      context.push_var(ctx, #(name, Some(v.hole(param_hole)), Some(type_val)))
-    }
-    True -> context.push_var(ctx, #(name, Some(v.var(level)), Some(type_val)))
-  }
+  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(type_val)))
   let #(body, body_type_val, ctx) = infer(ctx, body)
   let body_type_val = unwrap(ctx.ffi, ctx.subst, body_type_val)
   let body_type = quote(ctx.ffi, level + 1, body_type_val)
@@ -336,27 +322,14 @@ fn infer_app_args(
   let #(fun, fun_type, fun_span) = fun_typed
   case unwrap(ctx.ffi, ctx.subst, fun_type) {
     // Hole expansion
-    v.Neut(v.NHole(id)) -> {
-      let #(id, ctx) = case id >= 0 {
-        True -> #(id, ctx)
-        False -> context.new_hole(ctx)
-      }
-      let #(body_type_id, ctx) = context.new_hole(ctx)
+    v.Neut(_) as neut_fun_type -> {
+      let #(return_hole_id, ctx) = context.new_hole(ctx)
       let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
-      let expected =
-        v.Pi([], app_implicit, #("", arg_type), tm.Hole(body_type_id))
-      let ctx = unify(ctx, #(v.hole(id), fun_span), #(expected, fun_span))
-      let type_ = unwrap(ctx.ffi, ctx.subst, v.hole(body_type_id))
-      #(tm.App(app_implicit, fun, arg), type_, ctx)
-    }
-    // Neutral function type
-    v.Neut(neut) -> {
-      // let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
-      // let arg_val = eval(ctx.ffi, ctx.env, arg)
-      // let neut_type = v.Neut(v.NApp(neut, arg_val))
-      // #(tm.App(app_implicit, fun, arg), neut_type, ctx)
-      // Each Neut type (NApp, NMatch, NCall) must be handled differently
-      todo
+      let expected_pi =
+        v.Pi([], app_implicit, #("", arg_type), tm.Hole(return_hole_id))
+      let ctx = unify(ctx, #(neut_fun_type, fun_span), #(expected_pi, fun_span))
+      let return_type = unwrap(ctx.ffi, ctx.subst, v.hole(return_hole_id))
+      #(tm.App(app_implicit, fun, arg), return_type, ctx)
     }
     // Function application
     v.Pi(pi_env, pi_implicit, #(_, domain_val), codomain) ->
@@ -368,15 +341,6 @@ fn infer_app_args(
           // (the implicitness has been resolved)
           let #(arg, _, ctx) = check(ctx, arg_ast, #(domain_val, fun_span))
           let arg_val = eval(ctx.ffi, ctx.env, arg)
-          let ctx = case ctx.pending_params {
-            [hole_id, ..rest] ->
-              Context(
-                ..ctx,
-                subst: [#(hole_id, arg_val), ..ctx.subst],
-                pending_params: rest,
-              )
-            [] -> ctx
-          }
           let pi_env = [arg_val, ..pi_env]
           let type_ = eval(ctx.ffi, pi_env, codomain)
           #(tm.App(False, fun, arg), unwrap(ctx.ffi, ctx.subst, type_), ctx)

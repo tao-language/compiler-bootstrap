@@ -82,8 +82,8 @@ fn unify_rcd_field(
 ) -> #(Value, Context) {
   let #(rcd1, #(name, #(val1, default1)), s1) = a
   let #(rcd2, fields2, tail2, s2) = b
-  case list.key_pop(fields2, name) {
-    Ok(#(#(val2, default2), fields2)) -> {
+  case tm.pop_field(fields2, name) {
+    Some(#(#(val2, default2), fields2)) -> {
       let ctx = unify(ctx, #(val1, s1), #(val2, s2))
       let ctx = case default1, default2 {
         Some(v1), Some(v2) -> unify(ctx, #(v1, s1), #(v2, s2))
@@ -91,7 +91,7 @@ fn unify_rcd_field(
       }
       #(v.Rcd(fields2, tail2), ctx)
     }
-    Error(Nil) -> {
+    None -> {
       let ctx = case tail2 {
         Some(tail2_val) -> unify(ctx, #(rcd1, s1), #(tail2_val, s2))
         None -> with_err(ctx, e.RcdFieldNotFound(#(name, s1), s2))
