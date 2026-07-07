@@ -134,17 +134,17 @@ pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
     // No need to try to re-evaluate it into a concrete value.
     v.Neut(neut) -> v.Neut(neutral(ffi, subst, neut))
     v.Lam(env, #(name, typ), body) -> {
-      // TODO: resolve env
+      let env = list.map(env, value(ffi, subst, _))
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Lam(env, #(name, self(typ)), body)
     }
     v.Pi(env, implicit, #(name, typ), body) -> {
-      // TODO: resolve env
+      let env = list.map(env, value(ffi, subst, _))
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Pi(env, implicit, #(name, self(typ)), body)
     }
     v.Fix(env, name, body) -> {
-      // TODO: resolve env
+      let env = list.map(env, value(ffi, subst, _))
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Fix(env, name, body)
     }
@@ -155,8 +155,11 @@ pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
 
 fn neutral(ffi: FFI, subst: Subst, neut: Neut) -> Neut {
   case neut {
-    v.NVar(_) -> neut
-    v.NHole(_) -> neut
+    v.NVar(lvl) -> v.NVar(lvl)
+    v.NHole(env, id) -> {
+      let env = list.map(env, value(ffi, subst, _))
+      v.NHole(env, id)
+    }
     v.NApp(fun_nuet, arg) -> {
       let arg = value(ffi, subst, arg)
       v.NApp(fun_nuet, arg)

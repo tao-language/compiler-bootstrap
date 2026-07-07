@@ -6,9 +6,14 @@ import core/value.{type Env, type Neut, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
 
-fn normalize_term(ffi: FFI, env: Env, term: Term) -> Term {
+pub fn normalize_term(ffi: FFI, env: Env, term: Term) -> Term {
   eval(ffi, env, term)
   |> quote(ffi, list.length(env), _)
+}
+
+pub fn normalize_value(ffi: FFI, env: Env, value: Value) -> Value {
+  quote(ffi, list.length(env), value)
+  |> eval(ffi, env, _)
 }
 
 fn find_index(env: Env, target: v.Value) -> Option(Int) {
@@ -66,15 +71,11 @@ pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
 fn quote_neut(ffi: FFI, env: Env, neut: Neut) -> Term {
   case neut {
     v.NVar(level) -> tm.Var(list.length(env) - level - 1)
-    v.NHole(id) -> {
-      // Try to find the hole in the captured env and quote as a Var.
-      // This handles param holes that were filled during Pi application
-      // but whose term-level hole IDs have no substitution entries.
-      case find_index(env, v.hole(id)) {
+    v.NHole(env, id) ->
+      case find_index(env, v.hole(env, id)) {
         Some(index) -> tm.Var(index)
         None -> tm.Hole(id)
       }
-    }
     v.NApp(fun_neut, arg_val) -> {
       let fun = quote_neut(ffi, env, fun_neut)
       let arg = quote(ffi, list.length(env), arg_val)

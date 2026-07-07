@@ -54,7 +54,7 @@ pub fn eval_app_neutral_test() {
   let fun = tm.Hole(10)
   let term = tm.App(False, fun, tm.Lit(lit.Int(42)))
   let result = eval([], [], term)
-  assert result == v.app(v.NHole(10), v.int(42))
+  assert result == v.app(v.NHole([], 10), v.int(42))
 }
 
 pub fn eval_app_not_a_function_test() {

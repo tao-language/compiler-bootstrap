@@ -285,11 +285,12 @@ pub fn infer_app_error_expected_explicit_argument_test() {
 
 pub fn infer_app_hole_expansion_test() {
   let ast = ast.app_explicit(ast.var("f", s), ast.int(42, s), s)
-  let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(v.hole(-1))))
+  let ctx0 =
+    context.push_var(new_ctx, #("f", Some(v.var(0)), Some(v.hole([], -1))))
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
   assert term == tm.app(tm.Var(0), tm.int(42))
-  assert type_ == v.hole(1)
+  assert type_ == v.hole([], 1)
   assert ctx.subst == [#(0, v.Pi([], False, #("", v.int_t), tm.Hole(1)))]
 }
 
@@ -301,7 +302,7 @@ pub fn infer_app_implicit_expansion_test() {
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
   assert term == tm.app(tm.app(tm.Var(0), tm.Hole(0)), tm.int(42))
-  assert type_ == v.hole(1)
+  assert type_ == v.hole([], 1)
   assert ctx.subst == [#(0, v.Pi([], False, #("", v.int_t), tm.Hole(1)))]
 }
 
@@ -416,7 +417,7 @@ pub fn infer_match_dependent_motive_test() {
       tm.Case(tm.pvar("x"), None, tm.Var(0)),
     ])
   assert type_
-    == v.match([], v.NHole(0), [
+    == v.match([], v.NHole([], 0), [
       tm.Case(tm.pint(1), None, tm.int_t),
       tm.Case(tm.pint(2), None, tm.float_t),
       tm.Case(tm.pvar("x"), None, tm.Hole(2)),

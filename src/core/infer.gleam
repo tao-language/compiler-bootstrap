@@ -117,7 +117,7 @@ fn infer_hole(ctx: Context, id: Option(Int)) -> #(Term, Value, Context) {
     Some(hole_id) -> {
       // Concrete hole, create a new hole for its type.
       let #(type_id, ctx) = context.new_hole(ctx)
-      #(tm.Hole(hole_id), v.hole(type_id), ctx)
+      #(tm.Hole(hole_id), v.hole(ctx.env, type_id), ctx)
     }
     None -> {
       // Unknown hole, instantiate a fresh new hole.
@@ -291,7 +291,7 @@ fn infer_fix(
 ) -> #(Term, Value, Context) {
   let level = list.length(ctx.env)
   let #(hole_id, ctx) = context.new_hole(ctx)
-  let type_hole = v.hole(hole_id)
+  let type_hole = v.hole(ctx.env, hole_id)
   let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(type_hole)))
   let #(body, body_type, ctx) = infer(ctx, body)
   let ctx = context.pop_vars(ctx, 1)
@@ -328,7 +328,8 @@ fn infer_app_args(
       let expected_pi =
         v.Pi([], app_implicit, #("", arg_type), tm.Hole(return_hole_id))
       let ctx = unify(ctx, #(neut_fun_type, fun_span), #(expected_pi, fun_span))
-      let return_type = unwrap(ctx.ffi, ctx.subst, v.hole(return_hole_id))
+      let return_type =
+        unwrap(ctx.ffi, ctx.subst, v.hole(ctx.env, return_hole_id))
       #(tm.App(app_implicit, fun, arg), return_type, ctx)
     }
     // Function application
@@ -343,14 +344,14 @@ fn infer_app_args(
           let arg_val = eval(ctx.ffi, ctx.env, arg)
           let pi_env = [arg_val, ..pi_env]
           let type_ = eval(ctx.ffi, pi_env, codomain)
-          #(tm.App(False, fun, arg), unwrap(ctx.ffi, ctx.subst, type_), ctx)
+          #(tm.App(False, fun, arg), type_, ctx)
         }
         // pi_implicit, app_explicit
         True, False as app_explicit -> {
           // Implicit argument expansion
           let #(hole_id, ctx) = context.new_hole(ctx)
           let fun = tm.App(False, fun, tm.Hole(hole_id))
-          let pi_env = [v.hole(hole_id), ..pi_env]
+          let pi_env = [v.hole(ctx.env, hole_id), ..pi_env]
           let fun_type = eval(ctx.ffi, pi_env, codomain)
           let fun_data = #(fun, fun_type, fun_span)
           infer_app_args(ctx, app_explicit, fun_data, arg_ast, span)
@@ -431,7 +432,7 @@ fn infer_pattern(
   case pattern_ast.data {
     ast.PAny -> {
       let #(id, ctx) = context.new_hole(ctx)
-      #(tm.PAny, v.hole(id), ctx)
+      #(tm.PAny, v.hole(ctx.env, id), ctx)
     }
     ast.PTyp(u) -> #(tm.PTyp(u), v.Typ(u + 1), ctx)
     ast.PLit(lit) -> {

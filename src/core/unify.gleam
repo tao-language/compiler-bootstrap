@@ -16,9 +16,9 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   let #(value2, s2) = b
   case unwrap(ctx.ffi, ctx.subst, value1), unwrap(ctx.ffi, ctx.subst, value2) {
     // Try to solve holes before unifying any concrete values
-    v.Neut(v.NHole(id1)), v.Neut(v.NHole(id2)) if id1 == id2 -> ctx
-    value1, v.Neut(v.NHole(id)) -> solve_hole(ctx, id, value1, s1)
-    v.Neut(v.NHole(id)), value2 -> solve_hole(ctx, id, value2, s2)
+    v.Neut(v.NHole(_, id1)), v.Neut(v.NHole(_, id2)) if id1 == id2 -> ctx
+    value1, v.Neut(v.NHole(env, id)) -> solve_hole(ctx, id, value1, s1)
+    v.Neut(v.NHole(env, id)), value2 -> solve_hole(ctx, id, value2, s2)
     v.Neut(n1), v.Neut(n2) -> unify_neut(ctx, #(n1, s1), #(n2, s2))
     // Try to unify neutrals with concrete values
     value1, v.Neut(neut) -> unify_concrete_neut(ctx, #(value1, s1), #(neut, s2))
@@ -264,6 +264,7 @@ fn unify_args(
   }
 }
 
+// TODO: save hole env into ctx.subst
 fn solve_hole(ctx: Context, hole_id: Int, value: Value, span: Span) -> Context {
   case hole_id >= 0 {
     True ->

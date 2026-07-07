@@ -8,7 +8,7 @@ import utils/list_utils.{list_at}
 pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
   case term {
     tm.Typ(universe) -> v.Typ(universe)
-    tm.Hole(id) -> v.hole(id)
+    tm.Hole(id) -> v.hole(env, id)
     tm.Lit(value) -> v.Lit(value)
     tm.LitT(value) -> v.LitT(value)
     tm.Var(index) ->

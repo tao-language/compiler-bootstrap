@@ -6,7 +6,7 @@
 import core/ffi.{type FFI}
 import core/format
 import core/term.{type Term} as tm
-import core/value.{type Neut, type Value, type Variant} as v
+import core/value.{type Env, type Neut, type Value, type Variant} as v
 import gleam/int
 import gleam/list
 import gleam/string
@@ -81,9 +81,10 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
     }
 
     NeutralTypeMismatch(#(neut1, span1), #(neut2, span2)) -> {
+      let names = list.map(types, fn(entry) { entry.0 })
       summary(span1, "type mismatch between neutral terms")
-      <> detail("Left:  " <> neut_to_string(neut1))
-      <> detail("Right: " <> neut_to_string(neut2))
+      <> detail("Left:  " <> neut_to_string(ffi, names, neut1))
+      <> detail("Right: " <> neut_to_string(ffi, names, neut2))
       <> case span1.file == span2.file && span1.start_line != span2.start_line {
         True ->
           detail("")
@@ -166,29 +167,9 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
 /// Neutral values (unsolved holes, free variables, unresolved applications)
 /// have no named representation in the context, so we format them directly
 /// without going through `format.value`.
-fn neut_to_string(neut: Neut) -> String {
-  case neut {
-    v.NVar(level) -> "$" <> int.to_string(level)
-    v.NHole(id) -> "?" <> int.to_string(id)
-    v.NApp(fun, arg) -> {
-      "(" <> neut_to_string(fun) <> ") " <> neut_or_value(arg)
-    }
-    v.NMatch(_env, arg, _cases) -> {
-      "%match " <> neut_to_string(arg) <> " { … }"
-    }
-    v.NCall(name, _returns, args) -> {
-      let args_str = list.map(args, neut_or_value) |> string.join(", ")
-      "@" <> name <> "(" <> args_str <> ")"
-    }
-  }
-}
-
-/// Format a value that may be neutral or concrete.
-fn neut_or_value(val: Value) -> String {
-  case val {
-    v.Neut(neut) -> neut_to_string(neut)
-    _ -> "<value>"
-  }
+fn neut_to_string(ffi: FFI, names: List(String), neut: Neut) -> String {
+  let value = v.Neut(neut)
+  format.value(ffi, names, value, 60, 2)
 }
 
 // ============================================================================

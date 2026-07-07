@@ -43,7 +43,11 @@ fn define_modules(
       let #(core_mods, ctx) = define_modules(ctx, mods)
       let #(value_id, ctx) = context.new_hole(ctx)
       let #(type_id, ctx) = context.new_hole(ctx)
-      let var = #("@" <> name, Some(v.hole(value_id)), Some(v.hole(type_id)))
+      let var = #(
+        "@" <> name,
+        Some(v.hole(ctx.env, value_id)),
+        Some(v.hole(ctx.env, type_id)),
+      )
       let ctx = context.push_var(ctx, var)
       #([#(name, value_id, type_id, stmts), ..core_mods], ctx)
     }
@@ -61,7 +65,7 @@ fn infer_modules(
         discover.definitions(stmts)
         |> desugar.module(#(name, stmts), _)
       let #(mod_term, _mod_type, ctx) =
-        check(ctx, mod_expr, #(v.hole(type_id), mod_expr.span))
+        check(ctx, mod_expr, #(v.hole(ctx.env, type_id), mod_expr.span))
       let mod_value = eval(ctx.ffi, ctx.env, mod_term)
       let ctx = Context(..ctx, subst: [#(value_id, mod_value), ..ctx.subst])
       infer_modules(ctx, mod_holes)

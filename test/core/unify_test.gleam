@@ -227,7 +227,7 @@ pub fn unify_ctr_gadt_vec_test() {
       arg: tm.rcd([#("n", tm.Var(1)), #("a", tm.Var(0))]),
       variants: [
         #("Nil", v.Variant([], tm.rcd([]), nil_ret)),
-        #("Cons", v.Variant([#("m", v.hole(-1))], cons_arg, cons_ret)),
+        #("Cons", v.Variant([#("m", v.hole([], -1))], cons_arg, cons_ret)),
       ],
     )
   let ctx0 =
@@ -347,14 +347,14 @@ pub fn unify_neut_nvar_different_test() {
 // ============================================================================
 
 pub fn unify_neut_nhole_same_test() {
-  let a = v.Neut(v.NHole(0))
-  let b = v.Neut(v.NHole(0))
+  let a = v.Neut(v.NHole([], 0))
+  let b = v.Neut(v.NHole([], 0))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
 
 pub fn unify_neut_nhole_solve_test() {
-  let a = v.Neut(v.NHole(0))
+  let a = v.Neut(v.NHole([], 0))
   let b = v.int_t
   let ctx0 = new_ctx
   // Hole is solved with a substitution; hole_counter is unchanged
@@ -366,18 +366,18 @@ pub fn unify_neut_nhole_solve_test() {
 pub fn unify_neut_nhole_infinite_type_test() {
   // Unifying a neutral hole with a value containing the same hole
   // triggers the occurs check, producing an InfiniteType error.
-  let a = v.Neut(v.NHole(0))
-  let b = v.Neut(v.NApp(v.NHole(0), v.int_t))
+  let a = v.Neut(v.NHole([], 0))
+  let b = v.Neut(v.NApp(v.NHole([], 0), v.int_t))
   let ctx0 = new_ctx
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
-  let error = e.InfiniteType(0, v.Neut(v.NApp(v.NHole(0), v.int_t)), s2)
+  let error = e.InfiniteType(0, v.Neut(v.NApp(v.NHole([], 0), v.int_t)), s2)
   assert ctx.errors == [error]
 }
 
 pub fn unify_neut_nhole_solve_twice_test() {
   // Solving the same hole twice should merge substitutions
-  let a = v.Neut(v.NHole(0))
-  let b = v.Neut(v.NHole(0))
+  let a = v.Neut(v.NHole([], 0))
+  let b = v.Neut(v.NHole([], 0))
   let ctx0 = new_ctx
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
   // Same hole IDs unify directly without calling solve_hole
