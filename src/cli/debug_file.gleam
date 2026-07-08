@@ -108,8 +108,8 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     // DO NOT update the ctx, it's already been fully resolved.
     // Updating the context will cause duplicate errors.
     // This is only to debug/view the definition types.
-    let #(term, def_type, _) = infer(ctx, def_expr)
-    let def_type = resolve.value(ctx.ffi, ctx.subst, def_type)
+    let #(term, def_type, infer_ctx) = infer(ctx, def_expr)
+    let def_type = resolve.value(ctx.ffi, infer_ctx.subst, def_type)
     io.println("/// " <> name)
     // io.println(fmt_expr(def_expr))
     io.println("term: " <> fmt_term(term))
@@ -125,9 +125,9 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     let value = eval(ctx.ffi, ctx.env, t.term)
     io.println("/// " <> t.name)
     io.println(">>> " <> fmt_expr(core_expr))
-    io.println(fmt_term(t.term))
-    io.println("got:    " <> fmt_value(value))
-    io.println("expect: " <> fmt_pattern(core_expect))
+    io.println(fmt_pattern(core_expect))
+    io.println("result: " <> fmt_value(value))
+    // io.println("test-term: " <> fmt_term(t.term))
     io.println("")
   })
 
