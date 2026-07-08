@@ -323,11 +323,12 @@ fn infer_app_args(
     v.Neut(_) as neut_fun_type -> {
       let #(return_hole_id, ctx) = context.new_hole(ctx)
       let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
+      let arg_val = eval(ctx.ffi, ctx.env, arg)
       let expected_pi =
         v.Pi([], app_implicit, #("", arg_type), tm.Hole(return_hole_id))
       let ctx = unify(ctx, #(neut_fun_type, fun_span), #(expected_pi, fun_span))
       let return_type =
-        unwrap(ctx.ffi, ctx.subst, v.hole(ctx.env, return_hole_id))
+        unwrap(ctx.ffi, ctx.subst, v.hole([arg_val, ..ctx.env], return_hole_id))
       #(tm.App(app_implicit, fun, arg), return_type, ctx)
     }
     // Function application

@@ -134,7 +134,7 @@ pub fn lift(term: Term, names: List(String)) -> ast.Expr {
     Var(index) ->
       case list_at(names, index) {
         Some(name) -> ast.var(name, s)
-        None -> ast.var("`undefined " <> int.to_string(index) <> "`", s)
+        None -> ast.var("#" <> int.to_string(index), s)
       }
     Ctr(tag, arg) -> ast.Expr(ast.Ctr(tag, lift(arg, names)), s)
     Rcd(fields, tail) -> {

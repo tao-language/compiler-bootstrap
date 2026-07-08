@@ -76,7 +76,9 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   io.println("subst (" <> int.to_string(list.length(ctx.subst)) <> ")")
   list.map(ctx.subst, fn(entry) {
     let #(id, value) = entry
-    io.println("- " <> int.to_string(id) <> ": " <> fmt_value(value))
+    // TODO: save ctx.types.names in ctx.subst to display var names.
+    let fmt_subst = format.value(ctx.ffi, [], value, width, 2)
+    io.println("- " <> int.to_string(id) <> ": " <> fmt_subst)
   })
   io.println("")
 
