@@ -1,0 +1,18 @@
+fn no_args() -> NoArgs
+= NoArgs
+
+fn int_arg(i: Int) -> IntArg(Int)
+= IntArg(i)
+
+fn float_arg(f: Float) -> FloatArg(Float)
+= FloatArg(f)
+
+>>> no_args()
+NoArgs
+
+>>> int_arg(42)
+IntArg(42)
+
+>>> float_arg(3.14)
+FloatArg(3.14)
+
