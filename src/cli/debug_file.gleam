@@ -59,12 +59,12 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   io.println("")
 
   io.println("env (" <> int.to_string(list.length(ctx.env)) <> ")")
-  list.zip(ctx.types, ctx.env)
-  |> list.map(fn(entry) {
-    let #(#(name, _), value) = entry
-    io.println("- \"" <> name <> "\": " <> fmt_value(value))
-  })
-  io.println("")
+  // list.zip(ctx.types, ctx.env)
+  // |> list.map(fn(entry) {
+  //   let #(#(name, _), value) = entry
+  //   io.println("- \"" <> name <> "\": " <> fmt_value(value))
+  // })
+  // io.println("")
 
   io.println("types (" <> int.to_string(list.length(ctx.types)) <> ")")
   list.map(ctx.types, fn(entry) {
@@ -74,12 +74,13 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   io.println("")
 
   io.println("subst (" <> int.to_string(list.length(ctx.subst)) <> ")")
-  list.map(ctx.subst, fn(entry) {
-    let #(id, value) = entry
-    // TODO: save ctx.types.names in ctx.subst to display var names.
-    let fmt_subst = format.value(ctx.ffi, [], value, width, 2)
-    io.println("- " <> int.to_string(id) <> ": " <> fmt_subst)
-  })
+  // list.map(ctx.subst, fn(entry) {
+  //   let #(id, value) = entry
+  //   // TODO: save ctx.types.names in ctx.subst to display var names.
+  //   let fmt_subst = format.value(ctx.ffi, [], value, width, 2)
+  //   io.println("- " <> int.to_string(id) <> ": " <> fmt_subst)
+  // })
+  io.println("solved: " <> string.inspect(list.map(ctx.subst, fn(kv) { kv.0 })))
   io.println("")
 
   echo "> stmts = load.module(filename)"
