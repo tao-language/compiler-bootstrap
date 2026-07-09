@@ -46,7 +46,7 @@ fn doc_text(text: String) -> Document {
 }
 
 fn var_name(name: String) -> String {
-  let assert Ok(var_re) = regexp.from_string("^[_a-zA-Z][_\\w]*$")
+  let assert Ok(var_re) = regexp.from_string("^[_a-zA-Z$][_\\w$]*$")
   case regexp.check(var_re, name) {
     True -> name
     False -> "`" <> string.replace(name, "`", "\\`") <> "`"
