@@ -37,6 +37,14 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
         None, None ->
           with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)))
       }
+    v.Rcd([], None), v.Typ(_) -> ctx
+    v.Rcd([], Some(tail)), v.Typ(_) -> unify(ctx, #(tail, s1), #(value2, s2))
+    v.Rcd([#(_, #(value1, _)), ..fields], opt_tail), v.Typ(_) as value2 -> {
+      let ctx = unify(ctx, #(value1, s1), #(value2, s2))
+      unify(ctx, #(v.Rcd(fields, opt_tail), s1), #(value2, s2))
+    }
+    v.Typ(_) as value1, v.Rcd(..) as value2 ->
+      unify(ctx, #(value2, s2), #(value1, s1))
     v.Rcd([], None), v.Rcd([], None) -> ctx
     v.Rcd([], None) as rcd1, v.Rcd([#(name, _), ..fields2], None) -> {
       let ctx = with_err(ctx, e.RcdFieldNotFound(#(name, s2), s1))

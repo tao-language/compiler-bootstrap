@@ -338,7 +338,7 @@ pub fn statement(
     }
     tao.FnOverload(name, choices) -> {
       let s = stmt.span
-      let param1 = #("$type", None)
+      let param1 = #("$type", Some(core.typ(0, s)))
       let match_body =
         list.map(choices, overload_choice(_, core.var("$args", s)))
         |> core.match(core.var("$type", s), _, s)
