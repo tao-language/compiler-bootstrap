@@ -33,12 +33,7 @@ pub type ExprData {
     body: Expr,
   )
   FnT(implicits: List(Param), params: List(Param), body: Expr)
-  App(
-    implicit: Bool,
-    fun: Expr,
-    args: List(#(String, Expr)),
-    tail: Option(Expr),
-  )
+  App(fun: Expr, args: List(#(String, Expr)), tail: Option(Expr))
   Match(arg: Expr, cases: List(Case))
   Op1(op: UnaryOp, expr: Expr)
   Op2(op: BinaryOp, lhs: Expr, rhs: Expr)
@@ -224,26 +219,17 @@ pub fn ann(expr: Expr, type_: Type, span: Span) {
   Expr(Ann(expr, type_), span)
 }
 
-pub fn app(implicit: Bool, fun: Expr, args: List(#(String, Expr)), span: Span) {
-  app_open(implicit, fun, args, None, span)
+pub fn app(fun: Expr, args: List(#(String, Expr)), span: Span) {
+  app_open(fun, args, None, span)
 }
 
 pub fn app_open(
-  implicit: Bool,
   fun: Expr,
   args: List(#(String, Expr)),
   args_tail: Option(Expr),
   span: Span,
 ) {
-  Expr(App(implicit, fun, args, args_tail), span)
-}
-
-pub fn app_explicit(fun: Expr, args: List(#(String, Expr)), span: Span) {
-  app(False, fun, args, span)
-}
-
-pub fn app_implicit(fun: Expr, args: List(#(String, Expr)), span: Span) {
-  app(True, fun, args, span)
+  Expr(App(fun, args, args_tail), span)
 }
 
 pub fn match(arg: Expr, cases: List(Case), span: Span) {

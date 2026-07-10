@@ -19,8 +19,9 @@ pub type Value {
   Ctr(tag: String, arg: Value)
   Rcd(fields: List(#(String, #(Value, Option(Value)))), tail: Option(Value))
   Neut(neutral: Neut)
+  For(env: Env, param: #(String, Type), body: Term)
   Lam(env: Env, param: #(String, Type), body: Term)
-  Pi(env: Env, implicit: Bool, domain: #(String, Type), codomain: Term)
+  Pi(env: Env, domain: #(String, Type), codomain: Term)
   Fix(env: Env, name: String, body: Term)
   TypeDef(env: Env, type_def: TypeDefinition)
   Err

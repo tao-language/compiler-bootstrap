@@ -57,7 +57,7 @@ fn doc_term(term: Expr, indent: Int) -> Document {
   case term.data {
     // Syntax sugar
     // %let name: opt_type = value; body
-    ast.App(_, ast.Expr(ast.Lam(_, #(name, opt_type), body), _), value) ->
+    ast.App(ast.Expr(ast.Lam(#(name, opt_type), body), _), value) ->
       doc.concat([
         doc_text("%let "),
         doc_text(var_name(name)),
@@ -98,18 +98,26 @@ fn doc_term(term: Expr, indent: Int) -> Document {
         doc_term(type_, indent),
         doc_text(")"),
       ])
-    ast.Lam(implicit, #(name, opt_type), body) -> {
+    ast.For(#(name, opt_type), body) -> {
+      doc.concat([
+        doc_text("%for"),
+        doc_param(name, opt_type, indent),
+        doc_text(". "),
+        doc_term(body, indent),
+      ])
+    }
+    ast.Lam(#(name, opt_type), body) -> {
       doc.concat([
         doc_text("%lam"),
-        doc_param(implicit, name, opt_type, indent),
+        doc_param(name, opt_type, indent),
         doc_text(" => "),
         doc_term(body, indent),
       ])
     }
-    ast.Pi(implicit, #(name, opt_type), body) -> {
+    ast.Pi(#(name, opt_type), body) -> {
       doc.concat([
         doc_text("%pi"),
-        doc_param(implicit, name, opt_type, indent),
+        doc_param(name, opt_type, indent),
         doc_text(" -> "),
         doc_term(body, indent),
       ])
@@ -121,13 +129,10 @@ fn doc_term(term: Expr, indent: Int) -> Document {
         doc_text(". "),
         doc_term(body, indent),
       ])
-    ast.App(implicit, fun, arg) -> {
+    ast.App(fun, arg) -> {
       let fun_doc = doc_term(fun, indent)
       let arg_doc = doc_term(arg, indent)
-      case implicit {
-        True -> doc.concat([fun_doc, doc_text("<"), arg_doc, doc_text(">")])
-        False -> doc.concat([fun_doc, doc_text("("), arg_doc, doc_text(")")])
-      }
+      doc.concat([fun_doc, doc_text("("), arg_doc, doc_text(")")])
     }
     ast.TypeDef(type_def) -> doc_typedef(type_def, indent)
     ast.Match(arg, cases) -> {
@@ -166,21 +171,12 @@ fn doc_opt_type(opt_type: Option(Type), indent: Int) -> Document {
   }
 }
 
-fn doc_param(
-  implicit: Bool,
-  name: String,
-  opt_type: Option(Type),
-  indent: Int,
-) -> Document {
-  let #(open, close) = case implicit {
-    True -> #("<", ">")
-    False -> #("(", ")")
-  }
+fn doc_param(name: String, opt_type: Option(Type), indent: Int) -> Document {
   doc.concat([
-    doc_text(open),
+    doc_text("("),
     doc_text(var_name(name)),
     doc_opt_type(opt_type, indent),
-    doc_text(close),
+    doc_text(")"),
   ])
 }
 

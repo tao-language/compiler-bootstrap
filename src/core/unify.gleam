@@ -57,13 +57,25 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
         unify_rcd_field(ctx, #(rcd1, field, s1), #(rcd2, fields2, tail2, s2))
       unify(ctx, #(v.Rcd(fields1, tail1), s1), #(rcd2, s2))
     }
+    v.For(env, _, body), value2 -> {
+      let #(id, ctx) = context.new_hole(ctx)
+      let env = [v.hole(env, id), ..env]
+      let value1 = eval(ctx.ffi, env, body)
+      unify(ctx, #(value1, s1), #(value2, s2))
+    }
+    value1, v.For(env, _, body) -> {
+      let #(id, ctx) = context.new_hole(ctx)
+      let env = [v.hole(env, id), ..env]
+      let value2 = eval(ctx.ffi, env, body)
+      unify(ctx, #(value1, s1), #(value2, s2))
+    }
     v.Lam(env1, #(_, a1), b1), v.Lam(env2, #(_, a2), b2) -> {
       let ctx = unify(ctx, #(a1, s1), #(a2, s2))
       let v1 = eval(ctx.ffi, [v.var(list.length(env1)), ..env1], b1)
       let v2 = eval(ctx.ffi, [v.var(list.length(env2)), ..env2], b2)
       unify(ctx, #(v1, s1), #(v2, s2))
     }
-    v.Pi(env1, i1, #(_, a1), b1), v.Pi(env2, i2, #(_, a2), b2) if i1 == i2 -> {
+    v.Pi(env1, #(_, a1), b1), v.Pi(env2, #(_, a2), b2) -> {
       let ctx = unify(ctx, #(a1, s1), #(a2, s2))
       let v1 = eval(ctx.ffi, [v.var(list.length(env1)), ..env1], b1)
       let v2 = eval(ctx.ffi, [v.var(list.length(env2)), ..env2], b2)
@@ -80,6 +92,15 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     v.Err, v.Err -> ctx
     value1, value2 ->
       with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)))
+  }
+}
+
+fn shift(value: Value, delta: Int) -> Value {
+  case value {
+    _ -> {
+      echo value
+      todo as "TODO: shift"
+    }
   }
 }
 

@@ -47,15 +47,20 @@ pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
       tm.Rcd(fields, tail)
     }
     v.Neut(neut) -> quote_neut(ffi, v.env_push([], size), neut)
+    v.For(env, #(name, param_val), body) -> {
+      let param = quote(ffi, size, param_val)
+      let body = normalize_term(ffi, v.env_push(env, 1), body)
+      tm.For(#(name, param), body)
+    }
     v.Lam(env, #(name, param_val), body) -> {
       let param = quote(ffi, size, param_val)
       let body = normalize_term(ffi, v.env_push(env, 1), body)
-      tm.Lam(False, #(name, param), body)
+      tm.Lam(#(name, param), body)
     }
-    v.Pi(env, implicit, #(name, param_val), body) -> {
+    v.Pi(env, #(name, param_val), body) -> {
       let param = quote(ffi, size, param_val)
       let body = normalize_term(ffi, v.env_push(env, 1), body)
-      tm.Pi(implicit, #(name, param), body)
+      tm.Pi(#(name, param), body)
     }
     v.Fix(env, name, body) -> {
       let body = normalize_term(ffi, v.env_push(env, 1), body)
@@ -79,7 +84,7 @@ fn quote_neut(ffi: FFI, env: Env, neut: Neut) -> Term {
     v.NApp(fun_neut, arg_val) -> {
       let fun = quote_neut(ffi, env, fun_neut)
       let arg = quote(ffi, list.length(env), arg_val)
-      tm.App(False, fun, arg)
+      tm.App(fun, arg)
     }
     v.NMatch(captured_env, arg_neut, cases) -> {
       let arg = quote_neut(ffi, captured_env, arg_neut)

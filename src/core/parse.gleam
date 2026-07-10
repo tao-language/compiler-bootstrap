@@ -206,18 +206,11 @@ fn expr(file: String) -> Parser(Expr, Token, Nil) {
   )
   nibble.one_of([
     {
-      // Explicit application: f(x)
+      // Function application: f(x)
       use _ <- do(nibble.token(LParen))
       use arg <- do(expr(file))
       use _ <- do(nibble.token(RParen))
-      return(ast.app_explicit(fun, arg, span.merge(fun.span, arg.span)))
-    },
-    {
-      // Implicit application: f<x>
-      use _ <- do(nibble.token(LAngle))
-      use arg <- do(expr(file))
-      use _ <- do(nibble.token(RAngle))
-      return(ast.app_implicit(fun, arg, span.merge(fun.span, arg.span)))
+      return(ast.app(fun, arg, span.merge(fun.span, arg.span)))
     },
     // No application
     return(fun),
@@ -334,59 +327,27 @@ fn ann(file: String) -> Parser(Expr, Token, Nil) {
 fn lam(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use _ <- do(nibble.token(KwFn))
-  use #(implicit, param) <- do(
-    nibble.one_of([
-      {
-        // Explicit: %fn(x: y)
-        use _ <- do(nibble.token(LParen))
-        use name <- do(take_ident())
-        use type_ <- do(optional_type(file))
-        use _ <- do(nibble.token(RParen))
-        return(#(False, #(name, type_)))
-      },
-      {
-        // Implicit: %fn<x: y>
-        use _ <- do(nibble.token(LAngle))
-        use name <- do(take_ident())
-        use type_ <- do(optional_type(file))
-        use _ <- do(nibble.token(RAngle))
-        return(#(True, #(name, type_)))
-      },
-    ]),
-  )
+  use _ <- do(nibble.token(LParen))
+  use name <- do(take_ident())
+  use type_ <- do(optional_type(file))
+  use _ <- do(nibble.token(RParen))
   use _ <- do(nibble.token(FatArrow))
   use body <- do(expr(file))
   use end <- do(get_span(file))
-  return(ast.Expr(ast.Lam(implicit, param, body), span.merge(start, end)))
+  return(ast.Expr(ast.Lam(#(name, type_), body), span.merge(start, end)))
 }
 
 fn pi_expr(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use _ <- do(nibble.token(KwPi))
-  use #(implicit, param) <- do(
-    nibble.one_of([
-      {
-        // Explicit: %pi(x: y)
-        use _ <- do(nibble.token(LParen))
-        use name <- do(take_ident())
-        use type_ <- do(optional_type(file))
-        use _ <- do(nibble.token(RParen))
-        return(#(False, #(name, type_)))
-      },
-      {
-        // Implicit: %pi<x: y>
-        use _ <- do(nibble.token(LAngle))
-        use name <- do(take_ident())
-        use type_ <- do(optional_type(file))
-        use _ <- do(nibble.token(RAngle))
-        return(#(True, #(name, type_)))
-      },
-    ]),
-  )
+  use _ <- do(nibble.token(LParen))
+  use name <- do(take_ident())
+  use type_ <- do(optional_type(file))
+  use _ <- do(nibble.token(RParen))
   use _ <- do(nibble.token(ThinArrow))
   use body <- do(expr(file))
   use end <- do(get_span(file))
-  return(ast.Expr(ast.Pi(implicit, param, body), span.merge(start, end)))
+  return(ast.Expr(ast.Pi(#(name, type_), body), span.merge(start, end)))
 }
 
 fn fix(file: String) -> Parser(Expr, Token, Nil) {

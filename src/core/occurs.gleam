@@ -19,11 +19,15 @@ pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
         occurs(ctx, hole_id, val) || occurs_opt(ctx, hole_id, default)
       })
     v.Neut(neut) -> occurs_neut(ctx, hole_id, neut)
+    v.For(env, #(_, param), body) -> {
+      let env = v.env_push(env, 1)
+      occurs(ctx, hole_id, param) || occurs_term(ctx, env, hole_id, body)
+    }
     v.Lam(env, #(_, param), body) -> {
       let env = v.env_push(env, 1)
       occurs(ctx, hole_id, param) || occurs_term(ctx, env, hole_id, body)
     }
-    v.Pi(env, _, #(_, domain), codomain) -> {
+    v.Pi(env, #(_, domain), codomain) -> {
       let env = v.env_push(env, 1)
       occurs(ctx, hole_id, domain) || occurs_term(ctx, env, hole_id, codomain)
     }

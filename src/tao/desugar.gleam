@@ -68,8 +68,7 @@ pub fn expr(e: tao.Expr) -> core.Expr {
       )
     tao.FnT(implicits, params, body) ->
       function_type(implicits, params, body, e.span)
-    tao.App(implicit, fun, args, tail) ->
-      application(implicit, fun, args, tail, e.span)
+    tao.App(fun, args, tail) -> application(fun, args, tail, e.span)
     tao.Match(arg, cases) -> {
       let core_arg = expr(arg)
       let core_cases = case_list(cases)
@@ -81,11 +80,7 @@ pub fn expr(e: tao.Expr) -> core.Expr {
     }
     tao.Op2(op, lhs, rhs) -> {
       let op_name = tao.binop_name(op)
-      expr(tao.app_explicit(
-        tao.var(op_name, e.span),
-        [#("", lhs), #("", rhs)],
-        e.span,
-      ))
+      expr(tao.app(tao.var(op_name, e.span), [#("", lhs), #("", rhs)], e.span))
     }
     tao.Call(name, ret, args) -> {
       let core_ret = expr(ret)
@@ -174,7 +169,7 @@ fn function(
         }
       }
       let core_fun =
-        core.lam_explicit(#(param_name, Some(core_param_type)), core_body, span)
+        core.lam(#(param_name, Some(core_param_type)), core_body, span)
       case opt_fun_name {
         Some(fun_name) -> core.fix(fun_name, core_fun, span)
         None -> core_fun
@@ -194,7 +189,6 @@ fn function_type(
 }
 
 fn application(
-  implicit: Bool,
   fun: tao.Expr,
   args: List(#(String, tao.Expr)),
   tail: Option(tao.Expr),
@@ -202,7 +196,7 @@ fn application(
 ) -> core.Expr {
   let core_fun = expr(fun)
   let core_args = arguments(args, tail, fun.span)
-  core.Expr(core.App(implicit, core_fun, core_args), span)
+  core.Expr(core.App(core_fun, core_args), span)
 }
 
 fn case_list(cases: List(tao.Case)) -> List(core.Case) {
@@ -343,8 +337,8 @@ pub fn statement(
         list.map(choices, overload_choice(_, core.var("$args", s)))
         |> core.match(core.var("$type", s), _, s)
       let param2 = #("$args", Some(core.var("$type", s)))
-      let core_expr = core.lam_explicit(param2, match_body, s)
-      let core_expr = core.lam_implicit(param1, core_expr, s)
+      let core_expr = core.lam(param2, match_body, s)
+      let core_expr = core.for(param1, core_expr, s)
       core.let_var(#(name, None, core_expr), next, s)
     }
     tao.Test(name, arg, expect) -> {
@@ -384,7 +378,7 @@ fn overload_choice(
     Some(mod_name) -> core.dot(core.var(mod_name, s), name, s)
     None -> core.var(name, s)
   }
-  let core_body = core.app_explicit(core_body_fun, core_arg, s)
+  let core_body = core.app(core_body_fun, core_arg, s)
   core.Case(core_pat, core_guard, core_body)
 }
 

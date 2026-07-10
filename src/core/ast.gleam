@@ -33,10 +33,11 @@ pub type ExprData {
     tail: Option(Expr),
   )
   Ann(term: Expr, type_: Type)
-  Lam(implicit: Bool, param: Param, body: Expr)
-  Pi(implicit: Bool, param: Param, body: Expr)
+  For(param: Param, body: Expr)
+  Lam(param: Param, body: Expr)
+  Pi(param: Param, body: Expr)
   Fix(name: String, body: Expr)
-  App(implicit: Bool, fun: Expr, arg: Expr)
+  App(fun: Expr, arg: Expr)
   Match(arg: Expr, cases: List(Case))
   Call(name: String, returns: Type, args: List(Expr))
   TypeDef(type_def: TypeDefinition)
@@ -110,12 +111,14 @@ pub fn contains(term: Expr, name: String) -> Bool {
       })
       || opt_contains(opt_tail, name)
     Ann(term, type_) -> contains(term, name) || contains(type_, name)
-    Lam(_, #(x, type_), body) ->
+    For(#(x, type_), body) ->
       opt_contains(type_, name) || x != name && contains(body, name)
-    Pi(_, #(x, type_), body) ->
+    Lam(#(x, type_), body) ->
+      opt_contains(type_, name) || x != name && contains(body, name)
+    Pi(#(x, type_), body) ->
       opt_contains(type_, name) || x != name && contains(body, name)
     Fix(x, body) if x != name -> contains(body, name)
-    App(_, fun, arg) -> contains(fun, name) || contains(arg, name)
+    App(fun, arg) -> contains(fun, name) || contains(arg, name)
     Match(arg, cases) ->
       contains(arg, name) || list.any(cases, contains_case(_, name))
     Call(_, returns, args) ->
@@ -267,28 +270,16 @@ pub fn ann(value: Expr, type_: Expr, span: Span) {
   Expr(Ann(value, type_), span)
 }
 
-pub fn lam(implicit: Bool, param: Param, body: Expr, span: Span) {
-  Expr(Lam(implicit, param, body), span)
+pub fn for(param: Param, body: Expr, span: Span) {
+  Expr(For(param, body), span)
 }
 
-pub fn lam_explicit(param: Param, body: Expr, span: Span) {
-  lam(False, param, body, span)
+pub fn lam(param: Param, body: Expr, span: Span) {
+  Expr(Lam(param, body), span)
 }
 
-pub fn lam_implicit(param: Param, body: Expr, span: Span) {
-  lam(True, param, body, span)
-}
-
-pub fn pi(implicit: Bool, param: Param, body: Expr, span: Span) {
-  Expr(Pi(implicit, param, body), span)
-}
-
-pub fn pi_explicit(param: Param, body: Expr, span: Span) {
-  pi(False, param, body, span)
-}
-
-pub fn pi_implicit(param: Param, body: Expr, span: Span) {
-  pi(True, param, body, span)
+pub fn pi(param: Param, body: Expr, span: Span) {
+  Expr(Pi(param, body), span)
 }
 
 pub fn fix(name: String, body: Expr, span: Span) {
@@ -298,16 +289,8 @@ pub fn fix(name: String, body: Expr, span: Span) {
   }
 }
 
-pub fn app(implicit: Bool, fun: Expr, arg: Expr, span: Span) {
-  Expr(App(implicit, fun, arg), span)
-}
-
-pub fn app_explicit(fun: Expr, arg: Expr, span: Span) {
-  app(False, fun, arg, span)
-}
-
-pub fn app_implicit(fun: Expr, arg: Expr, span: Span) {
-  app(True, fun, arg, span)
+pub fn app(fun: Expr, arg: Expr, span: Span) {
+  Expr(App(fun, arg), span)
 }
 
 pub fn match(arg: Expr, cases: List(Case), span: Span) {
@@ -320,7 +303,7 @@ pub fn call(name: String, returns: Type, args: List(Expr), span: Span) {
 
 pub fn let_var(def: #(String, Option(Type), Expr), body: Expr, span: Span) {
   let #(name, opt_type, value) = def
-  app_explicit(lam_explicit(#(name, opt_type), body, span), value, span)
+  app(lam(#(name, opt_type), body, span), value, span)
 }
 
 pub fn let_pat(def: #(Pattern, Option(Type), Expr), body: Expr, span: Span) {

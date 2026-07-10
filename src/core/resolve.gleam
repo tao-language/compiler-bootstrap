@@ -83,24 +83,29 @@ fn term_seen(
       let type_ = self(size, type_)
       tm.Ann(t, type_)
     }
-    tm.Lam(implicit, #(name, param), body) -> {
+    tm.For(#(name, param), body) -> {
       let param = self(size, param)
       let body = self(size + 1, body)
-      tm.Lam(implicit, #(name, param), body)
+      tm.For(#(name, param), body)
     }
-    tm.Pi(implicit, #(name, domain), codomain) -> {
+    tm.Lam(#(name, param), body) -> {
+      let param = self(size, param)
+      let body = self(size + 1, body)
+      tm.Lam(#(name, param), body)
+    }
+    tm.Pi(#(name, domain), codomain) -> {
       let domain = self(size, domain)
       let codomain = self(size + 1, codomain)
-      tm.Pi(implicit, #(name, domain), codomain)
+      tm.Pi(#(name, domain), codomain)
     }
     tm.Fix(name, body) -> {
       let body = self(size + 1, body)
       tm.Fix(name, body)
     }
-    tm.App(implicit, fun, arg) -> {
+    tm.App(fun, arg) -> {
       let fun = self(size, fun)
       let arg = self(size, arg)
-      tm.App(implicit, fun, arg)
+      tm.App(fun, arg)
     }
     tm.TypeDef(type_def) -> todo
     tm.Match(arg, cases) -> {
@@ -133,15 +138,20 @@ pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
     // If unwrap still returns a Neut, just reolve its parts.
     // No need to try to re-evaluate it into a concrete value.
     v.Neut(neut) -> v.Neut(neutral(ffi, subst, neut))
+    v.For(env, #(name, typ), body) -> {
+      let env = list.map(env, value(ffi, subst, _))
+      let body = term(ffi, subst, list.length(env) + 1, body)
+      v.For(env, #(name, self(typ)), body)
+    }
     v.Lam(env, #(name, typ), body) -> {
       let env = list.map(env, value(ffi, subst, _))
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Lam(env, #(name, self(typ)), body)
     }
-    v.Pi(env, implicit, #(name, typ), body) -> {
+    v.Pi(env, #(name, typ), body) -> {
       let env = list.map(env, value(ffi, subst, _))
       let body = term(ffi, subst, list.length(env) + 1, body)
-      v.Pi(env, implicit, #(name, self(typ)), body)
+      v.Pi(env, #(name, self(typ)), body)
     }
     v.Fix(env, name, body) -> {
       let env = list.map(env, value(ffi, subst, _))

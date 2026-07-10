@@ -34,16 +34,20 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       do_call(ffi, name, returns_val, args_val)
     }
     tm.Ann(term, _) -> eval(ffi, env, term)
-    tm.Lam(_, #(name, param), body) -> {
+    tm.For(#(name, param), body) -> {
+      let param_val = eval(ffi, env, param)
+      v.For(env, #(name, param_val), body)
+    }
+    tm.Lam(#(name, param), body) -> {
       let param_val = eval(ffi, env, param)
       v.Lam(env, #(name, param_val), body)
     }
-    tm.Pi(implicit, #(name, domain), codomain) -> {
+    tm.Pi(#(name, domain), codomain) -> {
       let domain_val = eval(ffi, env, domain)
-      v.Pi(env, implicit, #(name, domain_val), codomain)
+      v.Pi(env, #(name, domain_val), codomain)
     }
     tm.Fix(name, body) -> v.Fix(env, name, body)
-    tm.App(_, fun, arg) -> {
+    tm.App(fun, arg) -> {
       let fun_val = eval(ffi, env, fun)
       let arg_val = eval(ffi, env, arg)
       do_app(ffi, fun_val, arg_val)

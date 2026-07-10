@@ -435,16 +435,11 @@ fn op2(op: BinaryOp) -> fn(Expr, Expr) -> Expr {
 
 fn app(file: String, fun: Expr) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
-  use #(implicit, close) <- do(
-    nibble.one_of([
-      nibble.token(LParen) |> nibble.map(fn(_) { #(False, RParen) }),
-      nibble.token(LAngle) |> nibble.map(fn(_) { #(True, RAngle) }),
-    ]),
-  )
+  use _ <- do(nibble.token(LParen))
   use args <- do(arguments(file))
-  use _ <- do(nibble.token(close))
+  use _ <- do(nibble.token(RParen))
   use end <- do(get_span(file))
-  return(tao.app(implicit, fun, args, span.merge(start, end)))
+  return(tao.app(fun, args, span.merge(start, end)))
 }
 
 fn match(file: String) -> Parser(Expr, Token, Nil) {

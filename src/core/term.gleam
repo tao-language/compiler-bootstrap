@@ -45,10 +45,11 @@ pub type Term {
   Rcd(fields: List(#(String, #(Term, Option(Term)))), tail: Option(Term))
   Call(name: String, returns: Type, args: List(Term))
   Ann(term: Term, type_: Type)
-  Lam(implicit: Bool, param: #(String, Type), body: Term)
-  Pi(implicit: Bool, domain: #(String, Type), codomain: Term)
+  For(param: #(String, Type), body: Term)
+  Lam(param: #(String, Type), body: Term)
+  Pi(domain: #(String, Type), codomain: Term)
   Fix(name: String, body: Term)
-  App(implicit: Bool, fun: Term, arg: Term)
+  App(fun: Term, arg: Term)
   Match(arg: Term, cases: List(Case))
   TypeDef(type_def: TypeDefinition)
   Err
@@ -150,21 +151,26 @@ pub fn lift(term: Term, names: List(String)) -> ast.Expr {
     }
     Call(name, returns, args) -> todo
     Ann(term, type_) -> todo
-    Lam(implicit, #(name, type_), body) -> {
+    For(#(name, type_), body) -> {
       let type_ast = lift(type_, names)
       let body_ast = lift(body, [name, ..names])
-      ast.lam(implicit, #(name, Some(type_ast)), body_ast, s)
+      ast.for(#(name, Some(type_ast)), body_ast, s)
     }
-    Pi(implicit, #(name, type_), body) -> {
+    Lam(#(name, type_), body) -> {
       let type_ast = lift(type_, names)
       let body_ast = lift(body, [name, ..names])
-      ast.pi(implicit, #(name, Some(type_ast)), body_ast, s)
+      ast.lam(#(name, Some(type_ast)), body_ast, s)
+    }
+    Pi(#(name, type_), body) -> {
+      let type_ast = lift(type_, names)
+      let body_ast = lift(body, [name, ..names])
+      ast.pi(#(name, Some(type_ast)), body_ast, s)
     }
     Fix(name, body) -> todo
-    App(implicit, fun, arg) -> {
+    App(fun, arg) -> {
       let fun_ast = lift(fun, names)
       let arg_ast = lift(fun, names)
-      ast.app(implicit, fun_ast, arg_ast, s)
+      ast.app(fun_ast, arg_ast, s)
     }
     TypeDef(type_def) -> todo
     Match(arg, cases) -> {
@@ -264,25 +270,9 @@ pub fn ctr(tag: String, args: List(#(String, Term))) -> Term {
   Ctr(tag, rcd(args))
 }
 
-pub fn lam(param: #(String, Type), body: Term) -> Term {
-  Lam(False, param, body)
-}
-
-pub fn lam_implicit(param: #(String, Type), body: Term) -> Term {
-  Lam(True, param, body)
-}
-
-pub fn app(fun: Term, arg: Term) -> Term {
-  App(False, fun, arg)
-}
-
-pub fn app_implicit(fun: Term, arg: Term) -> Term {
-  App(True, fun, arg)
-}
-
 pub fn let_var(def: #(String, Type, Term), body: Term) -> Term {
   let #(name, type_, value) = def
-  app(lam(#(name, type_), body), value)
+  App(Lam(#(name, type_), body), value)
 }
 
 pub fn let_var_list(defs: List(#(String, Type, Term)), body: Term) -> Term {
