@@ -138,12 +138,13 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     [] -> io.println("0 build errors")
     errors -> {
       let n = list.length(errors)
-      io.println_error("---- " <> int.to_string(n) <> " build errors ----")
+      io.println_error("---- ERRORS ----")
       list.map(ctx.errors, fn(err) {
         let msg = error.display(ctx.ffi, ctx.types, err)
-        io.println_error(msg)
+        io.println_error("❌ " <> msg)
       })
-      Nil
+      io.println("")
+      io.println_error(int.to_string(n) <> " build errors")
     }
   }
 }
