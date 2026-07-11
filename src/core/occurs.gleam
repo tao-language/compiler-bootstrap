@@ -60,10 +60,10 @@ fn occurs_neut(ctx: Context, hole_id: Int, neut: Neut) -> Bool {
   case neut {
     v.NVar(_) -> False
     v.NHole(_, id) -> id == hole_id
-    v.NApp(fun, arg) ->
-      occurs_neut(ctx, hole_id, fun) || occurs(ctx, hole_id, arg)
-    v.NMatch(env, arg, cases) ->
-      occurs_neut(ctx, hole_id, arg)
+    v.NApp(fun_neut, arg_val) ->
+      occurs_neut(ctx, hole_id, fun_neut) || occurs(ctx, hole_id, arg_val)
+    v.NMatch(env, arg_neut, cases) ->
+      occurs_neut(ctx, hole_id, arg_neut)
       || list.any(cases, occurs_case(ctx, env, hole_id, _))
     v.NCall(_, returns, args) ->
       occurs(ctx, hole_id, returns) || list.any(args, occurs(ctx, hole_id, _))

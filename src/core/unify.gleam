@@ -19,6 +19,16 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   let #(value1, s1) = a
   let #(value2, s2) = b
   case unwrap(ctx.ffi, ctx.subst, value1), unwrap(ctx.ffi, ctx.subst, value2) {
+    // Try to solve holes before unifying any concrete values
+    v.Neut(v.NHole(_, id1)), v.Neut(v.NHole(_, id2)) if id1 == id2 -> ctx
+    value1, v.Neut(v.NHole(env, id)) -> solve_hole(ctx, id, value1, s1)
+    v.Neut(v.NHole(env, id)), value2 -> solve_hole(ctx, id, value2, s2)
+    v.Neut(n1), v.Neut(n2) -> unify_neut(ctx, #(n1, s1), #(n2, s2))
+    // Try to unify neutrals with concrete values
+    value1, v.Neut(neut) ->
+      check_neut_with_concrete(ctx, #(value1, s1), #(neut, s2))
+    v.Neut(neut), value2 ->
+      check_neut_with_concrete(ctx, #(value2, s2), #(neut, s1))
     // Quantifier instantiation
     v.For(env, _, body), value2 -> {
       let #(id, ctx) = context.new_hole(ctx)
@@ -32,16 +42,6 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       let value2 = eval(ctx.ffi, env, body)
       unify(ctx, #(value1, s1), #(value2, s2))
     }
-    // Try to solve holes before unifying any concrete values
-    v.Neut(v.NHole(_, id1)), v.Neut(v.NHole(_, id2)) if id1 == id2 -> ctx
-    value1, v.Neut(v.NHole(env, id)) -> solve_hole(ctx, id, value1, s1)
-    v.Neut(v.NHole(env, id)), value2 -> solve_hole(ctx, id, value2, s2)
-    v.Neut(n1), v.Neut(n2) -> unify_neut(ctx, #(n1, s1), #(n2, s2))
-    // Try to unify neutrals with concrete values
-    value1, v.Neut(neut) ->
-      check_neut_with_concrete(ctx, #(value1, s1), #(neut, s2))
-    v.Neut(neut), value2 ->
-      check_neut_with_concrete(ctx, #(value2, s2), #(neut, s1))
     // Unify concrete values
     v.Typ(u1), v.Typ(u2) if u1 == u2 -> ctx
     v.Lit(v1), v.Lit(v2) if v1 == v2 -> ctx
@@ -147,9 +147,9 @@ fn check_neut_with_concrete(
   case neut {
     v.NVar(level) -> ctx
     v.NHole(env, id) -> todo
-    v.NApp(fun, arg) -> todo
-    v.NMatch(env, arg, cases) ->
-      check_neut_with_concrete_cases(ctx, env, arg, a, #(cases, s2))
+    v.NApp(fun_neut, arg_val) -> todo
+    v.NMatch(env, arg_val, cases) ->
+      check_neut_with_concrete_cases(ctx, env, arg_val, a, #(cases, s2))
     v.NCall(_, returns, _) -> unify(ctx, #(value, s1), #(returns, s2))
   }
 }

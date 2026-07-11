@@ -324,15 +324,35 @@ fn infer_app(
   span: Span,
 ) -> #(Term, Type, Context) {
   let #(fun, fun_type, ctx) = infer(ctx, fun_ast)
-  let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
-  let #(id, ctx) = context.new_hole(ctx)
-  let expected_pi = v.Pi(ctx.env, #("", arg_type), tm.Hole(id))
-  let ctx = unify(ctx, #(fun_type, fun_ast.span), #(expected_pi, span))
-  let ret_type = case list.key_find(ctx.subst, id) {
-    Ok(ty) -> ty
-    Error(Nil) -> v.hole([], id)
+  let fun_type = unwrap(ctx.ffi, ctx.subst, fun_type)
+  case fun_type {
+    v.Pi(pi_env, #(_, domain), codomain) -> {
+      let #(arg, arg_type, ctx) = check(ctx, arg_ast, #(domain, fun_ast.span))
+      let pi_env = [arg_type, ..pi_env]
+      let ret_type = eval(ctx.ffi, pi_env, codomain)
+      #(tm.App(fun, arg), ret_type, ctx)
+    }
+    v.For(for_env, #(_, param_type), body) -> {
+      todo
+    }
+    v.Neut(v.NHole(env, id)) -> {
+      let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
+      let #(id, ctx) = context.new_hole(ctx)
+      let expected_pi =
+        v.Pi(env, #("$" <> int.to_string(id), arg_type), tm.Hole(id))
+      let ctx = unify(ctx, #(fun_type, span), #(expected_pi, span))
+      let arg_val = eval(ctx.ffi, ctx.env, arg)
+      let ret_type = eval(ctx.ffi, [arg_val, ..ctx.env], tm.Hole(id))
+      #(tm.App(fun, arg), ret_type, ctx)
+    }
+    v.Neut(rigid) -> {
+      todo as "Type error: You cannot apply a term whose type is a rigid variable (e.g., `a`)"
+    }
+    _ -> {
+      let ctx = context.with_err(ctx, e.NotAFunction(tm.Err, fun_type, span))
+      #(tm.Err, v.Err, ctx)
+    }
   }
-  #(tm.App(fun, arg), ret_type, ctx)
 }
 
 fn infer_match(
@@ -447,10 +467,10 @@ fn infer_pattern_fields(
 fn check_pattern(
   ctx: Context,
   pattern_ast: ast.Pattern,
-  b: #(Type, Span),
+  expected: #(Type, Span),
 ) -> #(tm.Pattern, Context) {
   let #(pattern, inferred, ctx) = infer_pattern(ctx, pattern_ast)
-  // let ctx = unify(ctx, #(inferred, pattern_ast.span), expected)
+  let ctx = unify(ctx, #(inferred, pattern_ast.span), expected)
   #(pattern, ctx)
 }
 

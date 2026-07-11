@@ -59,12 +59,12 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   io.println("")
 
   io.println("env (" <> int.to_string(list.length(ctx.env)) <> ")")
-  // list.zip(ctx.types, ctx.env)
-  // |> list.map(fn(entry) {
-  //   let #(#(name, _), value) = entry
-  //   io.println("- \"" <> name <> "\": " <> fmt_value(value))
-  // })
-  // io.println("")
+  list.zip(ctx.types, ctx.env)
+  |> list.map(fn(entry) {
+    let #(#(name, _), value) = entry
+    io.println("- \"" <> name <> "\": " <> fmt_value(value))
+  })
+  io.println("")
 
   io.println("types (" <> int.to_string(list.length(ctx.types)) <> ")")
   list.map(ctx.types, fn(entry) {
@@ -105,20 +105,20 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   io.println(fmt_expr(mod_expr))
   io.println("")
 
-  echo "> definition types"
-  list.map(definitions, fn(name) {
-    let def_expr = core.dot(mod_expr, name, s)
-    // DO NOT update the ctx, it's already been fully resolved.
-    // Updating the context will cause duplicate errors.
-    // This is only to debug/view the definition types.
-    let #(term, def_type, infer_ctx) = infer(ctx, def_expr)
-    let def_type = resolve.value(ctx.ffi, infer_ctx.subst, def_type)
-    io.println("/// " <> name)
-    // io.println(fmt_expr(def_expr))
-    io.println("term: " <> fmt_term(term))
-    io.println("type: " <> fmt_value(def_type))
-    io.println("")
-  })
+  // echo "> definition types"
+  // list.map(definitions, fn(name) {
+  //   let def_expr = core.dot(mod_expr, name, s)
+  //   // DO NOT update the ctx, it's already been fully resolved.
+  //   // Updating the context will cause duplicate errors.
+  //   // This is only to debug/view the definition types.
+  //   let #(term, def_type, infer_ctx) = infer(ctx, def_expr)
+  //   let def_type = resolve.value(ctx.ffi, infer_ctx.subst, def_type)
+  //   io.println("/// " <> name)
+  //   // io.println(fmt_expr(def_expr))
+  //   io.println("term: " <> fmt_term(term))
+  //   io.println("type: " <> fmt_value(def_type))
+  //   io.println("")
+  // })
 
   echo "> tests = compile.tests(stmts)"
   let tests = compile.tests([#(filename, stmts)])
