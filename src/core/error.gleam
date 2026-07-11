@@ -3,6 +3,7 @@
 /// Each error variant carries `Span` location information so that
 /// `display` can produce messages in the familiar
 /// `file:line:col: message` format with additional context.
+import core/ast
 import core/ffi.{type FFI}
 import core/format
 import core/term.{type Term} as tm
@@ -19,7 +20,7 @@ import syntax/span.{type Span}
 pub type Error {
   UnexpectedToken(token: String, span: Span)
   VarUndefined(name: String, span: Span)
-  TypeMismatch(a: #(Value, Span), b: #(Value, Span))
+  TypeMismatch(a: ast.Expr, b: ast.Expr)
   NeutralTypeMismatch(a: #(Neut, Span), b: #(Neut, Span))
   RcdFieldNotFound(field: #(String, Span), missing_on: Span)
   CallArityMismatch(#(Int, Span), #(Int, Span))
@@ -48,8 +49,9 @@ pub type Error {
 /// can be formatted with proper names (De Bruijn indices → variable names).
 pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
   let names = list.map(types, fn(t) { t.0 })
-  let f = fn(val: Value) { format.value(ffi, names, val, 60, 0) }
-  let t = fn(term: tm.Term) { format.term(names, term, 60, 0) }
+  let fmt_expr = fn(expr: ast.Expr) { format.expr(expr, 60, 0) }
+  let fmt_value = fn(val: Value) { format.value(ffi, names, val, 60, 0) }
+  let fmt_term = fn(term: tm.Term) { format.term(names, term, 60, 0) }
 
   case err {
     UnexpectedToken(token, span) -> {
@@ -63,21 +65,10 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
       )
     }
 
-    TypeMismatch(#(got, got_span), #(expected, expected_span)) -> {
-      summary(got_span, "type mismatch")
-      <> detail("Expected:   " <> f(expected))
-      <> detail("Got:        " <> f(got))
-      <> case
-        expected_span.file == got_span.file
-        && expected_span.start_line != got_span.start_line
-      {
-        True ->
-          detail("")
-          <> detail(
-            "The expected type comes from " <> span_location(expected_span),
-          )
-        False -> ""
-      }
+    TypeMismatch(got, expected) -> {
+      summary(got.span, "type mismatch")
+      <> detail("Expected:   " <> fmt_expr(expected))
+      <> detail("Got:        " <> fmt_expr(got))
     }
 
     NeutralTypeMismatch(#(neut1, span1), #(neut2, span2)) -> {
@@ -111,7 +102,7 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
         <> " would be unified with a type that contains itself.",
       )
       <> detail("")
-      <> detail("Type value: " <> f(type_))
+      <> detail("Type value: " <> fmt_value(type_))
       <> detail("")
       <> detail("This usually happens when a recursive type is not properly")
       <> detail("wrapped behind a constructor or newtype.")
@@ -119,9 +110,9 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
 
     NotAFunction(fun, fun_type, span) -> {
       summary(span, "not a function")
-      <> detail("This expression has type " <> f(fun_type))
+      <> detail("This expression has type " <> fmt_value(fun_type))
       <> detail("")
-      <> detail("Term: " <> t(fun))
+      <> detail("Term: " <> fmt_term(fun))
       <> detail("")
       <> detail(
         "You cannot apply a non-function value as if it were a function.",
@@ -130,7 +121,7 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
 
     AppExpectedExplicitArg(fun_type, span) -> {
       summary(span, "expected explicit argument, got implicit argument")
-      <> detail("The function type is: " <> f(fun_type))
+      <> detail("The function type is: " <> fmt_value(fun_type))
       <> detail("")
       <> detail("Use `f(arg)` for explicit arguments, not `f<arg>`.")
     }

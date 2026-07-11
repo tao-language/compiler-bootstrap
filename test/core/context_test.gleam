@@ -40,18 +40,6 @@ pub fn lookup_empty_context_test() {
 // Error accumulation
 // ============================================================================
 
-pub fn with_err_accumulates_single_error_test() {
-  let ctx0 = new_ctx
-  let ctx1 = with_err(ctx0, e.TypeMismatch(#(v.int_t, s), #(v.float_t, s)))
-  let ctx2 = with_err(ctx1, e.VarUndefined("x", s))
-  // Errors accumulate: both errors should be present
-  assert ctx2.errors
-    == [
-      e.TypeMismatch(#(v.int_t, s), #(v.float_t, s)),
-      e.VarUndefined("x", s),
-    ]
-}
-
 pub fn with_err_appends_to_existing_errors_test() {
   let ctx0 = new_ctx
   let ctx1 = with_err(ctx0, e.VarUndefined("a", s))

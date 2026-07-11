@@ -24,7 +24,7 @@ import core/literals.{type Literal, type LiteralType} as lit
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import syntax/span
+import syntax/span.{type Span}
 import utils/list_utils.{list_at}
 
 // ============================================================================
@@ -124,8 +124,7 @@ pub fn bindings(p: Pattern) -> List(String) {
   }
 }
 
-pub fn lift(term: Term, names: List(String)) -> ast.Expr {
-  let s = span.empty("", 0, 0)
+pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
   case term {
     Typ(u) -> ast.typ(u, s)
     Hole(id) if id < 0 -> ast.hole(None, s)
@@ -137,63 +136,63 @@ pub fn lift(term: Term, names: List(String)) -> ast.Expr {
         Some(name) -> ast.var(name, s)
         None -> ast.var("#" <> int.to_string(index), s)
       }
-    Ctr(tag, arg) -> ast.Expr(ast.Ctr(tag, lift(arg, names)), s)
+    Ctr(tag, arg) -> ast.Expr(ast.Ctr(tag, lift(arg, names, s)), s)
     Rcd(fields, tail) -> {
       let fields_ast =
         list.map(fields, fn(field) {
           let #(name, #(term, default)) = field
-          let term_ast = lift(term, names)
-          let default_ast = option.map(default, lift(_, names))
+          let term_ast = lift(term, names, s)
+          let default_ast = option.map(default, lift(_, names, s))
           #(name, #(Some(term_ast), default_ast))
         })
-      let tail_ast = option.map(tail, lift(_, names))
+      let tail_ast = option.map(tail, lift(_, names, s))
       ast.rcd(fields_ast, tail_ast, s)
     }
     Call(name, returns, args) -> todo
     Ann(term, type_) -> todo
     For(#(name, type_), body) -> {
-      let type_ast = lift(type_, names)
-      let body_ast = lift(body, [name, ..names])
+      let type_ast = lift(type_, names, s)
+      let body_ast = lift(body, [name, ..names], s)
       ast.for(#(name, Some(type_ast)), body_ast, s)
     }
     Lam(#(name, type_), body) -> {
-      let type_ast = lift(type_, names)
-      let body_ast = lift(body, [name, ..names])
+      let type_ast = lift(type_, names, s)
+      let body_ast = lift(body, [name, ..names], s)
       ast.lam(#(name, Some(type_ast)), body_ast, s)
     }
     Pi(#(name, type_), body) -> {
-      let type_ast = lift(type_, names)
-      let body_ast = lift(body, [name, ..names])
+      let type_ast = lift(type_, names, s)
+      let body_ast = lift(body, [name, ..names], s)
       ast.pi(#(name, Some(type_ast)), body_ast, s)
     }
     Fix(name, body) -> todo
     App(fun, arg) -> {
-      let fun_ast = lift(fun, names)
-      let arg_ast = lift(fun, names)
+      let fun_ast = lift(fun, names, s)
+      let arg_ast = lift(fun, names, s)
       ast.app(fun_ast, arg_ast, s)
     }
     TypeDef(type_def) -> todo
     Match(arg, cases) -> {
-      let arg_ast = lift(arg, names)
-      let cases_ast = list.map(cases, lift_case(_, names))
+      let arg_ast = lift(arg, names, s)
+      let cases_ast = list.map(cases, lift_case(_, names, s))
       ast.match(arg_ast, cases_ast, s)
     }
     Err -> ast.err(s)
   }
 }
 
-fn lift_case(c: Case, names: List(String)) -> ast.Case {
+fn lift_case(c: Case, names: List(String), s: Span) -> ast.Case {
   let pattern_ast = lift_pattern(c.pattern)
   let names = list.append(bindings(c.pattern), names)
   let #(names, guard_ast) = case c.guard {
     Some(#(expr, pattern)) -> {
-      let guard_ast = #(lift(expr, names), lift_pattern(pattern))
+      let guard_ast = #(lift(expr, names, s), lift_pattern(pattern))
       let names = list.append(bindings(pattern), names)
       #(names, Some(guard_ast))
     }
     None -> #(names, None)
   }
-  let body_ast = lift(c.body, names)
+  let body_ast = lift(c.body, names, s)
   ast.Case(pattern_ast, guard_ast, body_ast)
 }
 

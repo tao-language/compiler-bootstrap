@@ -14,12 +14,13 @@ import core/literals.{type Literal, type LiteralType} as lit
 import core/quote.{quote}
 import core/term.{type Term} as tm
 import core/unify.{unify}
-import core/unwrap.{unwrap, unwrap_term}
+import core/unwrap.{unwrap}
 import core/value.{type Type, type Value} as v
 import gleam/int
 import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/set
 import gleam/string
 import syntax/span.{type Span, Span}
 
@@ -67,8 +68,6 @@ pub fn check(
 ) -> #(Term, Type, Context) {
   let #(expected_type, type_span) = expected
   let #(term, inferred_type, ctx) = infer(ctx, ast)
-  let term = unwrap_term(ctx.ffi, ctx.subst, ctx.env, term)
-  let expected_type = unwrap(ctx.ffi, ctx.subst, expected_type)
   let term = coerce(term, expected_type)
   case term, expected_type {
     tm.Hole(_), _ -> #(term, expected_type, ctx)
@@ -91,7 +90,6 @@ pub fn check(
     _, _ -> {
       let ctx =
         unify(ctx, #(inferred_type, ast.span), #(expected_type, type_span))
-      let expected_type = unwrap(ctx.ffi, ctx.subst, expected_type)
       #(term, expected_type, ctx)
     }
   }
@@ -202,7 +200,6 @@ fn infer_call(
   let #(args, ctx) = check_call_args(ctx, args)
   let #(returns, _, ctx) = infer(ctx, returns_ast)
   let returns_val = eval(ctx.ffi, ctx.env, returns)
-  let returns_val = unwrap(ctx.ffi, ctx.subst, returns_val)
   #(tm.Call(name, returns, args), returns_val, ctx)
 }
 
@@ -317,7 +314,6 @@ fn infer_fix(
   let #(body, body_type, ctx) = infer(ctx, body)
   let ctx = context.pop_vars(ctx, 1)
   let ctx = unify(ctx, #(type_hole, span), #(body_type, span))
-  let body_type = unwrap(ctx.ffi, ctx.subst, body_type)
   #(tm.Fix(name, body), body_type, ctx)
 }
 
@@ -350,11 +346,7 @@ fn infer_match(
   let arg_val = eval(ctx.ffi, ctx.env, arg)
   let value = eval.do_match(ctx.ffi, ctx.env, arg_val, cases)
   let type_ = eval.do_match(ctx.ffi, ctx.env, arg_val, cases_type)
-  #(
-    quote(ctx.ffi, list.length(ctx.env), value),
-    unwrap(ctx.ffi, ctx.subst, type_),
-    ctx,
-  )
+  #(quote(ctx.ffi, list.length(ctx.env), value), type_, ctx)
 }
 
 fn infer_match_case_list(
@@ -455,16 +447,10 @@ fn infer_pattern_fields(
 fn check_pattern(
   ctx: Context,
   pattern_ast: ast.Pattern,
-  expected: #(Value, Span),
+  b: #(Type, Span),
 ) -> #(tm.Pattern, Context) {
   let #(pattern, inferred, ctx) = infer_pattern(ctx, pattern_ast)
-  let ctx = case expected {
-    // Don't constrain the expected type when it's neutral —
-    // different match cases may have different pattern types
-    // for function overloading.
-    #(v.Neut(_), _) -> ctx
-    _ -> unify(ctx, #(inferred, pattern_ast.span), expected)
-  }
+  // let ctx = unify(ctx, #(inferred, pattern_ast.span), expected)
   #(pattern, ctx)
 }
 

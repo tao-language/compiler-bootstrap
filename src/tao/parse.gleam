@@ -116,7 +116,7 @@ pub fn statements(file: String, source: String) -> Result(List(Stmt), Error) {
         io.println_error(msg)
       })
       io.println_error("")
-      todo as "convert syntax errors into tao/error.Error, bubble up and defer reporting"
+      todo as "TODO: convert syntax errors into tao/error.Error, bubble up and defer reporting"
     }
   }
 }
@@ -169,7 +169,7 @@ fn lexer() -> Lexer(Token, Nil) {
     lexer.token("+", Add),
     lexer.symbol("-", "[^>]", Sub),
     lexer.token("*", Mul),
-    lexer.token("/", Div),
+    lexer.symbol("/", "[^/]", Div),
 
     // Whitespace
     lexer.whitespace(Nil) |> lexer.ignore,

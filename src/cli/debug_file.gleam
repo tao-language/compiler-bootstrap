@@ -75,13 +75,29 @@ pub fn debug_file(root: String, filename: String, width: Int) {
 
   io.println("subst (" <> int.to_string(list.length(ctx.subst)) <> ")")
   io.println("solved: " <> string.inspect(list.map(ctx.subst, fn(kv) { kv.0 })))
-  list.map(ctx.subst, fn(entry) {
-    let #(id, value) = entry
-    // TODO: save ctx.types.names in ctx.subst to display var names.
-    let fmt_subst = format.value(ctx.ffi, [], value, width, 2)
-    io.println("- " <> int.to_string(id) <> ": " <> fmt_subst)
-  })
+  // list.map(ctx.subst, fn(entry) {
+  //   let #(id, value) = entry
+  //   // TODO: save ctx.types.names in ctx.subst to display var names.
+  //   let fmt_subst = format.value(ctx.ffi, [], value, width, 2)
+  //   io.println("- " <> int.to_string(id) <> ": " <> fmt_subst)
+  // })
   io.println("")
+
+  // TODO: REMOVE THIS
+  case ctx.errors {
+    [] -> io.println("0 build errors")
+    errors -> {
+      let n = list.length(errors)
+      io.println_error("---- ERRORS ----")
+      list.map(ctx.errors, fn(err) {
+        let msg = error.display(ctx.ffi, ctx.types, err)
+        io.println_error("❌ " <> msg)
+      })
+      io.println("")
+      io.println_error(int.to_string(n) <> " build errors")
+    }
+  }
+  todo
 
   echo "> stmts = load.module(filename)"
   let #(stmts, errors) = load.module(filename)

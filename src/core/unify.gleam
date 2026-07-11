@@ -2,10 +2,14 @@
 import core/context.{type Context, Context, with_err}
 import core/error as e
 import core/eval.{eval}
+import core/format
 import core/occurs.{occurs}
+import core/quote.{quote}
 import core/term.{type Case, type Term} as tm
 import core/unwrap.{unwrap}
 import core/value.{type Env, type Neut, type TypeDefinition, type Value} as v
+import gleam/int
+import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
@@ -15,14 +19,29 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   let #(value1, s1) = a
   let #(value2, s2) = b
   case unwrap(ctx.ffi, ctx.subst, value1), unwrap(ctx.ffi, ctx.subst, value2) {
+    // Quantifier instantiation
+    v.For(env, _, body), value2 -> {
+      let #(id, ctx) = context.new_hole(ctx)
+      let env = [v.hole(env, id), ..env]
+      let value1 = eval(ctx.ffi, env, body)
+      unify(ctx, #(value1, s1), #(value2, s2))
+    }
+    value1, v.For(env, _, body) -> {
+      let #(id, ctx) = context.new_hole(ctx)
+      let env = [v.hole(env, id), ..env]
+      let value2 = eval(ctx.ffi, env, body)
+      unify(ctx, #(value1, s1), #(value2, s2))
+    }
     // Try to solve holes before unifying any concrete values
     v.Neut(v.NHole(_, id1)), v.Neut(v.NHole(_, id2)) if id1 == id2 -> ctx
     value1, v.Neut(v.NHole(env, id)) -> solve_hole(ctx, id, value1, s1)
     v.Neut(v.NHole(env, id)), value2 -> solve_hole(ctx, id, value2, s2)
     v.Neut(n1), v.Neut(n2) -> unify_neut(ctx, #(n1, s1), #(n2, s2))
     // Try to unify neutrals with concrete values
-    value1, v.Neut(neut) -> unify_concrete_neut(ctx, #(value1, s1), #(neut, s2))
-    v.Neut(neut), value2 -> unify_concrete_neut(ctx, #(value2, s2), #(neut, s1))
+    value1, v.Neut(neut) ->
+      check_neut_with_concrete(ctx, #(value1, s1), #(neut, s2))
+    v.Neut(neut), value2 ->
+      check_neut_with_concrete(ctx, #(value2, s2), #(neut, s1))
     // Unify concrete values
     v.Typ(u1), v.Typ(u2) if u1 == u2 -> ctx
     v.Lit(v1), v.Lit(v2) if v1 == v2 -> ctx
@@ -34,8 +53,12 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
           unify_gadt(ctx, #(t1, a1, s1), #(env, tdef, t2, a2, s2))
         Some(#(env, tdef)), _ ->
           unify_gadt(ctx, #(t2, a2, s2), #(env, tdef, t1, a1, s1))
-        None, None ->
-          with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)))
+        None, None -> {
+          let names = list.map(ctx.types, fn(t) { t.0 })
+          let a = quote.lift(ctx.ffi, ctx.env, names, value1, s1)
+          let b = quote.lift(ctx.ffi, ctx.env, names, value2, s1)
+          with_err(ctx, e.TypeMismatch(a, b))
+        }
       }
     v.Rcd([], None), v.Typ(_) -> ctx
     v.Rcd([], Some(tail)), v.Typ(_) -> unify(ctx, #(tail, s1), #(value2, s2))
@@ -57,49 +80,32 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
         unify_rcd_field(ctx, #(rcd1, field, s1), #(rcd2, fields2, tail2, s2))
       unify(ctx, #(v.Rcd(fields1, tail1), s1), #(rcd2, s2))
     }
-    v.For(env, _, body), value2 -> {
-      let #(id, ctx) = context.new_hole(ctx)
-      let env = [v.hole(env, id), ..env]
-      let value1 = eval(ctx.ffi, env, body)
-      unify(ctx, #(value1, s1), #(value2, s2))
-    }
-    value1, v.For(env, _, body) -> {
-      let #(id, ctx) = context.new_hole(ctx)
-      let env = [v.hole(env, id), ..env]
-      let value2 = eval(ctx.ffi, env, body)
-      unify(ctx, #(value1, s1), #(value2, s2))
-    }
     v.Lam(env1, #(_, a1), b1), v.Lam(env2, #(_, a2), b2) -> {
       let ctx = unify(ctx, #(a1, s1), #(a2, s2))
-      let v1 = eval(ctx.ffi, [v.var(list.length(env1)), ..env1], b1)
-      let v2 = eval(ctx.ffi, [v.var(list.length(env2)), ..env2], b2)
+      let v1 = eval(ctx.ffi, v.env_push(env1, 1), b1)
+      let v2 = eval(ctx.ffi, v.env_push(env2, 1), b2)
       unify(ctx, #(v1, s1), #(v2, s2))
     }
     v.Pi(env1, #(_, a1), b1), v.Pi(env2, #(_, a2), b2) -> {
       let ctx = unify(ctx, #(a1, s1), #(a2, s2))
-      let v1 = eval(ctx.ffi, [v.var(list.length(env1)), ..env1], b1)
-      let v2 = eval(ctx.ffi, [v.var(list.length(env2)), ..env2], b2)
+      let v1 = eval(ctx.ffi, v.env_push(env1, 1), b1)
+      let v2 = eval(ctx.ffi, v.env_push(env2, 1), b2)
       unify(ctx, #(v1, s1), #(v2, s2))
     }
-    v.Fix(env1, _, a1), v.Fix(env2, _, a2) -> {
-      let v1 = eval(ctx.ffi, [v.var(list.length(env1)), ..env1], a1)
-      let v2 = eval(ctx.ffi, [v.var(list.length(env2)), ..env2], a2)
+    v.Fix(env1, _, b1), v.Fix(env2, _, b2) -> {
+      let v1 = eval(ctx.ffi, v.env_push(env1, 1), b1)
+      let v2 = eval(ctx.ffi, v.env_push(env2, 1), b2)
       unify(ctx, #(v1, s1), #(v2, s2))
     }
     v.TypeDef(env1, tdef1), v.TypeDef(env2, tdef2) -> {
       todo as "unify TypeDef"
     }
     v.Err, v.Err -> ctx
-    value1, value2 ->
-      with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)))
-  }
-}
-
-fn shift(value: Value, delta: Int) -> Value {
-  case value {
-    _ -> {
-      echo value
-      todo as "TODO: shift"
+    value1, value2 -> {
+      let names = list.map(ctx.types, fn(t) { t.0 })
+      let a = quote.lift(ctx.ffi, ctx.env, names, value1, s1)
+      let b = quote.lift(ctx.ffi, ctx.env, names, value2, s1)
+      with_err(ctx, e.TypeMismatch(a, b))
     }
   }
 }
@@ -130,7 +136,7 @@ fn unify_rcd_field(
   }
 }
 
-fn unify_concrete_neut(
+fn check_neut_with_concrete(
   ctx: Context,
   a: #(Value, Span),
   b: #(Neut, Span),
@@ -139,16 +145,16 @@ fn unify_concrete_neut(
   let #(value, s1) = a
   let #(neut, s2) = b
   case neut {
-    // Don't constrain neutral matches, each case may 
-    // have different pattern types for function overloading.
-    v.NMatch(env, arg, cases) -> ctx
-    // v.NMatch(env, arg, cases) -> unify_concrete_neut_cases(ctx, env, arg, a, #(cases, s2))
+    v.NVar(level) -> ctx
+    v.NHole(env, id) -> todo
+    v.NApp(fun, arg) -> todo
+    v.NMatch(env, arg, cases) ->
+      check_neut_with_concrete_cases(ctx, env, arg, a, #(cases, s2))
     v.NCall(_, returns, _) -> unify(ctx, #(value, s1), #(returns, s2))
-    _ -> with_err(ctx, e.TypeMismatch(#(value, s1), #(v.Neut(neut), s2)))
   }
 }
 
-fn unify_concrete_neut_cases(
+fn check_neut_with_concrete_cases(
   ctx: Context,
   env: Env,
   arg: Neut,
@@ -168,7 +174,7 @@ fn unify_concrete_neut_cases(
       let env = v.env_push(env, num_vars)
       let body_val = eval(ctx.ffi, env, c.body)
       let ctx = unify(ctx, a, #(body_val, s2))
-      unify_concrete_neut_cases(ctx, env, arg, a, #(cases, s2))
+      check_neut_with_concrete_cases(ctx, env, arg, a, #(cases, s2))
     }
   }
 }

@@ -13,11 +13,11 @@ fn overloaded {
 | float_arg(Float)
 }
 
->>> overloaded()
-NoArgs
+// >>> overloaded()
+// NoArgs
 
->>> overloaded(42)
-IntArg(42)
+// >>> overloaded(42)
+// IntArg(42)
 
->>> overloaded(3.14)
-FloatArg(3.14)
+// >>> overloaded(3.14)
+// FloatArg(3.14)

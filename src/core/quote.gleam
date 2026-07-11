@@ -1,10 +1,12 @@
 /// Quote — Convert Values back to Terms
+import core/ast
 import core/eval.{eval}
 import core/ffi.{type FFI}
 import core/term.{type Case, type Term} as tm
 import core/value.{type Env, type Neut, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import syntax/span.{type Span}
 
 pub fn normalize_term(ffi: FFI, env: Env, term: Term) -> Term {
   eval(ffi, env, term)
@@ -14,6 +16,17 @@ pub fn normalize_term(ffi: FFI, env: Env, term: Term) -> Term {
 pub fn normalize_value(ffi: FFI, env: Env, value: Value) -> Value {
   quote(ffi, list.length(env), value)
   |> eval(ffi, env, _)
+}
+
+pub fn lift(
+  ffi: FFI,
+  env: Env,
+  names: List(String),
+  value: Value,
+  span: Span,
+) -> ast.Expr {
+  quote(ffi, list.length(env), value)
+  |> tm.lift(names, span)
 }
 
 fn find_index(env: Env, target: v.Value) -> Option(Int) {

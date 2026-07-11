@@ -14,6 +14,7 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/regexp
 import gleam/string
+import syntax/span
 
 pub fn expr(e: Expr, width: Int, indent: Int) -> String {
   doc_term(e, indent)
@@ -21,7 +22,7 @@ pub fn expr(e: Expr, width: Int, indent: Int) -> String {
 }
 
 pub fn term(names: List(String), t: Term, width: Int, indent: Int) -> String {
-  tm.lift(t, names)
+  tm.lift(t, names, span.empty("", 0, 0))
   |> expr(width, indent)
 }
 
