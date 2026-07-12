@@ -12,7 +12,7 @@ import gleam/string
 import tao/config
 import utils/glob.{glob_compile}
 
-const format_width = 60
+const format_width = 40
 
 const help = "Tao compiler bootstrap
 

@@ -7,17 +7,17 @@ fn int_arg(i: Int) -> IntArg(Int)
 fn float_arg(f: Float) -> FloatArg(Float)
 = FloatArg(f)
 
-// fn overloaded {
-// | no_args()
-// | int_arg(i: Int)
-// | float_arg(Float)
-// }
+fn overloaded {
+| no_args()
+| int_arg(i: Int)
+| float_arg(Float)
+}
 
-// >>> overloaded()
-// NoArgs
+>>> overloaded()
+NoArgs
 
-// >>> overloaded(42)
-// IntArg(42)
+>>> overloaded(42)
+IntArg(42)
 
-// >>> overloaded(3.14)
-// FloatArg(3.14)
+>>> overloaded(3.14)
+FloatArg(3.14)

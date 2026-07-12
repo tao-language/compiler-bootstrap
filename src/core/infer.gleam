@@ -45,6 +45,8 @@ pub fn infer(ctx: Context, term_ast: ast.Expr) -> #(Term, Type, Context) {
     ast.Lam(param, body) -> infer_lam(ctx, param, body)
     ast.Pi(param, body) -> infer_pi(ctx, param, body)
     ast.Fix(name, body) -> infer_fix(ctx, name, body, term_ast.span)
+    ast.App(ast.Expr(ast.Lam(#(name, type_), body), _), arg) ->
+      infer_let(ctx, #(name, type_, arg), body)
     ast.App(fun, arg) -> infer_app(ctx, fun, arg, term_ast.span)
     ast.Match(arg, cases) -> infer_match(ctx, arg, cases)
     // ast.TypeDef(params, constructors) ->
@@ -317,6 +319,25 @@ fn infer_fix(
   #(tm.Fix(name, body), body_type, ctx)
 }
 
+fn infer_let(
+  ctx: Context,
+  binding: #(String, Option(ast.Type), Expr),
+  body: Expr,
+) -> #(Term, Type, Context) {
+  let #(name, opt_type, arg) = binding
+  let #(arg, arg_type, ctx) = case opt_type {
+    Some(type_ast) -> {
+      let #(type_, _, ctx) = infer(ctx, type_ast)
+      let type_val = eval(ctx.ffi, ctx.env, type_)
+      check(ctx, arg, #(type_val, type_ast.span))
+    }
+    None -> infer(ctx, arg)
+  }
+  let arg_val = eval(ctx.ffi, ctx.env, arg)
+  let ctx = context.push_var(ctx, #(name, Some(arg_val), Some(arg_type)))
+  infer(ctx, body)
+}
+
 fn infer_app(
   ctx: Context,
   fun_ast: Expr,
@@ -324,16 +345,13 @@ fn infer_app(
   span: Span,
 ) -> #(Term, Type, Context) {
   let #(fun, fun_type, ctx) = infer(ctx, fun_ast)
-  let fun_type = unwrap(ctx.ffi, ctx.subst, fun_type)
+  let #(fun_type, ctx) = instantiate(ctx, fun_type)
   case fun_type {
-    v.Pi(pi_env, #(_, domain), codomain) -> {
+    v.Pi(env, #(_, domain), codomain) -> {
       let #(arg, arg_type, ctx) = check(ctx, arg_ast, #(domain, fun_ast.span))
-      let pi_env = [arg_type, ..pi_env]
-      let ret_type = eval(ctx.ffi, pi_env, codomain)
+      let env = [arg_type, ..env]
+      let ret_type = eval(ctx.ffi, env, codomain)
       #(tm.App(fun, arg), ret_type, ctx)
-    }
-    v.For(for_env, #(_, param_type), body) -> {
-      todo
     }
     v.Neut(v.NHole(env, id)) -> {
       let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
@@ -352,6 +370,18 @@ fn infer_app(
       let ctx = context.with_err(ctx, e.NotAFunction(tm.Err, fun_type, span))
       #(tm.Err, v.Err, ctx)
     }
+  }
+}
+
+fn instantiate(ctx: Context, fun_type: Type) -> #(Type, Context) {
+  case unwrap(ctx.ffi, ctx.subst, fun_type) {
+    v.For(env, #(_, param_type), body) -> {
+      let #(id, ctx) = context.new_hole(ctx)
+      let env = [v.hole(env, id), ..env]
+      let fun_type = eval(ctx.ffi, env, body)
+      instantiate(ctx, fun_type)
+    }
+    fun_type -> #(fun_type, ctx)
   }
 }
 
