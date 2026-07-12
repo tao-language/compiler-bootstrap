@@ -168,7 +168,7 @@ pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
     Fix(name, body) -> todo
     App(fun, arg) -> {
       let fun_ast = lift(fun, names, s)
-      let arg_ast = lift(fun, names, s)
+      let arg_ast = lift(arg, names, s)
       ast.app(fun_ast, arg_ast, s)
     }
     TypeDef(type_def) -> todo
