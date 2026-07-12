@@ -335,9 +335,7 @@ fn infer_let(
   }
   let arg_val = eval(ctx.ffi, ctx.env, arg)
   let ctx = context.push_var(ctx, #(name, Some(arg_val), Some(arg_type)))
-  let #(term, type_, ctx) = infer(ctx, body)
-  // let ctx = context.pop_vars(ctx, 1)
-  #(term, type_, ctx)
+  infer(ctx, body)
 }
 
 fn infer_app(
