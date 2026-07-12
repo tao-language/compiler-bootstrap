@@ -139,9 +139,9 @@ fn doc_term(term: Expr, indent: Int) -> Document {
     ast.Match(arg, cases) -> {
       let case_docs = list.map(cases, fn(c) { doc_case(c, indent) })
       doc.concat([
-        doc_text("%match "),
-        doc_term(arg, indent),
-        doc_text(" {"),
+        doc_text("%match ("),
+        doc_term(arg, indent) |> doc.nest(indent),
+        doc_text(") {"),
         doc.concat(case_docs),
         doc.line,
         doc_text("}"),

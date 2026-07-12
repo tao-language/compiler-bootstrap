@@ -32,13 +32,13 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     // Quantifier instantiation
     v.For(env, _, body), value2 -> {
       let #(id, ctx) = context.new_hole(ctx)
-      let env = [v.hole(env, id), ..env]
+      let env = [v.hole(env, Some(id)), ..env]
       let value1 = eval(ctx.ffi, env, body)
       unify(ctx, #(value1, s1), #(value2, s2))
     }
     value1, v.For(env, _, body) -> {
       let #(id, ctx) = context.new_hole(ctx)
-      let env = [v.hole(env, id), ..env]
+      let env = [v.hole(env, Some(id)), ..env]
       let value2 = eval(ctx.ffi, env, body)
       unify(ctx, #(value1, s1), #(value2, s2))
     }
@@ -300,25 +300,30 @@ fn unify_args(
 }
 
 // TODO: save hole env into ctx.subst
-fn solve_hole(ctx: Context, hole_id: Int, value: Value, span: Span) -> Context {
-  case hole_id >= 0 {
-    True ->
+fn solve_hole(
+  ctx: Context,
+  opt_id: Option(Int),
+  value: Value,
+  span: Span,
+) -> Context {
+  case opt_id {
+    Some(id) ->
       // Concrete hole, do occurs check and solve with a substitution
-      case occurs(ctx, hole_id, value) {
-        True -> with_err(ctx, e.InfiniteType(hole_id, value, span))
+      case occurs(ctx, id, value) {
+        True -> with_err(ctx, e.InfiniteType(id, value, span))
         False ->
-          case list.key_find(ctx.subst, hole_id) {
-            Error(Nil) ->
-              Context(..ctx, subst: [#(hole_id, value), ..ctx.subst])
+          case list.key_find(ctx.subst, id) {
+            Error(Nil) -> Context(..ctx, subst: [#(id, value), ..ctx.subst])
             Ok(existing) ->
               // TODO: save spans in ctx.types for better error reporting
+              // TODO: does the subst need to be replaced with the new value?
               unify(ctx, #(value, span), #(existing, span))
           }
       }
-    False -> {
+    None -> {
       // Unknown hole, instantiate a fresh new hole.
-      let #(hole_id, ctx) = context.new_hole(ctx)
-      solve_hole(ctx, hole_id, value, span)
+      let #(id, ctx) = context.new_hole(ctx)
+      solve_hole(ctx, Some(id), value, span)
     }
   }
 }

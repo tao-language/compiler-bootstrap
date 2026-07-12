@@ -59,7 +59,8 @@ pub fn occurs_term(ctx: Context, env: Env, hole_id: Int, term: Term) -> Bool {
 fn occurs_neut(ctx: Context, hole_id: Int, neut: Neut) -> Bool {
   case neut {
     v.NVar(_) -> False
-    v.NHole(_, id) -> id == hole_id
+    v.NHole(_, None) -> False
+    v.NHole(_, Some(id)) -> id == hole_id
     v.NApp(fun_neut, arg_val) ->
       occurs_neut(ctx, hole_id, fun_neut) || occurs(ctx, hole_id, arg_val)
     v.NMatch(env, arg_neut, cases) ->

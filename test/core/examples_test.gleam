@@ -10,7 +10,7 @@ import core/resolve
 import core/term as tm
 import core/value as v
 import gleam/list
-import gleam/option.{None}
+import gleam/option.{None, Some}
 import syntax/span.{Span}
 
 const s = Span("", 0, 0, 0, 0)
@@ -60,7 +60,7 @@ pub fn core_factorial_test() {
   assert type_
     == v.Pi(
       [v.var(0)],
-      #("x", v.hole([], 1)),
+      #("x", v.hole([], Some(1))),
       tm.Match(tm.Var(0), [
         tm.Case(tm.pint(0), None, tm.int_t),
         tm.Case(tm.pvar("n"), None, tm.int_t),

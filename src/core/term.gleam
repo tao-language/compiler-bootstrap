@@ -37,7 +37,7 @@ import utils/list_utils.{list_at}
 /// enclosing binder, Var(1) to the one before that, etc.
 pub type Term {
   Typ(universe: Int)
-  Hole(id: Int)
+  Hole(id: Option(Int))
   Lit(value: Literal)
   LitT(typ: LiteralType)
   Var(index: Int)
@@ -127,8 +127,7 @@ pub fn bindings(p: Pattern) -> List(String) {
 pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
   case term {
     Typ(u) -> ast.typ(u, s)
-    Hole(id) if id < 0 -> ast.hole(None, s)
-    Hole(id) -> ast.hole(Some(id), s)
+    Hole(id) -> ast.hole(id, s)
     Lit(lit) -> ast.Expr(ast.Lit(lit), s)
     LitT(lit_t) -> ast.Expr(ast.LitT(lit_t), s)
     Var(index) ->

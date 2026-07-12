@@ -69,10 +69,7 @@ pub fn do_app(ffi: FFI, fun_val: Value, arg_val: Value) -> Value {
     // Neutral application
     v.Neut(neut_fun) -> v.app(neut_fun, arg_val)
     // Instantiation
-    v.For(env, _, body) -> {
-      let fun_val = eval(ffi, [v.var(list.length(env)), ..env], body)
-      do_app(ffi, fun_val, arg_val)
-    }
+    v.For(env, _, body) -> eval(ffi, [arg_val, ..env], body)
     // Lambda application: β-reduction
     v.Lam(env, _, body) -> eval(ffi, [arg_val, ..env], body)
     // Recursive function application

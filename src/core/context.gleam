@@ -110,7 +110,7 @@ pub fn push_var(
       Some(value) -> #(value, ctx)
       None -> {
         let #(id, ctx) = new_hole(ctx)
-        #(v.hole(ctx.env, id), ctx)
+        #(v.hole(ctx.env, Some(id)), ctx)
       }
     }
   }

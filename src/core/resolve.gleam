@@ -42,7 +42,8 @@ fn term_seen(
   let self = fn(size, t) { term_seen(ffi, subst, size, t, seen) }
   case t {
     tm.Typ(_) -> t
-    tm.Hole(id) ->
+    tm.Hole(None) -> t
+    tm.Hole(Some(id)) ->
       // Cycle detection: if this hole is already being resolved,
       // return it as-is to break the infinite loop.
       case list.contains(seen, id) {

@@ -44,7 +44,7 @@ pub type Variant {
 
 pub type Neut {
   NVar(level: Int)
-  NHole(env: Env, id: Int)
+  NHole(env: Env, id: Option(Int))
   NApp(fun: Neut, arg: Value)
   NMatch(env: Env, arg: Neut, cases: List(Case))
   NCall(name: String, returns: Type, args: List(Value))
@@ -72,7 +72,7 @@ pub fn var(level: Int) -> Value {
   Neut(NVar(level))
 }
 
-pub fn hole(env: Env, id: Int) -> Value {
+pub fn hole(env: Env, id: Option(Int)) -> Value {
   Neut(NHole(env, id))
 }
 

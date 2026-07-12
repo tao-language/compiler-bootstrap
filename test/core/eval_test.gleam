@@ -51,10 +51,10 @@ pub fn eval_app_beta_reduction_test() {
 
 pub fn eval_app_neutral_test() {
   // ?10 42 ~> ?10 42 (neutral spine)
-  let fun = tm.Hole(10)
+  let fun = tm.Hole(Some(10))
   let term = tm.App(fun, tm.Lit(lit.Int(42)))
   let result = eval([], [], term)
-  assert result == v.app(v.NHole([], 10), v.int(42))
+  assert result == v.app(v.NHole([], Some(10)), v.int(42))
 }
 
 pub fn eval_app_not_a_function_test() {

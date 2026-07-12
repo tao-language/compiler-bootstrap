@@ -25,12 +25,13 @@ pub fn unwrap_term(ffi: FFI, subst: Subst, env: Env, term: Term) -> Term {
 pub fn unwrap_neut(ffi: FFI, subst: Subst, neut: Neut) -> Value {
   case neut {
     v.NVar(level) -> v.var(level)
-    v.NHole(env, id) ->
+    v.NHole(env, None) -> v.hole(env, None)
+    v.NHole(env, Some(id)) ->
       case list.key_find(subst, id) {
         Ok(solution) ->
           unwrap(ffi, subst, solution)
           |> quote.normalize_value(ffi, env, _)
-        Error(Nil) -> v.hole(env, id)
+        Error(Nil) -> v.hole(env, Some(id))
       }
     v.NApp(fun_neut, arg) -> {
       case unwrap_neut(ffi, subst, fun_neut) {

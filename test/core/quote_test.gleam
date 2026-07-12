@@ -67,7 +67,7 @@ pub fn quote_vneut_nvar_test() {
 }
 
 pub fn quote_vneut_nhole_test() {
-  let value = v.hole([], 42)
+  let value = v.hole([], Some(42))
   let term = quote([], 0, value)
-  assert term == tm.Hole(42)
+  assert term == tm.Hole(Some(42))
 }
