@@ -322,10 +322,10 @@ fn infer_fix(
 fn infer_let(
   ctx: Context,
   binding: #(String, Option(ast.Type), Expr),
-  body: Expr,
+  body_ast: Expr,
 ) -> #(Term, Type, Context) {
   let #(name, opt_type, arg_ast) = binding
-  let #(arg, arg_type, ctx) = case opt_type {
+  let #(arg, arg_type_val, ctx) = case opt_type {
     Some(type_ast) -> {
       let #(type_, _, ctx) = infer(ctx, type_ast)
       let type_val = eval(ctx.ffi, ctx.env, type_)
@@ -334,8 +334,11 @@ fn infer_let(
     None -> infer(ctx, arg_ast)
   }
   let arg_val = eval(ctx.ffi, ctx.env, arg)
-  let ctx = context.push_var(ctx, #(name, Some(arg_val), Some(arg_type)))
-  infer(ctx, body)
+  let arg_type = quote(ctx.ffi, list.length(ctx.env), arg_type_val)
+  let ctx = context.push_var(ctx, #(name, Some(arg_val), Some(arg_type_val)))
+  let #(body, body_type, ctx) = infer(ctx, body_ast)
+  let ctx = context.pop_vars(ctx, 1)
+  #(tm.let_var(#(name, arg_type, arg), body), body_type, ctx)
 }
 
 fn infer_app(

@@ -18,7 +18,6 @@ pub fn package(ctx: Context, mods: List(Module)) -> Context {
   let #(mod_holes, ctx) = define_modules(ctx, mods)
   let ctx = infer_modules(ctx, mod_holes)
   resolve.context(ctx)
-  |> context.pop_vars(list.length(ctx.env) - list.length(mods))
 }
 
 pub fn tests(mods: List(Module)) -> List(TestDef) {
