@@ -227,25 +227,25 @@ fn infer_for(
   body: Expr,
 ) -> #(Term, Type, Context) {
   let #(name, opt_type_ast) = param
-  let #(param_type, ctx) = case opt_type_ast {
-    Some(type_ast) -> {
-      let #(param, _, ctx) = infer(ctx, type_ast)
-      #(param, ctx)
+  let #(param_type_term, ctx) = case opt_type_ast {
+    Some(param_type_ast) -> {
+      let #(param_type, _, ctx) = infer(ctx, param_type_ast)
+      #(param_type, ctx)
     }
     None -> {
       let #(id, ctx) = context.new_hole(ctx)
       #(tm.Hole(Some(id)), ctx)
     }
   }
-  let param_val = eval(ctx.ffi, ctx.env, param_type)
+  let param_type = eval(ctx.ffi, ctx.env, param_type_term)
   let level = list.length(ctx.env)
-  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(param_val)))
+  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(param_type)))
   let #(body, body_type_val, ctx) = infer(ctx, body)
   let body_type = quote(ctx.ffi, level + 1, body_type_val)
   let ctx = context.pop_vars(ctx, 1)
   #(
-    tm.For(#(name, param_type), body),
-    v.For(ctx.env, #(name, param_val), body_type),
+    tm.For(#(name, param_type_term), body),
+    v.For(ctx.env, #(name, param_type), body_type),
     ctx,
   )
 }
