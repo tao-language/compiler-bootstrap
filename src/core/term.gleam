@@ -164,7 +164,10 @@ pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
       let body_ast = lift(body, [name, ..names], s)
       ast.pi(#(name, Some(type_ast)), body_ast, s)
     }
-    Fix(name, body) -> todo
+    Fix(name, body) -> {
+      let body_ast = lift(body, names, s)
+      ast.fix_strict(name, body_ast, s)
+    }
     App(fun, arg) -> {
       let fun_ast = lift(fun, names, s)
       let arg_ast = lift(arg, names, s)

@@ -289,6 +289,10 @@ pub fn fix(name: String, body: Expr, span: Span) {
   }
 }
 
+pub fn fix_strict(name: String, body: Expr, span: Span) {
+  Expr(Fix(name, body), span)
+}
+
 pub fn app(fun: Expr, arg: Expr, span: Span) {
   Expr(App(fun, arg), span)
 }

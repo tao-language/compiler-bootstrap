@@ -477,6 +477,7 @@ fn guard(file: String) -> Parser(#(Expr, Option(Pattern)), Token, Nil) {
 fn take_var() -> Parser(String, Token, Nil) {
   nibble.take_map("a variable name", fn(tok) {
     case tok {
+      Name("_") -> Some("_")
       Name(name) ->
         case is_tag_name(name) {
           True -> None
