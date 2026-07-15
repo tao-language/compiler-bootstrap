@@ -299,8 +299,8 @@ pub fn unify_rcd_field_not_found_test() {
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
     == Context(..ctx0, errors: [
-      e.RcdFieldNotFound(#("x", s1), s2),
-      e.RcdFieldNotFound(#("y", s2), s1),
+      e.Error(e.RcdFieldNotFound(#("y", s2)), s1, []),
+      e.Error(e.RcdFieldNotFound(#("x", s1)), s2, []),
     ])
 }
 
@@ -375,7 +375,7 @@ pub fn unify_neut_nhole_infinite_type_test() {
   let ctx0 = new_ctx
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
   let error =
-    e.InfiniteType(0, v.Neut(v.NApp(v.NHole([], Some(0)), v.int_t)), s2)
+    e.Error(e.InfiniteType(0, v.Neut(v.NApp(v.NHole([], Some(0)), v.int_t))), s2, [])
   assert ctx.errors == [error]
 }
 
@@ -447,7 +447,7 @@ pub fn unify_neut_ncall_arity_mismatch_test() {
   let b = v.Neut(v.NCall("f", v.int_t, [v.int_t, v.float_t, v.i64]))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, e.CallArityMismatch(#(2, s1), #(3, s2)))
+    == with_err(ctx0, e.CallArityMismatch(#(2, s1), #(3, s2)), s1)
 }
 
 // ============================================================================

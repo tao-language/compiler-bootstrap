@@ -42,13 +42,13 @@ pub fn lookup_empty_context_test() {
 
 pub fn with_err_appends_to_existing_errors_test() {
   let ctx0 = new_ctx
-  let ctx1 = with_err(ctx0, e.VarUndefined("a", s))
-  let ctx2 = with_err(ctx1, e.VarUndefined("b", s))
-  // Should have 2 errors, not replace the first
+  let ctx1 = with_err(ctx0, e.VarUndefined("a"), s)
+  let ctx2 = with_err(ctx1, e.VarUndefined("b"), s)
+  // Should have 2 errors, not replace the first (with_err prepends, so reverse order)
   assert ctx2.errors
     == [
-      e.VarUndefined("a", s),
-      e.VarUndefined("b", s),
+      e.Error(e.VarUndefined("b"), s, []),
+      e.Error(e.VarUndefined("a"), s, []),
     ]
 }
 

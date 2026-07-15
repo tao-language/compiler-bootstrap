@@ -1,4 +1,3 @@
-import core/breadcrumb as bc
 import core/context.{type Context, Context}
 import core/eval.{eval}
 import core/infer.{check}

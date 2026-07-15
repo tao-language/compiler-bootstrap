@@ -70,26 +70,26 @@ pub fn check_lit_float_test() {
   }
   assert check_float(v.int_t)
     == #(
-      [e.TypeMismatch(ast.float_t(s1), ast.int_t(s2))],
+      [e.Error(e.TypeMismatch(ast.float_t(s1), ast.int_t(s1)), s1, [])],
       tm.float(1.0),
       v.int_t,
     )
   assert check_float(v.i8)
-    == #([e.TypeMismatch(ast.float_t(s1), ast.i8(s2))], tm.float(1.0), v.i8)
+    == #([e.Error(e.TypeMismatch(ast.float_t(s1), ast.i8(s1)), s1, [])], tm.float(1.0), v.i8)
   assert check_float(v.i16)
-    == #([e.TypeMismatch(ast.float_t(s1), ast.i16(s2))], tm.float(1.0), v.i16)
+    == #([e.Error(e.TypeMismatch(ast.float_t(s1), ast.i16(s1)), s1, [])], tm.float(1.0), v.i16)
   assert check_float(v.i32)
-    == #([e.TypeMismatch(ast.float_t(s1), ast.i32(s2))], tm.float(1.0), v.i32)
+    == #([e.Error(e.TypeMismatch(ast.float_t(s1), ast.i32(s1)), s1, [])], tm.float(1.0), v.i32)
   assert check_float(v.i64)
-    == #([e.TypeMismatch(ast.float_t(s1), ast.i64(s2))], tm.float(1.0), v.i64)
+    == #([e.Error(e.TypeMismatch(ast.float_t(s1), ast.i64(s1)), s1, [])], tm.float(1.0), v.i64)
   assert check_float(v.u8)
-    == #([e.TypeMismatch(ast.float_t(s1), ast.u8(s2))], tm.float(1.0), v.u8)
+    == #([e.Error(e.TypeMismatch(ast.float_t(s1), ast.u8(s1)), s1, [])], tm.float(1.0), v.u8)
   assert check_float(v.u16)
-    == #([e.TypeMismatch(ast.float_t(s1), ast.u16(s2))], tm.float(1.0), v.u16)
+    == #([e.Error(e.TypeMismatch(ast.float_t(s1), ast.u16(s1)), s1, [])], tm.float(1.0), v.u16)
   assert check_float(v.u32)
-    == #([e.TypeMismatch(ast.float_t(s1), ast.u32(s2))], tm.float(1.0), v.u32)
+    == #([e.Error(e.TypeMismatch(ast.float_t(s1), ast.u32(s1)), s1, [])], tm.float(1.0), v.u32)
   assert check_float(v.u64)
-    == #([e.TypeMismatch(ast.float_t(s1), ast.u64(s2))], tm.float(1.0), v.u64)
+    == #([e.Error(e.TypeMismatch(ast.float_t(s1), ast.u64(s1)), s1, [])], tm.float(1.0), v.u64)
   assert check_float(v.float_t) == #([], tm.float(1.0), v.float_t)
   assert check_float(v.f16) == #([], tm.float(1.0), v.f16)
   assert check_float(v.f32) == #([], tm.float(1.0), v.f32)
@@ -108,7 +108,7 @@ pub fn infer_var_undefined_test() {
   let ast = ast.var("x", s)
   let ctx0 = new_ctx
   let #(term, type_, ctx) = infer(ctx0, ast)
-  assert ctx.errors == [e.VarUndefined("x", s)]
+  assert ctx.errors == [e.Error(e.VarUndefined("x"), s, [])]
   assert term == tm.Err
   assert type_ == v.Err
 }
@@ -216,7 +216,7 @@ pub fn infer_app_error_not_a_function_test() {
   let ctx0 = new_ctx
   let #(term, type_, ctx) = infer(ctx0, ast)
   todo
-  assert ctx.errors == [e.NotAFunction(tm.float(3.14), v.float_t, s1)]
+  assert ctx.errors == [e.Error(e.NotAFunction(tm.Err, v.float_t), s1, [])]
   assert term == tm.Err
   assert type_ == v.Err
 }
