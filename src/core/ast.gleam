@@ -314,8 +314,17 @@ pub fn call(name: String, returns: Type, args: List(Expr), span: Span) {
 }
 
 pub fn let_var(def: #(String, Option(Type), Expr), body: Expr, span: Span) {
+  let_var_trace(def, body, span, None)
+}
+
+pub fn let_var_trace(
+  def: #(String, Option(Type), Expr),
+  body: Expr,
+  span: Span,
+  trace: Option(String),
+) {
   let #(name, opt_type, value) = def
-  app(lam(#(name, opt_type), body, span), value, span)
+  Expr(App(lam(#(name, opt_type), body, span), value), span, trace)
 }
 
 pub fn let_pat(def: #(Pattern, Option(Type), Expr), body: Expr, span: Span) {
@@ -329,6 +338,26 @@ pub fn let_pat(def: #(Pattern, Option(Type), Expr), body: Expr, span: Span) {
         None -> body
       }
       match(value, [Case(pattern, None, body)], span)
+    }
+  }
+}
+
+pub fn let_pat_trace(
+  def: #(Pattern, Option(Type), Expr),
+  body: Expr,
+  span: Span,
+  trace: Option(String),
+) {
+  let #(pattern, opt_type, value) = def
+  case pattern.data {
+    PAlias(Pattern(PAny, _), name) ->
+      let_var_trace(#(name, opt_type, value), body, span, trace)
+    _ -> {
+      let body = case opt_type {
+        Some(type_) -> ann(body, type_, type_.span)
+        None -> body
+      }
+      Expr(Match(value, [Case(pattern, None, body)]), span, trace)
     }
   }
 }

@@ -58,7 +58,6 @@ pub type ErrorData {
 /// can be formatted with proper names (De Bruijn indices → variable names).
 ///
 /// This version accepts a raw `Error` (no breadcrumbs).
-/// For breadcrumb-aware display, use `display_scoped`.
 pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
   let names = list.map(types, fn(t) { t.0 })
   let fmt_expr = fn(expr: ast.Expr) { format.expr(expr, 60, 0) }
@@ -68,10 +67,12 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
   case err.data {
     UnexpectedToken(token) -> {
       summary(err.span, "unexpected token: \"" <> token <> "\"")
+      <> display_trace(err.trace)
     }
 
     VarUndefined(name) -> {
       summary(err.span, "undefined variable")
+      <> display_trace(err.trace)
       <> detail(
         "The variable `" <> name <> "` has not been defined in this scope.",
       )
@@ -79,6 +80,7 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
 
     TypeMismatch(got, expected) -> {
       summary(got.span, "type mismatch")
+      <> display_trace(err.trace)
       <> detail("Expected:   " <> fmt_expr(expected))
       <> detail("Got:        " <> fmt_expr(got))
     }
@@ -86,6 +88,7 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
     NeutralTypeMismatch(#(neut1, span1), #(neut2, span2)) -> {
       let names = list.map(types, fn(entry) { entry.0 })
       summary(span1, "type mismatch between neutral terms")
+      <> display_trace(err.trace)
       <> detail("Left:  " <> neut_to_string(ffi, names, neut1))
       <> detail("Right: " <> neut_to_string(ffi, names, neut2))
       <> case span1.file == span2.file && span1.start_line != span2.start_line {
@@ -98,16 +101,19 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
 
     RcdFieldNotFound(#(name, _field_span)) -> {
       summary(err.span, "record field not found: \"" <> name <> "\"")
+      <> display_trace(err.trace)
     }
 
     CallArityMismatch(#(got_arity, span), #(expected_arity, _)) -> {
       summary(span, "call arity mismatch")
+      <> display_trace(err.trace)
       <> detail("Expected " <> int.to_string(expected_arity) <> " argument(s)")
       <> detail("Got " <> int.to_string(got_arity) <> " argument(s)")
     }
 
     InfiniteType(hole_id, type_) -> {
       summary(err.span, "infinite type")
+      <> display_trace(err.trace)
       <> detail(
         "Type hole ?"
         <> int.to_string(hole_id)
@@ -122,6 +128,7 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
 
     NotAFunction(fun, fun_type) -> {
       summary(err.span, "not a function")
+      <> display_trace(err.trace)
       <> detail("This expression has type " <> fmt_value(fun_type))
       <> detail("")
       <> detail("Term: " <> fmt_term(fun))
@@ -133,6 +140,7 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
 
     AppExpectedExplicitArg(fun_type) -> {
       summary(err.span, "expected explicit argument, got implicit argument")
+      <> display_trace(err.trace)
       <> detail("The function type is: " <> fmt_value(fun_type))
       <> detail("")
       <> detail("Use `f(arg)` for explicit arguments, not `f<arg>`.")
@@ -141,6 +149,7 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
     TypeVariantUndefined(#(tag, tag_span), #(variants, type_span)) -> {
       let variant_names = list.map(variants, fn(vr) { vr.0 })
       summary(tag_span, "undefined variant `" <> tag <> "`")
+      <> display_trace(err.trace)
       <> detail(
         "This type has the variants: " <> string.join(variant_names, ", "),
       )
@@ -161,62 +170,13 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
   }
 }
 
-/// Format a scoped error with breadcrumb trail.
-///
-/// The output includes:
-///   1. The breadcrumb path showing the structural context
-///   2. The error summary at the primary span
-///   3. Detailed error information
-///
-///     In: module math (math.tao:1:1)
-///     └─ In: fn add(a, b) (math.tao:3:1)
-///     
-///     math.tao:15:7: type mismatch
-///       Expected:   Int
-///       Got:        Float
-pub fn display_scoped(
-  ffi: FFI,
-  types: List(#(String, Value)),
-  err: Error,
-) -> String {
-  // Render breadcrumb trail (only if non-empty)
-  let breadcrumb_section = case err.trace {
-    [] -> ""
-    trace -> display_breadcrumbs(trace)
-  }
-
-  // Render the actual error
-  let error_section = display(ffi, types, err)
-
-  // Combine: breadcrumbs first, then error
-  case err.trace {
-    [] -> error_section
-    _ -> breadcrumb_section <> "\n" <> error_section
-  }
-}
-
 /// Render the breadcrumb trail as a tree.
-pub fn display_breadcrumbs(trace: List(#(String, Span))) -> String {
-  case trace {
-    [] -> ""
-    [#(label, span)] -> "  In: " <> label <> " (" <> span_short(span) <> ")"
-    _ -> {
-      // Build tree with ├─ and └─ connectors
-      let indexed = list.index_map(trace, fn(c, i) { #(c, i) })
-      let length = list.length(trace)
-      let lines =
-        list.map(indexed, fn(entry) {
-          let #(#(label, span), index) = entry
-          let is_last = index == length - 1
-          let connector = case is_last {
-            True -> "└─ "
-            False -> "├─ "
-          }
-          "  In: " <> connector <> label <> " (" <> span_short(span) <> ")"
-        })
-      string.join(lines, "\n")
-    }
-  }
+pub fn display_trace(trace: List(#(String, Span))) -> String {
+  list.map(trace, fn(entry) {
+    let #(label, span) = entry
+    "\n      in \"" <> label <> "\" (" <> span_short(span) <> ")"
+  })
+  |> string.join("")
 }
 
 /// Format a span concisely as "file:line:col".

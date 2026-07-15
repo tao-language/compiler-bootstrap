@@ -65,6 +65,7 @@ pub fn expr(e: tao.Expr) -> core.Expr {
         returns,
         body,
         e.span,
+        Some("fn <anonymous>"),
       )
     tao.FnT(implicits, params, body) ->
       function_type(implicits, params, body, e.span)
@@ -138,6 +139,7 @@ fn function(
   opt_returns: Option(tao.Type),
   body: tao.Expr,
   span: Span,
+  trace: Option(String),
 ) -> core.Expr {
   case implicits {
     [] -> {
@@ -169,7 +171,11 @@ fn function(
         }
       }
       let core_fun =
-        core.lam(#(param_name, Some(core_param_type)), core_body, span)
+        core.Expr(
+          core.Lam(#(param_name, Some(core_param_type)), core_body),
+          span,
+          trace,
+        )
       case opt_fun_name {
         Some(fun_name) -> core.fix(fun_name, core_fun, span)
         None -> core_fun
@@ -288,7 +294,7 @@ pub fn statement(
         None -> filepath.base_name(path)
       }
       let def = #(alias, None, core.var("@" <> path, stmt.span))
-      core.let_var(def, next, stmt.span)
+      core.let_var_trace(def, next, stmt.span, Some("import " <> path))
     }
     tao.Import(path, opt_alias, [#(name, opt_name_alias), ..names]) -> {
       let stmt = tao.import_(path, opt_alias, names, stmt.span)
@@ -304,7 +310,12 @@ pub fn statement(
       let core_pattern = pattern(p)
       let core_type = opt_expr(opt_type)
       let core_value = expr(value)
-      core.let_pat(#(core_pattern, core_type, core_value), next, stmt.span)
+      core.let_pat_trace(
+        #(core_pattern, core_type, core_value),
+        next,
+        stmt.span,
+        Some("let " <> format.pattern(core_pattern, 80, 2)),
+      )
     }
     tao.LetMut(name, opt_type, value) -> todo
     tao.Mut(name, value) -> todo
@@ -327,6 +338,7 @@ pub fn statement(
           returns,
           body,
           stmt.span,
+          Some("fn " <> name),
         )
       core.let_var(#(name, None, core_fn), next, stmt.span)
     }
@@ -339,7 +351,7 @@ pub fn statement(
       let param2 = #("$args", Some(core.var("$type", s)))
       let core_expr = core.lam(param2, match_body, s)
       let core_expr = core.for(param1, core_expr, s)
-      core.let_var(#(name, None, core_expr), next, s)
+      core.let_var_trace(#(name, None, core_expr), next, s, Some("fn " <> name))
     }
     tao.Test(name, arg, expect) -> {
       let core_arg = expr(arg)
@@ -356,7 +368,12 @@ pub fn statement(
         ),
       ]
       let core_test = core.match(core_arg, core_cases, stmt.span)
-      core.let_var(#(">>> " <> name, None, core_test), next, stmt.span)
+      core.let_var_trace(
+        #(">>> " <> name, None, core_test),
+        next,
+        stmt.span,
+        Some(">>> " <> name),
+      )
     }
     tao.TypeDef(type_def) -> todo
     tao.For(iterator, range, body) -> todo

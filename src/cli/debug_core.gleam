@@ -39,7 +39,7 @@ pub fn debug_core(source: String, width: Int) {
     num_errors -> {
       io.println("// Errors (" <> int.to_string(num_errors) <> ")")
       list.map(ctx.errors, fn(err) {
-        io.println(error.display_scoped(ctx.ffi, ctx.types, err))
+        io.println(error.display(ctx.ffi, ctx.types, err))
       })
       io.println("")
     }
