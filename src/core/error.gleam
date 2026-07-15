@@ -22,7 +22,21 @@ pub type Error {
 }
 
 pub type ErrorData {
+
+  // ── Syntax errors (lexer / parser) ──
+  /// A token was found that the parser did not expect.
   UnexpectedToken(token: String)
+
+  /// The parser expected a specific token but found something else.
+  ExpectedToken(expected: String, found: String)
+
+  /// The input ended while the parser was still expecting more tokens.
+  UnexpectedEndOfInput
+
+  /// A generic syntax or parse error with a custom message.
+  SyntaxError(message: String)
+
+  // ── Type-checking errors ──
   VarUndefined(name: String)
   TypeMismatch(a: ast.Expr, b: ast.Expr)
   NeutralTypeMismatch(a: #(Neut, Span), b: #(Neut, Span))
@@ -59,8 +73,28 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
 
   case err.data {
     UnexpectedToken(token) -> {
-      summary(err.span, "unexpected token: \"" <> token <> "\"")
+      summary(err.span, "unexpected token \"" <> token <> "\"")
       <> display_trace(err.trace)
+    }
+
+    ExpectedToken(expected, found) -> {
+      summary(
+        err.span,
+        "expected \"" <> expected <> "\" but found \"" <> found <> "\"",
+      )
+      <> display_trace(err.trace)
+    }
+
+    UnexpectedEndOfInput -> {
+      summary(err.span, "unexpected end of input")
+      <> display_trace(err.trace)
+      <> detail(
+        "The input ended while the parser was still expecting more tokens.",
+      )
+    }
+
+    SyntaxError(message) -> {
+      summary(err.span, message) <> display_trace(err.trace)
     }
 
     VarUndefined(name) -> {
@@ -161,6 +195,17 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
       )
     }
   }
+}
+
+/// Display a syntax error without needing FFI/types context.
+///
+/// Syntax errors (UnexpectedToken, ExpectedToken, UnexpectedEndOfInput,
+/// SyntaxError) only use span and trace, so no FFI or type information
+/// is required. This is useful for displaying parse errors before
+/// compilation begins.
+pub fn display_syntax(err: Error) -> String {
+  // Syntax error variants don't use ffi or types, so empty lists are fine.
+  display([], [], err)
 }
 
 /// Render the breadcrumb trace as a tree.

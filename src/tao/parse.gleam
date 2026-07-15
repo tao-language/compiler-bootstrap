@@ -1,3 +1,4 @@
+import core/error as e
 import gleam/float
 import gleam/int
 import gleam/list
@@ -13,7 +14,6 @@ import tao/ast.{
   type BinaryOp, type Case, type Expr, type OverloadChoice, type Pattern,
   type Stmt, type UnaryOp,
 } as tao
-import tao/error.{type Error} as e
 
 const reserved = [
   "import",
@@ -66,6 +66,7 @@ pub type Token {
   Question
   Pipe
   At
+  Percent
 
   // Operators
   Add
@@ -81,15 +82,14 @@ pub type Token {
 pub fn lex(
   file: String,
   source: String,
-) -> Result(List(lexer.Token(Token)), Error) {
+) -> Result(List(lexer.Token(Token)), e.Error) {
   case lexer.run(source, lexer_()) {
     Ok(tokens) -> Ok(tokens)
-    Error(lexer.NoMatchFound(row, col, lexeme)) ->
-      Error(e.UnexpectedToken(
-        lexeme,
-        Span(file, row, col, row, col),
-        [],
-      ))
+    Error(lexer.NoMatchFound(row, col, lexeme)) -> {
+      let span = Span(file, row, col, row, col)
+      let ch = string.first(lexeme) |> result.unwrap(lexeme)
+      Error(e.Error(e.UnexpectedToken(ch), span, []))
+    }
   }
 }
 
@@ -139,6 +139,7 @@ fn lexer_() -> Lexer(Token, Nil) {
     lexer.token("?", Question),
     lexer.token("|", Pipe),
     lexer.token("@", At),
+    lexer.token("%", Percent),
 
     lexer.token("+", Add),
     lexer.symbol("-", "[^>]", Sub),
@@ -154,25 +155,29 @@ fn lexer_() -> Lexer(Token, Nil) {
 // PUBLIC API
 // ============================================================================
 
-pub fn expression(file: String, source: String) -> Result(Expr, Error) {
+pub fn expression(file: String, source: String) -> Result(Expr, e.Error) {
   use tokens <- try(lex(file, source))
-  case nibble.run(tokens, {
-    use ast <- do(expr(file))
-    use _ <- do(nibble.eof())
-    return(ast)
-  }) {
+  case
+    nibble.run(tokens, {
+      use ast <- do(expr(file))
+      use _ <- do(nibble.eof())
+      return(ast)
+    })
+  {
     Ok(expr) -> Ok(expr)
     Error(dead_ends) -> Error(dead_ends_to_error(file, dead_ends))
   }
 }
 
-pub fn statements(file: String, source: String) -> Result(List(Stmt), Error) {
+pub fn statements(file: String, source: String) -> Result(List(Stmt), e.Error) {
   use tokens <- try(lex(file, source))
-  case nibble.run(tokens, {
-    use stmts <- do(nibble.many(stmt(file)))
-    use _ <- do(nibble.eof())
-    return(stmts)
-  }) {
+  case
+    nibble.run(tokens, {
+      use stmts <- do(nibble.many(stmt(file)))
+      use _ <- do(nibble.eof())
+      return(stmts)
+    })
+  {
     Ok(stmts) -> Ok(stmts)
     Error(dead_ends) -> Error(dead_ends_to_error(file, dead_ends))
   }
@@ -182,43 +187,60 @@ pub fn statements(file: String, source: String) -> Result(List(Stmt), Error) {
 // ERROR CONVERSION
 // ============================================================================
 
-/// Convert the best nibble DeadEnd into a tao/error.Error.
+/// Convert the best nibble DeadEnd into a core/error.Error.
 ///
 /// Picks the first dead-end (closest to the failure point) and converts
-/// its [`nibble.Error`](https://hexdocs.pm/nibble/nibble/nibble.html#Error)
-/// into a structured [`Error`](../error#error) with context labels.
-fn dead_ends_to_error(file: String, dead_ends: List(nibble.DeadEnd(Token, String))) -> Error {
+/// its [`nibble.DeadEnd`](https://hexdocs.pm/nibble/nibble/nibble.html#DeadEnd)
+/// into a structured [`Error`](../error#error) with trace breadcrumbs.
+fn dead_ends_to_error(
+  file: String,
+  dead_ends: List(nibble.DeadEnd(Token, String)),
+) -> e.Error {
   case dead_ends {
-    [] -> e.ParseError("parse error", Span(file, 0, 0, 0, 0), [])
+    [] ->
+      e.Error(
+        e.SyntaxError("internal error: no dead ends to report"),
+        Span(file, 0, 0, 0, 0),
+        [],
+      )
     [first, ..] -> dead_end_to_error(file, first)
   }
 }
 
-fn dead_end_to_error(file: String, dead_end: nibble.DeadEnd(Token, String)) -> Error {
+fn dead_end_to_error(
+  file: String,
+  dead_end: nibble.DeadEnd(Token, String),
+) -> e.Error {
   let pos = dead_end.pos
   let span = Span(file, pos.row_start, pos.col_start, pos.row_end, pos.col_end)
-  let context = list.map(dead_end.context, fn(entry) { case entry { #(_, label) -> label } })
+  // Extract context labels from nibble and create trace entries.
+  // Since nibble's context is List(#(String, String)) (label + description)
+  // and does not store per-entry spans, we use the error span for all
+  // trace entries. The trace still provides useful nesting context.
+  let trace =
+    list.map(dead_end.context, fn(entry) {
+      case entry {
+        #(pos, label) -> {
+          let span =
+            Span(file, pos.row_start, pos.col_start, pos.row_end, pos.col_end)
+          #(label, span)
+        }
+      }
+    })
 
   case dead_end.problem {
     nibble.Expected(expecting, got) ->
-      e.ExpectedToken(
-        expecting,
-        token_to_string(got),
-        span,
-        context,
-      )
+      e.Error(e.ExpectedToken(expecting, token_to_string(got)), span, trace)
 
     nibble.Unexpected(tok) ->
-      e.UnexpectedToken(token_to_string(tok), span, context)
+      e.Error(e.UnexpectedToken(token_to_string(tok)), span, trace)
 
-    nibble.EndOfInput ->
-      e.UnexpectedEndOfInput(span, context)
+    nibble.EndOfInput -> e.Error(e.UnexpectedEndOfInput, span, trace)
 
-    nibble.Custom(message) ->
-      e.ParseError(message, span, context)
+    nibble.Custom(message) -> e.Error(e.SyntaxError(message), span, trace)
 
     nibble.BadParser(message) ->
-      e.ParseError("internal parser error: " <> message, span, context)
+      e.Error(e.SyntaxError("internal parser error: " <> message), span, trace)
   }
 }
 
@@ -257,6 +279,7 @@ fn token_to_string(tok: Token) -> String {
     Question -> "?"
     Pipe -> "|"
     At -> "@"
+    Percent -> "%"
     Add -> "+"
     Sub -> "-"
     Mul -> "*"
@@ -274,6 +297,7 @@ fn stmt(file: String) -> Parser(Stmt, Token, String) {
     fn_def(file),
     test_(file),
   ])
+  |> nibble.in("statement")
 }
 
 fn let_(file: String) -> Parser(Stmt, Token, String) {
@@ -287,20 +311,20 @@ fn let_(file: String) -> Parser(Stmt, Token, String) {
     use end <- do(get_span(file))
     return(tao.let_(pat, typ, val, merge(start, end)))
   }
-  |> nibble.in("a let binding")
+  |> nibble.in("let binding")
 }
 
 fn fn_def(file: String) -> Parser(Stmt, Token, String) {
   {
     use start <- do(get_span(file))
     use _ <- do(nibble.token(KwFn))
-    use name <- do(take_var())
+    use name <- do(var_name(file))
     nibble.one_of([
       fn_def_body(file, start, name),
       fn_overload(file, start, name),
     ])
   }
-  |> nibble.in("a function definition")
+  |> nibble.in("function definition")
 }
 
 fn fn_def_body(
@@ -364,7 +388,7 @@ fn fn_def_body(
       merge(start, end),
     ))
   }
-  |> nibble.in("a function body")
+  |> nibble.in("function body")
 }
 
 fn fn_overload(
@@ -380,12 +404,12 @@ fn fn_overload(
         use start <- do(get_span(file))
         use opt_module <- do(
           nibble.optional({
-            use mod <- do(take_var())
+            use mod <- do(var_name(file))
             use _ <- do(nibble.token(Dot))
             return(mod)
           }),
         )
-        use name <- do(take_var())
+        use name <- do(var_name(file))
         use _ <- do(nibble.token(LParen))
         use args <- do(arguments_pat(file))
         use _ <- do(nibble.token(RParen))
@@ -399,7 +423,7 @@ fn fn_overload(
     use end <- do(get_span(file))
     return(tao.fn_overload(name, choices, merge(start, end)))
   }
-  |> nibble.in("a function overload")
+  |> nibble.in("function overload")
 }
 
 fn test_(file: String) -> Parser(Stmt, Token, String) {
@@ -412,7 +436,7 @@ fn test_(file: String) -> Parser(Stmt, Token, String) {
     let name = file <> ":" <> int.to_string(end.start_line)
     return(tao.test_(name, exp, pat, merge(start, end)))
   }
-  |> nibble.in("a test expression")
+  |> nibble.in("test expression")
 }
 
 // ============================================================================
@@ -444,7 +468,7 @@ fn pfloat(file: String) -> Parser(Pattern, Token, String) {
 
 fn pvar(file: String) -> Parser(Pattern, Token, String) {
   use start <- do(get_span(file))
-  use name <- do(take_var())
+  use name <- do(var_name(file))
   use end <- do(get_span(file))
   case name {
     "_" -> return(tao.pany(merge(start, end)))
@@ -487,6 +511,7 @@ fn expr(file: String) -> Parser(Expr, Token, String) {
     ],
     dropping: return(Nil),
   )
+  |> nibble.in("expression")
 }
 
 fn atom(file: String) -> Parser(Expr, Token, String) {
@@ -526,9 +551,27 @@ fn float(file: String) -> Parser(Expr, Token, String) {
   return(tao.float(num, merge(start, end)))
 }
 
+fn var_name(file: String) -> Parser(String, Token, String) {
+  nibble.one_of([
+    take_var(),
+    {
+      let ops = [Add, Sub, Mul, Div]
+      let ops_names =
+        list.map(ops, fn(op) {
+          use _ <- do(nibble.token(op))
+          return(token_to_string(op))
+        })
+      use _ <- do(nibble.token(LParen))
+      use name <- do(nibble.one_of(ops_names))
+      use _ <- do(nibble.token(RParen))
+      return(name)
+    },
+  ])
+}
+
 fn var(file: String) -> Parser(Expr, Token, String) {
   use start <- do(get_span(file))
-  use name <- do(take_var())
+  use name <- do(var_name(file))
   use end <- do(get_span(file))
   return(tao.var(name, merge(start, end)))
 }
@@ -575,7 +618,7 @@ fn match(file: String) -> Parser(Expr, Token, String) {
     use end <- do(get_span(file))
     return(tao.match(arg, cases, merge(start, end)))
   }
-  |> nibble.in("a match expression")
+  |> nibble.in("match expression")
 }
 
 fn if_expr(file: String) -> Parser(Expr, Token, String) {
@@ -596,18 +639,26 @@ fn if_expr(file: String) -> Parser(Expr, Token, String) {
     // if-then -> match cond { | True => then | _ => hole }
     case opt_else {
       Some(else_expr) -> {
-        let true_case = tao.Case(tao.pctr("True", [], merge(start, start)), None, then_body)
-        let false_case = tao.Case(tao.pctr("False", [], merge(start, start)), None, else_expr)
+        let true_case =
+          tao.Case(tao.pctr("True", [], merge(start, start)), None, then_body)
+        let false_case =
+          tao.Case(tao.pctr("False", [], merge(start, start)), None, else_expr)
         return(tao.match(cond, [true_case, false_case], merge(start, end)))
       }
       None -> {
-        let true_case = tao.Case(tao.pctr("True", [], merge(start, start)), None, then_body)
-        let false_case = tao.Case(tao.pany(merge(start, start)), None, tao.hole(None, merge(start, start)))
+        let true_case =
+          tao.Case(tao.pctr("True", [], merge(start, start)), None, then_body)
+        let false_case =
+          tao.Case(
+            tao.pany(merge(start, start)),
+            None,
+            tao.hole(None, merge(start, start)),
+          )
         return(tao.match(cond, [true_case, false_case], merge(start, end)))
       }
     }
   }
-  |> nibble.in("an if expression")
+  |> nibble.in("if expression")
 }
 
 fn match_case(file: String) -> Parser(Case, Token, String) {
@@ -619,7 +670,7 @@ fn match_case(file: String) -> Parser(Case, Token, String) {
     use body <- do(expr(file))
     return(tao.Case(pat, opt_guard, body))
   }
-  |> nibble.in("a match case")
+  |> nibble.in("match case")
 }
 
 fn guard(file: String) -> Parser(#(Expr, Option(Pattern)), Token, String) {
@@ -634,7 +685,7 @@ fn guard(file: String) -> Parser(#(Expr, Option(Pattern)), Token, String) {
     )
     return(#(cond, opt_pat))
   }
-  |> nibble.in("a guard clause")
+  |> nibble.in("guard clause")
 }
 
 // ============================================================================
@@ -694,7 +745,7 @@ fn arguments(file: String) -> Parser(List(#(String, Expr)), Token, String) {
   nibble.many({
     use opt_name <- do(
       nibble.optional({
-        use name <- do(take_var())
+        use name <- do(var_name(file))
         use _ <- do(nibble.token(Colon))
         return(name)
       }),
@@ -704,11 +755,13 @@ fn arguments(file: String) -> Parser(List(#(String, Expr)), Token, String) {
   })
 }
 
-fn arguments_pat(file: String) -> Parser(List(#(String, Pattern)), Token, String) {
+fn arguments_pat(
+  file: String,
+) -> Parser(List(#(String, Pattern)), Token, String) {
   nibble.many({
     use opt_name <- do(
       nibble.optional({
-        use name <- do(take_var())
+        use name <- do(var_name(file))
         use _ <- do(nibble.token(Colon))
         return(name)
       }),

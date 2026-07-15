@@ -28,9 +28,14 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   case list.length(errors) {
     0 -> Nil
     n -> {
-      io.println("--- " <> int.to_string(n) <> " syntax errors ---")
-      list.map(errors, fn(e) { io.println(string.inspect(e)) })
+      io.println_error("---- SYNTAX ERRORS ----")
+      list.map(errors, fn(err) {
+        let msg = error.display_syntax(err)
+        io.println_error("❌ " <> msg)
+      })
       io.println("")
+      io.println_error(int.to_string(n) <> " syntax errors")
+      exit(1)
     }
   }
   io.println("")
@@ -81,9 +86,14 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   case list.length(errors) {
     0 -> Nil
     n -> {
-      io.println("--- " <> int.to_string(n) <> " syntax errors ---")
-      list.map(errors, fn(e) { io.println(string.inspect(e)) })
+      io.println_error("---- SYNTAX ERRORS ----")
+      list.map(errors, fn(err) {
+        let msg = error.display_syntax(err)
+        io.println_error("❌ " <> msg)
+      })
       io.println("")
+      io.println_error(int.to_string(n) <> " syntax errors")
+      exit(1)
     }
   }
   let definitions = discover.definitions(stmts)
@@ -116,7 +126,7 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     [] -> io.println("0 build errors")
     errors -> {
       let n = list.length(errors)
-      io.println_error("---- ERRORS ----")
+      io.println_error("---- BUILD ERRORS ----")
       list.map(ctx.errors, fn(err) {
         let msg = error.display(ctx.ffi, ctx.types, err)
         io.println_error("❌ " <> msg)
@@ -126,3 +136,7 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     }
   }
 }
+
+// Declare the external Erlang halt function
+@external(erlang, "erlang", "halt")
+pub fn exit(status: Int) -> Nil
