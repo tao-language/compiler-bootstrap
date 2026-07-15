@@ -2,17 +2,13 @@
 import core/context.{type Context, Context, with_err}
 import core/error as e
 import core/eval.{eval}
-import core/format
 import core/occurs.{occurs}
-import core/quote.{quote}
+import core/quote
 import core/term.{type Case, type Term} as tm
 import core/unwrap.{unwrap}
 import core/value.{type Env, type Neut, type TypeDefinition, type Value} as v
-import gleam/int
-import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import gleam/string
 import syntax/span.{type Span}
 
 pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
@@ -57,7 +53,7 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
           let names = list.map(ctx.types, fn(t) { t.0 })
           let a = quote.lift(ctx.ffi, ctx.env, names, value1, s1)
           let b = quote.lift(ctx.ffi, ctx.env, names, value2, s1)
-          with_err(ctx, e.TypeMismatch(a, b))
+          with_err(ctx, e.TypeMismatch(a, b), s1)
         }
       }
     v.Rcd([], None), v.Typ(_) -> ctx
@@ -70,7 +66,7 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       unify(ctx, #(value2, s2), #(value1, s1))
     v.Rcd([], None), v.Rcd([], None) -> ctx
     v.Rcd([], None) as rcd1, v.Rcd([#(name, _), ..fields2], None) -> {
-      let ctx = with_err(ctx, e.RcdFieldNotFound(#(name, s2), s1))
+      let ctx = with_err(ctx, e.RcdFieldNotFound(#(name, s2)), s1)
       unify(ctx, #(rcd1, s1), #(v.Rcd(fields2, None), s2))
     }
     v.Rcd([], Some(tail1)), value2 -> unify(ctx, #(tail1, s1), #(value2, s2))
@@ -105,7 +101,7 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       let names = list.map(ctx.types, fn(t) { t.0 })
       let a = quote.lift(ctx.ffi, ctx.env, names, value1, s1)
       let b = quote.lift(ctx.ffi, ctx.env, names, value2, s1)
-      with_err(ctx, e.TypeMismatch(a, b))
+      with_err(ctx, e.TypeMismatch(a, b), s1)
     }
   }
 }
@@ -129,7 +125,7 @@ fn unify_rcd_field(
     None -> {
       let ctx = case tail2 {
         Some(tail2_val) -> unify(ctx, #(rcd1, s1), #(tail2_val, s2))
-        None -> with_err(ctx, e.RcdFieldNotFound(#(name, s1), s2))
+        None -> with_err(ctx, e.RcdFieldNotFound(#(name, s1)), s2)
       }
       #(rcd2, ctx)
     }
@@ -145,7 +141,7 @@ fn check_neut_with_concrete(
   let #(value, s1) = a
   let #(neut, s2) = b
   case neut {
-    v.NVar(level) -> ctx
+    v.NVar(_) -> ctx
     v.NHole(env, id) -> todo
     v.NApp(fun_neut, arg_val) -> todo
     v.NMatch(env, arg_val, cases) ->
@@ -234,6 +230,7 @@ fn unify_gadt(
       with_err(
         ctx,
         e.TypeVariantUndefined(#(ctr_tag, s1), #(tdef.variants, s2)),
+        s2,
       )
     Ok(variant) -> {
       // Instantiate the variant's own parameters (e.g., the `m` in Cons<m>).
@@ -271,7 +268,7 @@ fn unify_neut(ctx: Context, a: #(Neut, Span), b: #(Neut, Span)) -> Context {
       let ctx = case list.length(args1), list.length(args2) {
         len1, len2 if len1 == len2 -> ctx
         len1, len2 ->
-          with_err(ctx, e.CallArityMismatch(#(len1, s1), #(len2, s2)))
+          with_err(ctx, e.CallArityMismatch(#(len1, s1), #(len2, s2)), s1)
       }
       unify_args(ctx, #(args1, s1), #(args2, s2))
     }
@@ -279,7 +276,7 @@ fn unify_neut(ctx: Context, a: #(Neut, Span), b: #(Neut, Span)) -> Context {
       let ctx = unify_neut(ctx, #(arg1, s1), #(arg2, s2))
       todo as "unify_neut NMatch cases, use env to evaluate with pattern bindings"
     }
-    _, _ -> with_err(ctx, e.NeutralTypeMismatch(a, b))
+    _, _ -> with_err(ctx, e.NeutralTypeMismatch(a, b), s1)
   }
 }
 
@@ -310,7 +307,7 @@ fn solve_hole(
     Some(id) ->
       // Concrete hole, do occurs check and solve with a substitution
       case occurs(ctx, id, value) {
-        True -> with_err(ctx, e.InfiniteType(id, value, span))
+        True -> with_err(ctx, e.InfiniteType(id, value), span)
         False ->
           case list.key_find(ctx.subst, id) {
             Error(Nil) -> Context(..ctx, subst: [#(id, value), ..ctx.subst])

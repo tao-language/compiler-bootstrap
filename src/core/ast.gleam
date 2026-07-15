@@ -15,7 +15,7 @@ import syntax/span.{type Span}
 ///
 /// This separates parsing from index calculation, making both simpler.
 pub type Expr {
-  Expr(data: ExprData, span: Span)
+  Expr(data: ExprData, span: Span, trace: Option(String))
 }
 
 pub type Type =
@@ -157,79 +157,87 @@ fn opt_contains(opt_term: Option(Expr), name: String) -> Bool {
 // Syntax sugar
 
 pub fn typ(universe: Int, span: Span) {
-  Expr(Typ(universe), span)
+  Expr(Typ(universe), span, None)
 }
 
 pub fn hole(id: Option(Int), span: Span) {
-  Expr(Hole(id), span)
+  Expr(Hole(id), span, None)
+}
+
+pub fn lit(k: Literal, span: Span) {
+  Expr(Lit(k), span, None)
 }
 
 pub fn int(value: Int, span: Span) {
-  Expr(Lit(lit.Int(value)), span)
+  Expr(Lit(lit.Int(value)), span, None)
 }
 
 pub fn float(value: Float, span: Span) {
-  Expr(Lit(lit.Float(value)), span)
+  Expr(Lit(lit.Float(value)), span, None)
+}
+
+pub fn lit_t(k: LiteralType, span: Span) {
+  Expr(LitT(k), span, None)
 }
 
 pub fn int_t(span: Span) {
-  Expr(LitT(lit.IntT), span)
+  Expr(LitT(lit.IntT), span, None)
 }
 
 pub fn float_t(span: Span) {
-  Expr(LitT(lit.FloatT), span)
+  Expr(LitT(lit.FloatT), span, None)
 }
 
 pub fn i8(span: Span) {
-  Expr(LitT(lit.I8), span)
+  Expr(LitT(lit.I8), span, None)
 }
 
 pub fn i16(span: Span) {
-  Expr(LitT(lit.I16), span)
+  Expr(LitT(lit.I16), span, None)
 }
 
 pub fn i32(span: Span) {
-  Expr(LitT(lit.I32), span)
+  Expr(LitT(lit.I32), span, None)
 }
 
 pub fn i64(span: Span) {
-  Expr(LitT(lit.I64), span)
+  Expr(LitT(lit.I64), span, None)
 }
 
 pub fn u8(span: Span) {
-  Expr(LitT(lit.U8), span)
+  Expr(LitT(lit.U8), span, None)
 }
 
 pub fn u16(span: Span) {
-  Expr(LitT(lit.U16), span)
+  Expr(LitT(lit.U16), span, None)
 }
 
 pub fn u32(span: Span) {
-  Expr(LitT(lit.U32), span)
+  Expr(LitT(lit.U32), span, None)
 }
 
 pub fn u64(span: Span) {
-  Expr(LitT(lit.U64), span)
+  Expr(LitT(lit.U64), span, None)
 }
 
 pub fn f16(span: Span) {
-  Expr(LitT(lit.F16), span)
+  Expr(LitT(lit.F16), span, None)
 }
 
 pub fn f32(span: Span) {
-  Expr(LitT(lit.F32), span)
+  Expr(LitT(lit.F32), span, None)
 }
 
 pub fn f64(span: Span) {
-  Expr(LitT(lit.F64), span)
+  Expr(LitT(lit.F64), span, None)
 }
 
 pub fn var(name: String, span: Span) {
-  Expr(Var(name), span)
+  Expr(Var(name), span, None)
 }
 
 pub fn ctr(tag: String, arg: Expr, span: Span) {
-  Expr(Ctr(tag, arg), span)
+  Expr(Ctr(tag, arg), span, None)
 }
 
 pub fn ctr_args(tag: String, args: List(#(String, Expr)), span: Span) {
@@ -245,7 +253,7 @@ pub fn rcd(
   tail: Option(Expr),
   span: Span,
 ) {
-  Expr(Rcd(fields, tail), span)
+  Expr(Rcd(fields, tail), span, None)
 }
 
 pub fn rcd_values(
@@ -267,42 +275,42 @@ pub fn rcd_vars(vars: List(String), tail: Option(Expr), span: Span) {
 }
 
 pub fn ann(value: Expr, type_: Expr, span: Span) {
-  Expr(Ann(value, type_), span)
+  Expr(Ann(value, type_), span, None)
 }
 
 pub fn for(param: Param, body: Expr, span: Span) {
-  Expr(For(param, body), span)
+  Expr(For(param, body), span, None)
 }
 
 pub fn lam(param: Param, body: Expr, span: Span) {
-  Expr(Lam(param, body), span)
+  Expr(Lam(param, body), span, None)
 }
 
 pub fn pi(param: Param, body: Expr, span: Span) {
-  Expr(Pi(param, body), span)
+  Expr(Pi(param, body), span, None)
 }
 
 pub fn fix(name: String, body: Expr, span: Span) {
   case contains(body, name) {
-    True -> Expr(Fix(name, body), span)
+    True -> Expr(Fix(name, body), span, None)
     False -> body
   }
 }
 
 pub fn fix_strict(name: String, body: Expr, span: Span) {
-  Expr(Fix(name, body), span)
+  Expr(Fix(name, body), span, None)
 }
 
 pub fn app(fun: Expr, arg: Expr, span: Span) {
-  Expr(App(fun, arg), span)
+  Expr(App(fun, arg), span, None)
 }
 
 pub fn match(arg: Expr, cases: List(Case), span: Span) {
-  Expr(Match(arg, cases), span)
+  Expr(Match(arg, cases), span, None)
 }
 
 pub fn call(name: String, returns: Type, args: List(Expr), span: Span) {
-  Expr(Call(name, returns, args), span)
+  Expr(Call(name, returns, args), span, None)
 }
 
 pub fn let_var(def: #(String, Option(Type), Expr), body: Expr, span: Span) {
@@ -332,7 +340,7 @@ pub fn dot(expr: Expr, field: String, span: Span) {
 }
 
 pub fn err(span: Span) {
-  Expr(Err, span)
+  Expr(Err, span, None)
 }
 
 pub fn pany(span: Span) {

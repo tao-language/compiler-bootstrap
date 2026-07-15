@@ -128,14 +128,14 @@ pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
   case term {
     Typ(u) -> ast.typ(u, s)
     Hole(id) -> ast.hole(id, s)
-    Lit(lit) -> ast.Expr(ast.Lit(lit), s)
-    LitT(lit_t) -> ast.Expr(ast.LitT(lit_t), s)
+    Lit(lit) -> ast.lit(lit, s)
+    LitT(lit_t) -> ast.lit_t(lit_t, s)
     Var(index) ->
       case list_at(names, index) {
         Some(name) -> ast.var(name, s)
         None -> ast.var("$" <> int.to_string(index), s)
       }
-    Ctr(tag, arg) -> ast.Expr(ast.Ctr(tag, lift(arg, names, s)), s)
+    Ctr(tag, arg) -> ast.ctr(tag, lift(arg, names, s), s)
     Rcd(fields, tail) -> {
       let fields_ast =
         list.map(fields, fn(field) {

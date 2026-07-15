@@ -6,11 +6,12 @@
 ///
 /// Errors accumulate as the type checker progresses, allowing
 /// recovery after type errors.
-import core/error.{type Error}
+import core/error.{type Error, type ErrorData, Error}
 import core/ffi.{type FFI}
 import core/value.{type Env, type TypeDefinition, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import syntax/span.{type Span}
 import utils/list_utils.{list_at}
 
 // ============================================================================
@@ -33,6 +34,7 @@ pub type Context {
     types: List(#(String, Value)),
     subst: Subst,
     errors: List(Error),
+    trace: List(#(String, Span)),
     ffi: FFI,
     hole_counter: Int,
   )
@@ -41,7 +43,7 @@ pub type Context {
 pub type Subst =
   List(#(Int, Value))
 
-pub const new_ctx = Context([], [], [], [], [], 0)
+pub const new_ctx = Context([], [], [], [], [], [], 0)
 
 pub fn lookup(ctx: Context, name: String) -> Option(#(Int, Value)) {
   lookup_loop(ctx.types, name, 0)
@@ -76,12 +78,9 @@ fn lookup_in_env(ctx: Context, name: String) -> Option(Value) {
   }
 }
 
-pub fn with_err(ctx: Context, error: Error) -> Context {
-  with_err_list(ctx, [error])
-}
-
-pub fn with_err_list(ctx: Context, errors: List(Error)) -> Context {
-  Context(..ctx, errors: list.append(ctx.errors, errors))
+pub fn with_err(ctx: Context, err_data: ErrorData, span: Span) -> Context {
+  let err = Error(err_data, span, list.reverse(ctx.trace))
+  Context(..ctx, errors: [err, ..ctx.errors])
 }
 
 pub fn new_hole(ctx: Context) -> #(Int, Context) {
@@ -139,56 +138,18 @@ pub fn pop_vars(ctx: Context, num_vars: Int) -> Context {
     types: list.drop(ctx.types, num_vars),
   )
 }
-// pub fn instantiate_holes(ctx: Context, value: Value) -> #(Value, Context) {
-//   case value {
-//     v.Typ(_) -> #(value, ctx)
-//     v.Lit(_) -> #(value, ctx)
-//     v.LitT(_) -> #(value, ctx)
-//     v.Ctr(tag, arg) -> {
-//       let #(arg, ctx) = instantiate_holes(ctx, arg)
-//       #(v.Ctr(tag, arg), ctx)
-//     }
-//     v.Rcd(fields) -> {
-//       let #(fields, ctx) =
-//         list.fold(fields, #([], ctx), fn(acc, kv) {
-//           let #(#(fields, ctx), #(name, value)) = #(acc, kv)
-//           let #(value, ctx) = instantiate_holes(ctx, value)
-//           #([#(name, value), ..fields], ctx)
-//         })
-//       #(v.Rcd(fields), ctx)
-//     }
-//     v.RcdT(fields) -> {
-//       let #(fields, ctx) =
-//         list.fold(fields, #([], ctx), fn(acc, kv) {
-//           let #(#(fields, ctx), #(name, #(value, maybe_default))) = #(acc, kv)
-//           let #(value, ctx) = instantiate_holes(ctx, value)
-//           let #(maybe_default, ctx) = case maybe_default {
-//             Some(value) -> {
-//               let #(value, ctx) = instantiate_holes(ctx, value)
-//               #(Some(value), ctx)
-//             }
-//             None -> #(None, ctx)
-//           }
-//           #([#(name, #(value, maybe_default)), ..fields], ctx)
-//         })
-//       #(v.RcdT(fields), ctx)
-//     }
-//     v.Neut(neutral) ->
-//       case neutral {
-//         v.NVar(_) -> #(value, ctx)
-//         v.NHole(id) if id < 0 -> {
-//           let #(id, ctx) = new_hole(ctx)
-//           #(v.hole(id), ctx)
-//         }
-//         v.NHole(_) -> #(value, ctx)
-//         v.NApp(fun:, arg:) -> todo
-//         v.NMatch(env:, arg:, cases:) -> todo
-//         v.NCall(name:, args:) -> todo
-//       }
-//     v.Lam(env:, param:, body:) -> todo
-//     v.Pi(env:, implicit:, domain:, codomain:) -> todo
-//     v.Fix(env:, name:, body:) -> todo
-//     v.TypeDef(env:, type_def:) -> todo
-//     v.Err -> todo
-//   }
-// }
+
+// ============================================================================
+// ERROR TRACE
+// ============================================================================
+
+pub fn push_trace(ctx: Context, trace: #(String, Span)) -> Context {
+  Context(..ctx, trace: [trace, ..ctx.trace])
+}
+
+pub fn pop_trace(ctx: Context) -> Context {
+  case ctx.trace {
+    [_, ..trace] -> Context(..ctx, trace: trace)
+    [] -> ctx
+  }
+}

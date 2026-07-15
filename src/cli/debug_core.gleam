@@ -1,16 +1,16 @@
 /// Debug Core CLI Command — Inspect the full compiler pipeline
 import core/ast
 import core/context.{new_ctx}
+import core/error
 import core/eval.{eval}
 import core/format
 import core/infer.{infer}
 import core/parse.{parse}
-import core/quote.{quote}
 import core/resolve
-import core/term
 import gleam/int
 import gleam/io
 import gleam/list
+import gleam/option.{None}
 import gleam/string
 import syntax/span.{Span}
 
@@ -26,7 +26,7 @@ pub fn debug_core(source: String, width: Int) {
     Ok(expr) -> expr
     Error(err) -> {
       io.print_error(string.inspect(err))
-      ast.err(Span("<syntax error>", 0, 0, 0, 0))
+      ast.Expr(ast.Err, Span("<syntax error>", 0, 0, 0, 0), None)
     }
   }
   io.println(format.expr(expr, width, 2))
@@ -38,7 +38,9 @@ pub fn debug_core(source: String, width: Int) {
     0 -> Nil
     num_errors -> {
       io.println("// Errors (" <> int.to_string(num_errors) <> ")")
-      list.map(ctx.errors, fn(err) { io.println("- " <> string.inspect(err)) })
+      list.map(ctx.errors, fn(err) {
+        io.println(error.display_scoped(ctx.ffi, ctx.types, err))
+      })
       io.println("")
     }
   }

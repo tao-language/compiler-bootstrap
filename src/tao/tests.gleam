@@ -3,7 +3,6 @@ import core/error.{type Error}
 import core/eval.{eval}
 import core/term.{type Term}
 import core/value.{type Value} as v
-import gleam/list
 import tao/ast.{type Expr, type Pattern}
 
 pub type TestDef {

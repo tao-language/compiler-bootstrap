@@ -32,7 +32,7 @@ pub fn module(mod: Module, exports: List(String)) -> core.Expr {
 pub fn expr(e: tao.Expr) -> core.Expr {
   case e.data {
     tao.Hole(id) -> core.hole(id, e.span)
-    tao.Lit(value) -> core.Expr(core.Lit(value), e.span)
+    tao.Lit(value) -> core.lit(value, e.span)
     tao.Var(name) -> core.var(name, e.span)
     tao.Ctr("Int", [], None) -> core.int_t(e.span)
     tao.Ctr("Float", [], None) -> core.float_t(e.span)
@@ -196,7 +196,7 @@ fn application(
 ) -> core.Expr {
   let core_fun = expr(fun)
   let core_args = arguments(args, tail, fun.span)
-  core.Expr(core.App(core_fun, core_args), span)
+  core.app(core_fun, core_args, span)
 }
 
 fn case_list(cases: List(tao.Case)) -> List(core.Case) {

@@ -3,7 +3,7 @@ import core/error.{type Error}
 import core/ffi.{type FFI}
 import core/quote.{quote}
 import core/term.{type Case, type Term} as tm
-import core/unwrap.{unwrap, unwrap_neut}
+import core/unwrap.{unwrap}
 import core/value.{type Env, type Neut, type Value} as v
 import gleam/list
 import gleam/option.{None, Some}
@@ -201,8 +201,10 @@ fn neutral(ffi: FFI, subst: Subst, neut: Neut) -> Neut {
 }
 
 pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
-  // todo
-  err
+  // TODO: resolve terms/values in each error variant
+  case err.data {
+    _ -> err
+  }
 }
 
 fn resolve_case(

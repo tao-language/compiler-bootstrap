@@ -1,15 +1,14 @@
-import core/ast as core
+import core/breadcrumb as bc
 import core/context.{type Context, Context}
 import core/eval.{eval}
-import core/infer.{check, infer}
+import core/infer.{check}
 import core/resolve
-import core/term.{type Term} as tm
+import core/term as tm
 import core/value as v
 import gleam/list
 import gleam/option.{Some}
-import gleam/string
 import syntax/span.{Span}
-import tao/ast.{type Expr, type Module, type Pattern, type Stmt}
+import tao/ast.{type Module, type Stmt}
 import tao/desugar
 import tao/discover
 import tao/tests.{type TestDef, TestDef}
@@ -64,8 +63,11 @@ fn infer_modules(
       let mod_expr =
         discover.definitions(stmts)
         |> desugar.module(#(name, stmts), _)
+      let mod_span = Span(name, 0, 0, 0, 0)
+      let ctx = context.push_trace(ctx, #(name, mod_span))
       let #(mod_term, _mod_type, ctx) =
         check(ctx, mod_expr, #(v.hole(ctx.env, Some(type_id)), mod_expr.span))
+      let ctx = context.pop_trace(ctx)
       let mod_value = eval(ctx.ffi, ctx.env, mod_term)
       let ctx = Context(..ctx, subst: [#(value_id, mod_value), ..ctx.subst])
       infer_modules(ctx, mod_holes)

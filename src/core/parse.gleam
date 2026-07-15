@@ -4,7 +4,7 @@
 import core/ast.{
   type Case, type Expr, type Pattern, type TypeDefinition, type Variant,
 }
-import core/error.{type Error} as e
+import core/error as e
 import core/literals.{type LiteralType} as lit
 import gleam/option.{type Option, None, Some}
 import gleam/result.{try}
@@ -77,34 +77,43 @@ pub type Token {
 pub fn lex(
   file: String,
   source: String,
-) -> Result(List(lexer.Token(Token)), Error) {
+) -> Result(List(lexer.Token(Token)), e.Error) {
   case lexer.run(source, core_lexer()) {
     Ok(tokens) -> Ok(tokens)
-    Error(lexer.NoMatchFound(row, col, lexeme)) ->
-      Error(e.UnexpectedToken(lexeme, Span(file, row, col, row, col)))
+    Error(lexer.NoMatchFound(row, col, lexeme)) -> {
+      let span = Span(file, row, col, row, col)
+      let err = e.Error(e.UnexpectedToken(lexeme), span, [])
+      Error(err)
+    }
   }
 }
 
-pub fn parse(file: String, source: String) -> Result(Expr, Error) {
+pub fn parse(file: String, source: String) -> Result(Expr, e.Error) {
   use tokens <- try(lex(file, source))
   case nibble.run(tokens, expr(file)) {
     Ok(ast) -> Ok(ast)
     Error(dead_ends) ->
       case dead_ends {
+        // TODO: use all dead_ends, not just the first
         [dead_end, ..] -> {
-          let span = dead_end.pos
-          Error(e.UnexpectedToken(
-            "parse error",
+          let span =
             Span(
               file,
-              span.row_start,
-              span.col_start,
-              span.row_end,
-              span.col_end,
-            ),
-          ))
+              dead_end.pos.row_start,
+              dead_end.pos.col_start,
+              dead_end.pos.row_end,
+              dead_end.pos.col_end,
+            )
+          // TODO: make this into a more specific error
+          let err = e.Error(e.UnexpectedToken("syntax error"), span, [])
+          Error(err)
         }
-        _ -> Error(e.UnexpectedToken("parse error", Span(file, 0, 0, 0, 0)))
+        _ -> {
+          let span = Span(file, 0, 0, 0, 0)
+          // TODO: make this into a more specific error
+          let err = e.Error(e.UnexpectedToken("syntax error"), span, [])
+          Error(err)
+        }
       }
   }
 }
@@ -256,7 +265,7 @@ fn lit_t(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use type_ <- do(take_lit_type())
   use end <- do(get_span(file))
-  return(ast.Expr(ast.LitT(type_), span.merge(start, end)))
+  return(ast.lit_t(type_, span.merge(start, end)))
 }
 
 fn var(file: String) -> Parser(Expr, Token, Nil) {
@@ -334,7 +343,7 @@ fn lam(file: String) -> Parser(Expr, Token, Nil) {
   use _ <- do(nibble.token(FatArrow))
   use body <- do(expr(file))
   use end <- do(get_span(file))
-  return(ast.Expr(ast.Lam(#(name, type_), body), span.merge(start, end)))
+  return(ast.lam(#(name, type_), body, span.merge(start, end)))
 }
 
 fn pi_expr(file: String) -> Parser(Expr, Token, Nil) {
@@ -347,7 +356,7 @@ fn pi_expr(file: String) -> Parser(Expr, Token, Nil) {
   use _ <- do(nibble.token(ThinArrow))
   use body <- do(expr(file))
   use end <- do(get_span(file))
-  return(ast.Expr(ast.Pi(#(name, type_), body), span.merge(start, end)))
+  return(ast.pi(#(name, type_), body, span.merge(start, end)))
 }
 
 fn fix(file: String) -> Parser(Expr, Token, Nil) {

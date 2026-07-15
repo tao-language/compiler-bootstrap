@@ -1,26 +1,18 @@
-import core/ast as core
 import core/context.{Context, new_ctx}
 import core/error
 import core/eval.{eval}
 import core/ffi
 import core/format
-import core/infer.{infer}
-import core/resolve
-import core/term as tm
 import gleam/int
 import gleam/io
 import gleam/list
 import gleam/result
 import gleam/string
-import syntax/span.{Span}
-import tao/ast as tao
 import tao/compile
 import tao/desugar
 import tao/discover
 import tao/load
 import utils/fs
-
-const s = Span("debug_file", 0, 0, 0, 0)
 
 pub fn debug_file(root: String, filename: String, width: Int) {
   io.println("root: " <> root)
@@ -36,8 +28,8 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   case list.length(errors) {
     0 -> Nil
     n -> {
-      io.println("--- " <> int.to_string(n) <> " errors ---")
-      todo as "print errors"
+      io.println("--- " <> int.to_string(n) <> " syntax errors ---")
+      list.map(errors, fn(e) { io.println(string.inspect(e)) })
       io.println("")
     }
   }
@@ -48,7 +40,7 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   let ctx = compile.package(ctx, pkg)
   let names = list.map(ctx.types, fn(t) { t.0 })
   let fmt_expr = fn(expr) { format.expr(expr, width, 2) }
-  let fmt_term = fn(term) { format.term(names, term, width, 2) }
+  // let fmt_term = fn(term) { format.term(names, term, width, 2) }
   let fmt_value = fn(val) { format.value(ctx.ffi, names, val, width, 2) }
   let fmt_pattern = fn(pat) { format.pattern(pat, width, 2) }
 
@@ -89,8 +81,8 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   case list.length(errors) {
     0 -> Nil
     n -> {
-      io.println("--- " <> int.to_string(n) <> " errors ---")
-      todo as "print errors"
+      io.println("--- " <> int.to_string(n) <> " syntax errors ---")
+      list.map(errors, fn(e) { io.println(string.inspect(e)) })
       io.println("")
     }
   }
@@ -126,7 +118,7 @@ pub fn debug_file(root: String, filename: String, width: Int) {
       let n = list.length(errors)
       io.println_error("---- ERRORS ----")
       list.map(ctx.errors, fn(err) {
-        let msg = error.display(ctx.ffi, ctx.types, err)
+        let msg = error.display_scoped(ctx.ffi, ctx.types, err)
         io.println_error("❌ " <> msg)
       })
       io.println("")

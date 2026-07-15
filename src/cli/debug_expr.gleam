@@ -1,7 +1,4 @@
 import gleam/io
-import gleam/string
-import syntax/span.{Span}
-import tao/ast as tao
 
 pub fn debug_expr(source: String, width: Int) {
   io.println(">> source")

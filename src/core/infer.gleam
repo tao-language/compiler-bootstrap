@@ -6,10 +6,9 @@
 /// the expected type.
 import core/ast.{type Expr}
 import core/coerce.{coerce}
-import core/context.{type Context, Context}
+import core/context.{type Context}
 import core/error as e
 import core/eval.{eval}
-import core/format
 import core/literals.{type Literal, type LiteralType} as lit
 import core/quote.{quote}
 import core/term.{type Term} as tm
@@ -17,21 +16,22 @@ import core/unify.{unify}
 import core/unwrap.{unwrap}
 import core/value.{type Type, type Value} as v
 import gleam/int
-import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import gleam/set
-import gleam/string
 import syntax/span.{type Span, Span}
 
 /// Infer the type of a term (synthesis).
 ///
 /// Returns #(result_term, type_value, ctx) where:
-/// - result_term is the original term with holes filled and implicit args expanded
-/// - type_value is the inferred type (a Value)
-/// - ctx is the updated ctx with any new bindings
+/// - result_term: original term with holes filled and implicit args expanded
+/// - type_value: inferred type (a Value)
+/// - ctx: updated ctx with any new bindings, solved holes, etc
 pub fn infer(ctx: Context, term_ast: ast.Expr) -> #(Term, Type, Context) {
-  case term_ast.data {
+  let ctx = case term_ast.trace {
+    Some(label) -> context.push_trace(ctx, #(label, term_ast.span))
+    None -> ctx
+  }
+  let #(term, type_, ctx) = case term_ast.data {
     ast.Typ(level) -> infer_typ(ctx, level)
     ast.Hole(id) -> infer_hole(ctx, id)
     ast.Lit(value) -> infer_lit(ctx, value)
@@ -45,18 +45,20 @@ pub fn infer(ctx: Context, term_ast: ast.Expr) -> #(Term, Type, Context) {
     ast.Lam(param, body) -> infer_lam(ctx, param, body)
     ast.Pi(param, body) -> infer_pi(ctx, param, body)
     ast.Fix(name, body) -> infer_fix(ctx, name, body, term_ast.span)
-    ast.App(ast.Expr(ast.Lam(#(name, type_), body), _), arg) ->
+    ast.App(ast.Expr(ast.Lam(#(name, type_), body), _, _), arg) ->
       infer_let(ctx, #(name, type_, arg), body)
     ast.App(fun, arg) -> infer_app(ctx, fun, arg, term_ast.span)
     ast.Match(arg, cases) -> infer_match(ctx, arg, cases)
-    // ast.TypeDef(params, constructors) ->
-    //   infer_type_def(ctx, params, constructors, term_ast.span)
+    ast.TypeDef(ast.TypeDefinition(params, arg, variants)) ->
+      // infer_type_def(ctx, params, constructors, term_ast.span)
+      todo
     ast.Err -> infer_err(ctx)
-    x -> {
-      let msg = string.inspect(x)
-      todo as msg
-    }
   }
+  let ctx = case term_ast.trace {
+    Some(_) -> context.pop_trace(ctx)
+    None -> ctx
+  }
+  #(term, type_, ctx)
 }
 
 /// Check that a term has the expected type (verification).
@@ -143,7 +145,7 @@ fn infer_var(ctx: Context, name: String, span: Span) -> #(Term, Type, Context) {
   case context.lookup(ctx, name) {
     Some(#(index, type_)) -> #(tm.Var(index), type_, ctx)
     None -> {
-      let ctx = context.with_err(ctx, e.VarUndefined(name, span))
+      let ctx = context.with_err(ctx, e.VarUndefined(name), span)
       #(tm.Err, v.Err, ctx)
     }
   }
@@ -183,7 +185,7 @@ fn infer_rcd_fields(
         None -> {
           let #(id, ctx) = context.new_hole(ctx)
           // TODO: get span from field name
-          #(ast.hole(Some(id), s), ctx)
+          #(ast.Expr(ast.Hole(Some(id)), s, None), ctx)
         }
       }
       let #(term, type_, ctx) = infer(ctx, term)
@@ -370,7 +372,7 @@ fn infer_app(
       todo as "Type error: You cannot apply a term whose type is a rigid variable (e.g., `a`)"
     }
     _ -> {
-      let ctx = context.with_err(ctx, e.NotAFunction(tm.Err, fun_type, span))
+      let ctx = context.with_err(ctx, e.NotAFunction(tm.Err, fun_type), span)
       #(tm.Err, v.Err, ctx)
     }
   }
@@ -382,7 +384,7 @@ fn instantiate(
   fun_type: Type,
 ) -> #(Term, Type, Context) {
   case unwrap(ctx.ffi, ctx.subst, fun_type) {
-    v.For(env, #(_, param_type), body) -> {
+    v.For(env, _, body) -> {
       let #(id, ctx) = context.new_hole(ctx)
       let arg = tm.Hole(Some(id))
       let env = [v.hole(env, Some(id)), ..env]

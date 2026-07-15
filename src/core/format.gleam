@@ -58,7 +58,7 @@ fn doc_term(term: Expr, indent: Int) -> Document {
   case term.data {
     // Syntax sugar
     // %let name: opt_type = value; body
-    ast.App(ast.Expr(ast.Lam(#(name, opt_type), body), _), value) ->
+    ast.App(ast.Expr(ast.Lam(#(name, opt_type), body), _, _), value) ->
       doc.concat([
         doc_text("%let "),
         doc_text(var_name(name)),
@@ -83,7 +83,7 @@ fn doc_term(term: Expr, indent: Int) -> Document {
       }
     ast.LitT(t_) -> doc_lit_type(t_)
     ast.Var(name) -> doc_text(var_name(name))
-    ast.Ctr(tag, ast.Expr(ast.Rcd([], None), _)) -> doc_text("#" <> tag)
+    ast.Ctr(tag, ast.Expr(ast.Rcd([], None), _, _)) -> doc_text("#" <> tag)
     ast.Ctr(tag, arg) ->
       doc.concat([
         doc_text("#" <> tag <> "("),

@@ -5,7 +5,6 @@ import gleam/float
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/option.{type Option, None, Some}
 import gleam/regexp
 import gleam/result
 import gleam/string
@@ -58,7 +57,7 @@ pub fn test_(
       let header = "------ ERRORS (" <> int.to_string(n) <> ") ------"
       io.println_error(header)
       list.map(errors, fn(err) {
-        let msg = error.display(ctx.ffi, ctx.types, err)
+        let msg = error.display_scoped(ctx.ffi, ctx.types, err)
         io.println_error(msg)
       })
       io.println_error(string.repeat("-", string.length(header)))
