@@ -3,11 +3,6 @@
 /// Each error variant carries `Span` location information so that
 /// `display` can produce messages in the familiar
 /// `file:line:col: message` format with additional context.
-///
-/// Errors are wrapped in `ScopedError` which captures the breadcrumb
-/// trail showing the path through the program structure that led to
-/// the error. This helps users understand *where* and *why* an error
-/// occurred.
 import core/ast
 import core/ffi.{type FFI}
 import core/format
@@ -56,8 +51,6 @@ pub type ErrorData {
 ///
 /// Pass `ffi` and `types` from the context so that values and terms
 /// can be formatted with proper names (De Bruijn indices → variable names).
-///
-/// This version accepts a raw `Error` (no breadcrumbs).
 pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
   let names = list.map(types, fn(t) { t.0 })
   let fmt_expr = fn(expr: ast.Expr) { format.expr(expr, 60, 0) }
@@ -170,7 +163,7 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
   }
 }
 
-/// Render the breadcrumb trail as a tree.
+/// Render the breadcrumb trace as a tree.
 pub fn display_trace(trace: List(#(String, Span))) -> String {
   list.map(trace, fn(entry) {
     let #(label, span) = entry
