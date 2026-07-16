@@ -41,7 +41,6 @@ pub type ErrorData {
   TypeMismatch(a: ast.Expr, b: ast.Expr)
   NeutralTypeMismatch(a: #(Neut, Span), b: #(Neut, Span))
   RcdFieldNotFound(field: #(String, Span))
-  CallArityMismatch(#(Int, Span), #(Int, Span))
   InfiniteType(hole_id: Int, type_: Value)
   NotAFunction(fun: tm.Term, fun_type: Value)
   AppExpectedExplicitArg(fun_type: Value)
@@ -129,13 +128,6 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
     RcdFieldNotFound(#(name, _field_span)) -> {
       summary(err.span, "record field not found: \"" <> name <> "\"")
       <> display_trace(err.trace)
-    }
-
-    CallArityMismatch(#(got_arity, span), #(expected_arity, _)) -> {
-      summary(span, "call arity mismatch")
-      <> display_trace(err.trace)
-      <> detail("Expected " <> int.to_string(expected_arity) <> " argument(s)")
-      <> detail("Got " <> int.to_string(got_arity) <> " argument(s)")
     }
 
     InfiniteType(hole_id, type_) -> {

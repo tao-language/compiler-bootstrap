@@ -104,10 +104,9 @@ fn quote_neut(ffi: FFI, env: Env, neut: Neut) -> Term {
       let cases = list.map(cases, quote_case(ffi, captured_env, _))
       tm.Match(arg, cases)
     }
-    v.NCall(name, returns, args) -> {
-      let returns = quote(ffi, list.length(env), returns)
-      let args = list.map(args, quote(ffi, list.length(env), _))
-      tm.Call(name, returns, args)
+    v.NCall(name, arg_val) -> {
+      let arg = quote(ffi, list.length(env), arg_val)
+      tm.Call(name, arg)
     }
   }
 }

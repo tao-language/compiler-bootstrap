@@ -74,10 +74,9 @@ fn term_seen(
       let tail = option.map(tail, self(size, _))
       tm.Rcd(fields, tail)
     }
-    tm.Call(name, returns, args) -> {
-      let returns = self(size, returns)
-      let args = list.map(args, self(size, _))
-      tm.Call(name, returns, args)
+    tm.Call(name, arg) -> {
+      let arg = self(size, arg)
+      tm.Call(name, arg)
     }
     tm.Ann(t, type_) -> {
       let t = self(size, t)
@@ -192,10 +191,9 @@ fn neutral(ffi: FFI, subst: Subst, neut: Neut) -> Neut {
         })
       v.NMatch(env, arg_neut, cases)
     }
-    v.NCall(name, returns, args) -> {
-      let returns = value(ffi, subst, returns)
-      let args = list.map(args, value(ffi, subst, _))
-      v.NCall(name, returns, args)
+    v.NCall(name, arg) -> {
+      let arg = value(ffi, subst, arg)
+      v.NCall(name, arg)
     }
   }
 }

@@ -83,10 +83,14 @@ pub fn expr(e: tao.Expr) -> core.Expr {
       let op_name = tao.binop_name(op)
       expr(tao.app(tao.var(op_name, e.span), [#("", lhs), #("", rhs)], e.span))
     }
-    tao.Call(name, ret, args) -> {
-      let core_ret = expr(ret)
-      let core_args = list.map(args, expr)
-      core.call(name, core_ret, core_args, e.span)
+    tao.Call(name, args) -> {
+      let fields =
+        list.map(args, fn(arg) {
+          let #(name, value) = arg
+          #(name, Some(value))
+        })
+      let core_arg = expr(tao.rcd(fields, None, e.span))
+      core.call(name, core_arg, e.span)
     }
     tao.Do(block) -> {
       let return = core.rcd([], None, e.span)
@@ -396,7 +400,7 @@ fn overload_choice(
       let core_fun = core.var(name, s)
       core.app(core_fun, core_arg, s)
     }
-    tao.OverloadCall(name) -> core.call(name, core.hole(None, s), [core_arg], s)
+    tao.OverloadCall(name) -> core.call(name, core_arg, s)
     tao.OverloadDot(name, field) -> {
       let core_fun = core.dot(core.var(name, s), field, s)
       core.app(core_fun, core_arg, s)

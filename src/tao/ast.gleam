@@ -37,7 +37,7 @@ pub type ExprData {
   Match(arg: Expr, cases: List(Case))
   Op1(op: UnaryOp, expr: Expr)
   Op2(op: BinaryOp, lhs: Expr, rhs: Expr)
-  Call(name: String, ret: Type, args: List(Expr))
+  Call(name: String, args: List(#(String, Expr)))
   Do(Block)
   Err
 }
@@ -269,8 +269,8 @@ pub fn div(lhs: Expr, rhs: Expr, span: Span) {
   op2(Div, lhs, rhs, span)
 }
 
-pub fn call(name: String, ret: Type, args: List(Expr), span: Span) {
-  Expr(Call(name, ret, args), span)
+pub fn call(name: String, args: List(#(String, Expr)), span: Span) {
+  Expr(Call(name, args), span)
 }
 
 pub fn do(stmts: List(Stmt), span: Span) {

@@ -28,10 +28,9 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       let tail_val = option.map(tail, eval(ffi, env, _))
       v.Rcd(fields_val, tail_val)
     }
-    tm.Call(name, returns, args) -> {
-      let returns_val = eval(ffi, env, returns)
-      let args_val = list.map(args, eval(ffi, env, _))
-      do_call(ffi, name, returns_val, args_val)
+    tm.Call(name, arg) -> {
+      let arg_val = eval(ffi, env, arg)
+      do_call(ffi, name, arg_val)
     }
     tm.Ann(term, _) -> eval(ffi, env, term)
     tm.For(#(name, param), body) -> {
@@ -82,19 +81,14 @@ pub fn do_app(ffi: FFI, fun_val: Value, arg_val: Value) -> Value {
   }
 }
 
-pub fn do_call(
-  ffi: FFI,
-  name: String,
-  returns: Type,
-  args_val: List(Value),
-) -> Value {
+pub fn do_call(ffi: FFI, name: String, arg_val: Value) -> Value {
   let result = case list.key_find(ffi, name) {
-    Ok(call) -> call(args_val)
+    Ok(call_def) -> call_def(arg_val)
     Error(Nil) -> None
   }
   case result {
     Some(value) -> value
-    None -> v.call(name, returns, args_val)
+    None -> v.call(name, arg_val)
   }
 }
 

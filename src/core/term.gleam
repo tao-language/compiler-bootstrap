@@ -43,7 +43,7 @@ pub type Term {
   Var(index: Int)
   Ctr(tag: String, arg: Term)
   Rcd(fields: List(#(String, #(Term, Option(Term)))), tail: Option(Term))
-  Call(name: String, returns: Type, args: List(Term))
+  Call(name: String, arg: Term)
   Ann(term: Term, type_: Type)
   For(param: #(String, Type), body: Term)
   Lam(param: #(String, Type), body: Term)
@@ -147,10 +147,9 @@ pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
       let tail_ast = option.map(tail, lift(_, names, s))
       ast.rcd(fields_ast, tail_ast, s)
     }
-    Call(name, returns, args) -> {
-      let returns_ast = lift(returns, names, s)
-      let args_ast = list.map(args, lift(_, names, s))
-      ast.call(name, returns_ast, args_ast, s)
+    Call(name, arg) -> {
+      let arg_ast = lift(arg, names, s)
+      ast.call(name, arg_ast, s)
     }
     Ann(term, type_) -> todo
     For(#(name, type_), body) -> {

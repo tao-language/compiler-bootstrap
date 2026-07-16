@@ -39,7 +39,7 @@ pub type ExprData {
   Fix(name: String, body: Expr)
   App(fun: Expr, arg: Expr)
   Match(arg: Expr, cases: List(Case))
-  Call(name: String, returns: Type, args: List(Expr))
+  Call(name: String, arg: Expr)
   TypeDef(type_def: TypeDefinition)
   Err
 }
@@ -121,8 +121,7 @@ pub fn contains(term: Expr, name: String) -> Bool {
     App(fun, arg) -> contains(fun, name) || contains(arg, name)
     Match(arg, cases) ->
       contains(arg, name) || list.any(cases, contains_case(_, name))
-    Call(_, returns, args) ->
-      contains(returns, name) || list.any(args, contains(_, name))
+    Call(_, arg) -> contains(arg, name)
     TypeDef(type_def) -> todo
     _ -> False
   }
@@ -309,8 +308,16 @@ pub fn match(arg: Expr, cases: List(Case), span: Span) {
   Expr(Match(arg, cases), span, None)
 }
 
-pub fn call(name: String, returns: Type, args: List(Expr), span: Span) {
-  Expr(Call(name, returns, args), span, None)
+pub fn call(name: String, arg: Expr, span: Span) {
+  Expr(Call(name, arg), span, None)
+}
+
+pub fn call_args(name: String, args: List(#(String, Expr)), span: Span) {
+  call(name, rcd_values(args, None, span), span)
+}
+
+pub fn call0(name: String, span: Span) {
+  call_args(name, [], span)
 }
 
 pub fn let_var(def: #(String, Option(Type), Expr), body: Expr, span: Span) {

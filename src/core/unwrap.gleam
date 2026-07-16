@@ -49,11 +49,9 @@ pub fn unwrap_neut(ffi: FFI, subst: Subst, neut: Neut) -> Value {
           |> unwrap(ffi, subst, _)
       }
     }
-    v.NCall(name, returns, args) -> {
-      // TODO: should have single arg
-      let returns = unwrap(ffi, subst, returns)
-      let args = list.map(args, unwrap(ffi, subst, _))
-      eval.do_call(ffi, name, returns, args)
+    v.NCall(name, arg) -> {
+      let arg = unwrap(ffi, subst, arg)
+      eval.do_call(ffi, name, arg)
     }
   }
 }

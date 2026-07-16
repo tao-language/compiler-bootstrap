@@ -39,7 +39,7 @@ pub fn infer(ctx: Context, term_ast: ast.Expr) -> #(Term, Type, Context) {
     ast.Var(name) -> infer_var(ctx, name, term_ast.span)
     ast.Ctr(tag, arg) -> infer_ctr(ctx, tag, arg)
     ast.Rcd(fields, tail) -> infer_rcd(ctx, fields, tail)
-    ast.Call(name, returns, args) -> infer_call(ctx, name, returns, args)
+    ast.Call(name, arg) -> infer_call(ctx, name, arg)
     ast.Ann(inner, type_) -> infer_ann(ctx, inner, type_)
     ast.For(param, body) -> infer_for(ctx, param, body)
     ast.Lam(param, body) -> infer_lam(ctx, param, body)
@@ -198,24 +198,11 @@ fn infer_rcd_fields(
 fn infer_call(
   ctx: Context,
   name: String,
-  returns_ast: Expr,
-  args: List(Expr),
+  arg_ast: Expr,
 ) -> #(Term, Type, Context) {
-  let #(args, ctx) = check_call_args(ctx, args)
-  let #(returns, _, ctx) = infer(ctx, returns_ast)
-  let returns_val = eval(ctx.ffi, ctx.env, returns)
-  #(tm.Call(name, returns, args), returns_val, ctx)
-}
-
-fn check_call_args(ctx: Context, args: List(Expr)) -> #(List(Term), Context) {
-  case args {
-    [] -> #([], ctx)
-    [arg, ..args] -> {
-      let #(arg, _, ctx) = infer(ctx, arg)
-      let #(args, ctx) = check_call_args(ctx, args)
-      #([arg, ..args], ctx)
-    }
-  }
+  let #(id, ctx) = context.new_hole(ctx)
+  let #(arg, _, ctx) = infer(ctx, arg_ast)
+  #(tm.Call(name, arg), v.hole(ctx.env, Some(id)), ctx)
 }
 
 fn infer_ann(ctx: Context, ast: Expr, type_: Expr) -> #(Term, Type, Context) {

@@ -146,7 +146,7 @@ fn check_neut_with_concrete(
     v.NApp(fun_neut, arg_val) -> todo
     v.NMatch(env, arg_val, cases) ->
       check_neut_with_concrete_cases(ctx, env, arg_val, a, #(cases, s2))
-    v.NCall(_, returns, _) -> unify(ctx, #(value, s1), #(returns, s2))
+    v.NCall(name, arg) -> todo
   }
 }
 
@@ -263,15 +263,8 @@ fn unify_neut(ctx: Context, a: #(Neut, Span), b: #(Neut, Span)) -> Context {
       let ctx = unify_neut(ctx, #(fun1, s1), #(fun2, s2))
       unify(ctx, #(arg1, s1), #(arg2, s2))
     }
-    v.NCall(x, ret1, args1), v.NCall(y, ret2, args2) if x == y -> {
-      let ctx = unify(ctx, #(ret1, s1), #(ret2, s2))
-      let ctx = case list.length(args1), list.length(args2) {
-        len1, len2 if len1 == len2 -> ctx
-        len1, len2 ->
-          with_err(ctx, e.CallArityMismatch(#(len1, s1), #(len2, s2)), s1)
-      }
-      unify_args(ctx, #(args1, s1), #(args2, s2))
-    }
+    v.NCall(x, arg1), v.NCall(y, arg2) if x == y ->
+      unify(ctx, #(arg1, s1), #(arg2, s2))
     v.NMatch(env1, arg1, cases1), v.NMatch(env2, arg2, cases2) -> {
       let ctx = unify_neut(ctx, #(arg1, s1), #(arg2, s2))
       todo as "unify_neut NMatch cases, use env to evaluate with pattern bindings"
