@@ -1,14 +1,14 @@
 fn (-) {
 | %int_sub(Int, Int)
-// | %float_sub(Float, Float)
+| %float_sub(Float, Float)
 }
 
 >>> 3 - 2       1
 >>> 3.0 - 2.0   1.0
 
 fn (*) {
-// | %int_mul(Int, Int)
-// | %float_mul(Float, Float)
+| %int_mul(Int, Int)
+| %float_mul(Float, Float)
 }
 
 >>> 3 * 2       6
