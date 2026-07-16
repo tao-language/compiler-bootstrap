@@ -13,7 +13,7 @@ import tao/desugar
 const s = Span("tao/examples_test", 0, 0, 0, 0)
 
 pub fn check_expr(ctx: Context, expr: Expr) -> #(Term, Value, Context) {
-  infer(ctx, desugar.expr(expr))
+  infer(ctx, desugar.expr([], expr))
 }
 
 pub fn tao_factorial_test() {

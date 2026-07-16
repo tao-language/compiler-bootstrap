@@ -1,3 +1,4 @@
+import core/ast as core
 import core/context.{type Context, Context}
 import core/eval.{eval}
 import core/infer.{check}
@@ -13,8 +14,10 @@ import tao/discover
 import tao/tests.{type TestDef, TestDef}
 
 pub fn package(ctx: Context, mods: List(Module)) -> Context {
-  let #(mod_holes, ctx) = define_modules(ctx, mods)
-  let ctx = infer_modules(ctx, mod_holes)
+  let mods_defs = definitions(mods)
+  let defs = list.map(mods_defs, fn(m) { #(m.0, m.1) })
+  let #(core_mods, ctx) = define_modules(ctx, defs, mods_defs)
+  let ctx = infer_modules(ctx, core_mods)
   resolve.context(ctx)
 }
 
@@ -31,14 +34,24 @@ pub fn tests(mods: List(Module)) -> List(TestDef) {
   |> list.flatten
 }
 
+fn definitions(
+  mods: List(Module),
+) -> List(#(String, List(String), List(Stmt))) {
+  list.map(mods, fn(mod) {
+    let #(name, stmts) = mod
+    #(name, discover.definitions(stmts), stmts)
+  })
+}
+
 fn define_modules(
   ctx: Context,
-  mods: List(Module),
-) -> #(List(#(String, Int, Int, List(Stmt))), Context) {
+  defs: List(#(String, List(String))),
+  mods: List(#(String, List(String), List(Stmt))),
+) -> #(List(#(Int, Int, core.Expr)), Context) {
   case mods {
     [] -> #([], ctx)
-    [#(name, stmts), ..mods] -> {
-      let #(core_mods, ctx) = define_modules(ctx, mods)
+    [#(name, exports, stmts), ..mods] -> {
+      let #(core_mods, ctx) = define_modules(ctx, defs, mods)
       let #(value_id, ctx) = context.new_hole(ctx)
       let #(type_id, ctx) = context.new_hole(ctx)
       let var = #(
@@ -47,21 +60,20 @@ fn define_modules(
         Some(v.hole(ctx.env, Some(type_id))),
       )
       let ctx = context.push_var(ctx, var)
-      #([#(name, value_id, type_id, stmts), ..core_mods], ctx)
+      let mod_expr = desugar.module(defs, exports, #(name, stmts))
+      let core_mods = [#(value_id, type_id, mod_expr), ..core_mods]
+      #(core_mods, ctx)
     }
   }
 }
 
 fn infer_modules(
   ctx: Context,
-  mod_holes: List(#(String, Int, Int, List(Stmt))),
+  core_mods: List(#(Int, Int, core.Expr)),
 ) -> Context {
-  case mod_holes {
+  case core_mods {
     [] -> ctx
-    [#(name, value_id, type_id, stmts), ..mod_holes] -> {
-      let mod_expr =
-        discover.definitions(stmts)
-        |> desugar.module(#(name, stmts), _)
+    [#(value_id, type_id, mod_expr), ..mod_holes] -> {
       let #(mod_term, _mod_type, ctx) =
         check(ctx, mod_expr, #(v.hole(ctx.env, Some(type_id)), mod_expr.span))
       let mod_value = eval(ctx.ffi, ctx.env, mod_term)

@@ -7,6 +7,7 @@ import core/value as v
 import gleam/int
 import gleam/io
 import gleam/list
+import gleam/option.{type Option}
 import gleam/result
 import gleam/string
 import tao/compile
@@ -15,8 +16,16 @@ import tao/discover
 import tao/load
 import utils/fs
 
-pub fn debug_file(root: String, filename: String, width: Int) {
+pub fn debug_file(
+  root: String,
+  paths: List(String),
+  dependencies: List(#(String, Option(String))),
+  filename: String,
+  width: Int,
+) {
   io.println("root: " <> root)
+  io.println("paths: " <> string.inspect(paths))
+  io.println("dependencies: " <> string.inspect(dependencies))
   io.println("filename: " <> filename)
   io.println("")
 
@@ -26,6 +35,7 @@ pub fn debug_file(root: String, filename: String, width: Int) {
     |> result.unwrap([])
     |> list.prepend(filename)
     |> load.package
+  todo as "TODO: load dependencies from paths"
   case list.length(errors) {
     0 -> Nil
     n -> {
@@ -39,6 +49,19 @@ pub fn debug_file(root: String, filename: String, width: Int) {
       exit(1)
     }
   }
+  io.println("")
+
+  echo "> defs = definitions(pkg)"
+  let defs =
+    list.map(pkg, fn(mod) {
+      let #(name, stmts) = mod
+      #(name, discover.definitions(stmts))
+    })
+  list.map(defs, fn(def) {
+    let #(name, exports) = def
+    io.println("- " <> string.inspect(name) <> ":")
+    list.map(exports, fn(x) { io.println("  - " <> string.inspect(x)) })
+  })
   io.println("")
 
   echo "> ctx = compile.package(pkg)"
@@ -97,15 +120,13 @@ pub fn debug_file(root: String, filename: String, width: Int) {
       exit(1)
     }
   }
-  let definitions = discover.definitions(stmts)
-  io.println(
-    "definitions: " <> int.to_string(list.length(definitions)) <> " length",
-  )
-  list.map(definitions, fn(name) { io.println("- " <> name) })
+  let exports = discover.definitions(stmts)
+  io.println("exports: " <> int.to_string(list.length(exports)) <> " length")
+  list.map(exports, fn(name) { io.println("- " <> name) })
   io.println("")
 
-  echo "> mod_expr = desugar.module(stmts, definitions)"
-  let mod_expr = desugar.module(#(filename, stmts), definitions)
+  echo "> mod_expr = desugar.module(exports, mod)"
+  let mod_expr = desugar.module(defs, exports, #(filename, stmts))
   io.println(fmt_expr(mod_expr))
   io.println("")
 
@@ -113,7 +134,7 @@ pub fn debug_file(root: String, filename: String, width: Int) {
   let tests = compile.tests([#(filename, stmts)])
   let results =
     list.map(tests, fn(t) {
-      let core_expr = desugar.expr(t.expr)
+      let core_expr = desugar.expr(defs, t.expr)
       let core_expect = desugar.pattern(t.expect)
       let value = eval(ctx.ffi, ctx.env, t.term)
       io.println("/// " <> t.name)

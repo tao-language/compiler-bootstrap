@@ -6,7 +6,7 @@ import cli/debug_file.{debug_file}
 import cli/test_.{test_}
 import gleam/io
 import gleam/list
-import gleam/option
+import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 import tao/config
@@ -82,11 +82,32 @@ pub fn main() {
         |> option.from_result
         |> option.or(config.find_project_root("."))
         |> option.unwrap(".")
+      let paths =
+        list.filter_map(args, fn(arg) {
+          case arg {
+            "--path=" <> path -> Ok(path)
+            _ -> Error(Nil)
+          }
+        })
+        |> list.append(["lib"])
+        |> list.unique
+      let dependencies =
+        list.filter_map(args, fn(arg) {
+          case arg {
+            "--add=" <> name ->
+              case string.split_once(name, ":") {
+                Ok(#(name, version)) -> Ok(#(name, Some(version)))
+                Error(Nil) -> Ok(#(name, None))
+              }
+            _ -> Error(Nil)
+          }
+        })
       let filename_result =
         list.filter(args, fn(arg) { !string.starts_with(arg, "--") })
         |> list.first
       case filename_result {
-        Ok(filename) -> debug_file(root, filename, format_width)
+        Ok(filename) ->
+          debug_file(root, paths, dependencies, filename, format_width)
         Error(Nil) -> {
           io.println_error("error: no filename provided")
           io.println(help)
