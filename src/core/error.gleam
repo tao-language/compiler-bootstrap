@@ -97,7 +97,7 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
     }
 
     VarUndefined(name) -> {
-      summary(err.span, "undefined variable")
+      summary(err.span, "undefined variable " <> string.inspect(name))
       <> display_trace(err.trace)
       <> detail(
         "The variable `" <> name <> "` has not been defined in this scope.",

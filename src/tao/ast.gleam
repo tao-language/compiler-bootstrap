@@ -75,6 +75,7 @@ pub type StmtData {
     alias: Option(String),
     names: List(#(String, Option(String))),
   )
+  ImportAll(path: String, alias: Option(String))
   Let(pattern: Pattern, opt_type: Option(Type), value: Expr)
   LetMut(name: String, opt_type: Option(Type), value: Expr)
   Mut(name: String, value: Expr)

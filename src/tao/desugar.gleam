@@ -5,6 +5,7 @@ import gleam/int
 import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/string
 import syntax/span.{type Span, Span}
 import tao/ast.{type Case, type Module, type Pattern, type Stmt} as tao
 
@@ -310,6 +311,16 @@ pub fn statement(
       let next = core.let_var(#(name_alias, None, access), next, stmt.span)
       statement(block_ctx, stmt, next)
     }
+    tao.ImportAll(path, opt_alias) -> {
+      let alias = case opt_alias {
+        Some(alias) -> alias
+        None -> filepath.base_name(path)
+      }
+      let def = #(alias, None, core.var("@" <> path, stmt.span))
+      echo block_ctx
+      todo as "TODO: define all module definitions"
+      core.let_var_trace(def, next, stmt.span, Some("import " <> path <> "*"))
+    }
     tao.Let(p, opt_type, value) -> {
       let core_pattern = pattern(p)
       let core_type = opt_expr(opt_type)
@@ -439,4 +450,16 @@ fn rcdt_fields(
     }
     #(name, #(type_term, default_term))
   })
+}
+
+fn to_valid_var(name: String) -> String {
+  let name = name |> string.replace("-", "_") |> string.replace(".", "_")
+  case string.first(name) {
+    Ok(first) ->
+      case first {
+        "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" -> "_" <> name
+        _ -> name
+      }
+    _ -> name
+  }
 }

@@ -1,4 +1,5 @@
 import core/error as e
+import filepath
 import gleam/float
 import gleam/int
 import gleam/list
@@ -296,11 +297,62 @@ fn token_to_string(tok: Token) -> String {
 
 fn stmt(file: String) -> Parser(Stmt, Token, String) {
   nibble.one_of([
+    import_(file),
     let_(file),
     fn_def(file),
     test_(file),
   ])
-  |> nibble.in("statement")
+}
+
+fn import_(file: String) -> Parser(Stmt, Token, String) {
+  {
+    use start <- do(get_span(file))
+    use _ <- do(nibble.token(KwImport))
+    use path <- do(import_path())
+    use alias <- do(nibble.optional(import_alias()))
+    use data <- do(
+      nibble.one_of([
+        {
+          use _ <- do(nibble.token(Mul))
+          return(tao.ImportAll(path, alias))
+        },
+        {
+          use _ <- do(nibble.token(LBrace))
+          use names <- do(sequence(import_name(), Comma))
+          use _ <- do(nibble.token(RBrace))
+          return(tao.Import(path, alias, names))
+        },
+        return(tao.Import(path, alias, [])),
+      ]),
+    )
+    echo data
+    use end <- do(get_span(file))
+    return(tao.Stmt(data, span.merge(start, end)))
+  }
+  |> nibble.in("import statement")
+}
+
+fn import_path() -> Parser(String, Token, String) {
+  let path_valid = [
+    take_var(),
+    token_text(Div),
+    token_text(Sub),
+    token_text(Dot),
+    nibble.map(take_int(), int.to_string),
+  ]
+  use parts <- do(nibble.many1(nibble.one_of(path_valid)))
+  return(string.join(parts, ""))
+}
+
+fn import_alias() -> Parser(String, Token, String) {
+  use _ <- do(nibble.token(KwAs))
+  var_name()
+}
+
+fn import_name() -> Parser(#(String, Option(String)), Token, String) {
+  use name <- do(var_name())
+  use alias <- do(nibble.optional(import_alias()))
+  return(#(name, alias))
 }
 
 fn let_(file: String) -> Parser(Stmt, Token, String) {
@@ -321,7 +373,7 @@ fn fn_def(file: String) -> Parser(Stmt, Token, String) {
   {
     use start <- do(get_span(file))
     use _ <- do(nibble.token(KwFn))
-    use name <- do(var_name(file))
+    use name <- do(var_name())
     nibble.one_of([
       fn_def_body(file, start, name),
       fn_overload(file, start, name),
@@ -427,19 +479,19 @@ fn fn_overload_choice_fun(
 ) -> Parser(OverloadChoiceFun, Token, String) {
   nibble.one_of([
     {
-      use name <- do(var_name(file))
+      use name <- do(var_name())
       use _ <- do(nibble.token(Dot))
-      use field <- do(var_name(file))
+      use field <- do(var_name())
       return(tao.OverloadDot(name, field))
     },
     {
       // This must go after OverloadDot to avoid ambiguity.
-      use name <- do(var_name(file))
+      use name <- do(var_name())
       return(tao.OverloadVar(name))
     },
     {
       use _ <- do(nibble.token(Percent))
-      use name <- do(var_name(file))
+      use name <- do(var_name())
       return(tao.OverloadCall(name))
     },
   ])
@@ -487,7 +539,7 @@ fn pfloat(file: String) -> Parser(Pattern, Token, String) {
 
 fn pvar(file: String) -> Parser(Pattern, Token, String) {
   use start <- do(get_span(file))
-  use name <- do(var_name(file))
+  use name <- do(var_name())
   use end <- do(get_span(file))
   case name {
     "_" -> return(tao.pany(merge(start, end)))
@@ -570,16 +622,12 @@ fn float(file: String) -> Parser(Expr, Token, String) {
   return(tao.float(num, merge(start, end)))
 }
 
-fn var_name(file: String) -> Parser(String, Token, String) {
+fn var_name() -> Parser(String, Token, String) {
   nibble.one_of([
     take_var(),
     {
       let ops = [Add, Sub, Mul, Div]
-      let ops_names =
-        list.map(ops, fn(op) {
-          use _ <- do(nibble.token(op))
-          return(token_to_string(op))
-        })
+      let ops_names = list.map(ops, token_text)
       use _ <- do(nibble.token(LParen))
       use name <- do(nibble.one_of(ops_names))
       use _ <- do(nibble.token(RParen))
@@ -590,7 +638,7 @@ fn var_name(file: String) -> Parser(String, Token, String) {
 
 fn var(file: String) -> Parser(Expr, Token, String) {
   use start <- do(get_span(file))
-  use name <- do(var_name(file))
+  use name <- do(var_name())
   use end <- do(get_span(file))
   return(tao.var(name, merge(start, end)))
 }
@@ -711,6 +759,11 @@ fn guard(file: String) -> Parser(#(Expr, Option(Pattern)), Token, String) {
 // TOKEN CONSUMERS
 // ============================================================================
 
+fn token_text(tok: Token) -> Parser(String, Token, String) {
+  use _ <- do(nibble.token(tok))
+  return(token_to_string(tok))
+}
+
 fn take_var() -> Parser(String, Token, String) {
   nibble.take_map("a variable name", fn(tok) {
     case tok {
@@ -760,26 +813,31 @@ fn take_float() -> Parser(Float, Token, String) {
 // ARGUMENT PARSERS
 // ============================================================================
 
+fn sequence(
+  item: Parser(a, Token, String),
+  delim: Token,
+) -> Parser(List(a), Token, String) {
+  use items <- do(nibble.sequence(item, nibble.token(delim)))
+  use _ <- do(nibble.optional(nibble.token(delim)))
+  return(items)
+}
+
 fn arguments(
   file: String,
-  arg_parser: Parser(a, Token, String),
+  item: Parser(a, Token, String),
 ) -> Parser(List(#(String, a)), Token, String) {
-  use args <- do(
-    {
-      use opt_name <- do(
-        nibble.optional({
-          use name <- do(var_name(file))
-          use _ <- do(nibble.token(Colon))
-          return(name)
-        }),
-      )
-      use arg <- do(arg_parser)
-      return(#(option.unwrap(opt_name, ""), arg))
-    }
-    |> nibble.sequence(nibble.token(Comma)),
-  )
-  use _ <- do(nibble.optional(nibble.token(Comma)))
-  return(args)
+  let arg_parser = {
+    use opt_name <- do(
+      nibble.optional({
+        use name <- do(var_name())
+        use _ <- do(nibble.token(Colon))
+        return(name)
+      }),
+    )
+    use arg <- do(item)
+    return(#(option.unwrap(opt_name, ""), arg))
+  }
+  sequence(arg_parser, Comma)
 }
 
 // ============================================================================
