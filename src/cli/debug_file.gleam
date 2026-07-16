@@ -3,6 +3,7 @@ import core/error
 import core/eval.{eval}
 import core/ffi
 import core/format
+import core/value as v
 import gleam/int
 import gleam/io
 import gleam/list
@@ -73,12 +74,12 @@ pub fn debug_file(root: String, filename: String, width: Int) {
 
   io.println("subst (" <> int.to_string(list.length(ctx.subst)) <> ")")
   io.println("solved: " <> string.inspect(list.map(ctx.subst, fn(kv) { kv.0 })))
-  list.map(ctx.subst, fn(entry) {
-    let #(id, value) = entry
-    // TODO: save ctx.types.names in ctx.subst to display var names.
-    let fmt_subst = format.value(ctx.ffi, [], value, width, 2)
-    io.println("- " <> int.to_string(id) <> ": " <> fmt_subst)
-  })
+  // list.map(ctx.subst, fn(entry) {
+  //   let #(id, value) = entry
+  //   // TODO: save ctx.types.names in ctx.subst to display var names.
+  //   let fmt_subst = format.value(ctx.ffi, [], value, width, 2)
+  //   io.println("- " <> int.to_string(id) <> ": " <> fmt_subst)
+  // })
   io.println("")
 
   echo "> stmts = load.module(filename)"
@@ -110,17 +111,39 @@ pub fn debug_file(root: String, filename: String, width: Int) {
 
   echo "> tests = compile.tests(stmts)"
   let tests = compile.tests([#(filename, stmts)])
-  list.map(tests, fn(t) {
-    let core_expr = desugar.expr(t.expr)
-    let core_expect = desugar.pattern(t.expect)
-    let value = eval(ctx.ffi, ctx.env, t.term)
-    io.println("/// " <> t.name)
-    io.println(">>> " <> fmt_expr(core_expr))
-    io.println(fmt_pattern(core_expect))
-    io.println("result: " <> fmt_value(value))
-    // io.println("test-term: " <> fmt_term(t.term))
-    io.println("")
-  })
+  let results =
+    list.map(tests, fn(t) {
+      let core_expr = desugar.expr(t.expr)
+      let core_expect = desugar.pattern(t.expect)
+      let value = eval(ctx.ffi, ctx.env, t.term)
+      io.println("/// " <> t.name)
+      io.println(">>> " <> fmt_expr(core_expr))
+      io.println(fmt_pattern(core_expect))
+      io.println("result: " <> fmt_value(value))
+      // io.println("test-term: " <> fmt_term(t.term))
+      io.println("")
+      value
+    })
+
+  let #(passed, failed, unknown) =
+    list.fold(results, #(0, 0, 0), fn(acc, value) {
+      let #(passed, failed, unknown) = acc
+      case value {
+        v.Ctr("Pass", _) -> #(passed + 1, failed, unknown)
+        v.Ctr("Fail", _) -> #(passed, failed + 1, unknown)
+        _ -> #(passed, failed, unknown + 1)
+      }
+    })
+
+  io.println("test results")
+  io.println("- " <> int.to_string(list.length(results)) <> " total")
+  io.println("- " <> int.to_string(passed) <> " passed")
+  io.println("- " <> int.to_string(failed) <> " failed")
+  case unknown {
+    0 -> Nil
+    _ -> io.println("- " <> int.to_string(unknown) <> " unkown result state")
+  }
+  io.println("")
 
   case ctx.errors {
     [] -> io.println("0 build errors")
