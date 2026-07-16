@@ -99,12 +99,17 @@ pub type StmtData {
 
 pub type OverloadChoice {
   OverloadChoice(
-    module: Option(String),
-    name: String,
+    fun: OverloadChoiceFun,
     args: List(#(String, Pattern)),
     guard: Option(#(Expr, Option(Pattern))),
     span: Span,
   )
+}
+
+pub type OverloadChoiceFun {
+  OverloadVar(name: String)
+  OverloadCall(name: String)
+  OverloadDot(name: String, field: String)
 }
 
 pub type Param =

@@ -147,7 +147,11 @@ pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
       let tail_ast = option.map(tail, lift(_, names, s))
       ast.rcd(fields_ast, tail_ast, s)
     }
-    Call(name, returns, args) -> todo
+    Call(name, returns, args) -> {
+      let returns_ast = lift(returns, names, s)
+      let args_ast = list.map(args, lift(_, names, s))
+      ast.call(name, returns_ast, args_ast, s)
+    }
     Ann(term, type_) -> todo
     For(#(name, type_), body) -> {
       let type_ast = lift(type_, names, s)

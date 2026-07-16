@@ -11,8 +11,8 @@ import nibble/lexer.{type Lexer}
 import nibble/pratt
 import syntax/span.{type Span, Span, merge}
 import tao/ast.{
-  type BinaryOp, type Case, type Expr, type OverloadChoice, type Pattern,
-  type Stmt, type UnaryOp,
+  type BinaryOp, type Case, type Expr, type OverloadChoice,
+  type OverloadChoiceFun, type Pattern, type Stmt, type UnaryOp,
 } as tao
 
 const reserved = [
@@ -203,6 +203,9 @@ fn dead_ends_to_error(
         Span(file, 0, 0, 0, 0),
         [],
       )
+    // TODO: All dead_ends contain information for all alternatives of a `one_of`.
+    // The error should encapsulate all alternatives tried (and failed).
+    // Currently, only the first is reported, and the rest are swallowed.
     [first, ..] -> dead_end_to_error(file, first)
   }
 }
@@ -402,21 +405,14 @@ fn fn_overload(
       nibble.many({
         use _ <- do(nibble.token(Pipe))
         use start <- do(get_span(file))
-        use opt_module <- do(
-          nibble.optional({
-            use mod <- do(var_name(file))
-            use _ <- do(nibble.token(Dot))
-            return(mod)
-          }),
-        )
-        use name <- do(var_name(file))
+        use fun <- do(fn_overload_choice_fun(file))
         use _ <- do(nibble.token(LParen))
-        use args <- do(arguments_pat(file))
+        use args <- do(arguments(file, pattern(file)))
         use _ <- do(nibble.token(RParen))
         use opt_guard <- do(nibble.optional(guard(file)))
         use end <- do(get_span(file))
         let s = merge(start, end)
-        return(tao.OverloadChoice(opt_module, name, args, opt_guard, s))
+        return(tao.OverloadChoice(fun, args, opt_guard, s))
       }),
     )
     use _ <- do(nibble.token(RBrace))
@@ -424,6 +420,29 @@ fn fn_overload(
     return(tao.fn_overload(name, choices, merge(start, end)))
   }
   |> nibble.in("function overload")
+}
+
+fn fn_overload_choice_fun(
+  file: String,
+) -> Parser(OverloadChoiceFun, Token, String) {
+  nibble.one_of([
+    {
+      use name <- do(var_name(file))
+      use _ <- do(nibble.token(Dot))
+      use field <- do(var_name(file))
+      return(tao.OverloadDot(name, field))
+    },
+    {
+      // This must go after OverloadDot to avoid ambiguity.
+      use name <- do(var_name(file))
+      return(tao.OverloadVar(name))
+    },
+    {
+      use _ <- do(nibble.token(Percent))
+      use name <- do(var_name(file))
+      return(tao.OverloadCall(name))
+    },
+  ])
 }
 
 fn test_(file: String) -> Parser(Stmt, Token, String) {
@@ -482,7 +501,7 @@ fn pctr(file: String) -> Parser(Pattern, Token, String) {
   use opt_args <- do(
     nibble.optional({
       use _ <- do(nibble.token(LParen))
-      use args <- do(arguments_pat(file))
+      use args <- do(arguments(file, pattern(file)))
       use _ <- do(nibble.token(RParen))
       return(args)
     }),
@@ -582,7 +601,7 @@ fn ctr(file: String) -> Parser(Expr, Token, String) {
   use opt_args <- do(
     nibble.optional({
       use _ <- do(nibble.token(LParen))
-      use args <- do(arguments(file))
+      use args <- do(arguments(file, expr(file)))
       use _ <- do(nibble.token(RParen))
       return(args)
     }),
@@ -601,7 +620,7 @@ fn op2(op: BinaryOp) -> fn(Expr, Expr) -> Expr {
 fn app(file: String, fun: Expr) -> Parser(Expr, Token, String) {
   use start <- do(get_span(file))
   use _ <- do(nibble.token(LParen))
-  use args <- do(arguments(file))
+  use args <- do(arguments(file, expr(file)))
   use _ <- do(nibble.token(RParen))
   use end <- do(get_span(file))
   return(tao.app(fun, args, merge(start, end)))
@@ -741,34 +760,26 @@ fn take_float() -> Parser(Float, Token, String) {
 // ARGUMENT PARSERS
 // ============================================================================
 
-fn arguments(file: String) -> Parser(List(#(String, Expr)), Token, String) {
-  nibble.many({
-    use opt_name <- do(
-      nibble.optional({
-        use name <- do(var_name(file))
-        use _ <- do(nibble.token(Colon))
-        return(name)
-      }),
-    )
-    use arg <- do(expr(file))
-    return(#(option.unwrap(opt_name, ""), arg))
-  })
-}
-
-fn arguments_pat(
+fn arguments(
   file: String,
-) -> Parser(List(#(String, Pattern)), Token, String) {
-  nibble.many({
-    use opt_name <- do(
-      nibble.optional({
-        use name <- do(var_name(file))
-        use _ <- do(nibble.token(Colon))
-        return(name)
-      }),
-    )
-    use arg <- do(pattern(file))
-    return(#(option.unwrap(opt_name, ""), arg))
-  })
+  arg_parser: Parser(a, Token, String),
+) -> Parser(List(#(String, a)), Token, String) {
+  use args <- do(
+    {
+      use opt_name <- do(
+        nibble.optional({
+          use name <- do(var_name(file))
+          use _ <- do(nibble.token(Colon))
+          return(name)
+        }),
+      )
+      use arg <- do(arg_parser)
+      return(#(option.unwrap(opt_name, ""), arg))
+    }
+    |> nibble.sequence(nibble.token(Comma)),
+  )
+  use _ <- do(nibble.optional(nibble.token(Comma)))
+  return(args)
 }
 
 // ============================================================================
