@@ -24,8 +24,8 @@ pub fn tao_factorial_test() {
   // }
   let i1 = tao.int(1, s)
   let #(f, x, n) = #(tao.var("f", s), tao.var("x", s), tao.var("n", s))
-  let sub = fn(x, y) { tao.call("int_sub", tao.int_t(s), [x, y], s) }
-  let mul = fn(x, y) { tao.call("int_mul", tao.int_t(s), [x, y], s) }
+  let sub = fn(x, y) { tao.call("int_sub", [#("", x), #("", y)], s) }
+  let mul = fn(x, y) { tao.call("int_mul", [#("", x), #("", y)], s) }
   let case0 = tao.Case(tao.pint(0, s), None, i1)
   let case_ =
     tao.Case(tao.pvar("n", s), None, mul(n, tao.app(f, [#("", sub(n, i1))], s)))

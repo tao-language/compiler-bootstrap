@@ -1,5 +1,5 @@
 /// Tests for the `unify` module — higher-order unification for Core values.
-import core/context.{Context, new_ctx, with_err}
+import core/context.{Context, new_ctx}
 import core/error as e
 import core/literals as lit
 import core/term as tm
@@ -222,7 +222,7 @@ pub fn unify_ctr_gadt_vec_test() {
   let cons_arg =
     tm.rcd([#("x", a), #("xs", tm.ctr("Vec", [#("n", m), #("a", a)]))])
   let cons_ret =
-    tm.ctr("Vec", [#("n", tm.Call("+", tm.int_t, [m, tm.int(1)])), #("a", a)])
+    tm.ctr("Vec", [#("n", tm.Call("+", tm.rcd([#("", m), #("", tm.int(1))]))), #("a", a)])
   let tdef =
     v.TypeDefinition(
       params: [#("n", v.int_t), #("a", v.Typ(0))],
@@ -240,9 +240,10 @@ pub fn unify_ctr_gadt_vec_test() {
         Some(v.Typ(0)),
       )),
       ffi: [
-        #("+", fn(args) {
-          case args {
-            [v.Lit(lit.Int(x)), v.Lit(lit.Int(y))] -> Some(v.int(x + y))
+        #("+", fn(arg) {
+          case arg {
+            v.Rcd([#(_, #(v.Lit(lit.Int(x)), _)), #(_, #(v.Lit(lit.Int(y)), _))], None) ->
+              Some(v.int(x + y))
             _ -> None
           }
         }),
@@ -413,22 +414,22 @@ pub fn unify_neut_napp_test() {
 // ============================================================================
 
 pub fn unify_neut_ncall_empty_args_test() {
-  let a = v.Neut(v.NCall("f", v.int_t, []))
-  let b = v.Neut(v.NCall("f", v.int_t, []))
+  let a = v.Neut(v.NCall("f", v.rcd([])))
+  let b = v.Neut(v.NCall("f", v.rcd([])))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
 
 pub fn unify_neut_ncall_same_test() {
-  let a = v.Neut(v.NCall("f", v.int_t, []))
-  let b = v.Neut(v.NCall("f", v.int_t, []))
+  let a = v.Neut(v.NCall("f", v.rcd([])))
+  let b = v.Neut(v.NCall("f", v.rcd([])))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
 
 pub fn unify_neut_ncall_name_mismatch_test() {
-  let a = v.Neut(v.NCall("f", v.int_t, []))
-  let b = v.Neut(v.NCall("g", v.int_t, []))
+  let a = v.Neut(v.NCall("f", v.rcd([])))
+  let b = v.Neut(v.NCall("g", v.rcd([])))
   let ctx0 = new_ctx
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
   assert ctx.errors != []
@@ -442,12 +443,12 @@ pub fn unify_neut_ncall_name_mismatch_test() {
 //     == with_err(ctx0, e.TypeMismatch(#(v.int_t, s1), #(v.float_t, s2)))
 // }
 
-pub fn unify_neut_ncall_arity_mismatch_test() {
-  let a = v.Neut(v.NCall("f", v.int_t, [v.int_t, v.float_t]))
-  let b = v.Neut(v.NCall("f", v.int_t, [v.int_t, v.float_t, v.i64]))
+pub fn unify_neut_ncall_arg_mismatch_test() {
+  let a = v.Neut(v.NCall("f", v.rcd([#("", v.int_t), #("", v.float_t)])))
+  let b = v.Neut(v.NCall("f", v.rcd([#("", v.int_t), #("", v.float_t), #("", v.i64)])))
   let ctx0 = new_ctx
-  assert unify(ctx0, #(a, s1), #(b, s2))
-    == with_err(ctx0, e.CallArityMismatch(#(2, s1), #(3, s2)), s1)
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx.errors != []
 }
 
 // ============================================================================
