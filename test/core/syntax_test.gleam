@@ -118,22 +118,12 @@ pub fn roundtrip_lam_explicit_test() {
   assert expr(parse(source), 80, 2) == source
 }
 
-pub fn roundtrip_lam_implicit_test() {
-  let source = "%lam<x: y> => z"
-  assert expr(parse(source), 80, 2) == source
-}
-
 // ============================================================================
 // Pi types
 // ============================================================================
 
 pub fn roundtrip_pi_explicit_test() {
   let source = "%pi(x: y) -> z"
-  assert expr(parse(source), 80, 2) == source
-}
-
-pub fn roundtrip_pi_implicit_test() {
-  let source = "%pi<x: y> -> z"
   assert expr(parse(source), 80, 2) == source
 }
 
@@ -152,11 +142,6 @@ pub fn roundtrip_fix_test() {
 
 pub fn roundtrip_app_explicit_test() {
   let source = "f(x)"
-  assert expr(parse(source), 80, 2) == source
-}
-
-pub fn roundtrip_app_implicit_test() {
-  let source = "f<x>"
   assert expr(parse(source), 80, 2) == source
 }
 

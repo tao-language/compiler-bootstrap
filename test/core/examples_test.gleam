@@ -8,6 +8,7 @@ import core/ffi
 import core/infer.{infer}
 import core/resolve
 import core/term as tm
+import core/unwrap.{unwrap}
 import core/value as v
 import gleam/list
 import gleam/option.{None, Some}
@@ -57,10 +58,13 @@ pub fn core_factorial_test() {
         ]),
       ),
     )
-  assert type_
+  // With deferred substitution, holes in the type are resolved via ctx.subst.
+  // Use resolve.value to get the fully resolved type for comparison.
+  let resolved_type = resolve.value(ctx.ffi, ctx.subst, type_)
+  assert resolved_type
     == v.Pi(
       [v.var(0)],
-      #("x", v.hole([], Some(1))),
+      #("x", v.hole([v.var(0)], Some(1))),
       tm.Match(tm.Var(0), [
         tm.Case(tm.pint(0), None, tm.int_t),
         tm.Case(tm.pvar("n"), None, tm.int_t),

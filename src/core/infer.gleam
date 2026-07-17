@@ -339,9 +339,9 @@ fn infer_app(
   let #(fun, fun_type, ctx) = infer(ctx, fun_ast)
   let #(fun, fun_type, ctx) = instantiate(ctx, fun, fun_type)
   case fun_type {
-    v.Pi(env, #(_, domain), codomain) -> {
+    v.Pi(pi_env, #(_, domain), codomain) -> {
       let #(arg, arg_type, ctx) = check(ctx, arg_ast, #(domain, fun_ast.span))
-      let env = [arg_type, ..env]
+      let env = [arg_type, ..pi_env]
       let ret_type = eval(ctx.ffi, env, codomain)
       #(tm.App(fun, arg), ret_type, ctx)
     }
@@ -352,14 +352,15 @@ fn infer_app(
         v.Pi(env, #("$" <> int.to_string(id), arg_type), tm.Hole(Some(id)))
       let ctx = unify(ctx, #(fun_type, span), #(expected_pi, span))
       let arg_val = eval(ctx.ffi, ctx.env, arg)
-      let ret_type = eval(ctx.ffi, [arg_val, ..ctx.env], tm.Hole(Some(id)))
+      let ret_type = v.hole([arg_val, ..ctx.env], Some(id))
       #(tm.App(fun, arg), ret_type, ctx)
     }
     v.Neut(rigid) -> {
       todo as "Type error: You cannot apply a term whose type is a rigid variable (e.g., `a`)"
     }
     _ -> {
-      let ctx = context.with_err(ctx, e.NotAFunction(tm.Err, fun_type), span)
+      let ctx =
+        context.with_err(ctx, e.NotAFunction(tm.Err, fun_type), fun_ast.span)
       #(tm.Err, v.Err, ctx)
     }
   }
