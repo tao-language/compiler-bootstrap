@@ -325,7 +325,6 @@ fn import_(file: String) -> Parser(Stmt, Token, String) {
         return(tao.Import(path, alias, [])),
       ]),
     )
-    echo data
     use end <- do(get_span(file))
     return(tao.Stmt(data, span.merge(start, end)))
   }

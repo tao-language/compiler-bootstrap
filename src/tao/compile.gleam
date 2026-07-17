@@ -55,7 +55,7 @@ fn define_modules(
       let #(value_id, ctx) = context.new_hole(ctx)
       let #(type_id, ctx) = context.new_hole(ctx)
       let var = #(
-        "@" <> name,
+        name,
         Some(v.hole(ctx.env, Some(value_id))),
         Some(v.hole(ctx.env, Some(type_id))),
       )

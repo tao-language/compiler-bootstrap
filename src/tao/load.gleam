@@ -72,7 +72,7 @@ pub fn package(
           let mods =
             list.map(mods, fn(mod) {
               let #(mod_name, stmts) = mod
-              #("@" <> name <> mod_name, stmts)
+              #("/" <> name <> mod_name, stmts)
             })
           #(mods, errors)
         }

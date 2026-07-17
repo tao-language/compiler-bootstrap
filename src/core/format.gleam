@@ -56,8 +56,7 @@ fn var_name(name: String) -> String {
 
 fn doc_term(term: Expr, indent: Int) -> Document {
   case term.data {
-    // Syntax sugar
-    // %let name: opt_type = value; body
+    // Syntax sugar: %let name: opt_type = value; body
     ast.App(ast.Expr(ast.Lam(#(name, opt_type), body), _, _), value) ->
       doc.concat([
         doc_text("%let "),
@@ -136,6 +135,30 @@ fn doc_term(term: Expr, indent: Int) -> Document {
       doc.concat([fun_doc, doc_text("("), arg_doc, doc_text(")")])
     }
     ast.TypeDef(type_def) -> doc_typedef(type_def, indent)
+    // Syntax sugar: %get(expr).field
+    ast.Match(
+      arg,
+      [
+        ast.Case(
+          ast.Pattern(
+            ast.PRcd(
+              [#(x, ast.Pattern(ast.PAlias(ast.Pattern(ast.PAny, _), y), _))],
+              Some(ast.Pattern(ast.PAny, _)),
+            ),
+            _,
+          ),
+          None,
+          ast.Expr(ast.Var(z), _, _),
+        ),
+      ],
+    )
+      if x == y && x == z
+    ->
+      doc.concat([
+        doc_text("%get("),
+        doc_term(arg, indent),
+        doc_text(")." <> var_name(x)),
+      ])
     ast.Match(arg, cases) -> {
       let case_docs = list.map(cases, fn(c) { doc_case(c, indent) })
       doc.concat([
@@ -184,17 +207,20 @@ fn doc_rcd(
 ) -> Document {
   let doc_fields =
     list.map(fields, fn(field) {
-      let #(name, #(opt_type, opt_term)) = field
-      let name = var_name(name)
-      let type_ = case opt_type {
-        Some(type_) -> doc.concat([doc_text(": "), doc_term(type_, indent)])
-        None -> doc.empty
+      let #(name, #(opt_value, opt_default)) = field
+      let field = case doc_text(var_name(name)), opt_value {
+        name, Some(value) ->
+          case doc_term(value, indent) {
+            value if name == value -> name
+            value -> doc.concat([name, doc_text(": "), value])
+          }
+        name, None -> name
       }
-      let term = case opt_term {
-        Some(term) -> doc.concat([doc_text(" = "), doc_term(term, indent)])
-        None -> doc.empty
+      case opt_default {
+        Some(default) ->
+          doc.concat([field, doc_text(" = "), doc_term(default, indent)])
+        None -> field
       }
-      doc.concat([doc_text(name), type_, term])
     })
   let tail = case opt_tail {
     None -> []

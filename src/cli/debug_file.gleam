@@ -62,6 +62,32 @@ pub fn debug_file(
       exit(1)
     }
   }
+
+  let names = list.map(mods, fn(m) { m.0 })
+  let fmt_expr = fn(expr) { format.expr(expr, width, 2) }
+  let fmt_term = fn(term) { format.term(names, term, width, 2) }
+  let fmt_value = fn(val) { format.value(ffi.build, names, val, width, 2) }
+  let fmt_pattern = fn(pat) { format.pattern(pat, width, 2) }
+
+  echo "> stmts = load.module(filename)"
+  let #(#(name, stmts), errors) = load.module(paths, filename)
+  io.println("module name: " <> string.inspect(name))
+  case list.length(errors) {
+    0 -> Nil
+    n -> {
+      io.println_error("---- SYNTAX ERRORS ----")
+      list.map(errors, fn(err) {
+        let msg = error.display_syntax(err)
+        io.println_error("❌ " <> msg)
+      })
+      io.println("")
+      io.println_error(int.to_string(n) <> " syntax errors")
+      exit(1)
+    }
+  }
+  let exports = discover.definitions(stmts)
+  io.println("exports: " <> int.to_string(list.length(exports)) <> " length")
+  list.map(exports, fn(name) { io.println("- " <> name) })
   io.println("")
 
   echo "> defs = definitions(mods)"
@@ -77,14 +103,14 @@ pub fn debug_file(
   })
   io.println("")
 
+  echo "> mod_expr = desugar.module(exports, mod)"
+  let mod_expr = desugar.module(defs, exports, #(filename, stmts))
+  io.println(fmt_expr(mod_expr))
+  io.println("")
+
   echo "> ctx = compile.package(mods)"
   let ctx = Context(..new_ctx, ffi: ffi.build)
   let ctx = compile.package(ctx, mods)
-  let names = list.map(ctx.types, fn(t) { t.0 })
-  let fmt_expr = fn(expr) { format.expr(expr, width, 2) }
-  // let fmt_term = fn(term) { format.term(names, term, width, 2) }
-  let fmt_value = fn(val) { format.value(ctx.ffi, names, val, width, 2) }
-  let fmt_pattern = fn(pat) { format.pattern(pat, width, 2) }
 
   io.println("ffi (" <> int.to_string(list.length(ctx.ffi)) <> ")")
   list.map(ctx.ffi, fn(entry) {
@@ -118,35 +144,9 @@ pub fn debug_file(
   // })
   io.println("")
 
-  echo "> stmts = load.module(filename)"
-  let #(#(name, stmts), errors) = load.module(paths, filename)
-  io.println("module name: " <> string.inspect(name))
-  case list.length(errors) {
-    0 -> Nil
-    n -> {
-      io.println_error("---- SYNTAX ERRORS ----")
-      list.map(errors, fn(err) {
-        let msg = error.display_syntax(err)
-        io.println_error("❌ " <> msg)
-      })
-      io.println("")
-      io.println_error(int.to_string(n) <> " syntax errors")
-      exit(1)
-    }
-  }
-  let exports = discover.definitions(stmts)
-  io.println("exports: " <> int.to_string(list.length(exports)) <> " length")
-  list.map(exports, fn(name) { io.println("- " <> name) })
-  io.println("")
-
-  echo "> mod_expr = desugar.module(exports, mod)"
-  let mod_expr = desugar.module(defs, exports, #(filename, stmts))
-  io.println(fmt_expr(mod_expr))
-  io.println("")
-
   echo "> tests = compile.tests(stmts)"
   let tests = compile.tests([#(filename, stmts)])
-  let results =
+  let test_results =
     list.map(tests, fn(t) {
       let core_expr = desugar.expr(defs, t.expr)
       let core_expect = desugar.pattern(t.expect)
@@ -161,7 +161,7 @@ pub fn debug_file(
     })
 
   let #(passed, failed, unknown) =
-    list.fold(results, #(0, 0, 0), fn(acc, value) {
+    list.fold(test_results, #(0, 0, 0), fn(acc, value) {
       let #(passed, failed, unknown) = acc
       case value {
         v.Ctr("Pass", _) -> #(passed + 1, failed, unknown)
@@ -171,7 +171,7 @@ pub fn debug_file(
     })
 
   io.println("test results")
-  io.println("- " <> int.to_string(list.length(results)) <> " total")
+  io.println("- " <> int.to_string(list.length(test_results)) <> " total")
   io.println("- " <> int.to_string(passed) <> " passed")
   io.println("- " <> int.to_string(failed) <> " failed")
   case unknown {

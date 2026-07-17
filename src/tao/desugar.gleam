@@ -5,6 +5,8 @@ import gleam/int
 import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/regexp
+import gleam/result
 import gleam/string
 import syntax/span.{type Span, Span}
 import tao/ast.{type Case, type Module, type Pattern, type Stmt} as tao
@@ -318,7 +320,8 @@ pub fn statement(
         Some(alias) -> alias
         None -> filepath.base_name(path)
       }
-      let def = #(alias, None, core.var("@" <> path, stmt.span))
+      let mod_name = "/" <> path
+      let def = #(alias, None, core.var(mod_name, stmt.span))
       core.let_var_trace(def, next, stmt.span, Some("import " <> path))
     }
     tao.Import(path, opt_alias, [#(name, opt_name_alias), ..names]) -> {
@@ -327,19 +330,20 @@ pub fn statement(
         Some(alias) -> alias
         None -> name
       }
-      let access = core.dot(core.var("@" <> path, stmt.span), name, stmt.span)
+      let mod_name = "/" <> path
+      let access = core.dot(core.var(mod_name, stmt.span), name, stmt.span)
       let next = core.let_var(#(name_alias, None, access), next, stmt.span)
       statement(defs, block_ctx, stmt, next)
     }
     tao.ImportAll(path, opt_alias) -> {
-      let alias = case opt_alias {
-        Some(alias) -> alias
-        None -> filepath.base_name(path)
-      }
-      let def = #(alias, None, core.var("@" <> path, stmt.span))
-      echo defs
-      todo as "TODO: define all module definitions"
-      core.let_var_trace(def, next, stmt.span, Some("import " <> path <> "*"))
+      let mod_name = "/" <> path
+      let names =
+        list.key_find(defs, mod_name)
+        |> result.unwrap([])
+        |> list.filter(is_public_name)
+        |> list.map(fn(x) { #(x, None) })
+      let stmt = tao.Stmt(tao.Import(path, opt_alias, names), stmt.span)
+      statement(defs, block_ctx, stmt, next)
     }
     tao.Let(p, opt_type, value) -> {
       let core_pattern = pattern(p)
@@ -417,6 +421,14 @@ pub fn statement(
     tao.Return(ret_expr) -> expr(defs, ret_expr)
     tao.Break -> todo
     tao.Continue -> todo
+  }
+}
+
+fn is_public_name(name: String) -> Bool {
+  case name {
+    "_" <> _ -> False
+    ">>> " <> _ -> False
+    _ -> True
   }
 }
 
