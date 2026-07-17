@@ -145,7 +145,7 @@ fn find_with(
       let full_filename = filepath.join(path, filename)
       case check(full_filename) {
         Ok(True) -> Some(full_filename)
-        _ -> find_file(paths, filename)
+        _ -> find_with(check, paths, filename)
       }
     }
   }
