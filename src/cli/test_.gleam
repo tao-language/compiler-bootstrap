@@ -23,7 +23,7 @@ pub fn test_(
   let #(pkg, load_pkg_errors) =
     fs.list_recursive(root, string.ends_with(_, ".tao"))
     |> result.unwrap([])
-    |> load.package
+    |> load.module_list(paths, _)
   let ctx = compile.package(new_ctx, pkg)
 
   // Load and compile the tests.
@@ -36,7 +36,7 @@ pub fn test_(
         _ -> [path]
       }
     })
-    |> load.package
+    |> load.module_list(paths, _)
   // let #(tests, ctx) = compile.tests(ctx, tests_pkg)
   let tests = compile.tests(tests_pkg)
 

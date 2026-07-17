@@ -79,9 +79,7 @@ pub fn main() {
             _ -> Error(Nil)
           }
         })
-        |> option.from_result
-        |> option.or(config.find_project_root("."))
-        |> option.unwrap(".")
+        |> result.unwrap("")
       let paths =
         list.filter_map(args, fn(arg) {
           case arg {

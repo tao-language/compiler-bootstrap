@@ -6,7 +6,7 @@ import simplifile
 
 pub fn list(dir: String) -> Result(List(String), String) {
   case simplifile.read_directory(dir) {
-    Ok(files) -> Ok(list.map(files, filepath.join(dir, _)))
+    Ok(files) -> Ok(files)
     Error(err) -> Error(simplifile.describe_error(err))
   }
 }

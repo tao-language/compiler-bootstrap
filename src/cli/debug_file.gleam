@@ -17,25 +17,38 @@ import tao/load
 import utils/fs
 
 pub fn debug_file(
-  root: String,
+  src_dir: String,
   paths: List(String),
-  dependencies: List(#(String, Option(String))),
+  packages: List(#(String, Option(String))),
   filename: String,
   width: Int,
 ) {
-  io.println("root: " <> root)
+  io.println("src_dir: " <> string.inspect(src_dir))
   io.println("paths: " <> string.inspect(paths))
-  io.println("dependencies: " <> string.inspect(dependencies))
+  io.println("packages: " <> string.inspect(packages))
   io.println("filename: " <> filename)
   io.println("")
 
-  echo "> pkg = load.package(root)"
-  let #(pkg, errors) =
-    fs.list_recursive(root, string.ends_with(_, ".tao"))
-    |> result.unwrap([])
-    |> list.prepend(filename)
-    |> load.package
-  todo as "TODO: load dependencies from paths"
+  echo "> load.module(filename)"
+  let #(mod, errors) = load.module([src_dir], filename)
+  let #(mods, errors) = case src_dir {
+    "" -> #([mod], errors)
+    _ -> {
+      echo "> load.directory(src_dir)"
+      let #(mods, err) = load.directory(src_dir)
+      #([mod, ..mods], list.append(errors, err))
+    }
+  }
+  echo "> load.package_list(paths, packages)"
+  let #(pkg_mods, pkg_errors) = load.package_list(paths, packages)
+  let #(mods, errors) = #(
+    list.append(mods, pkg_mods),
+    list.append(errors, pkg_errors),
+  )
+  io.println("modules loaded: " <> int.to_string(list.length(mods)))
+  list.map(mods, fn(mod) { io.println("- " <> mod.0) })
+  io.println("")
+
   case list.length(errors) {
     0 -> Nil
     n -> {
@@ -51,9 +64,9 @@ pub fn debug_file(
   }
   io.println("")
 
-  echo "> defs = definitions(pkg)"
+  echo "> defs = definitions(mods)"
   let defs =
-    list.map(pkg, fn(mod) {
+    list.map(mods, fn(mod) {
       let #(name, stmts) = mod
       #(name, discover.definitions(stmts))
     })
@@ -64,9 +77,9 @@ pub fn debug_file(
   })
   io.println("")
 
-  echo "> ctx = compile.package(pkg)"
+  echo "> ctx = compile.package(mods)"
   let ctx = Context(..new_ctx, ffi: ffi.build)
-  let ctx = compile.package(ctx, pkg)
+  let ctx = compile.package(ctx, mods)
   let names = list.map(ctx.types, fn(t) { t.0 })
   let fmt_expr = fn(expr) { format.expr(expr, width, 2) }
   // let fmt_term = fn(term) { format.term(names, term, width, 2) }
@@ -106,7 +119,8 @@ pub fn debug_file(
   io.println("")
 
   echo "> stmts = load.module(filename)"
-  let #(stmts, errors) = load.module(filename)
+  let #(#(name, stmts), errors) = load.module(paths, filename)
+  io.println("module name: " <> string.inspect(name))
   case list.length(errors) {
     0 -> Nil
     n -> {
