@@ -18,6 +18,7 @@ pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
         let #(_, #(val, default)) = field
         occurs(ctx, hole_id, val) || occurs_opt(ctx, hole_id, default)
       })
+      || occurs_opt(ctx, hole_id, tail)
     v.Neut(neut) -> occurs_neut(ctx, hole_id, neut)
     v.For(env, #(_, param), body) -> {
       let env = v.env_push(env, 1)
