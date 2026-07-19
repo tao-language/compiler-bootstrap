@@ -355,8 +355,19 @@ fn infer_app(
       let ret_type = v.hole([arg_val, ..ctx.env], Some(id))
       #(tm.App(fun, arg), ret_type, ctx)
     }
-    v.Neut(rigid) -> {
-      todo as "Type error: You cannot apply a term whose type is a rigid variable (e.g., `a`)"
+    v.Neut(v.NMatch(env, _, _)) -> {
+      let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
+      let #(id, ctx) = context.new_hole(ctx)
+      let expected_pi =
+        v.Pi(env, #("$" <> int.to_string(id), arg_type), tm.Hole(Some(id)))
+      let ctx = unify(ctx, #(fun_type, span), #(expected_pi, span))
+      let arg_val = eval(ctx.ffi, ctx.env, arg)
+      let ret_type = v.hole([arg_val, ..ctx.env], Some(id))
+      #(tm.App(fun, arg), ret_type, ctx)
+    }
+    v.Neut(neut) -> {
+      echo neut
+      todo as "TODO: infer_app Neut"
     }
     _ -> {
       let ctx =

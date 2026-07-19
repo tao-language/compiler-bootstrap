@@ -267,23 +267,58 @@ fn unify_neut(ctx: Context, a: #(Neut, Span), b: #(Neut, Span)) -> Context {
       unify(ctx, #(arg1, s1), #(arg2, s2))
     v.NMatch(env1, arg1, cases1), v.NMatch(env2, arg2, cases2) -> {
       let ctx = unify_neut(ctx, #(arg1, s1), #(arg2, s2))
-      todo as "unify_neut NMatch cases, use env to evaluate with pattern bindings"
+      let ctx = case list.length(cases1) == list.length(cases2) {
+        True -> ctx
+        False -> {
+          echo cases1
+          echo cases2
+          echo #("arity mismatch", list.length(cases1), list.length(cases2))
+          todo as "error: MatchCasesArityMismatch"
+        }
+      }
+      unify_match_case_list(ctx, #(env1, cases1, s1), #(env2, cases2, s2))
     }
-    _, _ -> with_err(ctx, e.NeutralTypeMismatch(a, b), s1)
+    _, _ -> with_err(ctx, e.NeutralTypeMismatch(#(n1, s1), #(n2, s2)), s1)
   }
 }
 
-fn unify_args(
+fn unify_match_case(
   ctx: Context,
-  a: #(List(Value), Span),
-  b: #(List(Value), Span),
+  a: #(Env, Case, Span),
+  b: #(Env, Case, Span),
 ) -> Context {
-  let #(args1, s1) = a
-  let #(args2, s2) = b
-  case args1, args2 {
-    [arg1, ..args1], [arg2, ..args2] -> {
-      let ctx = unify(ctx, #(arg1, s1), #(arg2, s2))
-      unify_args(ctx, #(args1, s1), #(args2, s2))
+  let #(env1, tm.Case(pat1, opt_guard1, body1), s1) = a
+  let #(env2, tm.Case(pat2, opt_guard2, body2), s2) = b
+  let env1 = v.env_push(env1, list.length(tm.bindings(pat1)))
+  let env2 = v.env_push(env2, list.length(tm.bindings(pat2)))
+  let #(env1, env2, ctx) = case opt_guard1, opt_guard2 {
+    None, None -> #(env1, env2, ctx)
+    Some(#(guard1, expect1)), Some(#(guard2, expect2)) -> {
+      let v1 = eval(ctx.ffi, env1, guard1)
+      let v2 = eval(ctx.ffi, env2, guard2)
+      let ctx = unify(ctx, #(v1, s1), #(v2, s2))
+      let env1 = v.env_push(env1, list.length(tm.bindings(expect1)))
+      let env2 = v.env_push(env2, list.length(tm.bindings(expect2)))
+      #(env1, env2, ctx)
+    }
+    _, _ -> todo as "error: MatchCaseGuardMismatch"
+  }
+  let v1 = eval(ctx.ffi, env1, body1)
+  let v2 = eval(ctx.ffi, env2, body2)
+  unify(ctx, #(v1, s1), #(v2, s2))
+}
+
+fn unify_match_case_list(
+  ctx: Context,
+  a: #(Env, List(Case), Span),
+  b: #(Env, List(Case), Span),
+) -> Context {
+  let #(env1, cases1, s1) = a
+  let #(env2, cases2, s2) = b
+  case cases1, cases2 {
+    [c1, ..cases1], [c2, ..cases2] -> {
+      let ctx = unify_match_case(ctx, #(env1, c1, s1), #(env2, c2, s2))
+      unify_match_case_list(ctx, #(env1, cases1, s1), #(env2, cases2, s2))
     }
     _, _ -> ctx
   }
