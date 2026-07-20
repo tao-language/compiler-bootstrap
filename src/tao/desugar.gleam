@@ -337,7 +337,7 @@ pub fn statement(
           #(name_alias, None, access),
           next,
           stmt.span,
-          Some("imported name: " <> name),
+          Some("import " <> path <> " {" <> name <> "}"),
         )
       statement(defs, block_ctx, stmt, next)
     }
