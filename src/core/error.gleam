@@ -121,13 +121,9 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
       <> detail(
         "Type hole ?"
         <> int.to_string(hole_id)
-        <> " would be unified with a type that contains itself.",
+        <> " would be unified with a type that contains itself in:",
       )
-      <> detail("")
-      <> detail("Type value: " <> fmt_value(type_))
-      <> detail("")
-      <> detail("This usually happens when a recursive type is not properly")
-      <> detail("wrapped behind a constructor or newtype.")
+      <> detail(fmt_value(type_))
     }
 
     NotAFunction(fun, fun_type) -> {
