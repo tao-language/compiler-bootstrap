@@ -2,7 +2,7 @@ import core/context.{type Context}
 import core/eval.{eval}
 import core/term.{type Case, type Term} as tm
 import core/unwrap.{unwrap}
-import core/value.{type Env, type Neut, type Value} as v
+import core/value.{type Env, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
 
@@ -19,7 +19,15 @@ pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
         occurs(ctx, hole_id, val) || occurs_opt(ctx, hole_id, default)
       })
       || occurs_opt(ctx, hole_id, tail)
-    v.Neut(neut) -> occurs_neut(ctx, hole_id, neut)
+    v.Neut(v.NVar(_)) -> False
+    v.Neut(v.NHole(_, None)) -> False
+    v.Neut(v.NHole(_, Some(id))) -> id == hole_id
+    v.Neut(v.NApp(fun_neut, arg_val)) ->
+      occurs(ctx, hole_id, v.Neut(fun_neut)) || occurs(ctx, hole_id, arg_val)
+    v.Neut(v.NMatch(env, arg_neut, cases)) ->
+      occurs(ctx, hole_id, v.Neut(arg_neut))
+      || list.any(cases, occurs_case(ctx, env, hole_id, _))
+    v.Neut(v.NCall(_, arg)) -> occurs(ctx, hole_id, arg)
     v.For(env, #(_, param), body) -> {
       let env = v.env_push(env, 1)
       occurs(ctx, hole_id, param) || occurs_term(ctx, env, hole_id, body)
@@ -55,20 +63,6 @@ pub fn occurs_opt(
 pub fn occurs_term(ctx: Context, env: Env, hole_id: Int, term: Term) -> Bool {
   let value = eval(ctx.ffi, env, term)
   occurs(ctx, hole_id, value)
-}
-
-fn occurs_neut(ctx: Context, hole_id: Int, neut: Neut) -> Bool {
-  case neut {
-    v.NVar(_) -> False
-    v.NHole(_, None) -> False
-    v.NHole(_, Some(id)) -> id == hole_id
-    v.NApp(fun_neut, arg_val) ->
-      occurs_neut(ctx, hole_id, fun_neut) || occurs(ctx, hole_id, arg_val)
-    v.NMatch(env, arg_neut, cases) ->
-      occurs_neut(ctx, hole_id, arg_neut)
-      || list.any(cases, occurs_case(ctx, env, hole_id, _))
-    v.NCall(_, arg) -> occurs(ctx, hole_id, arg)
-  }
 }
 
 fn occurs_case(ctx: Context, env: Env, hole_id: Int, c: Case) -> Bool {
