@@ -19,7 +19,27 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     v.Neut(v.NHole(_, id1)), v.Neut(v.NHole(_, id2)) if id1 == id2 -> ctx
     value1, v.Neut(v.NHole(env, id)) -> solve_hole(ctx, id, value1, s1)
     v.Neut(v.NHole(env, id)), value2 -> solve_hole(ctx, id, value2, s2)
-    v.Neut(n1), v.Neut(n2) -> unify_neut(ctx, #(n1, s1), #(n2, s2))
+    v.Neut(v.NVar(lv1)), v.Neut(v.NVar(lv2)) if lv1 == lv2 -> ctx
+    v.Neut(v.NApp(fun1, arg1)), v.Neut(v.NApp(fun2, arg2)) -> {
+      let ctx = unify(ctx, #(v.Neut(fun1), s1), #(v.Neut(fun2), s2))
+      unify(ctx, #(arg1, s1), #(arg2, s2))
+    }
+    v.Neut(v.NCall(x, arg1)), v.Neut(v.NCall(y, arg2)) if x == y ->
+      unify(ctx, #(arg1, s1), #(arg2, s2))
+    v.Neut(v.NMatch(env1, arg1, cases1)), v.Neut(v.NMatch(env2, arg2, cases2))
+    -> {
+      let ctx = unify(ctx, #(v.Neut(arg1), s1), #(v.Neut(arg2), s2))
+      let ctx = case list.length(cases1) == list.length(cases2) {
+        True -> ctx
+        False -> {
+          echo cases1
+          echo cases2
+          echo #("arity mismatch", list.length(cases1), list.length(cases2))
+          todo as "error: MatchCasesArityMismatch"
+        }
+      }
+      unify_match_case_list(ctx, #(env1, cases1, s1), #(env2, cases2, s2))
+    }
     // Try to unify neutrals with concrete values
     value1, v.Neut(neut) ->
       check_neut_with_concrete(ctx, #(value1, s1), #(neut, s2))
@@ -252,35 +272,6 @@ fn unify_gadt(
   // Pop the type definition's parameter scope.
   // Order matters: pop in reverse order of instantiation (inner → outer).
   context.pop_vars(ctx, list.length(tdef.params))
-}
-
-fn unify_neut(ctx: Context, a: #(Neut, Span), b: #(Neut, Span)) -> Context {
-  let #(n1, s1) = a
-  let #(n2, s2) = b
-  case n1, n2 {
-    v.NHole(_, id1), v.NHole(_, id2) if id1 == id2 -> ctx
-    v.NVar(lv1), v.NVar(lv2) if lv1 == lv2 -> ctx
-    v.NApp(fun1, arg1), v.NApp(fun2, arg2) -> {
-      let ctx = unify_neut(ctx, #(fun1, s1), #(fun2, s2))
-      unify(ctx, #(arg1, s1), #(arg2, s2))
-    }
-    v.NCall(x, arg1), v.NCall(y, arg2) if x == y ->
-      unify(ctx, #(arg1, s1), #(arg2, s2))
-    v.NMatch(env1, arg1, cases1), v.NMatch(env2, arg2, cases2) -> {
-      let ctx = unify_neut(ctx, #(arg1, s1), #(arg2, s2))
-      let ctx = case list.length(cases1) == list.length(cases2) {
-        True -> ctx
-        False -> {
-          echo cases1
-          echo cases2
-          echo #("arity mismatch", list.length(cases1), list.length(cases2))
-          todo as "error: MatchCasesArityMismatch"
-        }
-      }
-      unify_match_case_list(ctx, #(env1, cases1, s1), #(env2, cases2, s2))
-    }
-    _, _ -> with_err(ctx, e.NeutralTypeMismatch(#(n1, s1), #(n2, s2)), s1)
-  }
 }
 
 fn unify_match_case(
