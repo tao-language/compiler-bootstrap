@@ -112,7 +112,7 @@ fn unify_rcd_field(
   b: #(Value, List(#(String, #(Value, Option(Value)))), Option(Value), Span),
 ) -> #(Value, Context) {
   let #(rcd1, #(name, #(val1, default1)), s1) = a
-  let #(rcd2, fields2, tail2, s2) = b
+  let #(rcd2, fields2, opt_tail2, s2) = b
   case tm.pop_field(fields2, name) {
     Some(#(#(val2, default2), fields2)) -> {
       let ctx = unify(ctx, #(val1, s1), #(val2, s2))
@@ -120,11 +120,11 @@ fn unify_rcd_field(
         Some(v1), Some(v2) -> unify(ctx, #(v1, s1), #(v2, s2))
         _, _ -> ctx
       }
-      #(v.Rcd(fields2, tail2), ctx)
+      #(v.Rcd(fields2, opt_tail2), ctx)
     }
     None -> {
-      let ctx = case tail2 {
-        Some(tail2_val) -> unify(ctx, #(rcd1, s1), #(tail2_val, s2))
+      let ctx = case opt_tail2 {
+        Some(tail2) -> unify(ctx, #(rcd1, s1), #(tail2, s2))
         None -> with_err(ctx, e.RcdFieldNotFound(#(name, s1)), s2)
       }
       #(rcd2, ctx)
@@ -258,6 +258,7 @@ fn unify_neut(ctx: Context, a: #(Neut, Span), b: #(Neut, Span)) -> Context {
   let #(n1, s1) = a
   let #(n2, s2) = b
   case n1, n2 {
+    v.NHole(_, id1), v.NHole(_, id2) if id1 == id2 -> ctx
     v.NVar(lv1), v.NVar(lv2) if lv1 == lv2 -> ctx
     v.NApp(fun1, arg1), v.NApp(fun2, arg2) -> {
       let ctx = unify_neut(ctx, #(fun1, s1), #(fun2, s2))
