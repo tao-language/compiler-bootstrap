@@ -80,7 +80,7 @@ fn lookup_in_env(ctx: Context, name: String) -> Option(Value) {
 
 pub fn with_err(ctx: Context, err_data: ErrorData, span: Span) -> Context {
   let err = Error(err_data, span, list.reverse(ctx.trace))
-  Context(..ctx, errors: [err, ..ctx.errors])
+  Context(..ctx, errors: list.unique([err, ..ctx.errors]))
 }
 
 pub fn new_hole(ctx: Context) -> #(Int, Context) {
