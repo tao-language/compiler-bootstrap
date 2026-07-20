@@ -38,8 +38,7 @@ pub type ErrorData {
 
   // ── Type-checking errors ──
   VarUndefined(name: String)
-  TypeMismatch(a: ast.Expr, b: ast.Expr)
-  NeutralTypeMismatch(a: #(Neut, Span), b: #(Neut, Span))
+  TypeMismatch(a: #(Value, Span), b: #(Value, Span))
   RcdFieldNotFound(field: #(String, Span))
   InfiniteType(hole_id: Int, type_: Value)
   NotAFunction(fun: tm.Term, fun_type: Value)
@@ -104,25 +103,11 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
       )
     }
 
-    TypeMismatch(got, expected) -> {
-      summary(got.span, "type mismatch")
+    TypeMismatch(#(got, got_span), #(expected, expected_span)) -> {
+      summary(err.span, "type mismatch")
       <> display_trace(err.trace)
-      <> detail("Expected:   " <> fmt_expr(expected))
-      <> detail("Got:        " <> fmt_expr(got))
-    }
-
-    NeutralTypeMismatch(#(neut1, span1), #(neut2, span2)) -> {
-      let names = list.map(types, fn(entry) { entry.0 })
-      summary(span1, "type mismatch between neutral terms")
-      <> display_trace(err.trace)
-      <> detail("Left:  " <> neut_to_string(ffi, names, neut1))
-      <> detail("Right: " <> neut_to_string(ffi, names, neut2))
-      <> case span1.file == span2.file && span1.start_line != span2.start_line {
-        True ->
-          detail("")
-          <> detail("Right type originates at " <> span_location(span2))
-        False -> ""
-      }
+      <> detail("Expected:   " <> fmt_value(expected))
+      <> detail("Got:        " <> fmt_value(got))
     }
 
     RcdFieldNotFound(#(name, _field_span)) -> {

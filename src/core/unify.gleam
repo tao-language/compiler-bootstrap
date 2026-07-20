@@ -69,12 +69,8 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
           unify_gadt(ctx, #(t1, a1, s1), #(env, tdef, t2, a2, s2))
         Some(#(env, tdef)), _ ->
           unify_gadt(ctx, #(t2, a2, s2), #(env, tdef, t1, a1, s1))
-        None, None -> {
-          let names = list.map(ctx.types, fn(t) { t.0 })
-          let a = quote.lift(ctx.ffi, ctx.env, names, value1, s1)
-          let b = quote.lift(ctx.ffi, ctx.env, names, value2, s1)
-          with_err(ctx, e.TypeMismatch(a, b), s1)
-        }
+        None, None ->
+          with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)
       }
     v.Rcd([], None), v.Typ(_) -> ctx
     v.Rcd([], Some(tail)), v.Typ(_) -> unify(ctx, #(tail, s1), #(value2, s2))
@@ -117,12 +113,8 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       todo as "unify TypeDef"
     }
     v.Err, v.Err -> ctx
-    value1, value2 -> {
-      let names = list.map(ctx.types, fn(t) { t.0 })
-      let a = quote.lift(ctx.ffi, ctx.env, names, value1, s1)
-      let b = quote.lift(ctx.ffi, ctx.env, names, value2, s1)
-      with_err(ctx, e.TypeMismatch(a, b), s1)
-    }
+    value1, value2 ->
+      with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)
   }
 }
 

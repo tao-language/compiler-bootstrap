@@ -1,5 +1,5 @@
 import core/context.{type Context, type Subst, Context}
-import core/error.{type Error}
+import core/error.{type Error} as e
 import core/ffi.{type FFI}
 import core/quote.{quote}
 import core/term.{type Case, type Term} as tm
@@ -200,9 +200,23 @@ fn neutral(ffi: FFI, subst: Subst, neut: Neut) -> Neut {
 
 pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
   // TODO: resolve terms/values in each error variant
-  case err.data {
-    _ -> err
+  let data = case err.data {
+    e.TypeMismatch(#(a, s1), #(b, s2)) -> {
+      let a = value(ffi, subst, a)
+      let b = value(ffi, subst, b)
+      e.TypeMismatch(#(a, s1), #(b, s2))
+    }
+    e.InfiniteType(id, a) -> {
+      let a = value(ffi, subst, a)
+      e.InfiniteType(id, a)
+    }
+    e.RcdFieldNotFound(field) -> e.RcdFieldNotFound(field)
+    _ -> {
+      echo err.data
+      todo
+    }
   }
+  e.Error(..err, data: data)
 }
 
 fn resolve_case(

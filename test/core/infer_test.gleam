@@ -71,55 +71,55 @@ pub fn check_lit_float_test() {
   }
   assert check_float(v.int_t)
     == #(
-      [e.Error(e.TypeMismatch(ast.float_t(s1), ast.int_t(s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.int_t, s1)), s1, [])],
       tm.float(1.0),
       v.int_t,
     )
   assert check_float(v.i8)
     == #(
-      [e.Error(e.TypeMismatch(ast.float_t(s1), ast.i8(s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.i8, s1)), s1, [])],
       tm.float(1.0),
       v.i8,
     )
   assert check_float(v.i16)
     == #(
-      [e.Error(e.TypeMismatch(ast.float_t(s1), ast.i16(s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.i16, s1)), s1, [])],
       tm.float(1.0),
       v.i16,
     )
   assert check_float(v.i32)
     == #(
-      [e.Error(e.TypeMismatch(ast.float_t(s1), ast.i32(s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.i32, s1)), s1, [])],
       tm.float(1.0),
       v.i32,
     )
   assert check_float(v.i64)
     == #(
-      [e.Error(e.TypeMismatch(ast.float_t(s1), ast.i64(s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.i64, s1)), s1, [])],
       tm.float(1.0),
       v.i64,
     )
   assert check_float(v.u8)
     == #(
-      [e.Error(e.TypeMismatch(ast.float_t(s1), ast.u8(s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.u8, s1)), s1, [])],
       tm.float(1.0),
       v.u8,
     )
   assert check_float(v.u16)
     == #(
-      [e.Error(e.TypeMismatch(ast.float_t(s1), ast.u16(s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.u16, s1)), s1, [])],
       tm.float(1.0),
       v.u16,
     )
   assert check_float(v.u32)
     == #(
-      [e.Error(e.TypeMismatch(ast.float_t(s1), ast.u32(s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.u32, s1)), s1, [])],
       tm.float(1.0),
       v.u32,
     )
   assert check_float(v.u64)
     == #(
-      [e.Error(e.TypeMismatch(ast.float_t(s1), ast.u64(s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.u64, s1)), s1, [])],
       tm.float(1.0),
       v.u64,
     )
