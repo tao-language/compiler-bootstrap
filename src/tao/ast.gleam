@@ -25,6 +25,7 @@ pub type ExprData {
   )
   Ann(value: Expr, type_: Type)
   Fn(
+    name: Option(String),
     implicits: List(Param),
     implicits_tail: Option(Type),
     params: List(Param),

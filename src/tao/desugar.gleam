@@ -62,10 +62,18 @@ pub fn expr(defs: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
       let core_type = expr(defs, type_)
       core.ann(core_value, core_type, e.span)
     }
-    tao.Fn(implicits, implicits_tail, params, params_tail, returns, body) ->
+    tao.Fn(
+      opt_name,
+      implicits,
+      implicits_tail,
+      params,
+      params_tail,
+      returns,
+      body,
+    ) ->
       function(
         defs,
-        None,
+        opt_name,
         implicits,
         implicits_tail,
         params,
