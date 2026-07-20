@@ -370,9 +370,13 @@ pub fn let_pat_trace(
 }
 
 pub fn dot(expr: Expr, field: String, span: Span) {
+  dot_trace(expr, field, span, None)
+}
+
+pub fn dot_trace(expr: Expr, field: String, span: Span, trace: Option(String)) {
   let pattern = prcd([#(field, pvar(field, span))], Some(pany(span)), span)
   let body = var(field, span)
-  match(expr, [Case(pattern, None, body)], span)
+  Expr(Match(expr, [Case(pattern, None, body)]), span, trace)
 }
 
 pub fn err(span: Span) {

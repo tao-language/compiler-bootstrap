@@ -332,7 +332,13 @@ pub fn statement(
       }
       let mod_name = "/" <> path
       let access = core.dot(core.var(mod_name, stmt.span), name, stmt.span)
-      let next = core.let_var(#(name_alias, None, access), next, stmt.span)
+      let next =
+        core.let_var_trace(
+          #(name_alias, None, access),
+          next,
+          stmt.span,
+          Some("imported name: " <> name),
+        )
       statement(defs, block_ctx, stmt, next)
     }
     tao.ImportAll(path, opt_alias) -> {
