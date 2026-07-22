@@ -74,6 +74,7 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
         None, None ->
           with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)
       }
+    // Record types
     v.Rcd([], None), v.Typ(_) -> ctx
     v.Rcd([], Some(tail)), v.Typ(_) -> unify(ctx, #(tail, s1), #(value2, s2))
     v.Rcd([#(_, #(value1, _)), ..fields], opt_tail), v.Typ(_) as value2 -> {
@@ -82,7 +83,10 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     }
     v.Typ(_) as value1, v.Rcd(..) as value2 ->
       unify(ctx, #(value2, s2), #(value1, s1))
-    v.Rcd([], None), v.Rcd([], None) -> ctx
+    // Record row polymorphism
+    v.Rcd([], Some(tail1)), v.Rcd([], Some(tail2)) ->
+      unify(ctx, #(tail1, s1), #(tail2, s2))
+    v.Rcd([], _), v.Rcd([], _) -> ctx
     v.Rcd([], None) as rcd1, v.Rcd([#(name, _), ..fields2], None) -> {
       let ctx = with_err(ctx, e.RcdFieldNotFound(#(name, s2)), s1)
       unify(ctx, #(rcd1, s1), #(v.Rcd(fields2, None), s2))
@@ -94,27 +98,32 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
         unify_rcd_field(ctx, #(rcd1, field, s1), #(rcd2, fields2, tail2, s2))
       unify(ctx, #(v.Rcd(fields1, tail1), s1), #(rcd2, s2))
     }
+    // Lambdas
     v.Lam(env1, #(_, a1), b1), v.Lam(env2, #(_, a2), b2) -> {
       let ctx = unify(ctx, #(a1, s1), #(a2, s2))
       let v1 = eval(ctx.ffi, v.env_push(env1, 1), b1)
       let v2 = eval(ctx.ffi, v.env_push(env2, 1), b2)
       unify(ctx, #(v1, s1), #(v2, s2))
     }
+    // Pi types
     v.Pi(env1, #(_, a1), b1), v.Pi(env2, #(_, a2), b2) -> {
       let ctx = unify(ctx, #(a1, s1), #(a2, s2))
       let v1 = eval(ctx.ffi, v.env_push(env1, 1), b1)
       let v2 = eval(ctx.ffi, v.env_push(env2, 1), b2)
       unify(ctx, #(v1, s1), #(v2, s2))
     }
+    // Recursive terms
     v.Fix(env1, _, b1), v.Fix(env2, _, b2) -> {
       let v1 = eval(ctx.ffi, v.env_push(env1, 1), b1)
       let v2 = eval(ctx.ffi, v.env_push(env2, 1), b2)
       unify(ctx, #(v1, s1), #(v2, s2))
     }
+    // Type definitions
     v.TypeDef(env1, tdef1), v.TypeDef(env2, tdef2) -> {
       todo as "unify TypeDef"
     }
     v.Err, v.Err -> ctx
+    // Anything else is an error
     value1, value2 ->
       with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)
   }
