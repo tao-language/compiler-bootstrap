@@ -43,7 +43,7 @@ pub fn roundtrip_hole_test() {
   let source = "?"
   assert expr(parse(source), 80, 2) == source
 
-  let source2 = "?<42>"
+  let source2 = "?42"
   assert expr(parse(source2), 80, 2) == source2
 }
 

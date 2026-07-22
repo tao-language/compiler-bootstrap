@@ -27,7 +27,7 @@ pub fn format_var_test() {
 
 pub fn format_hole_test() {
   assert expr(ast.hole(None, s), 80, 2) == "?"
-  assert expr(ast.hole(Some(42), s), 80, 2) == "?<42>"
+  assert expr(ast.hole(Some(42), s), 80, 2) == "?42"
 }
 
 pub fn format_type_universe_test() {

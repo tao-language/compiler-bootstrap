@@ -32,8 +32,10 @@ pub fn lex_typ_test() {
     == Ok([p.KwType, p.LAngle, p.IntLit(42), p.RAngle])
   assert lex("%Type\n<\n42\n>\n")
     == Ok([p.KwType, p.LAngle, p.IntLit(42), p.RAngle])
-  assert lex("%Types ") == Error(e.Error(e.UnexpectedToken("%Types "), s(1, 1, 1, 1), []))
-  assert lex("% Type ") == Error(e.Error(e.UnexpectedToken("% Type "), s(1, 1, 1, 1), []))
+  assert lex("%Types ")
+    == Error(e.Error(e.UnexpectedToken("%Types "), s(1, 1, 1, 1), []))
+  assert lex("% Type ")
+    == Error(e.Error(e.UnexpectedToken("% Type "), s(1, 1, 1, 1), []))
 }
 
 pub fn parse_typ_test() {
@@ -52,7 +54,7 @@ pub fn lex_hole_test() {
 
 pub fn parse_hole_test() {
   assert parse("?") == Ok(ast.hole(None, s(1, 1, 1, 2)))
-  assert parse("?<42>") == Ok(ast.hole(Some(42), s(1, 1, 1, 6)))
+  assert parse("?42") == Ok(ast.hole(Some(42), s(1, 1, 1, 4)))
 }
 
 // ============================================================================

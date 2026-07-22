@@ -84,9 +84,7 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     v.Typ(_) as value1, v.Rcd(..) as value2 ->
       unify(ctx, #(value2, s2), #(value1, s1))
     // Record row polymorphism
-    v.Rcd([], Some(tail1)), v.Rcd([], Some(tail2)) ->
-      unify(ctx, #(tail1, s1), #(tail2, s2))
-    v.Rcd([], _), v.Rcd([], _) -> ctx
+    v.Rcd([], None), v.Rcd([], None) -> ctx
     v.Rcd([], None) as rcd1, v.Rcd([#(name, _), ..fields2], None) -> {
       let ctx = with_err(ctx, e.RcdFieldNotFound(#(name, s2)), s1)
       unify(ctx, #(rcd1, s1), #(v.Rcd(fields2, None), s2))
