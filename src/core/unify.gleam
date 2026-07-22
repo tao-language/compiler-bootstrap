@@ -40,6 +40,8 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       }
       unify_match_case_list(ctx, #(env1, cases1, s1), #(env2, cases2, s2))
     }
+    v.Neut(_) as value1, v.Neut(_) as value2 ->
+      with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)
     // Try to unify neutrals with concrete values
     value1, v.Neut(neut) ->
       check_neut_with_concrete(ctx, #(value1, s1), #(neut, s2))
@@ -158,7 +160,7 @@ fn check_neut_with_concrete(
     v.NApp(fun_neut, arg_val) -> todo
     v.NMatch(env, arg_val, cases) ->
       check_neut_with_concrete_cases(ctx, env, arg_val, a, #(cases, s2))
-    v.NCall(name, arg) -> todo
+    v.NCall(_, _) -> ctx
   }
 }
 

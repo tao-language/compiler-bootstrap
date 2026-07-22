@@ -1,4 +1,5 @@
 import core/ast as core
+import core/format
 import gleam/option.{None, Some}
 import syntax/span.{Span}
 import tao/ast as tao
@@ -8,42 +9,41 @@ const s = Span("desugar_test", 1, 1, 1, 1)
 
 const unit = core.Expr(core.Rcd([], None), s, None)
 
+fn fmt(e) {
+  format.expr(e, 80, 2)
+}
+
 pub fn desugar_stmt_import_simple_test() {
   let stmt = tao.import_("m", None, [], s)
-  assert desugar.statement([], new_block_ctx, stmt, unit)
-    == core.let_var_trace(#("m", None, core.var("@m", s)), unit, s, Some("import m"))
+  let expr = desugar.statement([], new_block_ctx, stmt, unit)
+  assert expr.trace == Some("import m")
+  assert fmt(expr) == "%let m = `/m`\n{}"
 }
 
 pub fn desugar_stmt_import_path_name_test() {
   let stmt = tao.import_("path/to/m", None, [], s)
-  assert desugar.statement([], new_block_ctx, stmt, unit)
-    == core.let_var_trace(#("m", None, core.var("@path/to/m", s)), unit, s, Some("import path/to/m"))
+  let expr = desugar.statement([], new_block_ctx, stmt, unit)
+  assert expr.trace == Some("import path/to/m")
+  assert fmt(expr) == "%let m = `/path/to/m`\n{}"
 }
 
 pub fn desugar_stmt_import_alias_test() {
   let stmt = tao.import_("path/to/m", Some("n"), [], s)
-  assert desugar.statement([], new_block_ctx, stmt, unit)
-    == core.let_var_trace(#("n", None, core.var("@path/to/m", s)), unit, s, Some("import path/to/m"))
+  let expr = desugar.statement([], new_block_ctx, stmt, unit)
+  assert expr.trace == Some("import path/to/m")
+  assert fmt(expr) == "%let n = `/path/to/m`\n{}"
 }
 
 pub fn desugar_stmt_import_expose_name_test() {
   let stmt = tao.import_("m", None, [#("x", None)], s)
-  assert desugar.statement([], new_block_ctx, stmt, unit)
-    == core.let_var_trace(
-      #("m", None, core.var("@m", s)),
-      core.let_var(#("x", None, core.dot(core.var("@m", s), "x", s)), unit, s),
-      s,
-      Some("import m"),
-    )
+  let expr = desugar.statement([], new_block_ctx, stmt, unit)
+  assert expr.trace == Some("import m")
+  assert fmt(expr) == "%let m = `/m`\n%let x = %get(`/m`).x\n{}"
 }
 
 pub fn desugar_stmt_import_expose_name_alias_test() {
   let stmt = tao.import_("m", None, [#("x", Some("y"))], s)
-  assert desugar.statement([], new_block_ctx, stmt, unit)
-    == core.let_var_trace(
-      #("m", None, core.var("@m", s)),
-      core.let_var(#("y", None, core.dot(core.var("@m", s), "x", s)), unit, s),
-      s,
-      Some("import m"),
-    )
+  let expr = desugar.statement([], new_block_ctx, stmt, unit)
+  assert expr.trace == Some("import m")
+  assert fmt(expr) == "%let m = `/m`\n%let y = %get(`/m`).x\n{}"
 }

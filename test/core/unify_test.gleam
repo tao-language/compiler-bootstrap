@@ -222,7 +222,10 @@ pub fn unify_ctr_gadt_vec_test() {
   let cons_arg =
     tm.rcd([#("x", a), #("xs", tm.ctr("Vec", [#("n", m), #("a", a)]))])
   let cons_ret =
-    tm.ctr("Vec", [#("n", tm.Call("+", tm.rcd([#("", m), #("", tm.int(1))]))), #("a", a)])
+    tm.ctr("Vec", [
+      #("n", tm.Call("+", tm.rcd([#("", m), #("", tm.int(1))]))),
+      #("a", a),
+    ])
   let tdef =
     v.TypeDefinition(
       params: [#("n", v.int_t), #("a", v.Typ(0))],
@@ -242,8 +245,10 @@ pub fn unify_ctr_gadt_vec_test() {
       ffi: [
         #("+", fn(arg) {
           case arg {
-            v.Rcd([#(_, #(v.Lit(lit.Int(x)), _)), #(_, #(v.Lit(lit.Int(y)), _))], None) ->
-              Some(v.int(x + y))
+            v.Rcd(
+              [#(_, #(v.Lit(lit.Int(x)), _)), #(_, #(v.Lit(lit.Int(y)), _))],
+              None,
+            ) -> Some(v.int(x + y))
             _ -> None
           }
         }),
@@ -376,7 +381,11 @@ pub fn unify_neut_nhole_infinite_type_test() {
   let ctx0 = new_ctx
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
   let error =
-    e.Error(e.InfiniteType(0, v.Neut(v.NApp(v.NHole([], Some(0)), v.int_t))), s2, [])
+    e.Error(
+      e.InfiniteType(0, v.Neut(v.NApp(v.NHole([], Some(0)), v.int_t))),
+      s2,
+      [],
+    )
   assert ctx.errors == [error]
 }
 
@@ -435,17 +444,10 @@ pub fn unify_neut_ncall_name_mismatch_test() {
   assert ctx.errors != []
 }
 
-// pub fn unify_neut_ncall_return_mismatch_test() {
-//   let a = v.Neut(v.NCall("f", v.int_t, []))
-//   let b = v.Neut(v.NCall("f", v.float_t, []))
-//   let ctx0 = new_ctx
-//   assert unify(ctx0, #(a, s1), #(b, s2))
-//     == with_err(ctx0, e.TypeMismatch(#(v.int_t, s1), #(v.float_t, s2)))
-// }
-
 pub fn unify_neut_ncall_arg_mismatch_test() {
   let a = v.Neut(v.NCall("f", v.rcd([#("", v.int_t), #("", v.float_t)])))
-  let b = v.Neut(v.NCall("f", v.rcd([#("", v.int_t), #("", v.float_t), #("", v.i64)])))
+  let b =
+    v.Neut(v.NCall("f", v.rcd([#("", v.int_t), #("", v.float_t), #("", v.i64)])))
   let ctx0 = new_ctx
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
   assert ctx.errors != []

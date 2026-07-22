@@ -21,7 +21,7 @@ pub fn core_factorial_test() {
   // $fix f. $fn(x: ?)
   // => $match(x) {
   // | 0 => 1
-  // | n => @int_mul<$Int>(n, f @int_sub(n, 1))
+  // | n => @int_mul(n, f @int_sub(n, 1))
   // }
   let #(f, x, n) = #(ast.var("f", s), ast.var("x", s), ast.var("n", s))
   let i1 = ast.int(1, s)
@@ -35,6 +35,7 @@ pub fn core_factorial_test() {
 
   let ctx0 = Context(..new_ctx, ffi: ffi.build)
   let #(term, type_, ctx) = infer(ctx0, ast_fn)
+  let ctx = resolve.context(ctx)
   assert ctx.errors == []
   let term = resolve.term(ctx.ffi, ctx.subst, list.length(ctx.env), term)
   assert term
@@ -47,27 +48,33 @@ pub fn core_factorial_test() {
           tm.Case(
             tm.pvar("n"),
             None,
-            tm.Call("int_mul", tm.rcd([
-              #("", tm.Var(0)),
-              #("", tm.App(
-                tm.Var(2),
-                tm.Call("int_sub", tm.rcd([#("", tm.Var(0)), #("", tm.int(1))])),
-              )),
-            ])),
+            tm.Call(
+              "int_mul",
+              tm.rcd([
+                #("", tm.Var(0)),
+                #(
+                  "",
+                  tm.App(
+                    tm.Var(2),
+                    tm.Call(
+                      "int_sub",
+                      tm.rcd([#("", tm.Var(0)), #("", tm.int(1))]),
+                    ),
+                  ),
+                ),
+              ]),
+            ),
           ),
         ]),
       ),
     )
-  // With deferred substitution, holes in the type are resolved via ctx.subst.
-  // Use resolve.value to get the fully resolved type for comparison.
-  let resolved_type = resolve.value(ctx.ffi, ctx.subst, type_)
-  assert resolved_type
+  assert type_
     == v.Pi(
       [v.var(0)],
       #("x", v.hole([v.var(0)], Some(1))),
       tm.Match(tm.Var(0), [
         tm.Case(tm.pint(0), None, tm.int_t),
-        tm.Case(tm.pvar("n"), None, tm.int_t),
+        tm.Case(tm.pvar("n"), None, tm.Hole(Some(3))),
       ]),
     )
   let factorial = fn(n) { eval(ctx.ffi, ctx.env, tm.App(term, tm.int(n))) }

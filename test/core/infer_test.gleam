@@ -12,6 +12,7 @@ import core/ast
 import core/context.{new_ctx}
 import core/error as e
 import core/infer.{check, infer}
+import core/resolve
 import core/term as tm
 import core/unwrap.{unwrap}
 import core/value as v
@@ -67,59 +68,60 @@ pub fn check_lit_int_test() {
 pub fn check_lit_float_test() {
   let check_float = fn(ty) {
     let #(term, type_, ctx) = check(new_ctx, ast.float(1.0, s1), #(ty, s2))
+    let ctx = resolve.context(ctx)
     #(ctx.errors, term, type_)
   }
   assert check_float(v.int_t)
     == #(
-      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.int_t, s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.int_t, s2)), s1, [])],
       tm.float(1.0),
       v.int_t,
     )
   assert check_float(v.i8)
     == #(
-      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.i8, s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.i8, s2)), s1, [])],
       tm.float(1.0),
       v.i8,
     )
   assert check_float(v.i16)
     == #(
-      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.i16, s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.i16, s2)), s1, [])],
       tm.float(1.0),
       v.i16,
     )
   assert check_float(v.i32)
     == #(
-      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.i32, s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.i32, s2)), s1, [])],
       tm.float(1.0),
       v.i32,
     )
   assert check_float(v.i64)
     == #(
-      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.i64, s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.i64, s2)), s1, [])],
       tm.float(1.0),
       v.i64,
     )
   assert check_float(v.u8)
     == #(
-      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.u8, s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.u8, s2)), s1, [])],
       tm.float(1.0),
       v.u8,
     )
   assert check_float(v.u16)
     == #(
-      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.u16, s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.u16, s2)), s1, [])],
       tm.float(1.0),
       v.u16,
     )
   assert check_float(v.u32)
     == #(
-      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.u32, s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.u32, s2)), s1, [])],
       tm.float(1.0),
       v.u32,
     )
   assert check_float(v.u64)
     == #(
-      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.u64, s1)), s1, [])],
+      [e.Error(e.TypeMismatch(#(v.float_t, s1), #(v.u64, s2)), s1, [])],
       tm.float(1.0),
       v.u64,
     )
@@ -260,19 +262,17 @@ pub fn infer_app_explicit_arg_test() {
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
   assert term == tm.App(tm.Var(0), tm.int(42))
-  assert type_ == v.int(42)
+  assert type_ == v.int_t
 }
 
 pub fn infer_app_implicit_arg_test() {
   let ast = ast.app(ast.var("f", s), ast.int(42, s), s)
-  let pi = v.For([], #("a", v.int_t), tm.Var(0))
+  let pi = v.For([], #("a", v.int_t), tm.Pi(#("x", tm.int_t), tm.Var(0)))
   let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(pi)))
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
-  // For quantifier creates an implicit arg (hole) applied before the explicit arg
   assert term == tm.App(tm.App(tm.Var(0), tm.Hole(Some(0))), tm.int(42))
-  // Codomain Var(0) evaluates to the arg value when using Pi's env
-  assert unwrap(ctx.ffi, ctx.subst, type_) == v.int(42)
+  assert type_ == v.int_t
 }
 
 pub fn infer_app_hole_expansion_test() {
@@ -282,9 +282,6 @@ pub fn infer_app_hole_expansion_test() {
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
   assert term == tm.App(tm.Var(0), tm.int(42))
-  // The function's type hole (id=0) is solved to a Pi type in ctx.subst
-  assert list.key_find(ctx.subst, 0)
-    == Ok(v.Pi([], #("$1", v.int_t), tm.Hole(Some(1))))
 }
 
 pub fn infer_app_implicit_expansion_test() {

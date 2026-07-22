@@ -201,6 +201,7 @@ fn neutral(ffi: FFI, subst: Subst, neut: Neut) -> Neut {
 pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
   // TODO: resolve terms/values in each error variant
   let data = case err.data {
+    e.VarUndefined(x) -> e.VarUndefined(x)
     e.TypeMismatch(#(a, s1), #(b, s2)) -> {
       let a = value(ffi, subst, a)
       let b = value(ffi, subst, b)
