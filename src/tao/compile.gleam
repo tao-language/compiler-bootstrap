@@ -34,7 +34,7 @@ pub fn tests(mods: List(Module)) -> List(TestDef) {
   |> list.flatten
 }
 
-fn definitions(
+pub fn definitions(
   mods: List(Module),
 ) -> List(#(String, List(String), List(Stmt))) {
   list.map(mods, fn(mod) {
@@ -43,7 +43,7 @@ fn definitions(
   })
 }
 
-fn define_modules(
+pub fn define_modules(
   ctx: Context,
   defs: List(#(String, List(String))),
   mods: List(#(String, List(String), List(Stmt))),
@@ -67,7 +67,7 @@ fn define_modules(
   }
 }
 
-fn infer_modules(
+pub fn infer_modules(
   ctx: Context,
   core_mods: List(#(Int, Int, core.Expr)),
 ) -> Context {

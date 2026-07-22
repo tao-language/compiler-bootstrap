@@ -3,6 +3,8 @@ import core/error
 import core/eval.{eval}
 import core/ffi
 import core/format
+import core/resolve
+import core/unwrap
 import core/value as v
 import gleam/int
 import gleam/io
@@ -90,12 +92,9 @@ pub fn debug_file(
   list.map(exports, fn(name) { io.println("- " <> name) })
   io.println("")
 
-  echo "> defs = definitions(mods)"
-  let defs =
-    list.map(mods, fn(mod) {
-      let #(name, stmts) = mod
-      #(name, discover.definitions(stmts))
-    })
+  echo "> defs, mods_defs = compile.definitions(mods)"
+  let mods_defs = compile.definitions(mods)
+  let defs = list.map(mods_defs, fn(m) { #(m.0, m.1) })
   list.map(defs, fn(def) {
     let #(name, exports) = def
     io.println("- " <> string.inspect(name) <> ":")
@@ -103,15 +102,7 @@ pub fn debug_file(
   })
   io.println("")
 
-  echo "> mod_expr = desugar.module(exports, mod)"
-  let mod_expr = desugar.module(defs, exports, #(filename, stmts))
-  io.println(fmt_expr(mod_expr))
-  io.println("")
-
-  echo "> ctx = compile.package(mods)"
   let ctx = Context(..new_ctx, ffi: ffi.build)
-  let ctx = compile.package(ctx, mods)
-
   io.println("ffi (" <> int.to_string(list.length(ctx.ffi)) <> ")")
   list.map(ctx.ffi, fn(entry) {
     let #(name, _) = entry
@@ -119,23 +110,51 @@ pub fn debug_file(
   })
   io.println("")
 
-  io.println("env (" <> int.to_string(list.length(ctx.env)) <> ")")
-  list.zip(ctx.types, ctx.env)
-  |> list.map(fn(entry) {
-    let #(#(name, _), value) = entry
-    io.println("- \"" <> name <> "\": " <> fmt_value(value))
+  echo "> core_mods = compile.define_modules(defs, mods)"
+  let #(core_mods, ctx) = compile.define_modules(ctx, defs, mods_defs)
+  list.map(list.zip(defs, core_mods), fn(pair) {
+    let #(#(name, _), mod) = pair
+    let #(value_id, type_id, mod_expr) = mod
+    io.println(
+      "//--- "
+      <> name
+      <> ": value_hole_id="
+      <> int.to_string(value_id)
+      <> " type_hole_id="
+      <> int.to_string(type_id),
+    )
+    io.println(fmt_expr(mod_expr))
+    io.println("")
+  })
+  list.map(list.zip(ctx.types, ctx.env), fn(entry) {
+    let #(#(name, mod_type), mod_value) = entry
+    io.println("// ctx.env[" <> string.inspect(name) <> "]")
+    io.println(fmt_value(mod_value))
+    io.println("// ctx.types[" <> string.inspect(name) <> "]")
+    io.println(fmt_value(mod_type))
+    io.println("")
   })
   io.println("")
 
-  io.println("types (" <> int.to_string(list.length(ctx.types)) <> ")")
-  list.map(ctx.types, fn(entry) {
-    let #(name, type_) = entry
-    io.println("- \"" <> name <> "\": " <> fmt_value(type_))
+  echo "> compile.infer_modules(core_mods)"
+  let ctx = compile.infer_modules(ctx, core_mods)
+  list.map(list.zip(ctx.types, ctx.env), fn(entry) {
+    let #(#(name, mod_type), mod_value) = entry
+    // Unwrap to at least see the initial structure directly
+    let mod_value = unwrap.unwrap(ctx.ffi, ctx.subst, mod_value)
+    let mod_type = unwrap.unwrap(ctx.ffi, ctx.subst, mod_type)
+    io.println("// ctx.env[" <> string.inspect(name) <> "]")
+    io.println(fmt_value(mod_value))
+    io.println("// ctx.types[" <> string.inspect(name) <> "]")
+    io.println(fmt_value(mod_type))
+    io.println("")
   })
-  io.println("")
-
-  io.println("subst (" <> int.to_string(list.length(ctx.subst)) <> ")")
-  io.println("solved: " <> string.inspect(list.map(ctx.subst, fn(kv) { kv.0 })))
+  io.println(
+    "// ctx.subst: " <> int.to_string(list.length(ctx.subst)) <> " solved holes",
+  )
+  io.println(
+    "// solved: " <> string.inspect(list.map(ctx.subst, fn(kv) { kv.0 })),
+  )
   // list.map(ctx.subst, fn(entry) {
   //   let #(id, value) = entry
   //   // TODO: save ctx.types.names in ctx.subst to display var names.
@@ -143,6 +162,32 @@ pub fn debug_file(
   //   io.println("- " <> int.to_string(id) <> ": " <> fmt_subst)
   // })
   io.println("")
+
+  echo "> resolve.context(ctx)"
+  let ctx = resolve.context(ctx)
+  list.map(list.zip(ctx.types, ctx.env), fn(entry) {
+    let #(#(name, mod_type), mod_value) = entry
+    io.println("// ctx.env[" <> string.inspect(name) <> "]")
+    io.println(fmt_value(mod_value))
+    io.println("// ctx.types[" <> string.inspect(name) <> "]")
+    io.println(fmt_value(mod_type))
+    io.println("")
+  })
+
+  case ctx.errors {
+    [] -> io.println("0 build errors")
+    errors -> {
+      let n = list.length(errors)
+      io.println_error("---- BUILD ERRORS ----")
+      list.map(ctx.errors, fn(err) {
+        let msg = error.display(ctx.ffi, ctx.types, err)
+        io.println_error("❌ " <> msg)
+      })
+      io.println("")
+      io.println_error(int.to_string(n) <> " build errors")
+      exit(1)
+    }
+  }
 
   echo "> tests = compile.tests(stmts)"
   let tests = compile.tests([#(filename, stmts)])
@@ -179,20 +224,6 @@ pub fn debug_file(
     _ -> io.println("- " <> int.to_string(unknown) <> " unkown result state")
   }
   io.println("")
-
-  case ctx.errors {
-    [] -> io.println("0 build errors")
-    errors -> {
-      let n = list.length(errors)
-      io.println_error("---- BUILD ERRORS ----")
-      list.map(ctx.errors, fn(err) {
-        let msg = error.display(ctx.ffi, ctx.types, err)
-        io.println_error("❌ " <> msg)
-      })
-      io.println("")
-      io.println_error(int.to_string(n) <> " build errors")
-    }
-  }
 }
 
 // Declare the external Erlang halt function

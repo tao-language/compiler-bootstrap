@@ -74,7 +74,7 @@ fn doc_term(term: Expr, indent: Int) -> Document {
         n -> doc_text("%Type<" <> int.to_string(n) <> ">")
       }
     ast.Hole(None) -> doc_text("?")
-    ast.Hole(Some(id)) -> doc_text("?<" <> int.to_string(id) <> ">")
+    ast.Hole(Some(id)) -> doc_text("?" <> int.to_string(id))
     ast.Lit(l) ->
       case l {
         l.Int(value) -> doc_text(int.to_string(value))

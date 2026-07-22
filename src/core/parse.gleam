@@ -242,7 +242,7 @@ fn typ(file: String) -> Parser(Expr, Token, Nil) {
 fn hole(file: String) -> Parser(Expr, Token, Nil) {
   use start <- do(get_span(file))
   use _ <- do(nibble.token(Question))
-  use id <- do(nibble.optional(angle_brackets(take_int())))
+  use id <- do(nibble.optional(take_int()))
   use end <- do(get_span(file))
   return(ast.hole(id, span.merge(start, end)))
 }
