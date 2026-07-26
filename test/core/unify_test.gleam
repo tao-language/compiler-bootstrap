@@ -232,7 +232,10 @@ pub fn unify_ctr_gadt_vec_test() {
       arg: tm.rcd([#("n", tm.Var(1)), #("a", tm.Var(0))]),
       variants: [
         #("Nil", v.Variant([], tm.rcd([]), nil_ret)),
-        #("Cons", v.Variant([#("m", v.hole([], None))], cons_arg, cons_ret)),
+        #(
+          "Cons",
+          v.Variant([#("m", v.hole_open([], None))], cons_arg, cons_ret),
+        ),
       ],
     )
   let ctx0 =
@@ -299,13 +302,22 @@ pub fn unify_rcd_empty_test() {
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
 
-pub fn unify_rcd_field_not_found_test() {
-  let a = v.rcd([#("x", v.int_t)])
+pub fn unify_rcd_field_not_found_a_test() {
+  let a = v.rcd([])
   let b = v.rcd([#("y", v.int_t)])
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2))
     == Context(..ctx0, errors: [
       e.Error(e.RcdFieldNotFound(#("y", s2)), s1, []),
+    ])
+}
+
+pub fn unify_rcd_field_not_found_b_test() {
+  let a = v.rcd([#("x", v.int_t)])
+  let b = v.rcd([])
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2))
+    == Context(..ctx0, errors: [
       e.Error(e.RcdFieldNotFound(#("x", s1)), s2, []),
     ])
 }

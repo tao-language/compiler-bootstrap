@@ -90,7 +90,7 @@ fn quote_neut(ffi: FFI, env: Env, neut: Neut) -> Term {
   case neut {
     v.NVar(level) -> tm.Var(list.length(env) - level - 1)
     v.NHole(env, id) ->
-      case find_index(env, v.hole(env, id)) {
+      case find_index(env, v.hole_open(env, id)) {
         Some(index) -> tm.Var(index)
         None -> tm.Hole(id)
       }

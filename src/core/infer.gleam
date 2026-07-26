@@ -119,7 +119,7 @@ fn infer_hole(ctx: Context, opt_id: Option(Int)) -> #(Term, Type, Context) {
     Some(id) -> {
       // Concrete hole, create a new hole for its type.
       let #(type_id, ctx) = context.new_hole(ctx)
-      #(tm.Hole(Some(id)), v.hole(ctx.env, Some(type_id)), ctx)
+      #(tm.Hole(Some(id)), v.hole(ctx.env, type_id), ctx)
     }
     None -> {
       // Unknown hole, create a fresh new hole.
@@ -202,7 +202,7 @@ fn infer_call(
 ) -> #(Term, Type, Context) {
   let #(id, ctx) = context.new_hole(ctx)
   let #(arg, _, ctx) = infer(ctx, arg_ast)
-  #(tm.Call(name, arg), v.hole(ctx.env, Some(id)), ctx)
+  #(tm.Call(name, arg), v.hole(ctx.env, id), ctx)
 }
 
 fn infer_ann(ctx: Context, ast: Expr, type_: Expr) -> #(Term, Type, Context) {
@@ -300,7 +300,7 @@ fn infer_fix(
 ) -> #(Term, Type, Context) {
   let level = list.length(ctx.env)
   let #(id, ctx) = context.new_hole(ctx)
-  let type_hole = v.hole(ctx.env, Some(id))
+  let type_hole = v.hole(ctx.env, id)
   let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(type_hole)))
   let #(body, body_type, ctx) = infer(ctx, body)
   let ctx = context.pop_vars(ctx, 1)
@@ -352,7 +352,7 @@ fn infer_app(
         v.Pi(env, #("$" <> int.to_string(id), arg_type), tm.Hole(Some(id)))
       let ctx = unify(ctx, #(fun_type, span), #(expected_pi, span))
       let arg_val = eval(ctx.ffi, ctx.env, arg)
-      let ret_type = v.hole([arg_val, ..ctx.env], Some(id))
+      let ret_type = v.hole([arg_val, ..ctx.env], id)
       #(tm.App(fun, arg), ret_type, ctx)
     }
     v.Neut(v.NMatch(env, _, _)) -> {
@@ -362,7 +362,7 @@ fn infer_app(
         v.Pi(env, #("$" <> int.to_string(id), arg_type), tm.Hole(Some(id)))
       let ctx = unify(ctx, #(fun_type, span), #(expected_pi, span))
       let arg_val = eval(ctx.ffi, ctx.env, arg)
-      let ret_type = v.hole([arg_val, ..ctx.env], Some(id))
+      let ret_type = v.hole([arg_val, ..ctx.env], id)
       #(tm.App(fun, arg), ret_type, ctx)
     }
     v.Neut(neut) -> {
@@ -386,7 +386,7 @@ fn instantiate(
     v.For(env, _, body) -> {
       let #(id, ctx) = context.new_hole(ctx)
       let arg = tm.Hole(Some(id))
-      let env = [v.hole(env, Some(id)), ..env]
+      let env = [v.hole(env, id), ..env]
       let fun_type = eval(ctx.ffi, env, body)
       instantiate(ctx, tm.App(fun, arg), fun_type)
     }
@@ -445,7 +445,7 @@ fn infer_pattern(
   case pattern_ast.data {
     ast.PAny -> {
       let #(id, ctx) = context.new_hole(ctx)
-      #(tm.PAny, v.hole(ctx.env, Some(id)), ctx)
+      #(tm.PAny, v.hole(ctx.env, id), ctx)
     }
     ast.PTyp(u) -> #(tm.PTyp(u), v.Typ(u + 1), ctx)
     ast.PLit(lit) -> {

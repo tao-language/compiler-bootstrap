@@ -7,18 +7,18 @@ import core/value as v
 import gleam/option.{Some}
 
 pub fn unwrap_no_solution_test() {
-  let solution = unwrap([], [], v.hole([], Some(10)))
-  assert solution == v.hole([], Some(10))
+  let solution = unwrap([], [], v.hole_open([], Some(10)))
+  assert solution == v.hole_open([], Some(10))
 }
 
 pub fn unwrap_direct_solution_test() {
   let subst = [#(10, v.int_t)]
-  let solution = unwrap([], subst, v.hole([], Some(10)))
+  let solution = unwrap([], subst, v.hole_open([], Some(10)))
   assert solution == v.int_t
 }
 
 pub fn unwrap_indirect_solution_test() {
-  let subst = [#(10, v.hole([], Some(20))), #(20, v.int_t)]
-  let solution = unwrap([], subst, v.hole([], Some(10)))
+  let subst = [#(10, v.hole_open([], Some(20))), #(20, v.int_t)]
+  let solution = unwrap([], subst, v.hole_open([], Some(10)))
   assert solution == v.int_t
 }

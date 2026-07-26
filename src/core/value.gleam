@@ -2,7 +2,7 @@ import core/literals.{type Literal, type LiteralType} as lit
 import core/term.{type Case, type Term}
 import gleam/int
 import gleam/list
-import gleam/option.{type Option, None}
+import gleam/option.{type Option, None, Some}
 
 // ============================================================================
 // VALUES (Semantics level - De Bruijn levels)
@@ -72,7 +72,11 @@ pub fn var(level: Int) -> Value {
   Neut(NVar(level))
 }
 
-pub fn hole(env: Env, id: Option(Int)) -> Value {
+pub fn hole(env: Env, id: Int) -> Value {
+  hole_open(env, Some(id))
+}
+
+pub fn hole_open(env: Env, id: Option(Int)) -> Value {
   Neut(NHole(env, id))
 }
 

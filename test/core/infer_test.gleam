@@ -278,7 +278,11 @@ pub fn infer_app_implicit_arg_test() {
 pub fn infer_app_hole_expansion_test() {
   let ast = ast.app(ast.var("f", s), ast.int(42, s), s)
   let ctx0 =
-    context.push_var(new_ctx, #("f", Some(v.var(0)), Some(v.hole([], None))))
+    context.push_var(new_ctx, #(
+      "f",
+      Some(v.var(0)),
+      Some(v.hole_open([], None)),
+    ))
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
   assert term == tm.App(tm.Var(0), tm.int(42))
