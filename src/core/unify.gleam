@@ -130,7 +130,7 @@ pub fn unify_rcd(
       unify(ctx, #(v.Rcd([], None), s1), #(tail2, s2))
     #([], None), #([#(name, _), ..fields2], tail2) -> {
       let ctx = with_err(ctx, e.RcdFieldNotFound(#(name, s2)), s1)
-      unify(ctx, #(v.rcd([]), s1), #(v.Rcd(fields2, tail2), s2))
+      unify_rcd(ctx, #(#([], None), s1), #(#(fields2, tail2), s2))
     }
     #([], Some(tail1)), #(fields2, tail2) ->
       unify(ctx, #(tail1, s1), #(v.Rcd(fields2, tail2), s2))
@@ -143,18 +143,18 @@ pub fn unify_rcd(
             Some(v1), Some(v2) -> unify(ctx, #(v1, s1), #(v2, s2))
             _, _ -> ctx
           }
-          unify(ctx, #(v.Rcd(rest1, tail1), s1), #(v.Rcd(rest2, tail2), s2))
+          unify_rcd(ctx, #(#(rest1, tail1), s1), #(#(rest2, tail2), s2))
         }
         None, Some(tail2) -> {
           let #(id, ctx1) = context.new_hole(ctx)
           let hole = Some(v.hole([], id))
           let rcd2 = v.Rcd([#(name, #(val1, default1))], hole)
           let ctx = unify(ctx1, #(tail2, s2), #(rcd2, s1))
-          unify(ctx, #(v.Rcd(rest1, tail1), s1), #(v.Rcd(fields2, hole), s2))
+          unify_rcd(ctx, #(#(rest1, tail1), s1), #(#(fields2, hole), s2))
         }
         None, None -> {
           let ctx = with_err(ctx, e.RcdFieldNotFound(#(name, s1)), s2)
-          unify(ctx, #(v.Rcd(rest1, tail1), s1), #(v.Rcd(fields2, tail2), s2))
+          unify_rcd(ctx, #(#(rest1, tail1), s1), #(#(fields2, tail2), s2))
         }
       }
     }
