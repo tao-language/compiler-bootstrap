@@ -85,39 +85,7 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       unify(ctx, #(value2, s2), #(value1, s1))
     // Record row polymorphism
     v.Rcd(fields1, tail1), v.Rcd(fields2, tail2) ->
-      unify_rows(ctx, #(fields1, tail1, s1), #(fields2, tail2, s2))
-    v.Rcd([], None), v.Rcd([], None) -> ctx
-    v.Rcd([], Some(tail1)), value2 -> unify(ctx, #(tail1, s1), #(value2, s2))
-    value1, v.Rcd([], Some(tail2)) -> unify(ctx, #(value1, s1), #(tail2, s2))
-    v.Rcd([], None) as rcd1, v.Rcd([#(name, _), ..fields2], None) -> {
-      let ctx = with_err(ctx, e.RcdFieldNotFound(#(name, s2)), s1)
-      unify(ctx, #(rcd1, s1), #(v.Rcd(fields2, None), s2))
-    }
-    v.Rcd([field, ..fields1], tail1), v.Rcd(fields2, tail2) as rcd2 -> {
-      let #(name, #(val1, default1)) = field
-      let #(rcd2, ctx) = case tm.pop_field(fields2, name) {
-        Some(#(#(val2, default2), fields2)) -> {
-          let ctx = unify(ctx, #(val1, s1), #(val2, s2))
-          let ctx = case default1, default2 {
-            Some(v1), Some(v2) -> unify(ctx, #(v1, s1), #(v2, s2))
-            _, _ -> ctx
-          }
-          #(v.Rcd(fields2, tail2), ctx)
-        }
-        None -> {
-          let ctx = case tail2 {
-            Some(value2) -> {
-              let #(id, ctx) = context.new_hole(ctx)
-              let rcd1 = v.Rcd([field, ..fields1], Some(v.hole(ctx.env, id)))
-              unify(ctx, #(rcd1, s1), #(value2, s2))
-            }
-            None -> with_err(ctx, e.RcdFieldNotFound(#(name, s1)), s2)
-          }
-          #(rcd2, ctx)
-        }
-      }
-      unify(ctx, #(v.Rcd(fields1, tail1), s1), #(rcd2, s2))
-    }
+      unify_rcd(ctx, #(#(fields1, tail1), s1), #(#(fields2, tail2), s2))
     // Lambdas
     v.Lam(env1, #(_, a1), b1), v.Lam(env2, #(_, a2), b2) -> {
       let ctx = unify(ctx, #(a1, s1), #(a2, s2))
@@ -149,70 +117,45 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   }
 }
 
-pub fn unify_rows(
+pub fn unify_rcd(
   ctx: Context,
-  a: #(List(#(String, #(Value, Option(Value)))), Option(Value), Span),
-  b: #(List(#(String, #(Value, Option(Value)))), Option(Value), Span),
+  a: #(#(List(#(String, #(Value, Option(Value)))), Option(Value)), Span),
+  b: #(#(List(#(String, #(Value, Option(Value)))), Option(Value)), Span),
 ) -> Context {
-  let #(fields1, tail1, s1) = a
-  let #(fields2, tail2, s2) = b
-  case fields1 {
-    // 1. BASE CASE: Record A has no more fields left to check
-    [] ->
-      case tail1 {
-        Some(t_a) ->
-          // tail_a absorbs all remaining fields in B
-          unify(ctx, #(t_a, s1), #(v.Rcd(fields2, tail2), s2))
-        None ->
-          case fields2 {
-            // B still has explicit fields, but A is closed -> Fail
-            [#(name, _), ..] ->
-              with_err(ctx, e.RcdFieldNotFound(#(name, s2)), s1)
-            // Both field lists are empty! Check tail_b:
-            [] ->
-              case tail2 {
-                // Both are closed with zero leftover fields -> Success!
-                None -> ctx
-                // A is closed, B is open -> Force B's row variable to be empty
-                Some(t_b) -> unify(ctx, #(v.Rcd([], None), s1), #(t_b, s2))
-              }
-          }
-      }
-    // 2. RECURSIVE CASE: Pop the head field from Record A
-    [#(name, #(val1, default1)), ..rest_a] -> {
-      case tm.pop_field(fields2, name) {
-        // --- HIT: Label exists in B ---
-        Some(#(#(val2, default2), rest_b)) -> {
+  let #(rcd1, s1) = a
+  let #(rcd2, s2) = b
+  case rcd1, rcd2 {
+    #([], None), #([], None) -> ctx
+    #([], None), #([], Some(tail2)) ->
+      unify(ctx, #(v.Rcd([], None), s1), #(tail2, s2))
+    #([], None), #([#(name, _), ..fields2], tail2) -> {
+      let ctx = with_err(ctx, e.RcdFieldNotFound(#(name, s2)), s1)
+      unify(ctx, #(v.rcd([]), s1), #(v.Rcd(fields2, tail2), s2))
+    }
+    #([], Some(tail1)), #(fields2, tail2) ->
+      unify(ctx, #(tail1, s1), #(v.Rcd(fields2, tail2), s2))
+    #([field1, ..rest1], tail1), #(fields2, tail2) -> {
+      let #(name, #(val1, default1)) = field1
+      case tm.pop_field(fields2, name), tail2 {
+        Some(#(#(val2, default2), rest2)), _ -> {
           let ctx = unify(ctx, #(val1, s1), #(val2, s2))
           let ctx = case default1, default2 {
             Some(v1), Some(v2) -> unify(ctx, #(v1, s1), #(v2, s2))
             _, _ -> ctx
           }
-          unify_rows(ctx, #(rest_a, tail1, s1), #(rest_b, tail2, s2))
+          unify(ctx, #(v.Rcd(rest1, tail1), s1), #(v.Rcd(rest2, tail2), s2))
         }
-        // --- MISS: Label is missing from B ---
-        None ->
-          case tail2 {
-            Some(t_b) -> {
-              // Generate a fresh row hole for B's extended tail
-              let #(id, ctx1) = context.new_hole(ctx)
-              let fresh_tail = v.hole([], id)
-
-              // Force B's tail t_b = { label: type_a | fresh_tail }
-              let extension =
-                v.Rcd([#(name, #(val1, default1))], Some(fresh_tail))
-              let ctx2 = unify(ctx1, #(t_b, s2), #(extension, s1))
-
-              // Recurse with fresh_tail acting as B's new tail
-              unify_rows(ctx2, #(rest_a, tail1, s1), #(
-                fields2,
-                Some(fresh_tail),
-                s2,
-              ))
-            }
-
-            None -> with_err(ctx, e.RcdFieldNotFound(#(name, s1)), s2)
-          }
+        None, Some(tail2) -> {
+          let #(id, ctx1) = context.new_hole(ctx)
+          let hole = Some(v.hole([], id))
+          let rcd2 = v.Rcd([#(name, #(val1, default1))], hole)
+          let ctx = unify(ctx1, #(tail2, s2), #(rcd2, s1))
+          unify(ctx, #(v.Rcd(rest1, tail1), s1), #(v.Rcd(fields2, hole), s2))
+        }
+        None, None -> {
+          let ctx = with_err(ctx, e.RcdFieldNotFound(#(name, s1)), s2)
+          unify(ctx, #(v.Rcd(rest1, tail1), s1), #(v.Rcd(fields2, tail2), s2))
+        }
       }
     }
   }

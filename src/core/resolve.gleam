@@ -212,6 +212,11 @@ pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
       e.InfiniteType(id, a)
     }
     e.RcdFieldNotFound(field) -> e.RcdFieldNotFound(field)
+    e.NotAFunction(fun, fun_type) -> {
+      let fun = term(ffi, subst, list.length(env), fun)
+      let fun_type = value(ffi, subst, fun_type)
+      e.NotAFunction(fun, fun_type)
+    }
     _ -> {
       echo err.data
       todo
