@@ -198,7 +198,7 @@ pub fn debug_file(
       let value = eval(ctx.ffi, ctx.env, t.term)
       io.println("/// " <> t.name)
       io.println(">>> " <> fmt_expr(core_expr))
-      io.println(fmt_pattern(core_expect))
+      io.println("expect: " <> fmt_pattern(core_expect))
       io.println("result: " <> fmt_value(value))
       // io.println("test-term: " <> fmt_term(t.term))
       io.println("")
