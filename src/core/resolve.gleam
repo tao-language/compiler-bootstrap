@@ -170,11 +170,14 @@ fn neutral(ffi: FFI, subst: Subst, neut: Neut) -> Neut {
       let env = list.map(env, value(ffi, subst, _))
       v.NHole(env, id)
     }
-    v.NApp(fun_nuet, arg) -> {
+    v.NApp(fun_neut, arg) -> {
+      let fun_neut = neutral(ffi, subst, fun_neut)
       let arg = value(ffi, subst, arg)
-      v.NApp(fun_nuet, arg)
+      v.NApp(fun_neut, arg)
     }
     v.NMatch(env, arg_neut, cases) -> {
+      let env = list.map(env, value(ffi, subst, _))
+      let arg_neut = neutral(ffi, subst, arg_neut)
       let cases =
         list.map(cases, fn(c) {
           let size = list.length(env) + list.length(tm.bindings(c.pattern))
