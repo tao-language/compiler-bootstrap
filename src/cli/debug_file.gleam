@@ -6,6 +6,7 @@ import core/format
 import core/resolve
 import core/unwrap
 import core/value as v
+import filepath
 import gleam/int
 import gleam/io
 import gleam/list
@@ -190,7 +191,8 @@ pub fn debug_file(
   }
 
   echo "> tests = compile.tests(stmts)"
-  let tests = compile.tests([#(filename, stmts)])
+  let mod_name = "/" <> filepath.strip_extension(filename)
+  let tests = compile.tests(ctx, [#(mod_name, stmts)])
   let test_results =
     list.map(tests, fn(t) {
       let core_expr = desugar.expr(defs, t.expr)

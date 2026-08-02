@@ -6,7 +6,7 @@ import core/resolve
 import core/term as tm
 import core/value as v
 import gleam/list
-import gleam/option.{Some}
+import gleam/option.{None, Some}
 import syntax/span.{Span}
 import tao/ast.{type Module, type Stmt}
 import tao/desugar
@@ -21,12 +21,20 @@ pub fn package(ctx: Context, mods: List(Module)) -> Context {
   resolve.context(ctx)
 }
 
-pub fn tests(mods: List(Module)) -> List(TestDef) {
-  list.index_map(mods, fn(mod, mod_index) {
-    let #(_, stmts) = mod
+pub fn tests(ctx: Context, mods: List(Module)) -> List(TestDef) {
+  list.map(mods, fn(mod) {
+    let #(mod_name, stmts) = mod
     let mod_tests = discover.tests(stmts)
     list.map(mod_tests, fn(t) {
       let #(test_name, expr, expect) = t
+      let mod_index = case context.lookup(ctx, mod_name) {
+        Some(#(index, _)) -> index
+        None -> {
+          echo mod_name
+          echo list.map(ctx.types, fn(x) { x.0 })
+          panic as "test module not in context"
+        }
+      }
       let term = tm.dot(tm.Var(mod_index), ">>> " <> test_name)
       TestDef(test_name, term, expr, expect)
     })
