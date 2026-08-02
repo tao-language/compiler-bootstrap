@@ -257,6 +257,13 @@ pub const f32 = LitT(lit.F32)
 
 pub const f64 = LitT(lit.F64)
 
+pub fn app(fun: Term, args: List(Term)) -> Term {
+  case args {
+    [] -> fun
+    [arg, ..args] -> app(App(fun, arg), args)
+  }
+}
+
 pub fn rcd(fields: List(#(String, Term))) -> Term {
   rcd_open(fields, None)
 }
