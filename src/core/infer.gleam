@@ -13,7 +13,6 @@ import core/literals.{type Literal, type LiteralType} as lit
 import core/quote.{quote}
 import core/term.{type Term} as tm
 import core/unify.{unify}
-import core/unwrap.{unwrap}
 import core/value.{type Type, type Value} as v
 import gleam/int
 import gleam/list
@@ -382,7 +381,7 @@ fn instantiate(
   fun: Term,
   fun_type: Type,
 ) -> #(Term, Type, Context) {
-  case unwrap(ctx.ffi, ctx.subst, fun_type) {
+  case fun_type {
     v.For(env, _, body) -> {
       let #(id, ctx) = context.new_hole(ctx)
       let arg = tm.Hole(Some(id))
