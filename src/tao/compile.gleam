@@ -59,7 +59,6 @@ pub fn define_modules(
   case mods {
     [] -> #([], ctx)
     [#(name, exports, stmts), ..mods] -> {
-      let #(core_mods, ctx) = define_modules(ctx, defs, mods)
       let #(value_id, ctx) = context.new_hole(ctx)
       let #(type_id, ctx) = context.new_hole(ctx)
       let var = #(
@@ -69,8 +68,8 @@ pub fn define_modules(
       )
       let ctx = context.push_var(ctx, var)
       let mod_expr = desugar.module(defs, exports, #(name, stmts))
-      let core_mods = [#(value_id, type_id, mod_expr), ..core_mods]
-      #(core_mods, ctx)
+      let #(core_mods, ctx) = define_modules(ctx, defs, mods)
+      #([#(value_id, type_id, mod_expr), ..core_mods], ctx)
     }
   }
 }
