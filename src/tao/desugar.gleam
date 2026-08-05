@@ -26,19 +26,19 @@ pub const new_block_ctx = BlockCtx(
 )
 
 pub fn module(
-  defs: List(#(String, List(String))),
-  exports: List(String),
+  exports: List(#(String, List(String))),
   mod: Module,
 ) -> core.Expr {
   let #(mod_name, stmts) = mod
   let span = Span(mod_name, 0, 0, 0, 0)
-  let return_expr = core.rcd_vars(exports, None, span)
-  statement_list(defs, new_block_ctx, stmts, return_expr)
+  let mod_exports = list.key_find(exports, mod_name) |> result.unwrap([])
+  let return_expr = core.rcd_vars(mod_exports, None, span)
+  statement_list(exports, new_block_ctx, stmts, return_expr)
 }
 
 pub fn expr(defs: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
   case e.data {
-    tao.Hole(id) -> core.hole(id, e.span)
+    tao.Hole(id) -> core.hole_open(id, e.span)
     tao.Lit(value) -> core.lit(value, e.span)
     tao.Var(name) -> core.var(name, e.span)
     tao.Ctr("Int", [], None) -> core.int_t(e.span)

@@ -159,7 +159,11 @@ pub fn typ(universe: Int, span: Span) {
   Expr(Typ(universe), span, None)
 }
 
-pub fn hole(id: Option(Int), span: Span) {
+pub fn hole(id: Int, span: Span) {
+  hole_open(Some(id), span)
+}
+
+pub fn hole_open(id: Option(Int), span: Span) {
   Expr(Hole(id), span, None)
 }
 

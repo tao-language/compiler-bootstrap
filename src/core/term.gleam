@@ -127,7 +127,7 @@ pub fn bindings(p: Pattern) -> List(String) {
 pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
   case term {
     Typ(u) -> ast.typ(u, s)
-    Hole(id) -> ast.hole(id, s)
+    Hole(id) -> ast.hole_open(id, s)
     Lit(lit) -> ast.lit(lit, s)
     LitT(lit_t) -> ast.lit_t(lit_t, s)
     Var(index) ->
@@ -256,6 +256,10 @@ pub const u64 = LitT(lit.U64)
 pub const f32 = LitT(lit.F32)
 
 pub const f64 = LitT(lit.F64)
+
+pub fn hole(id: Int) -> Term {
+  Hole(Some(id))
+}
 
 pub fn app(fun: Term, args: List(Term)) -> Term {
   case args {

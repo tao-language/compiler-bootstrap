@@ -49,7 +49,6 @@ pub fn debug_file(
     list.append(mods, pkg_mods),
     list.append(errors, pkg_errors),
   )
-  let mods = topological_sort(mods)
   io.println("modules loaded: " <> int.to_string(list.length(mods)))
   list.map(mods, fn(mod) { io.println("- " <> mod.0) })
   io.println("")
@@ -67,12 +66,6 @@ pub fn debug_file(
       exit(1)
     }
   }
-
-  let names = list.map(mods, fn(m) { m.0 })
-  let fmt_expr = fn(expr) { format.expr(expr, width, 2) }
-  let fmt_term = fn(term) { format.term(names, term, width, 2) }
-  let fmt_value = fn(val) { format.value(ffi.build, names, val, width, 2) }
-  let fmt_pattern = fn(pat) { format.pattern(pat, width, 2) }
 
   echo "> stmts = load.module(filename)"
   let #(#(name, stmts), errors) = load.module(paths, filename)
@@ -95,69 +88,39 @@ pub fn debug_file(
   list.map(exports, fn(name) { io.println("- " <> name) })
   io.println("")
 
-  echo "> defs, mods_defs = compile.definitions(mods)"
-  let mods_defs = compile.definitions(mods)
-  let defs = list.map(mods_defs, fn(m) { #(m.0, m.1) })
-  list.map(defs, fn(def) {
-    let #(name, exports) = def
-    io.println("- " <> string.inspect(name) <> ":")
-    list.map(exports, fn(x) { io.println("  - " <> string.inspect(x)) })
-  })
-  io.println("")
-
+  echo "> exports, ctx = compile.declarations(ctx, mods)"
   let ctx = Context(..new_ctx, ffi: ffi.build)
-  io.println("ffi (" <> int.to_string(list.length(ctx.ffi)) <> ")")
-  list.map(ctx.ffi, fn(entry) {
-    let #(name, _) = entry
-    io.println("- " <> name)
-  })
-  io.println("")
+  let #(exports, ctx) = compile.declarations(ctx, mods)
 
-  echo "> core_mods = compile.define_modules(defs, mods)"
-  let #(core_mods, ctx) = compile.define_modules(ctx, defs, mods_defs)
-  list.map(list.zip(defs, core_mods), fn(pair) {
-    let #(#(name, _), mod) = pair
-    let #(value_id, type_id, mod_expr) = mod
-    io.println(
-      "//--- "
-      <> name
-      <> ": value_hole_id="
-      <> int.to_string(value_id)
-      <> " type_hole_id="
-      <> int.to_string(type_id),
-    )
-    io.println(fmt_expr(mod_expr))
-    io.println("")
-  })
+  // Define helpers to print and format.
+  let names = list.map(ctx.types, fn(x) { x.0 })
+  let fmt_expr = fn(expr) { format.expr(expr, width, 2) }
+  let fmt_term = fn(term) { format.term(names, term, width, 2) }
+  let fmt_value = fn(val) { format.value(ffi.build, names, val, width, 2) }
+  let fmt_pattern = fn(pat) { format.pattern(pat, width, 2) }
+
   list.map(list.zip(ctx.types, ctx.env), fn(entry) {
     let #(#(name, mod_type), mod_value) = entry
-    io.println("// ctx.env[" <> string.inspect(name) <> "]")
+    io.print("ctx.env[" <> string.inspect(name) <> "]: ")
     io.println(fmt_value(mod_value))
-    io.println("// ctx.types[" <> string.inspect(name) <> "]")
+    io.print("ctx.types[" <> string.inspect(name) <> "]: ")
     io.println(fmt_value(mod_type))
     io.println("")
   })
-  io.println("")
 
-  echo "> compile.infer_modules(core_mods)"
-  let ctx = compile.infer_modules(ctx, core_mods)
-  list.map(list.zip(ctx.types, ctx.env), fn(entry) {
-    let #(#(name, mod_type), mod_value) = entry
-    // Unwrap to at least see the initial structure directly
-    let mod_value = unwrap.unwrap(ctx.ffi, ctx.subst, mod_value)
-    let mod_type = unwrap.unwrap(ctx.ffi, ctx.subst, mod_type)
-    io.println("// ctx.env[" <> string.inspect(name) <> "]")
-    io.println(fmt_value(mod_value))
-    io.println("// ctx.types[" <> string.inspect(name) <> "]")
-    io.println(fmt_value(mod_type))
-    io.println("")
-  })
+  echo "> ctx = compile.definitions(ctx, exports, mods)"
+  let ctx = compile.definitions(ctx, exports, mods)
   io.println(
     "// ctx.subst: " <> int.to_string(list.length(ctx.subst)) <> " solved holes",
   )
-  io.println(
-    "// solved: " <> string.inspect(list.map(ctx.subst, fn(kv) { kv.0 })),
-  )
+  let solved = list.map(ctx.subst, fn(kv) { kv.0 }) |> list.sort(int.compare)
+  io.println("// solved: " <> string.inspect(solved))
+  let unsolved =
+    int.range(ctx.hole_counter - 1, -1, [], list.prepend)
+    |> list.filter(fn(id) { !list.contains(solved, id) })
+    |> list.map(int.to_string)
+  io.println("// unsolved: " <> string.inspect(unsolved))
+  // Uncomment to see the solved holes values in the order they were solved.
   // list.map(ctx.subst, fn(entry) {
   //   let #(id, value) = entry
   //   // TODO: save ctx.types.names in ctx.subst to display var names.
@@ -168,11 +131,12 @@ pub fn debug_file(
 
   echo "> resolve.context(ctx)"
   let ctx = resolve.context(ctx)
-  list.map(list.zip(ctx.types, ctx.env), fn(entry) {
+  list.index_map(list.zip(ctx.types, ctx.env), fn(entry, index) {
     let #(#(name, mod_type), mod_value) = entry
-    io.println("// ctx.env[" <> string.inspect(name) <> "]")
+    let idx = int.to_string(index)
+    io.println("// " <> idx <> ": ctx.env[" <> string.inspect(name) <> "]")
     io.println(fmt_value(mod_value))
-    io.println("// ctx.types[" <> string.inspect(name) <> "]")
+    io.println("// " <> idx <> ": ctx.types[" <> string.inspect(name) <> "]")
     io.println(fmt_value(mod_type))
     io.println("")
   })
@@ -191,20 +155,20 @@ pub fn debug_file(
       exit(1)
     }
   }
+  io.println("")
 
-  echo "> tests = compile.tests(stmts)"
-  let mod_name = "/" <> filepath.strip_extension(filename)
-  let tests = compile.tests(ctx, [#(mod_name, stmts)])
+  echo "> tests = compile.tests(mod)"
+  let tests = compile.tests(ctx, [mod])
   let test_results =
     list.map(tests, fn(t) {
-      let core_expr = desugar.expr(defs, t.expr)
+      let core_expr = desugar.expr(exports, t.expr)
       let core_expect = desugar.pattern(t.expect)
       let value = eval(ctx.ffi, ctx.env, t.term)
       io.println("/// " <> t.name)
       io.println(">>> " <> fmt_expr(core_expr))
       io.println("expect: " <> fmt_pattern(core_expect))
       io.println("result: " <> fmt_value(value))
-      // io.println("test-term: " <> fmt_term(t.term))
+      io.println("test_term: " <> fmt_term(t.term))
       io.println("")
       value
     })

@@ -244,7 +244,7 @@ fn hole(file: String) -> Parser(Expr, Token, Nil) {
   use _ <- do(nibble.token(Question))
   use id <- do(nibble.optional(take_int()))
   use end <- do(get_span(file))
-  return(ast.hole(id, span.merge(start, end)))
+  return(ast.hole_open(id, span.merge(start, end)))
 }
 
 fn int(file: String) -> Parser(Expr, Token, Nil) {

@@ -53,8 +53,8 @@ pub fn lex_hole_test() {
 }
 
 pub fn parse_hole_test() {
-  assert parse("?") == Ok(ast.hole(None, s(1, 1, 1, 2)))
-  assert parse("?42") == Ok(ast.hole(Some(42), s(1, 1, 1, 4)))
+  assert parse("?") == Ok(ast.hole_open(None, s(1, 1, 1, 2)))
+  assert parse("?42") == Ok(ast.hole_open(Some(42), s(1, 1, 1, 4)))
 }
 
 // ============================================================================

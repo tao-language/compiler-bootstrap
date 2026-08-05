@@ -397,7 +397,7 @@ pub fn infer_match_dependent_motive_test() {
     ast.Case(ast.pvar("x", s), None, ast.var("x", s)),
   ]
   let ctx0 = new_ctx
-  let ast = ast.match(ast.hole(None, s), cases, s)
+  let ast = ast.match(ast.hole_open(None, s), cases, s)
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.env == ctx0.env
   assert ctx.types == ctx0.types
