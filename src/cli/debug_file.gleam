@@ -10,9 +10,10 @@ import filepath
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/option.{type Option}
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
+import tao/ast.{type Module, type Stmt} as tao
 import tao/compile
 import tao/desugar
 import tao/discover
@@ -48,6 +49,7 @@ pub fn debug_file(
     list.append(mods, pkg_mods),
     list.append(errors, pkg_errors),
   )
+  let mods = topological_sort(mods)
   io.println("modules loaded: " <> int.to_string(list.length(mods)))
   list.map(mods, fn(mod) { io.println("- " <> mod.0) })
   io.println("")
@@ -226,6 +228,69 @@ pub fn debug_file(
     _ -> io.println("- " <> int.to_string(unknown) <> " unkown result state")
   }
   io.println("")
+}
+
+// ============================================================================
+// Topological sort for module dependency ordering
+// ============================================================================
+
+/// Extract the set of module names this module imports from its statements.
+fn module_deps(stmts: List(Stmt)) -> List(String) {
+  list.flat_map(stmts, fn(stmt) {
+    case stmt.data {
+      tao.Import(path, _, _) -> ["/" <> path]
+      tao.ImportAll(path, _) -> ["/" <> path]
+      _ -> []
+    }
+  })
+}
+
+/// Topologically sort modules so that dependencies come before dependents.
+/// Uses Kahn's algorithm.
+fn topological_sort(mods: List(Module)) -> List(Module) {
+  let names = list.map(mods, fn(m) { m.0 })
+  // Build adjacency: (module_name, [dependency_names_in_graph])
+  let adj: List(#(String, List(String))) =
+    list.map(mods, fn(m) {
+      let #(name, stmts) = m
+      let deps = module_deps(stmts)
+      #(name, list.filter(deps, fn(d) { list.contains(names, d) }))
+    })
+  topological_sort_loop(adj, mods, names, [])
+}
+
+fn topological_sort_loop(
+  adj: List(#(String, List(String))),
+  mods: List(Module),
+  names: List(String),
+  sorted: List(Module),
+) -> List(Module) {
+  // Find nodes with zero in-degree: modules not listed as a dependency
+  // by any other remaining module
+  let zero_in =
+    list.filter(names, fn(n) {
+      !list.any(adj, fn(entry) { list.contains(entry.1, n) })
+    })
+
+  case zero_in {
+    [] -> sorted
+    [node, ..] -> {
+      // Remove this node from adjacency list
+      let new_adj = list.filter(adj, fn(entry) { entry.0 != node })
+      // Remove node from dependency lists of remaining entries
+      let new_adj =
+        list.map(new_adj, fn(entry) {
+          #(entry.0, list.filter(entry.1, fn(d) { d != node }))
+        })
+      let new_names = list.filter(names, fn(n) { n != node })
+      // Find the module for this node and add to sorted
+      let module = case list.find(mods, fn(m) { m.0 == node }) {
+        Ok(m) -> m
+        Error(_) -> panic as "module not found in topological sort"
+      }
+      topological_sort_loop(new_adj, mods, new_names, [module, ..sorted])
+    }
+  }
 }
 
 // Declare the external Erlang halt function
