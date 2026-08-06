@@ -48,6 +48,12 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     v.Neut(neut), value2 ->
       check_neut_with_concrete(ctx, #(value2, s2), #(neut, s1))
     // Quantifier instantiation
+    v.For(env1, #(_, t1), body1), v.For(env2, #(_, t2), body2) -> {
+      let ctx = unify(ctx, #(t1, s1), #(t2, s2))
+      let v1 = eval(ctx.ffi, v.env_push(env1, 1), body1)
+      let v2 = eval(ctx.ffi, v.env_push(env2, 1), body2)
+      unify(ctx, #(v1, s1), #(v2, s2))
+    }
     v.For(env, _, body), value2 -> {
       let #(id, ctx) = context.new_hole(ctx)
       let env = [v.hole(env, id), ..env]
