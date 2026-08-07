@@ -121,12 +121,12 @@ pub fn debug_file(
     |> list.map(int.to_string)
   io.println("// unsolved: " <> string.inspect(unsolved))
   // Uncomment to see the solved holes values in the order they were solved.
-  // list.map(ctx.subst, fn(entry) {
-  //   let #(id, value) = entry
-  //   // TODO: save ctx.types.names in ctx.subst to display var names.
-  //   let fmt_subst = format.value(ctx.ffi, [], value, width, 2)
-  //   io.println("- " <> int.to_string(id) <> ": " <> fmt_subst)
-  // })
+  list.map(ctx.subst, fn(entry) {
+    let #(id, value) = entry
+    // TODO: save ctx.types.names in ctx.subst to display var names.
+    let fmt_subst = format.value(ctx.ffi, [], value, width, 2)
+    io.println("- " <> int.to_string(id) <> ": " <> fmt_subst)
+  })
   io.println("")
 
   echo "> resolve.context(ctx)"
