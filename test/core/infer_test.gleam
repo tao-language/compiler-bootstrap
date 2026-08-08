@@ -289,16 +289,15 @@ pub fn infer_app_hole_expansion_test() {
 }
 
 pub fn infer_app_implicit_expansion_test() {
-  let ast = ast.app(ast.var("f", s), ast.int(42, s), s)
   let pi = v.For([], #("a", v.Typ(0)), tm.Var(0))
-  let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(pi)))
-  let #(term, type_, ctx) = infer(ctx0, ast)
+  let ctx = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(pi)))
+  let expr = ast.app(ast.var("f", s), ast.int(42, s), s)
+  let #(term, type_, ctx) = infer(ctx, expr)
   assert ctx.errors == []
+  assert ctx.hole_counter > 0
   // For quantifier creates implicit arg hole; app creates return type hole
   assert term == tm.App(tm.App(tm.Var(0), tm.Hole(Some(0))), tm.int(42))
-  // The function's type hole (id=0) is solved to a Pi type in ctx.subst
-  assert list.key_find(ctx.subst, 0)
-    == Ok(v.Pi([], #("$1", v.int_t), tm.Hole(Some(1))))
+  assert unwrap(ctx.ffi, ctx.subst, type_) == v.hole([v.int(42), v.var(0)], 2)
 }
 
 pub fn infer_app_implicit_solve_hole_test() {

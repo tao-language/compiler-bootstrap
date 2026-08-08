@@ -383,12 +383,28 @@ fn instantiate(
   fun_type: Type,
 ) -> #(Term, Type, Context) {
   case unwrap(ctx.ffi, ctx.subst, fun_type) {
-    v.For(env, _, body) -> {
+    // Polymorphic function
+    v.For(..) as fun_type -> instantiate_polymorphic(ctx, fun, fun_type)
+    // Monomorphic function
+    fun_type -> #(fun, fun_type, ctx)
+  }
+}
+
+fn instantiate_polymorphic(
+  ctx: Context,
+  fun: Term,
+  fun_type: Type,
+) -> #(Term, Type, Context) {
+  case unwrap(ctx.ffi, ctx.subst, fun_type) {
+    v.For(env, _, fun_type_tm) -> {
       let #(id, ctx) = context.new_hole(ctx)
-      let arg = tm.Hole(Some(id))
       let env = [v.hole(env, id), ..env]
-      let fun_type = eval(ctx.ffi, env, body)
-      instantiate(ctx, tm.App(fun, arg), fun_type)
+      let fun_type = eval(ctx.ffi, env, fun_type_tm)
+      instantiate_polymorphic(ctx, tm.App(fun, tm.hole(id)), fun_type)
+    }
+    v.Neut(v.NHole(env, _)) -> {
+      let #(id, ctx) = context.new_hole(ctx)
+      #(fun, v.hole(env, id), ctx)
     }
     fun_type -> #(fun, fun_type, ctx)
   }

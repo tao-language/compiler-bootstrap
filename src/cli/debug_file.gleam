@@ -90,7 +90,8 @@ pub fn debug_file(
 
   echo "> exports, ctx = compile.declarations(ctx, mods)"
   let ctx = Context(..new_ctx, ffi: ffi.build)
-  let #(exports, ctx) = compile.declarations(ctx, mods)
+  let env = v.env_push(ctx.env, list.length(mods))
+  let #(exports, ctx) = compile.declarations(ctx, env, mods)
 
   // Define helpers to print and format.
   let names = list.map(ctx.types, fn(x) { x.0 })

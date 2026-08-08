@@ -5,32 +5,34 @@ import core/infer.{check}
 import core/resolve
 import core/term as tm
 import core/unify.{unify}
-import core/value as v
+import core/value.{type Env} as v
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
 import syntax/span.{type Span, Span}
-import tao/ast.{type Module, type Stmt} as tao
+import tao/ast.{type Module, type Pattern, type Stmt} as tao
 import tao/desugar
 import tao/discover
 import tao/tests.{type TestDef, TestDef}
 import utils/list_utils
 
 pub fn package(ctx: Context, mods: List(Module)) -> Context {
-  let #(exports, ctx) = declarations(ctx, mods)
+  let env = v.env_push(ctx.env, list.length(mods))
+  let #(exports, ctx) = declarations(ctx, env, mods)
   let ctx = definitions(ctx, exports, mods)
   resolve.context(ctx)
 }
 
 pub fn declarations(
   ctx: Context,
+  env: Env,
   mods: List(Module),
 ) -> #(List(#(String, List(String))), Context) {
   case mods {
     [] -> #([], ctx)
     [mod, ..mods] -> {
-      let #(mod_exports, ctx) = declare_module(ctx, mod)
-      let #(exports, ctx) = declarations(ctx, mods)
+      let #(exports, ctx) = declarations(ctx, env, mods)
+      let #(mod_exports, ctx) = declare_module(ctx, env, mod)
       #([mod_exports, ..exports], ctx)
     }
   }
@@ -72,10 +74,11 @@ pub fn tests(ctx: Context, mods: List(Module)) -> List(TestDef) {
 
 fn declare_module(
   ctx: Context,
+  env: Env,
   mod: Module,
 ) -> #(#(String, List(String)), Context) {
   let #(mod_name, stmts) = mod
-  let #(values, types, ctx) = declare_stmt_list(ctx, stmts)
+  let #(values, types, ctx) = declare_stmt_list(ctx, env, stmts)
   let exports = list.map(values, fn(decl) { decl.0 })
   let ctx =
     context.push_var(ctx, #(mod_name, Some(v.rcd(values)), Some(v.rcd(types))))
@@ -84,13 +87,14 @@ fn declare_module(
 
 fn declare_stmt_list(
   ctx: Context,
+  env: Env,
   stmts: List(Stmt),
 ) -> #(List(#(String, v.Value)), List(#(String, v.Type)), Context) {
   case stmts {
     [] -> #([], [], ctx)
     [stmt, ..stmts] -> {
-      let #(values1, types1, ctx) = declare_stmt(ctx, stmt)
-      let #(values2, types2, ctx) = declare_stmt_list(ctx, stmts)
+      let #(values1, types1, ctx) = declare_stmt(ctx, env, stmt)
+      let #(values2, types2, ctx) = declare_stmt_list(ctx, env, stmts)
       #(list.append(values1, values2), list.append(types1, types2), ctx)
     }
   }
@@ -98,20 +102,31 @@ fn declare_stmt_list(
 
 fn declare_stmt(
   ctx: Context,
+  env: Env,
   stmt: Stmt,
 ) -> #(List(#(String, v.Value)), List(#(String, v.Type)), Context) {
   case stmt.data {
     tao.Import(..) -> #([], [], ctx)
     tao.ImportAll(..) -> #([], [], ctx)
-    tao.Let(pattern, opt_type, value) -> todo
+    tao.Let(pattern, opt_type, value) -> {
+      let names = definitions_pattern(pattern)
+      list.fold(names, #([], [], ctx), fn(acc, name) {
+        let #(values, types, ctx) = acc
+        let #(value_id, ctx) = context.new_hole(ctx)
+        let #(type_id, ctx) = context.new_hole(ctx)
+        let value = v.hole(env, value_id)
+        let type_ = v.hole(env, type_id)
+        #([#(name, value), ..values], [#(name, type_), ..types], ctx)
+      })
+    }
     tao.LetMut(name, opt_type, value) -> todo
     tao.Mut(name, value) -> todo
     tao.Test(name, expr, expect) -> {
       let name = ">>> " <> name
       let #(value_id, ctx) = context.new_hole(ctx)
       let #(type_id, ctx) = context.new_hole(ctx)
-      let value = v.hole([], value_id)
-      let type_ = v.hole([], type_id)
+      let value = v.hole(env, value_id)
+      let type_ = v.hole(env, type_id)
       #([#(name, value)], [#(name, type_)], ctx)
     }
     tao.FnDef(
@@ -126,8 +141,9 @@ fn declare_stmt(
     tao.FnOverload(name, choices) -> {
       let #(value_id, ctx) = context.new_hole(ctx)
       let #(type_id, ctx) = context.new_hole(ctx)
-      let value = v.For([], #("", v.Typ(0)), tm.hole(value_id))
-      let type_ = v.hole([], type_id)
+      let value = v.hole(env, value_id)
+      // let value = v.For(env, #("$type", v.Typ(0)), tm.hole(value_id))
+      let type_ = v.For(env, #("$type", v.Typ(0)), tm.hole(type_id))
       #([#(name, value)], [#(name, type_)], ctx)
     }
     tao.TypeDef(type_def) -> todo
@@ -136,6 +152,16 @@ fn declare_stmt(
     tao.Return(expr) -> todo
     tao.Break -> todo
     tao.Continue -> todo
+  }
+}
+
+fn definitions_pattern(pattern: Pattern) -> List(String) {
+  case pattern.data {
+    tao.PAny -> []
+    tao.PVar(name) -> [name]
+    tao.PLit(_) -> []
+    tao.PRcd(fields, tail) -> todo
+    tao.PCtr(_, args, tail) -> todo
   }
 }
 
@@ -155,9 +181,38 @@ fn define_module(
   case context.lookup(ctx, mod_name) {
     Some(#(mod_idx, _)) ->
       case list_utils.list_at(ctx.env, mod_idx) {
-        Some(mod_decl) -> unify(ctx, #(mod_decl, s), #(mod_val, s))
+        Some(mod_decl) -> {
+          // let #(mod_decl, ctx) = concretize_holes(ctx, mod_decl)
+          unify(ctx, #(mod_decl, s), #(mod_val, s))
+        }
         None -> panic as "module not found"
       }
     None -> panic as "module not declared"
   }
 }
+// fn concretize_holes(ctx: Context, value: v.Value) -> #(v.Value, Context) {
+//   case value {
+//     v.Rcd(fields, opt_tail) -> {
+//       let #(fields, ctx) =
+//         list.fold(fields, #([], ctx), fn(acc, field) {
+//           let #(name, #(value, default)) = field
+//           let #(fields, ctx) = acc
+//           let #(value, ctx) = concretize_holes(ctx, value)
+//           #([#(name, #(value, default)), ..fields], ctx)
+//         })
+//       let #(opt_tail, ctx) = case opt_tail {
+//         Some(tail) -> {
+//           let #(tail, ctx) = concretize_holes(ctx, tail)
+//           #(Some(tail), ctx)
+//         }
+//         None -> #(None, ctx)
+//       }
+//       #(v.Rcd(fields, opt_tail), ctx)
+//     }
+//     v.For(env, param, tm.Hole(None)) -> {
+//       let #(id, ctx) = context.new_hole(ctx)
+//       #(v.For(env, param, tm.hole(id)), ctx)
+//     }
+//     _ -> #(value, ctx)
+//   }
+// }
