@@ -297,7 +297,7 @@ pub fn infer_app_implicit_expansion_test() {
   assert ctx.hole_counter > 0
   // For quantifier creates implicit arg hole; app creates return type hole
   assert term == tm.App(tm.App(tm.Var(0), tm.Hole(Some(0))), tm.int(42))
-  assert unwrap(ctx.ffi, ctx.subst, type_) == v.hole([v.int(42), v.var(0)], 2)
+  assert unwrap(ctx.ffi, ctx.subst, type_) == v.hole([v.int(42), v.var(0)], 1)
 }
 
 pub fn infer_app_implicit_solve_hole_test() {

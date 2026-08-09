@@ -49,6 +49,7 @@ pub fn debug_file(
     list.append(mods, pkg_mods),
     list.append(errors, pkg_errors),
   )
+  let mods = topological_sort(mods)
   io.println("modules loaded: " <> int.to_string(list.length(mods)))
   list.map(mods, fn(mod) { io.println("- " <> mod.0) })
   io.println("")
@@ -83,6 +84,7 @@ pub fn debug_file(
       exit(1)
     }
   }
+
   let exports = discover.definitions(stmts)
   io.println("exports: " <> int.to_string(list.length(exports)) <> " length")
   list.map(exports, fn(name) { io.println("- " <> name) })
@@ -238,7 +240,7 @@ fn topological_sort_loop(
     })
 
   case zero_in {
-    [] -> sorted
+    [] -> list.reverse(sorted)
     [node, ..] -> {
       // Remove this node from adjacency list
       let new_adj = list.filter(adj, fn(entry) { entry.0 != node })

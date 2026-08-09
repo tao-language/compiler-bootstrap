@@ -19,6 +19,7 @@ import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span, Span}
+import utils/list_utils
 
 /// Infer the type of a term (synthesis).
 ///
@@ -339,10 +340,9 @@ fn infer_app(
   let #(fun, fun_type, ctx) = infer(ctx, fun_ast)
   let #(fun, fun_type, ctx) = instantiate(ctx, fun, fun_type)
   case fun_type {
-    v.Pi(pi_env, #(_, domain), codomain) -> {
+    v.Pi(env, #(_, domain), codomain) -> {
       let #(arg, arg_type, ctx) = check(ctx, arg_ast, #(domain, fun_ast.span))
-      let env = [arg_type, ..pi_env]
-      let ret_type = eval(ctx.ffi, env, codomain)
+      let ret_type = eval(ctx.ffi, [arg_type, ..env], codomain)
       #(tm.App(fun, arg), ret_type, ctx)
     }
     v.Neut(v.NHole(env, _)) -> {
@@ -384,28 +384,13 @@ fn instantiate(
 ) -> #(Term, Type, Context) {
   case unwrap(ctx.ffi, ctx.subst, fun_type) {
     // Polymorphic function
-    v.For(..) as fun_type -> instantiate_polymorphic(ctx, fun, fun_type)
-    // Monomorphic function
-    fun_type -> #(fun, fun_type, ctx)
-  }
-}
-
-fn instantiate_polymorphic(
-  ctx: Context,
-  fun: Term,
-  fun_type: Type,
-) -> #(Term, Type, Context) {
-  case unwrap(ctx.ffi, ctx.subst, fun_type) {
     v.For(env, _, fun_type_tm) -> {
       let #(id, ctx) = context.new_hole(ctx)
       let env = [v.hole(env, id), ..env]
       let fun_type = eval(ctx.ffi, env, fun_type_tm)
-      instantiate_polymorphic(ctx, tm.App(fun, tm.hole(id)), fun_type)
+      instantiate(ctx, tm.App(fun, tm.hole(id)), fun_type)
     }
-    v.Neut(v.NHole(env, _)) -> {
-      let #(id, ctx) = context.new_hole(ctx)
-      #(fun, v.hole(env, id), ctx)
-    }
+    // Monomorphic function
     fun_type -> #(fun, fun_type, ctx)
   }
 }

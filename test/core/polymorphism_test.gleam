@@ -6,6 +6,7 @@ import core/resolve
 import core/term as tm
 import core/unify.{unify}
 import core/value as v
+import gleam/list
 import gleam/option.{None, Some}
 import syntax/span.{Span}
 
@@ -70,7 +71,7 @@ pub fn polymorphism_monomorphic_var_test() {
 
 pub fn polymorphism_monomorphic_declaration_test() {
   let ctx = new_ctx
-  let env = [v.var(0)]
+  let env = []
   let fn_expr = monomorphic_expr()
   let fn_val = monomorphic_val(env)
   // Declarations (module skeletons)
@@ -108,7 +109,8 @@ pub fn polymorphism_polymorphic_lam_test() {
   let fn_term = polymorphic_term()
   let expr = core.app(fn_expr, core.int(42, s), s)
   let #(term, type_, ctx) = infer(ctx, expr)
-  assert term == tm.app(fn_term, [tm.hole(0), tm.int(42)])
+  assert resolve.term(ctx.ffi, ctx.subst, list.length(ctx.env), term)
+    == tm.app(fn_term, [tm.int_t, tm.int(42)])
   assert resolve.value(ctx.ffi, ctx.subst, type_) == v.int_t
   assert ctx.hole_counter == 1
 }
@@ -120,30 +122,34 @@ pub fn polymorphism_polymorphic_var_test() {
   let f = core.var("fun", s)
   let expr = core.app(f, core.int(42, s), s)
   let #(term, type_, ctx) = infer(ctx, expr)
-  assert term == tm.app(tm.Var(0), [tm.int(42)])
-  assert type_ == v.hole([v.int(42), fn_val], 1)
+  assert resolve.term(ctx.ffi, ctx.subst, list.length(ctx.env), term)
+    == tm.app(tm.Var(0), [tm.int(42)])
+  assert resolve.value(ctx.ffi, ctx.subst, type_)
+    == v.hole([v.int(42), fn_val], 1)
   assert ctx.hole_counter == 2
 }
 
 pub fn polymorphism_polymorphic_declaration_test() {
   let ctx = new_ctx
-  let env = [v.var(0)]
+  let env = []
   let fn_expr = polymorphic_expr()
+  let fn_term = polymorphic_term()
   let fn_val = polymorphic_val(env)
   // Declarations (module skeletons)
   let #(value_id, ctx) = context.new_hole(ctx)
-  let #(type_id, ctx) = context.new_hole(ctx)
   let mod_decl = v.rcd([#("fun", v.hole(env, value_id))])
-  let mod_types =
-    v.rcd([#("fun", v.For(env, #("$type", v.Typ(0)), tm.hole(type_id)))])
+  let fun_type =
+    v.For(env, #("a", v.Typ(0)), tm.Pi(#("x", tm.Var(0)), tm.Var(1)))
+  let mod_types = v.rcd([#("fun", fun_type)])
   let ctx = context.push_var(ctx, #("mod", Some(mod_decl), Some(mod_types)))
   // Infer the polymorphic application before definitions
   let f = core.dot(core.var("mod", s), "fun", s)
   let expr = core.app(f, core.int(42, s), s)
   let #(term, type_, ctx) = infer(ctx, expr)
-  assert term == tm.app(tm.hole(0), [tm.hole(4), tm.int(42)])
-  assert type_ == v.hole([v.int(42), mod_decl], 6)
-  assert ctx.hole_counter == 7
+  assert resolve.term(ctx.ffi, ctx.subst, list.length(ctx.env), term)
+    == tm.app(tm.hole(0), [tm.int_t, tm.int(42)])
+  assert resolve.value(ctx.ffi, ctx.subst, type_) == v.int_t
+  assert ctx.hole_counter == 4
   // Definitions (solve declarations)
   let mod_expr = core.rcd_values([#("fun", fn_expr)], None, s)
   let #(mod_term, mod_type, ctx) = check(ctx, mod_expr, #(mod_types, s))
@@ -151,14 +157,11 @@ pub fn polymorphism_polymorphic_declaration_test() {
   let ctx = unify(ctx, #(mod_decl, s), #(mod_val, s))
   let ctx = resolve.context(ctx)
   // Note that here we do get the "x" instead of some "$n" for the name.
-  let expected_mod_type =
-    v.rcd([
-      #(
-        "fun",
-        v.For(env, #("$type", v.Typ(0)), tm.Pi(#("x", tm.Var(0)), tm.Var(1))),
-      ),
-    ])
-  assert resolve.value(ctx.ffi, ctx.subst, mod_type) == expected_mod_type
-  assert ctx.types == [#("mod", expected_mod_type)]
+  assert resolve.value(ctx.ffi, ctx.subst, mod_type) == mod_types
+  assert ctx.types == [#("mod", mod_types)]
   assert ctx.env == [v.rcd([#("fun", fn_val)])]
+  // After definitions, the application term should be solved.
+  let app_term = resolve.term(ctx.ffi, ctx.subst, list.length(ctx.env), term)
+  assert app_term == tm.app(fn_term, [tm.int_t, tm.int(42)])
+  assert eval(ctx.ffi, ctx.env, app_term) == v.int(42)
 }
