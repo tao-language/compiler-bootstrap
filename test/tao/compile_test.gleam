@@ -35,10 +35,10 @@ pub fn compile_package_modules_empty_test() {
 
 pub fn compile_package_import_test() {
   let ctx0 = new_ctx
-  let m1 = [tao.let_(tao.pvar("x", s), None, tao.int(42, s), s)]
+  let m1 = [tao.let_var("x", None, tao.int(42, s), s)]
   let m2 = [
     tao.import_("m1", None, [#("x", None)], s),
-    tao.let_(tao.pvar("y", s), None, tao.var("x", s), s),
+    tao.let_var("y", None, tao.var("x", s), s),
   ]
   let ctx = compile.package(ctx0, [#("/m1", m1), #("/m2", m2)])
   assert ctx.errors == []
@@ -56,10 +56,10 @@ pub fn compile_package_import_test() {
 
 pub fn compile_package_import_alias_test() {
   let ctx0 = new_ctx
-  let m1 = [tao.let_(tao.pvar("x", s), None, tao.int(42, s), s)]
+  let m1 = [tao.let_var("x", None, tao.int(42, s), s)]
   let m2 = [
     tao.import_("m1", Some("m"), [#("x", Some("z"))], s),
-    tao.let_(tao.pvar("y", s), None, tao.var("z", s), s),
+    tao.let_var("y", None, tao.var("z", s), s),
   ]
   let ctx = compile.package(ctx0, [#("/m1", m1), #("/m2", m2)])
   assert ctx.errors == []

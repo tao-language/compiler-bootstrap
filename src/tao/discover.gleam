@@ -6,7 +6,9 @@ pub fn definitions(stmts: List(Stmt)) -> List(String) {
     case stmt.data {
       tao.Import(..) -> []
       tao.ImportAll(..) -> []
-      tao.Let(pattern, ..) -> definitions_pattern(pattern)
+      tao.Extern(..) -> todo
+      tao.LetVar(name, ..) -> [name]
+      tao.LetPat(pattern, ..) -> definitions_pattern(pattern)
       tao.LetMut(name, opt_type, value) -> todo
       tao.Mut(name, value) -> todo
       tao.Test(name, ..) -> [">>> " <> name]
@@ -27,7 +29,9 @@ pub fn tests(stmts: List(Stmt)) -> List(#(String, Expr, Pattern)) {
     case stmt.data {
       tao.Import(..) -> []
       tao.ImportAll(..) -> []
-      tao.Let(..) -> []
+      tao.Extern(..) -> todo
+      tao.LetVar(..) -> []
+      tao.LetPat(..) -> []
       tao.LetMut(..) -> []
       tao.Mut(..) -> []
       tao.Test(name, expr, expect) -> [#(name, expr, expect)]

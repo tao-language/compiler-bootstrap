@@ -1,5 +1,6 @@
 import core/ast as core
 import core/format
+import core/literals as lit
 import filepath
 import gleam/int
 import gleam/io
@@ -36,59 +37,51 @@ pub fn module(
   statement_list(exports, new_block_ctx, stmts, return_expr)
 }
 
-pub fn expr(defs: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
+pub fn expr(exports: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
   case e.data {
     tao.Hole(id) -> core.hole_open(id, e.span)
     tao.Lit(value) -> core.lit(value, e.span)
     tao.Var(name) -> core.var(name, e.span)
+    tao.Ctr("Type", [#(_, tao.Expr(tao.Lit(lit.Int(u)), _))], None) ->
+      core.typ(u, e.span)
     tao.Ctr("Int", [], None) -> core.int_t(e.span)
     tao.Ctr("Float", [], None) -> core.float_t(e.span)
     tao.Ctr(tag, args, tail) -> {
-      let core_args = arguments(defs, args, tail, e.span)
+      let core_args = arguments(exports, args, tail, e.span)
       core.ctr(tag, core_args, e.span)
     }
     tao.Rcd(fields, tail) -> {
-      let core_fields = rcd_fields(defs, fields)
-      let core_tail = opt_expr(defs, tail)
+      let core_fields = rcd_fields(exports, fields)
+      let core_tail = opt_expr(exports, tail)
       core.rcd_values(core_fields, core_tail, e.span)
     }
     tao.RcdT(fields, tail) -> {
-      let core_fields = rcdt_fields(defs, fields)
-      let core_tail = opt_expr(defs, tail)
+      let core_fields = rcdt_fields(exports, fields)
+      let core_tail = opt_expr(exports, tail)
       core.rcd(core_fields, core_tail, e.span)
     }
     tao.Ann(value, type_) -> {
-      let core_value = expr(defs, value)
-      let core_type = expr(defs, type_)
+      let core_value = expr(exports, value)
+      let core_type = expr(exports, type_)
       core.ann(core_value, core_type, e.span)
     }
-    tao.Fn(
-      opt_name,
-      implicits,
-      implicits_tail,
-      params,
-      params_tail,
-      returns,
-      body,
-    ) ->
+    tao.Fn(opt_name, implicits, params, returns, body) ->
       function(
-        defs,
+        exports,
         opt_name,
         implicits,
-        implicits_tail,
         params,
-        params_tail,
         returns,
         body,
         e.span,
         Some("fn <anonymous>"),
       )
     tao.FnT(implicits, params, body) ->
-      function_type(defs, implicits, params, body, e.span)
-    tao.App(fun, args, tail) -> application(defs, fun, args, tail, e.span)
+      function_type(exports, implicits, params, body, e.span)
+    tao.App(fun, args, tail) -> application(exports, fun, args, tail, e.span)
     tao.Match(arg, cases) -> {
-      let core_arg = expr(defs, arg)
-      let core_cases = case_list(defs, cases)
+      let core_arg = expr(exports, arg)
+      let core_cases = case_list(exports, cases)
       core.match(core_arg, core_cases, e.span)
     }
     tao.Op1(op, expr) -> {
@@ -99,7 +92,7 @@ pub fn expr(defs: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
       let op_name = tao.binop_name(op)
       let fun = tao.var(op_name, e.span)
       let args = [#("", lhs), #("", rhs)]
-      expr(defs, tao.app(fun, args, e.span))
+      expr(exports, tao.app(fun, args, e.span))
     }
     tao.Call(name, args) -> {
       let fields =
@@ -107,26 +100,26 @@ pub fn expr(defs: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
           let #(name, value) = arg
           #(name, Some(value))
         })
-      let core_arg = expr(defs, tao.rcd(fields, None, e.span))
+      let core_arg = expr(exports, tao.rcd(fields, None, e.span))
       core.call(name, core_arg, e.span)
     }
     tao.Do(block) -> {
       let return = core.rcd([], None, e.span)
-      statement_list(defs, new_block_ctx, block, return)
+      statement_list(exports, new_block_ctx, block, return)
     }
     tao.Err -> core.err(e.span)
   }
 }
 
 fn opt_expr(
-  defs: List(#(String, List(String))),
+  exports: List(#(String, List(String))),
   opt_expr: Option(tao.Expr),
 ) -> Option(core.Expr) {
-  option.map(opt_expr, expr(defs, _))
+  option.map(opt_expr, expr(exports, _))
 }
 
 fn arguments(
-  defs: List(#(String, List(String))),
+  exports: List(#(String, List(String))),
   args: List(#(String, tao.Expr)),
   tail: Option(tao.Expr),
   span: Span,
@@ -134,9 +127,9 @@ fn arguments(
   let core_fields =
     list.map(args, fn(named_arg) {
       let #(name, arg) = named_arg
-      #(name, expr(defs, arg))
+      #(name, expr(exports, arg))
     })
-  let core_tail = option.map(tail, expr(defs, _))
+  let core_tail = option.map(tail, expr(exports, _))
   // TODO: span.merge(first_span, last_span)
   core.rcd_values(core_fields, core_tail, span)
 }
@@ -156,44 +149,63 @@ fn arguments_pat(
   core.prcd(core_fields, core_tail, span)
 }
 
+fn parameters_type(
+  exports: List(#(String, List(String))),
+  params: tao.Parameters,
+  span: Span,
+) -> core.Type {
+  let #(args, tail) = params
+  let param_fields =
+    list.index_map(args, fn(param, index) {
+      let #(_, #(opt_type, opt_default)) = param
+      let core_type = opt_expr(exports, opt_type)
+      let core_default = opt_expr(exports, opt_default)
+      #(int.to_string(index + 1), #(core_type, core_default))
+    })
+  let core_params_tail = opt_expr(exports, tail)
+  core.rcd(param_fields, core_params_tail, span)
+}
+
+fn parameters_unpack(
+  exports: List(#(String, List(String))),
+  var_name: String,
+  params: tao.Parameters,
+  body: tao.Expr,
+  span: Span,
+) -> core.Expr {
+  let #(args, tail) = params
+  let bindings =
+    list.index_map(args, fn(param, index) {
+      let #(p, _) = param
+      #(int.to_string(index + 1), p)
+    })
+  let cases = [tao.Case(tao.prcd_strict(bindings, span), None, body)]
+  let match_expr = tao.match(tao.var(var_name, span), cases, span)
+  expr(exports, match_expr)
+}
+
 fn function(
-  defs: List(#(String, List(String))),
+  exports: List(#(String, List(String))),
   opt_fun_name: Option(String),
-  implicits: List(tao.Param),
-  implicits_tail: Option(tao.Type),
-  params: List(tao.Param),
-  params_tail: Option(tao.Type),
+  implicits: tao.Parameters,
+  params: tao.Parameters,
   opt_returns: Option(tao.Type),
   body: tao.Expr,
   span: Span,
   trace: Option(String),
 ) -> core.Expr {
   case implicits {
-    [] -> {
-      let param_name = "$args"
+    #([], None) -> {
+      let param_name = "__args"
       // TODO: infer span from args
       let args_span = span
-      let param_fields =
-        list.index_map(params, fn(param, index) {
-          let #(_, #(opt_type, opt_default)) = param
-          let core_type = opt_expr(defs, opt_type)
-          let core_default = opt_expr(defs, opt_default)
-          #(int.to_string(index + 1), #(core_type, core_default))
-        })
-      let core_params_tail = opt_expr(defs, params_tail)
-      let core_param_type = core.rcd(param_fields, core_params_tail, args_span)
-      let bindings =
-        list.index_map(params, fn(param, index) {
-          let #(p, _) = param
-          #(int.to_string(index + 1), p)
-        })
-      let unpack = tao.Case(tao.prcd_strict(bindings, args_span), None, body)
-      let match_expr = tao.match(tao.var(param_name, args_span), [unpack], span)
-      let core_body = expr(defs, match_expr)
+      let core_param_type = parameters_type(exports, params, args_span)
+      let core_body =
+        parameters_unpack(exports, param_name, params, body, args_span)
       let core_body = case opt_returns {
         None -> core_body
         Some(returns) -> {
-          let core_body_type = expr(defs, returns)
+          let core_body_type = expr(exports, returns)
           core.ann(core_body, core_body_type, returns.span)
         }
       }
@@ -213,58 +225,72 @@ fn function(
 }
 
 fn function_type(
-  defs: List(#(String, List(String))),
-  implicits: List(tao.Param),
-  params: List(tao.Param),
-  body: tao.Expr,
+  exports: List(#(String, List(String))),
+  implicits: tao.Parameters,
+  params: tao.Parameters,
+  returns: tao.Type,
   span: Span,
 ) -> core.Expr {
-  todo
+  case implicits {
+    #([], None) -> {
+      let name = "__args"
+      let core_param_type = parameters_type(exports, params, span)
+      let core_returns = parameters_unpack(exports, name, params, returns, span)
+      core.pi(#(name, Some(core_param_type)), core_returns, span)
+    }
+    _ -> {
+      let name = "__impl"
+      let core_implicits_type = parameters_type(exports, implicits, span)
+      let body = tao.fn_t(#([], None), params, returns, span)
+      let core_body = parameters_unpack(exports, name, implicits, body, span)
+      core.for(#(name, Some(core_implicits_type)), core_body, span)
+    }
+  }
 }
 
 fn application(
-  defs: List(#(String, List(String))),
+  exports: List(#(String, List(String))),
   fun: tao.Expr,
   args: List(#(String, tao.Expr)),
   tail: Option(tao.Expr),
   span: Span,
 ) -> core.Expr {
-  let core_fun = expr(defs, fun)
-  let core_args = arguments(defs, args, tail, fun.span)
+  let core_fun = expr(exports, fun)
+  let core_args = arguments(exports, args, tail, fun.span)
   core.app(core_fun, core_args, span)
 }
 
 fn case_list(
-  defs: List(#(String, List(String))),
+  exports: List(#(String, List(String))),
   cases: List(tao.Case),
 ) -> List(core.Case) {
-  list.map(cases, case_(defs, _))
+  list.map(cases, case_(exports, _))
 }
 
-fn case_(defs: List(#(String, List(String))), c: tao.Case) -> core.Case {
+fn case_(exports: List(#(String, List(String))), c: tao.Case) -> core.Case {
   case c {
     tao.Case(pat, opt_guard, body) -> {
       let core_pat = pattern(pat)
-      let core_guard = option.map(opt_guard, case_guard(defs, _))
-      let core_body = expr(defs, body)
+      let core_guard = option.map(opt_guard, case_guard(exports, _))
+      let core_body = expr(exports, body)
       core.Case(core_pat, core_guard, core_body)
     }
   }
 }
 
 fn case_guard(
-  defs: List(#(String, List(String))),
+  exports: List(#(String, List(String))),
   guard: #(tao.Expr, Option(tao.Pattern)),
 ) -> #(core.Expr, core.Pattern) {
   case guard {
     #(cond, None) -> {
       let cond = tao.ann(cond, tao.bool(cond.span), cond.span)
-      let core_cond = expr(defs, cond)
+      let core_cond = expr(exports, cond)
       let core_expect = core.pctr0("True", cond.span)
       #(core_cond, core_expect)
     }
     #(cond, Some(expect)) -> {
-      let core_cond = expr(defs, cond)
+      let core_cond = expr(exports, cond)
       let core_expect = pattern(expect)
       #(core_cond, core_expect)
     }
@@ -276,6 +302,8 @@ pub fn pattern(p: Pattern) -> core.Pattern {
     tao.PAny -> core.pany(p.span)
     tao.PVar(name) -> core.pvar(name, p.span)
     tao.PLit(l) -> core.Pattern(core.PLit(l), p.span)
+    tao.PCtr("Type", [#(_, tao.Pattern(tao.PLit(lit.Int(u)), _))], None) ->
+      core.ptyp(u, p.span)
     tao.PCtr("Int", [], None) -> core.pint_t(p.span)
     tao.PCtr("Float", [], None) -> core.pfloat_t(p.span)
     tao.PCtr("I8", [], None) -> core.pi8(p.span)
@@ -302,7 +330,7 @@ pub fn pattern(p: Pattern) -> core.Pattern {
 }
 
 pub fn statement_list(
-  defs: List(#(String, List(String))),
+  exports: List(#(String, List(String))),
   block_ctx: BlockCtx,
   stmts: List(Stmt),
   return: core.Expr,
@@ -310,14 +338,14 @@ pub fn statement_list(
   case stmts {
     [] -> return
     [stmt, ..stmts] -> {
-      let next = statement_list(defs, block_ctx, stmts, return)
-      statement(defs, block_ctx, stmt, next)
+      let next = statement_list(exports, block_ctx, stmts, return)
+      statement(exports, block_ctx, stmt, next)
     }
   }
 }
 
 pub fn statement(
-  defs: List(#(String, List(String))),
+  exports: List(#(String, List(String))),
   block_ctx: BlockCtx,
   stmt: Stmt,
   next: core.Expr,
@@ -347,48 +375,47 @@ pub fn statement(
           stmt.span,
           Some("import " <> path <> " {" <> name <> "}"),
         )
-      statement(defs, block_ctx, stmt, next)
+      statement(exports, block_ctx, stmt, next)
     }
     tao.ImportAll(path, opt_alias) -> {
       let mod_name = "/" <> path
       let names =
-        list.key_find(defs, mod_name)
+        list.key_find(exports, mod_name)
         |> result.unwrap([])
         |> list.filter(is_public_name)
         |> list.map(fn(x) { #(x, None) })
       let stmt = tao.Stmt(tao.Import(path, opt_alias, names), stmt.span)
-      statement(defs, block_ctx, stmt, next)
+      statement(exports, block_ctx, stmt, next)
     }
-    tao.Let(p, opt_type, value) -> {
-      let core_pattern = pattern(p)
-      let core_type = opt_expr(defs, opt_type)
-      let core_value = expr(defs, value)
-      core.let_pat_trace(
-        #(core_pattern, core_type, core_value),
+    tao.Extern(..) -> todo
+    tao.LetVar(name, opt_type, value) -> {
+      let core_type = opt_expr(exports, opt_type)
+      let core_value = expr(exports, value)
+      core.let_var_trace(
+        #(name, core_type, core_value),
         next,
         stmt.span,
-        Some("let " <> format.pattern(core_pattern, 80, 2)),
+        Some("let-var " <> name),
       )
+    }
+    tao.LetPat(pattern, types, value) -> {
+      // core.let_pat_trace(
+      //   #(core_pattern, core_types, core_value),
+      //   next,
+      //   stmt.span,
+      //   Some("let " <> format.pattern(core_pattern, 80, 2)),
+      // )
+      todo
     }
     tao.LetMut(name, opt_type, value) -> todo
     tao.Mut(name, value) -> todo
-    tao.FnDef(
-      name,
-      implicits,
-      implicits_tail,
-      params,
-      params_tail,
-      returns,
-      body,
-    ) -> {
+    tao.FnDef(name, implicits, params, returns, body) -> {
       let core_fn =
         function(
-          defs,
+          exports,
           Some(name),
           implicits,
-          implicits_tail,
           params,
-          params_tail,
           returns,
           body,
           stmt.span,
@@ -400,7 +427,7 @@ pub fn statement(
       let s = stmt.span
       let param1 = #("$type", Some(core.typ(0, s)))
       let match_body =
-        list.map(choices, overload_choice(defs, _, core.var("$args", s)))
+        list.map(choices, overload_choice(exports, _, core.var("$args", s)))
         |> core.match(core.var("$type", s), _, s)
       let param2 = #("$args", Some(core.var("$type", s)))
       let core_expr = core.lam(param2, match_body, s)
@@ -408,7 +435,7 @@ pub fn statement(
       core.let_var_trace(#(name, None, core_expr), next, s, Some("fn " <> name))
     }
     tao.Test(name, arg, expect) -> {
-      let core_arg = expr(defs, arg)
+      let core_arg = expr(exports, arg)
       let core_cases = [
         core.Case(
           pattern(expect),
@@ -432,7 +459,7 @@ pub fn statement(
     tao.TypeDef(type_def) -> todo
     tao.For(iterator, range, body) -> todo
     tao.While(condition, body) -> todo
-    tao.Return(ret_expr) -> expr(defs, ret_expr)
+    tao.Return(ret_expr) -> expr(exports, ret_expr)
     tao.Break -> todo
     tao.Continue -> todo
   }
@@ -447,20 +474,20 @@ fn is_public_name(name: String) -> Bool {
 }
 
 fn overload_choice(
-  defs: List(#(String, List(String))),
+  exports: List(#(String, List(String))),
   choice: tao.OverloadChoice,
   core_arg: core.Expr,
 ) -> core.Case {
-  let tao.OverloadChoice(fun, args, opt_guard, s) = choice
+  let tao.OverloadChoice(fun_choice, args, opt_guard, s) = choice
   let core_pat = arguments_pat(args, None, s)
-  let core_guard = option.map(opt_guard, case_guard(defs, _))
-  let core_body = case fun {
+  let core_guard = option.map(opt_guard, case_guard(exports, _))
+  let core_body = case fun_choice {
     tao.OverloadVar(name) -> {
       let core_fun = core.var(name, s)
       core.app(core_fun, core_arg, s)
     }
     tao.OverloadCall(name) -> core.call(name, core_arg, s)
-    tao.OverloadDot(name, field) -> {
+    tao.OverloadModuleVar(name, field) -> {
       let core_fun = core.dot(core.var(name, s), field, s)
       core.app(core_fun, core_arg, s)
     }
@@ -469,14 +496,14 @@ fn overload_choice(
 }
 
 fn rcd_fields(
-  defs: List(#(String, List(String))),
+  exports: List(#(String, List(String))),
   fields: List(#(String, Option(tao.Expr))),
 ) -> List(#(String, core.Expr)) {
   let s = Span("", 0, 0, 0, 0)
   list.map(fields, fn(f) {
     let #(name, opt_arg) = f
     let core_arg = case opt_arg {
-      Some(arg) -> expr(defs, arg)
+      Some(arg) -> expr(exports, arg)
       // TODO: get span from name
       None -> core.var(name, s)
     }
@@ -485,18 +512,18 @@ fn rcd_fields(
 }
 
 fn rcdt_fields(
-  defs: List(#(String, List(String))),
+  exports: List(#(String, List(String))),
   fields: List(#(String, #(Option(tao.Type), Option(tao.Expr)))),
 ) -> List(#(String, #(Option(core.Type), Option(core.Expr)))) {
   list.map(fields, fn(f) {
     let #(name, #(type_, default_)) = f
     let type_term = case type_ {
       None -> None
-      Some(t) -> Some(expr(defs, t))
+      Some(t) -> Some(expr(exports, t))
     }
     let default_term = case default_ {
       None -> None
-      Some(e) -> Some(expr(defs, e))
+      Some(e) -> Some(expr(exports, e))
     }
     #(name, #(type_term, default_term))
   })

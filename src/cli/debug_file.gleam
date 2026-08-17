@@ -15,6 +15,8 @@ import gleam/result
 import gleam/string
 import tao/ast.{type Module, type Stmt} as tao
 import tao/compile
+import tao/declare
+import tao/define
 import tao/desugar
 import tao/discover
 import tao/load
@@ -90,11 +92,8 @@ pub fn debug_file(
   list.map(exports, fn(name) { io.println("- " <> name) })
   io.println("")
 
-  echo "> exports, ctx = compile.declarations(ctx, mods)"
   let ctx = Context(..new_ctx, ffi: ffi.build)
-  let env = v.env_push(ctx.env, list.length(mods))
-  let #(exports, ctx) = compile.declarations(ctx, env, mods)
-
+  // let env = v.env_push(ctx.env, list.length(mods))
   // Define helpers to print and format.
   let names = list.map(ctx.types, fn(x) { x.0 })
   let fmt_expr = fn(expr) { format.expr(expr, width, 2) }
@@ -102,6 +101,37 @@ pub fn debug_file(
   let fmt_value = fn(val) { format.value(ffi.build, names, val, width, 2) }
   let fmt_pattern = fn(pat) { format.pattern(pat, width, 2) }
 
+  echo "> defs = declare.package(mods)"
+  echo "> defs = declare.overloads(defs)"
+  // let #(exports, ctx) = compile.declarations(ctx, env, mods)
+  let defs = declare.package(mods)
+  let defs = declare.overloads(defs)
+  let exports = declare.get_exports(defs)
+  list.map(defs, fn(def) {
+    let #(mod_name, declarations) = def
+    list.map(declarations, fn(decl) {
+      let #(name, #(stmt, opt_type)) = decl
+      let typ = case opt_type {
+        None -> "?"
+        Some(typ) -> {
+          let core_typ = desugar.expr(exports, typ)
+          fmt_expr(core_typ)
+        }
+      }
+      io.println(
+        "- "
+        <> string.inspect(mod_name)
+        <> "."
+        <> string.inspect(name)
+        <> ": "
+        <> typ,
+      )
+    })
+  })
+  io.println("")
+
+  echo "> ctx = define.declarations(ctx, defs)"
+  let ctx = define.declarations(ctx, defs)
   list.map(list.zip(ctx.types, ctx.env), fn(entry) {
     let #(#(name, mod_type), mod_value) = entry
     io.print("ctx.env[" <> string.inspect(name) <> "]: ")
@@ -110,91 +140,91 @@ pub fn debug_file(
     io.println(fmt_value(mod_type))
     io.println("")
   })
+  todo
+  // echo "> ctx = compile.definitions(ctx, exports, mods)"
+  // let ctx = compile.definitions(ctx, exports, mods)
+  // io.println(
+  //   "// ctx.subst: " <> int.to_string(list.length(ctx.subst)) <> " solved holes",
+  // )
+  // let solved = list.map(ctx.subst, fn(kv) { kv.0 }) |> list.sort(int.compare)
+  // io.println("// solved: " <> string.inspect(solved))
+  // let unsolved =
+  //   int.range(ctx.hole_counter - 1, -1, [], list.prepend)
+  //   |> list.filter(fn(id) { !list.contains(solved, id) })
+  //   |> list.map(int.to_string)
+  // io.println("// unsolved: " <> string.inspect(unsolved))
+  // // Uncomment to see the solved holes values in the order they were solved.
+  // list.map(ctx.subst, fn(entry) {
+  //   let #(id, value) = entry
+  //   // TODO: save ctx.types.names in ctx.subst to display var names.
+  //   let fmt_subst = format.value(ctx.ffi, [], value, width, 2)
+  //   io.println("- " <> int.to_string(id) <> ": " <> fmt_subst)
+  // })
+  // io.println("")
 
-  echo "> ctx = compile.definitions(ctx, exports, mods)"
-  let ctx = compile.definitions(ctx, exports, mods)
-  io.println(
-    "// ctx.subst: " <> int.to_string(list.length(ctx.subst)) <> " solved holes",
-  )
-  let solved = list.map(ctx.subst, fn(kv) { kv.0 }) |> list.sort(int.compare)
-  io.println("// solved: " <> string.inspect(solved))
-  let unsolved =
-    int.range(ctx.hole_counter - 1, -1, [], list.prepend)
-    |> list.filter(fn(id) { !list.contains(solved, id) })
-    |> list.map(int.to_string)
-  io.println("// unsolved: " <> string.inspect(unsolved))
-  // Uncomment to see the solved holes values in the order they were solved.
-  list.map(ctx.subst, fn(entry) {
-    let #(id, value) = entry
-    // TODO: save ctx.types.names in ctx.subst to display var names.
-    let fmt_subst = format.value(ctx.ffi, [], value, width, 2)
-    io.println("- " <> int.to_string(id) <> ": " <> fmt_subst)
-  })
-  io.println("")
+  // echo "> resolve.context(ctx)"
+  // let ctx = resolve.context(ctx)
+  // list.index_map(list.zip(ctx.types, ctx.env), fn(entry, index) {
+  //   let #(#(name, mod_type), mod_value) = entry
+  //   let idx = int.to_string(index)
+  //   io.println("// " <> idx <> ": ctx.env[" <> string.inspect(name) <> "]")
+  //   io.println(fmt_value(mod_value))
+  //   io.println("// " <> idx <> ": ctx.types[" <> string.inspect(name) <> "]")
+  //   io.println(fmt_value(mod_type))
+  //   io.println("")
+  // })
 
-  echo "> resolve.context(ctx)"
-  let ctx = resolve.context(ctx)
-  list.index_map(list.zip(ctx.types, ctx.env), fn(entry, index) {
-    let #(#(name, mod_type), mod_value) = entry
-    let idx = int.to_string(index)
-    io.println("// " <> idx <> ": ctx.env[" <> string.inspect(name) <> "]")
-    io.println(fmt_value(mod_value))
-    io.println("// " <> idx <> ": ctx.types[" <> string.inspect(name) <> "]")
-    io.println(fmt_value(mod_type))
-    io.println("")
-  })
+  // case ctx.errors {
+  //   [] -> io.println("0 build errors")
+  //   errors -> {
+  //     let n = list.length(errors)
+  //     io.println_error("---- BUILD ERRORS ----")
+  //     list.map(ctx.errors, fn(err) {
+  //       let msg = error.display(ctx.ffi, ctx.types, err)
+  //       io.println_error("❌ " <> msg)
+  //     })
+  //     io.println("")
+  //     io.println_error(int.to_string(n) <> " build errors")
+  //     exit(1)
+  //   }
+  // }
+  // io.println("")
 
-  case ctx.errors {
-    [] -> io.println("0 build errors")
-    errors -> {
-      let n = list.length(errors)
-      io.println_error("---- BUILD ERRORS ----")
-      list.map(ctx.errors, fn(err) {
-        let msg = error.display(ctx.ffi, ctx.types, err)
-        io.println_error("❌ " <> msg)
-      })
-      io.println("")
-      io.println_error(int.to_string(n) <> " build errors")
-      exit(1)
-    }
-  }
-  io.println("")
+  // echo "> tests = compile.tests(mod)"
+  // let tests = compile.tests(ctx, [mod])
+  // let test_results =
+  //   list.map(tests, fn(t) {
+  //     let core_expr = desugar.expr(exports, t.expr)
+  //     let core_expect = desugar.pattern(t.expect)
+  //     let value = eval(ctx.ffi, ctx.env, t.term)
+  //     io.println("/// " <> t.name)
+  //     io.println(">>> " <> fmt_expr(core_expr))
+  //     io.println("expect: " <> fmt_pattern(core_expect))
+  //     io.println("result: " <> fmt_value(value))
+  //     io.println("test_term: " <> fmt_term(t.term))
+  //     io.println("")
+  //     value
+  //   })
 
-  echo "> tests = compile.tests(mod)"
-  let tests = compile.tests(ctx, [mod])
-  let test_results =
-    list.map(tests, fn(t) {
-      let core_expr = desugar.expr(exports, t.expr)
-      let core_expect = desugar.pattern(t.expect)
-      let value = eval(ctx.ffi, ctx.env, t.term)
-      io.println("/// " <> t.name)
-      io.println(">>> " <> fmt_expr(core_expr))
-      io.println("expect: " <> fmt_pattern(core_expect))
-      io.println("result: " <> fmt_value(value))
-      io.println("test_term: " <> fmt_term(t.term))
-      io.println("")
-      value
-    })
+  // let #(passed, failed, unknown) =
+  //   list.fold(test_results, #(0, 0, 0), fn(acc, value) {
+  //     let #(passed, failed, unknown) = acc
+  //     case value {
+  //       v.Ctr("Pass", _) -> #(passed + 1, failed, unknown)
+  //       v.Ctr("Fail", _) -> #(passed, failed + 1, unknown)
+  //       _ -> #(passed, failed, unknown + 1)
+  //     }
+  //   })
 
-  let #(passed, failed, unknown) =
-    list.fold(test_results, #(0, 0, 0), fn(acc, value) {
-      let #(passed, failed, unknown) = acc
-      case value {
-        v.Ctr("Pass", _) -> #(passed + 1, failed, unknown)
-        v.Ctr("Fail", _) -> #(passed, failed + 1, unknown)
-        _ -> #(passed, failed, unknown + 1)
-      }
-    })
-
-  io.println("test results")
-  io.println("- " <> int.to_string(list.length(test_results)) <> " total")
-  io.println("- " <> int.to_string(passed) <> " passed")
-  io.println("- " <> int.to_string(failed) <> " failed")
-  case unknown {
-    0 -> Nil
-    _ -> io.println("- " <> int.to_string(unknown) <> " unkown result state")
-  }
-  io.println("")
+  // io.println("test results")
+  // io.println("- " <> int.to_string(list.length(test_results)) <> " total")
+  // io.println("- " <> int.to_string(passed) <> " passed")
+  // io.println("- " <> int.to_string(failed) <> " failed")
+  // case unknown {
+  //   0 -> Nil
+  //   _ -> io.println("- " <> int.to_string(unknown) <> " unkown result state")
+  // }
+  // io.println("")
 }
 
 // ============================================================================

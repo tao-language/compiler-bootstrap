@@ -97,7 +97,7 @@ pub fn polymorphism_monomorphic_declaration_test() {
   // This comes from infer_app on neutral function type
   // Since we use DeBruijn indices, it's not incorrect, but name "x" is more readable
   let expected_mod_type =
-    v.rcd([#("fun", v.Pi(env, #("$4", v.int_t), tm.int_t))])
+    v.rcd([#("fun", v.Pi(env, #("__4", v.int_t), tm.int_t))])
   assert resolve.value(ctx.ffi, ctx.subst, mod_type) == expected_mod_type
   assert ctx.types == [#("mod", expected_mod_type)]
   assert ctx.env == [v.rcd([#("fun", fn_val)])]

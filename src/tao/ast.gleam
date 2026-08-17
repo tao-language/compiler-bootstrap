@@ -26,14 +26,12 @@ pub type ExprData {
   Ann(value: Expr, type_: Type)
   Fn(
     name: Option(String),
-    implicits: List(Param),
-    implicits_tail: Option(Type),
-    params: List(Param),
-    params_tail: Option(Type),
+    implicits: Parameters,
+    params: Parameters,
     returns: Option(Type),
     body: Expr,
   )
-  FnT(implicits: List(Param), params: List(Param), body: Expr)
+  FnT(implicits: Parameters, params: Parameters, returns: Type)
   App(fun: Expr, args: List(#(String, Expr)), tail: Option(Expr))
   Match(arg: Expr, cases: List(Case))
   Op1(op: UnaryOp, expr: Expr)
@@ -42,6 +40,14 @@ pub type ExprData {
   Do(Block)
   Err
 }
+
+pub type Param =
+  // (pattern, (type, default_value))
+  #(Pattern, #(Option(Type), Option(Expr)))
+
+pub type Parameters =
+  // (params, tail)
+  #(List(Param), Option(Type))
 
 pub type UnaryOp {
   Neg
@@ -77,16 +83,16 @@ pub type StmtData {
     names: List(#(String, Option(String))),
   )
   ImportAll(path: String, alias: Option(String))
-  Let(pattern: Pattern, opt_type: Option(Type), value: Expr)
+  Extern(name: String, params: Parameters, returns: Type)
+  LetVar(name: String, opt_type: Option(Type), value: Expr)
+  LetPat(pattern: Pattern, types: List(#(String, Type)), value: Expr)
   LetMut(name: String, opt_type: Option(Type), value: Expr)
   Mut(name: String, value: Expr)
   Test(name: String, expr: Expr, expect: Pattern)
   FnDef(
     name: String,
-    implicits: List(Param),
-    implicits_tail: Option(Type),
-    params: List(Param),
-    params_tail: Option(Type),
+    implicits: Parameters,
+    params: Parameters,
     returns: Option(Type),
     body: Expr,
   )
@@ -101,7 +107,7 @@ pub type StmtData {
 
 pub type OverloadChoice {
   OverloadChoice(
-    fun: OverloadChoiceFun,
+    fun_choice: OverloadChoiceFun,
     args: List(#(String, Pattern)),
     guard: Option(#(Expr, Option(Pattern))),
     span: Span,
@@ -111,12 +117,8 @@ pub type OverloadChoice {
 pub type OverloadChoiceFun {
   OverloadVar(name: String)
   OverloadCall(name: String)
-  OverloadDot(name: String, field: String)
+  OverloadModuleVar(mod_name: String, name: String)
 }
-
-pub type Param =
-  // (pattern, (type, default_value))
-  #(Pattern, #(Option(Type), Option(Expr)))
 
 pub type TypeDefinition {
   TypeDefinition(
@@ -152,6 +154,14 @@ pub type Case {
 
 // Syntax sugar
 
+pub fn type_(span: Span) {
+  type_n(0, span)
+}
+
+pub fn type_n(universe: Int, span: Span) {
+  ctr("Type", [#("", int(universe, span))], span)
+}
+
 pub fn true(span: Span) {
   ctr0("True", span)
 }
@@ -164,7 +174,11 @@ pub fn bool(span: Span) {
   ctr0("Bool", span)
 }
 
-pub fn hole(id: Option(Int), span: Span) {
+pub fn hole(id: Int, span: Span) {
+  hole_open(Some(id), span)
+}
+
+pub fn hole_open(id: Option(Int), span: Span) {
   Expr(Hole(id), span)
 }
 
@@ -178,6 +192,10 @@ pub fn float(value: Float, span: Span) {
 
 pub fn int_t(span: Span) {
   ctr0("Int", span)
+}
+
+pub fn float_t(span: Span) {
+  ctr0("Float", span)
 }
 
 pub fn var(name: String, span: Span) {
@@ -224,6 +242,15 @@ pub fn ctr0(tag: String, span: Span) {
 
 pub fn ann(expr: Expr, type_: Type, span: Span) {
   Expr(Ann(expr, type_), span)
+}
+
+pub fn fn_t(
+  implicits: Parameters,
+  params: Parameters,
+  returns: Type,
+  span: Span,
+) {
+  Expr(FnT(implicits, params, returns), span)
 }
 
 pub fn app(fun: Expr, args: List(#(String, Expr)), span: Span) {
@@ -337,35 +364,43 @@ pub fn import_(
   Stmt(Import(path, alias, names), span)
 }
 
-pub fn let_(pattern: Pattern, opt_type: Option(Type), value: Expr, span: Span) {
-  Stmt(Let(pattern, opt_type, value), span)
+pub fn let_var(name: String, opt_type: Option(Type), value: Expr, span: Span) {
+  Stmt(LetVar(name, opt_type, value), span)
+}
+
+pub fn extern(name: String, params: Parameters, returns: Type, span: Span) {
+  Stmt(Extern(name, params, returns), span)
+}
+
+pub fn let_pat(
+  pattern: Pattern,
+  types: List(#(String, Type)),
+  value: Expr,
+  span: Span,
+) {
+  Stmt(LetPat(pattern, types, value), span)
 }
 
 pub fn fn_def(
   name: String,
-  implicits: List(Param),
-  params: List(Param),
+  implicits: Parameters,
+  params: Parameters,
   returns: Option(Type),
   body: Expr,
   span: Span,
 ) {
-  fn_def_open(name, implicits, None, params, None, returns, body, span)
+  fn_def_open(name, implicits, params, returns, body, span)
 }
 
 pub fn fn_def_open(
   name: String,
-  implicits: List(Param),
-  implicits_tail: Option(Type),
-  params: List(Param),
-  params_tail: Option(Type),
+  implicits: Parameters,
+  params: Parameters,
   returns: Option(Type),
   body: Expr,
   span: Span,
 ) {
-  Stmt(
-    FnDef(name, implicits, implicits_tail, params, params_tail, returns, body),
-    span,
-  )
+  Stmt(FnDef(name, implicits, params, returns, body), span)
 }
 
 pub fn fn_overload(name: String, choices: List(OverloadChoice), span: Span) {

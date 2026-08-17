@@ -11,15 +11,16 @@ import gleam/option.{None, Some}
 import gleam/result
 import syntax/span.{type Span, Span}
 import tao/ast.{type Module, type Pattern, type Stmt} as tao
+import tao/declare
+import tao/define
 import tao/desugar
 import tao/discover
 import tao/tests.{type TestDef, TestDef}
 import utils/list_utils
 
 pub fn package(ctx: Context, mods: List(Module)) -> Context {
-  let env = v.env_push(ctx.env, list.length(mods))
-  let #(exports, ctx) = declarations(ctx, env, mods)
-  let ctx = definitions(ctx, exports, mods)
+  let defs = declare.package(mods)
+  let ctx = define.declarations(ctx, defs)
   resolve.context(ctx)
 }
 
@@ -108,33 +109,30 @@ fn declare_stmt(
   case stmt.data {
     tao.Import(..) -> #([], [], ctx)
     tao.ImportAll(..) -> #([], [], ctx)
-    tao.Let(pattern, opt_type, value) -> {
+    tao.Extern(name, params, returns) -> todo
+    tao.LetVar(name, opt_type, value) -> {
+      let #(val, typ, ctx) = declare_monomorphic(ctx, env, name)
+      #([val], [typ], ctx)
+    }
+    tao.LetPat(pattern, opt_type, value) -> {
       let names = definitions_pattern(pattern)
       list.fold(names, #([], [], ctx), fn(acc, name) {
         let #(values, types, ctx) = acc
-        let #(value_id, ctx) = context.new_hole(ctx)
-        let #(type_id, ctx) = context.new_hole(ctx)
-        let value = v.hole(env, value_id)
-        let type_ = v.hole(env, type_id)
-        #([#(name, value), ..values], [#(name, type_), ..types], ctx)
+        let #(val, typ, ctx) = declare_monomorphic(ctx, env, name)
+        #([val, ..values], [typ, ..types], ctx)
       })
     }
     tao.LetMut(name, opt_type, value) -> todo
     tao.Mut(name, value) -> todo
     tao.Test(name, expr, expect) -> {
       let name = ">>> " <> name
-      let #(value_id, ctx) = context.new_hole(ctx)
-      let #(type_id, ctx) = context.new_hole(ctx)
-      let value = v.hole(env, value_id)
-      let type_ = v.hole(env, type_id)
-      #([#(name, value)], [#(name, type_)], ctx)
+      let #(val, typ, ctx) = declare_monomorphic(ctx, env, name)
+      #([val], [typ], ctx)
     }
     tao.FnDef(
       name,
-      implicits,
-      implicits_tail,
-      params,
-      params_tail,
+      #(implicits, implicits_tail),
+      #(params, params_tail),
       returns,
       body,
     ) -> todo
@@ -153,6 +151,30 @@ fn declare_stmt(
     tao.Break -> todo
     tao.Continue -> todo
   }
+}
+
+fn declare_overload_choice(
+  ctx: Context,
+  choice: tao.OverloadChoice,
+) -> #(Context) {
+  let tao.OverloadChoice(choice_fun, args, guard, s) = choice
+  case choice_fun {
+    tao.OverloadVar(name) -> todo
+    tao.OverloadCall(name) -> todo
+    tao.OverloadModuleVar(name, field) -> todo
+  }
+}
+
+fn declare_monomorphic(
+  ctx: Context,
+  env: Env,
+  name: String,
+) -> #(#(String, v.Value), #(String, v.Type), Context) {
+  let #(value_id, ctx) = context.new_hole(ctx)
+  let #(type_id, ctx) = context.new_hole(ctx)
+  let value = v.hole(env, value_id)
+  let type_ = v.hole(env, type_id)
+  #(#(name, value), #(name, type_), ctx)
 }
 
 fn definitions_pattern(pattern: Pattern) -> List(String) {

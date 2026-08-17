@@ -13,12 +13,13 @@ import nibble/pratt
 import syntax/span.{type Span, Span, merge}
 import tao/ast.{
   type BinaryOp, type Case, type Expr, type OverloadChoice,
-  type OverloadChoiceFun, type Pattern, type Stmt, type UnaryOp,
+  type OverloadChoiceFun, type Parameters, type Pattern, type Stmt, type UnaryOp,
 } as tao
 
 const reserved = [
   "import",
   "as",
+  "extern",
   "fn",
   "let",
   "mut",
@@ -33,6 +34,7 @@ pub type Token {
   KwImport
   KwAs
   KwFn
+  KwExtern
   KwLet
   KwMut
   KwMatch
@@ -99,6 +101,7 @@ fn lexer_() -> Lexer(Token, Nil) {
     // Keywords (all reserved words must have a keyword rule)
     lexer.keyword("import", "\\W", KwImport),
     lexer.keyword("as", "\\W", KwAs),
+    lexer.keyword("extern", "\\W", KwExtern),
     lexer.keyword("fn", "\\W", KwFn),
     lexer.keyword("let", "\\W", KwLet),
     lexer.keyword("mut", "\\W", KwMut),
@@ -252,6 +255,7 @@ fn token_to_string(tok: Token) -> String {
   case tok {
     KwImport -> "import"
     KwAs -> "as"
+    KwExtern -> "extern"
     KwFn -> "fn"
     KwLet -> "let"
     KwMut -> "mut"
@@ -298,6 +302,7 @@ fn token_to_string(tok: Token) -> String {
 fn stmt(file: String) -> Parser(Stmt, Token, String) {
   nibble.one_of([
     import_(file),
+    extern(file),
     let_(file),
     fn_def(file),
     test_(file),
@@ -354,16 +359,33 @@ fn import_name() -> Parser(#(String, Option(String)), Token, String) {
   return(#(name, alias))
 }
 
+fn extern(file: String) -> Parser(Stmt, Token, String) {
+  {
+    use start <- do(get_span(file))
+    use _ <- do(nibble.token(KwExtern))
+    use _ <- do(nibble.token(At))
+    use name <- do(var_name())
+    use _ <- do(nibble.token(LParen))
+    use params <- do(parameters(file))
+    use _ <- do(nibble.token(RParen))
+    use _ <- do(nibble.token(ThinArrow))
+    use returns <- do(expr(file))
+    use end <- do(get_span(file))
+    return(tao.extern(name, params, returns, merge(start, end)))
+  }
+  |> nibble.in("extern declaration")
+}
+
 fn let_(file: String) -> Parser(Stmt, Token, String) {
   {
     use start <- do(get_span(file))
     use _ <- do(nibble.token(KwLet))
     use pat <- do(pattern(file))
-    let typ = None
+    let types = []
     use _ <- do(nibble.token(Equals))
     use val <- do(expr(file))
     use end <- do(get_span(file))
-    return(tao.let_(pat, typ, val, merge(start, end)))
+    return(tao.let_pat(pat, types, val, merge(start, end)))
   }
   |> nibble.in("let binding")
 }
@@ -381,34 +403,47 @@ fn fn_def(file: String) -> Parser(Stmt, Token, String) {
   |> nibble.in("function definition")
 }
 
+fn parameters(file: String) -> Parser(Parameters, Token, String) {
+  use params <- do(nibble.sequence(
+    {
+      use pattern <- do(pattern(file))
+      use opt_type <- do(
+        nibble.optional({
+          use _ <- do(nibble.token(Colon))
+          expr(file)
+        }),
+      )
+      use opt_default <- do(
+        nibble.optional({
+          use _ <- do(nibble.token(Equals))
+          expr(file)
+        }),
+      )
+      return(#(pattern, #(opt_type, opt_default)))
+    },
+    nibble.token(Comma),
+  ))
+  use opt_tail <- do(
+    nibble.optional({
+      use _ <- do(nibble.token(Comma))
+      use _ <- do(nibble.token(Spread))
+      use span <- do(get_span(file))
+      nibble.one_of([expr(file), return(tao.hole_open(None, span))])
+    }),
+  )
+  return(#(params, opt_tail))
+}
+
 fn fn_def_body(
   file: String,
   start: Span,
   name: String,
 ) -> Parser(Stmt, Token, String) {
   {
-    use _ <- do(nibble.token(LParen))
     // TODO: implicit arguments
-    use implicits <- do(return([]))
-    use params <- do(nibble.sequence(
-      {
-        use pattern <- do(pattern(file))
-        use opt_type <- do(
-          nibble.optional({
-            use _ <- do(nibble.token(Colon))
-            expr(file)
-          }),
-        )
-        use opt_default <- do(
-          nibble.optional({
-            use _ <- do(nibble.token(Equals))
-            expr(file)
-          }),
-        )
-        return(#(pattern, #(opt_type, opt_default)))
-      },
-      nibble.token(Comma),
-    ))
+    use implicits <- do(return(#([], None)))
+    use _ <- do(nibble.token(LParen))
+    use params <- do(parameters(file))
     use _ <- do(nibble.token(RParen))
     use opt_return <- do(
       nibble.optional({
@@ -456,14 +491,14 @@ fn fn_overload(
       nibble.many({
         use _ <- do(nibble.token(Pipe))
         use start <- do(get_span(file))
-        use fun <- do(fn_overload_choice_fun(file))
+        use fun_choice <- do(fn_overload_choice_fun(file))
         use _ <- do(nibble.token(LParen))
         use args <- do(arguments(file, pattern(file)))
         use _ <- do(nibble.token(RParen))
         use opt_guard <- do(nibble.optional(guard(file)))
         use end <- do(get_span(file))
         let s = merge(start, end)
-        return(tao.OverloadChoice(fun, args, opt_guard, s))
+        return(tao.OverloadChoice(fun_choice, args, opt_guard, s))
       }),
     )
     use _ <- do(nibble.token(RBrace))
@@ -481,7 +516,7 @@ fn fn_overload_choice_fun(
       use name <- do(var_name())
       use _ <- do(nibble.token(Dot))
       use field <- do(var_name())
-      return(tao.OverloadDot(name, field))
+      return(tao.OverloadModuleVar(name, field))
     },
     {
       // This must go after OverloadDot to avoid ambiguity.
@@ -489,7 +524,7 @@ fn fn_overload_choice_fun(
       return(tao.OverloadVar(name))
     },
     {
-      use _ <- do(nibble.token(Percent))
+      use _ <- do(nibble.token(At))
       use name <- do(var_name())
       return(tao.OverloadCall(name))
     },
@@ -504,7 +539,7 @@ fn test_(file: String) -> Parser(Stmt, Token, String) {
     use pat <- do(pattern(file))
     use end <- do(get_span(file))
     let name = file <> ":" <> int.to_string(end.start_line)
-    return(tao.test_(name, exp, pat, merge(start, end)))
+    return(tao.test_(">>> " <> name, exp, pat, merge(start, end)))
   }
   |> nibble.in("test expression")
 }
@@ -604,7 +639,7 @@ fn hole(file: String) -> Parser(Expr, Token, String) {
   use start <- do(get_span(file))
   use _ <- do(nibble.token(Question))
   use end <- do(get_span(file))
-  return(tao.hole(None, merge(start, end)))
+  return(tao.hole_open(None, merge(start, end)))
 }
 
 fn int(file: String) -> Parser(Expr, Token, String) {
@@ -718,7 +753,7 @@ fn if_expr(file: String) -> Parser(Expr, Token, String) {
           tao.Case(
             tao.pany(merge(start, start)),
             None,
-            tao.hole(None, merge(start, start)),
+            tao.hole_open(None, merge(start, start)),
           )
         return(tao.match(cond, [true_case, false_case], merge(start, end)))
       }
