@@ -102,8 +102,12 @@ fn doc_term(term: Expr, indent: Int) -> Document {
       doc.concat([
         doc_text("%for"),
         doc_param(name, opt_type, indent),
-        doc_text(". "),
-        doc_term(body, indent),
+        doc_text("."),
+        doc.concat([
+          doc.line,
+          doc_term(body, indent),
+        ])
+          |> doc.nest(indent),
       ])
     }
     ast.Lam(#(name, opt_type), body) -> {
@@ -159,6 +163,17 @@ fn doc_term(term: Expr, indent: Int) -> Document {
         doc_term(arg, indent),
         doc_text(")." <> var_name(x)),
       ])
+    ast.Match(arg, [ast.Case(pat, None, body)]) -> {
+      doc.concat([
+        doc_text("%letp "),
+        doc_pattern(pat, indent),
+        doc_text(" = "),
+        doc_term(arg, indent),
+        doc_text(";"),
+        doc.line,
+        doc_term(body, indent),
+      ])
+    }
     ast.Match(arg, cases) -> {
       let case_docs = list.map(cases, fn(c) { doc_case(c, indent) })
       doc.concat([
