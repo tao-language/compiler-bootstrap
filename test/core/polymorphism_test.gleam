@@ -60,7 +60,7 @@ pub fn polymorphism_monomorphic_lam_test() {
 pub fn polymorphism_monomorphic_var_test() {
   let ctx = new_ctx
   let fn_val = monomorphic_val([])
-  let ctx = context.push_var(ctx, #("fun", Some(fn_val), None))
+  let ctx = context.push_var_opt(ctx, #("fun", Some(fn_val), None))
   let f = core.var("fun", s)
   let expr = core.app(f, core.int(42, s), s)
   let #(term, type_, ctx) = infer(ctx, expr)
@@ -79,7 +79,7 @@ pub fn polymorphism_monomorphic_declaration_test() {
   let #(type_id, ctx) = context.new_hole(ctx)
   let mod_decl = v.rcd([#("fun", v.hole(env, value_id))])
   let mod_types = v.rcd([#("fun", v.hole(env, type_id))])
-  let ctx = context.push_var(ctx, #("mod", Some(mod_decl), Some(mod_types)))
+  let ctx = context.push_var_opt(ctx, #("mod", Some(mod_decl), Some(mod_types)))
   // Infer the monomorphic application before definitions
   let f = core.dot(core.var("mod", s), "fun", s)
   let expr = core.app(f, core.int(42, s), s)
@@ -118,7 +118,7 @@ pub fn polymorphism_polymorphic_lam_test() {
 pub fn polymorphism_polymorphic_var_test() {
   let ctx = new_ctx
   let fn_val = polymorphic_val([])
-  let ctx = context.push_var(ctx, #("fun", Some(fn_val), None))
+  let ctx = context.push_var_opt(ctx, #("fun", Some(fn_val), None))
   let f = core.var("fun", s)
   let expr = core.app(f, core.int(42, s), s)
   let #(term, type_, ctx) = infer(ctx, expr)
@@ -141,7 +141,7 @@ pub fn polymorphism_polymorphic_declaration_test() {
   let fun_type =
     v.For(env, #("a", v.Typ(0)), tm.Pi(#("x", tm.Var(0)), tm.Var(1)))
   let mod_types = v.rcd([#("fun", fun_type)])
-  let ctx = context.push_var(ctx, #("mod", Some(mod_decl), Some(mod_types)))
+  let ctx = context.push_var_opt(ctx, #("mod", Some(mod_decl), Some(mod_types)))
   // Infer the polymorphic application before definitions
   let f = core.dot(core.var("mod", s), "fun", s)
   let expr = core.app(f, core.int(42, s), s)

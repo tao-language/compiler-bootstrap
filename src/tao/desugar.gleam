@@ -387,7 +387,7 @@ pub fn statement(
       let stmt = tao.Stmt(tao.Import(path, opt_alias, names), stmt.span)
       statement(exports, block_ctx, stmt, next)
     }
-    tao.Extern(..) -> todo
+    tao.Extern(..) -> next
     tao.LetVar(name, opt_type, value) -> {
       let core_type = opt_expr(exports, opt_type)
       let core_value = expr(exports, value)
@@ -425,13 +425,12 @@ pub fn statement(
     }
     tao.FnOverload(name, choices) -> {
       let s = stmt.span
-      let param1 = #("$type", Some(core.typ(0, s)))
+      let param1 = #("__type", Some(core.typ(0, s)))
       let match_body =
-        list.map(choices, overload_choice(exports, _, core.var("$args", s)))
-        |> core.match(core.var("$type", s), _, s)
-      let param2 = #("$args", Some(core.var("$type", s)))
-      let core_expr = core.lam(param2, match_body, s)
-      let core_expr = core.for(param1, core_expr, s)
+        list.map(choices, overload_choice(exports, _, core.var("__args", s)))
+        |> core.match(core.var("__type", s), _, s)
+      let param2 = #("__args", Some(core.var("__type", s)))
+      let core_expr = core.for(param1, core.lam(param2, match_body, s), s)
       core.let_var_trace(#(name, None, core_expr), next, s, Some("fn " <> name))
     }
     tao.Test(name, arg, expect) -> {
@@ -449,12 +448,7 @@ pub fn statement(
         ),
       ]
       let core_test = core.match(core_arg, core_cases, stmt.span)
-      core.let_var_trace(
-        #(">>> " <> name, None, core_test),
-        next,
-        stmt.span,
-        Some(">>> " <> name),
-      )
+      core.let_var_trace(#(name, None, core_test), next, stmt.span, Some(name))
     }
     tao.TypeDef(type_def) -> todo
     tao.For(iterator, range, body) -> todo
@@ -468,6 +462,7 @@ pub fn statement(
 fn is_public_name(name: String) -> Bool {
   case name {
     "_" <> _ -> False
+    "@" <> _ -> False
     ">>> " <> _ -> False
     _ -> True
   }

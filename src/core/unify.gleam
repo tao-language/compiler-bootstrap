@@ -34,7 +34,12 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
         False -> {
           echo cases1
           echo cases2
-          echo #("arity mismatch", list.length(cases1), list.length(cases2))
+          echo #("trace", ctx.trace)
+          echo #(
+            "MatchCasesArityMismatch",
+            list.length(cases1),
+            list.length(cases2),
+          )
           todo as "error: MatchCasesArityMismatch"
         }
       }
@@ -370,7 +375,7 @@ fn instantiate(
       let #(name, type_) = param
       #(name, None, Some(type_))
     })
-    |> context.push_var_list(ctx, _)
+    |> context.push_var_opt_list(ctx, _)
   let vars = list.take(ctx.env, list.length(params))
   #(list.append(vars, env), ctx)
 }

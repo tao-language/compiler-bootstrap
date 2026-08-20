@@ -25,7 +25,7 @@ import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
-import utils/list_utils.{list_at}
+import utils/list_utils.{at}
 
 // ============================================================================
 // TERMS (Syntax level - De Bruijn indices)
@@ -131,7 +131,7 @@ pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
     Lit(lit) -> ast.lit(lit, s)
     LitT(lit_t) -> ast.lit_t(lit_t, s)
     Var(index) ->
-      case list_at(names, index) {
+      case at(names, index) {
         Some(name) -> ast.var(name, s)
         None -> ast.var("$" <> int.to_string(index), s)
       }

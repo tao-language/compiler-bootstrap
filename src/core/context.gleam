@@ -8,11 +8,11 @@
 /// recovery after type errors.
 import core/error.{type Error, type ErrorData, Error}
 import core/ffi.{type FFI}
-import core/value.{type Env, type TypeDefinition, type Value} as v
+import core/value.{type Env, type Type, type TypeDefinition, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
-import utils/list_utils.{list_at}
+import utils/list_utils.{at}
 
 // ============================================================================
 // CONTEXT
@@ -73,8 +73,36 @@ pub fn lookup_type_def(
 
 fn lookup_in_env(ctx: Context, name: String) -> Option(Value) {
   case lookup(ctx, name) {
-    Some(#(index, _)) -> list_at(ctx.env, index)
+    Some(#(index, _)) -> at(ctx.env, index)
     None -> None
+  }
+}
+
+pub fn lookup_var(ctx: Context, name: String) -> Option(#(Value, Type)) {
+  case ctx.types, ctx.env {
+    [#(x, typ), ..], [val, ..] if x == name -> Some(#(val, typ))
+    [_, ..types], [_, ..env] -> {
+      let ctx = Context(..ctx, env: env, types: types)
+      lookup_var(ctx, name)
+    }
+    _, _ -> None
+  }
+}
+
+pub fn set_var(ctx: Context, name: String, value: Value, typ: Type) -> Context {
+  case ctx.types, ctx.env {
+    [#(x, _), ..types], [_, ..env] if x == name ->
+      Context(..ctx, env: [value, ..env], types: [#(name, typ), ..types])
+    [first_typ, ..types], [first_val, ..env] -> {
+      let ctx = Context(..ctx, env: env, types: types)
+      let ctx = set_var(ctx, name, value, typ)
+      Context(..ctx, env: [first_val, ..ctx.env], types: [
+        first_typ,
+        ..ctx.types
+      ])
+    }
+    _, _ ->
+      Context(..ctx, env: [value, ..ctx.env], types: [#(name, typ), ..ctx.types])
   }
 }
 
@@ -99,7 +127,26 @@ pub fn new_hole_list(ctx: Context, num_holes: Int) -> #(List(Int), Context) {
   }
 }
 
-pub fn push_var(
+pub fn push_var(ctx: Context, var: #(String, Value, Value)) -> Context {
+  let #(name, val, typ) = var
+  Context(..ctx, env: [val, ..ctx.env], types: [#(name, typ), ..ctx.types])
+}
+
+pub fn push_var_list(
+  ctx: Context,
+  vars: List(#(String, Value, Value)),
+) -> Context {
+  case vars {
+    [] -> ctx
+    [var, ..vars] -> {
+      let ctx = push_var(ctx, var)
+      push_var_list(ctx, vars)
+    }
+  }
+}
+
+// DEPRECATED
+pub fn push_var_opt(
   ctx: Context,
   var: #(String, Option(Value), Option(Value)),
 ) -> Context {
@@ -113,20 +160,21 @@ pub fn push_var(
       }
     }
   }
-  let #(value, ctx) = instantiate(ctx, maybe_value)
-  let #(type_, ctx) = instantiate(ctx, maybe_type)
-  Context(..ctx, env: [value, ..ctx.env], types: [#(name, type_), ..ctx.types])
+  let #(val, ctx) = instantiate(ctx, maybe_value)
+  let #(typ, ctx) = instantiate(ctx, maybe_type)
+  push_var(ctx, #(name, val, typ))
 }
 
-pub fn push_var_list(
+// DEPRECATED
+pub fn push_var_opt_list(
   ctx: Context,
   vars: List(#(String, Option(Value), Option(Value))),
 ) -> Context {
   case vars {
     [] -> ctx
     [var, ..vars] -> {
-      let ctx = push_var(ctx, var)
-      push_var_list(ctx, vars)
+      let ctx = push_var_opt(ctx, var)
+      push_var_opt_list(ctx, vars)
     }
   }
 }

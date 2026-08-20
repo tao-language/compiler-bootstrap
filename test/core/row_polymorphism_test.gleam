@@ -8,7 +8,7 @@
 /// the remaining fields). During unification, fields not found in the head
 /// are searched for in the tail recursively.
 import core/ast
-import core/context.{new_ctx, push_var}
+import core/context.{new_ctx, push_var_opt}
 import core/eval.{eval, match_pattern}
 import core/infer.{check, infer}
 import core/literals as lit
@@ -537,7 +537,7 @@ pub fn infer_rcd_with_tail_test() {
   // When rest has type Typ(0), the tail evaluates to Typ(0) (not a neutral var)
   let tail = ast.var("rest", s)
   let ast = ast.rcd([#("x", #(Some(ast.int(1, s)), None))], Some(tail), s)
-  let ctx0 = context.push_var(new_ctx, #("rest", None, Some(v.Typ(0))))
+  let ctx0 = context.push_var_opt(new_ctx, #("rest", None, Some(v.Typ(0))))
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
   assert term == tm.Rcd([#("x", #(tm.int(1), None))], Some(tm.Var(0)))
@@ -780,7 +780,7 @@ pub fn infer_app_rcd_arg_test() {
       ),
       tm.int_t,
     )
-  let ctx0 = context.push_var(new_ctx, #("f", Some(v.var(0)), Some(pi)))
+  let ctx0 = context.push_var_opt(new_ctx, #("f", Some(v.var(0)), Some(pi)))
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
   assert type_ == v.int_t
@@ -849,7 +849,7 @@ pub fn infer_fix_rcd_simple_test() {
       tm.Rcd([#("x", #(tm.int_t, None))], None),
     )
   let ast = ast.fix("f", ast.var("args", s), s)
-  let ctx0 = context.push_var(new_ctx, #("args", None, Some(pi_type)))
+  let ctx0 = context.push_var_opt(new_ctx, #("args", None, Some(pi_type)))
   let #(term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
 }

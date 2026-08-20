@@ -101,37 +101,38 @@ pub fn debug_file(
   let fmt_value = fn(val) { format.value(ffi.build, names, val, width, 2) }
   let fmt_pattern = fn(pat) { format.pattern(pat, width, 2) }
 
-  echo "> defs = declare.package(mods)"
-  echo "> defs = declare.overloads(defs)"
-  // let #(exports, ctx) = compile.declarations(ctx, env, mods)
-  let defs = declare.package(mods)
-  let defs = declare.overloads(defs)
-  let exports = declare.get_exports(defs)
-  list.map(defs, fn(def) {
-    let #(mod_name, declarations) = def
-    list.map(declarations, fn(decl) {
-      let #(name, #(stmt, opt_type)) = decl
-      let typ = case opt_type {
-        None -> "?"
-        Some(typ) -> {
-          let core_typ = desugar.expr(exports, typ)
-          fmt_expr(core_typ)
-        }
-      }
-      io.println(
-        "- "
-        <> string.inspect(mod_name)
-        <> "."
-        <> string.inspect(name)
-        <> ": "
-        <> typ,
-      )
-    })
-  })
-  io.println("")
+  todo as "declare + define + resolve"
+  // echo "> defs = declare.package(mods)"
+  // echo "> defs = declare.overloads(defs)"
+  // // let #(exports, ctx) = compile.declarations(ctx, env, mods)
+  // let defs = declare.package(mods)
+  // let defs = declare.overloads(defs)
+  // let exports = declare.exports(defs)
+  // list.map(defs, fn(def) {
+  //   let #(mod_name, declarations) = def
+  //   list.map(declarations, fn(decl) {
+  //     let #(name, #(stmt, opt_type)) = decl
+  //     let typ = case opt_type {
+  //       None -> "?"
+  //       Some(typ) -> {
+  //         let core_typ = desugar.expr(exports, typ)
+  //         fmt_expr(core_typ)
+  //       }
+  //     }
+  //     io.println(
+  //       "- "
+  //       <> string.inspect(mod_name)
+  //       <> "."
+  //       <> string.inspect(name)
+  //       <> ": "
+  //       <> typ,
+  //     )
+  //   })
+  // })
+  // io.println("")
 
-  echo "> ctx = define.declarations(ctx, defs)"
-  let ctx = define.declarations(ctx, defs)
+  // echo "> ctx = define.declarations(ctx, defs, mods)"
+  // let ctx = define.package(ctx, defs, mods)
   list.map(list.zip(ctx.types, ctx.env), fn(entry) {
     let #(#(name, mod_type), mod_value) = entry
     io.print("ctx.env[" <> string.inspect(name) <> "]: ")

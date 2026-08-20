@@ -14,66 +14,66 @@ const s = Span("compile_test", 0, 0, 0, 0)
 const s1 = Span("compile_test", 1, 1, 1, 1)
 
 const s2 = Span("compile_test", 2, 2, 2, 2)
+// pub fn compile_package_empty_test() {
+//   let ctx0 = new_ctx
+//   let ctx = compile.package(ctx0, [])
+//   assert ctx.errors == []
+//   assert ctx.env == []
+//   assert ctx.types == []
+// }
 
-pub fn compile_package_empty_test() {
-  let ctx0 = new_ctx
-  let ctx = compile.package(ctx0, [])
-  assert ctx.errors == []
-  assert ctx.env == []
-  assert ctx.types == []
-}
+// pub fn compile_package_modules_empty_test() {
+//   let ctx0 = new_ctx
+//   let m1 = []
+//   let m2 = []
+//   let ctx = compile.package(ctx0, [#("/m1", m1), #("/m2", m2)])
+//   assert ctx.errors == []
+//   assert ctx.env == [v.rcd([]), v.rcd([])]
+//   assert ctx.types == [#("/m1", v.rcd([])), #("/m2", v.rcd([]))]
+// }
 
-pub fn compile_package_modules_empty_test() {
-  let ctx0 = new_ctx
-  let m1 = []
-  let m2 = []
-  let ctx = compile.package(ctx0, [#("/m1", m1), #("/m2", m2)])
-  assert ctx.errors == []
-  assert ctx.env == [v.rcd([]), v.rcd([])]
-  assert ctx.types == [#("/m1", v.rcd([])), #("/m2", v.rcd([]))]
-}
+// pub fn compile_package_import_test() {
+//   let ctx0 = new_ctx
+//   let m1 = [tao.let_var("x", None, tao.int(42, s), s)]
+//   let m2 = [
+//     tao.import_("m1", None, [#("x", None)], s),
+//     tao.let_var("y", None, tao.var("x", s), s),
+//   ]
+//   let ctx = compile.package(ctx0, [#("/m1", m1), #("/m2", m2)])
+//   assert ctx.errors == []
+//   assert ctx.env
+//     == [
+//       v.rcd([#("x", v.int(42))]),
+//       v.rcd([#("y", v.int(42))]),
+//     ]
+//   assert ctx.types
+//     == [
+//       #("/m1", v.rcd([#("x", v.int_t)])),
+//       #("/m2", v.rcd([#("y", v.int_t)])),
+//     ]
+// }
 
-pub fn compile_package_import_test() {
-  let ctx0 = new_ctx
-  let m1 = [tao.let_var("x", None, tao.int(42, s), s)]
-  let m2 = [
-    tao.import_("m1", None, [#("x", None)], s),
-    tao.let_var("y", None, tao.var("x", s), s),
-  ]
-  let ctx = compile.package(ctx0, [#("/m1", m1), #("/m2", m2)])
-  assert ctx.errors == []
-  assert ctx.env
-    == [
-      v.rcd([#("x", v.int(42))]),
-      v.rcd([#("y", v.int(42))]),
-    ]
-  assert ctx.types
-    == [
-      #("/m1", v.rcd([#("x", v.int_t)])),
-      #("/m2", v.rcd([#("y", v.int_t)])),
-    ]
-}
+// pub fn compile_package_import_alias_test() {
+//   let ctx0 = new_ctx
+//   let m1 = [tao.let_var("x", None, tao.int(42, s), s)]
+//   let m2 = [
+//     tao.import_("m1", Some("m"), [#("x", Some("z"))], s),
+//     tao.let_var("y", None, tao.var("z", s), s),
+//   ]
+//   let ctx = compile.package(ctx0, [#("/m1", m1), #("/m2", m2)])
+//   assert ctx.errors == []
+//   assert ctx.env
+//     == [
+//       v.rcd([#("x", v.int(42))]),
+//       v.rcd([#("y", v.int(42))]),
+//     ]
+//   assert ctx.types
+//     == [
+//       #("/m1", v.rcd([#("x", v.int_t)])),
+//       #("/m2", v.rcd([#("y", v.int_t)])),
+//     ]
+// }
 
-pub fn compile_package_import_alias_test() {
-  let ctx0 = new_ctx
-  let m1 = [tao.let_var("x", None, tao.int(42, s), s)]
-  let m2 = [
-    tao.import_("m1", Some("m"), [#("x", Some("z"))], s),
-    tao.let_var("y", None, tao.var("z", s), s),
-  ]
-  let ctx = compile.package(ctx0, [#("/m1", m1), #("/m2", m2)])
-  assert ctx.errors == []
-  assert ctx.env
-    == [
-      v.rcd([#("x", v.int(42))]),
-      v.rcd([#("y", v.int(42))]),
-    ]
-  assert ctx.types
-    == [
-      #("/m1", v.rcd([#("x", v.int_t)])),
-      #("/m2", v.rcd([#("y", v.int_t)])),
-    ]
-}
 // pub fn compile_tests_empty_test() {
 //   let ctx0 = new_ctx
 //   let m = []

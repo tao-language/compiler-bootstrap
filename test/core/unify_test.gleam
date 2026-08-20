@@ -153,7 +153,7 @@ pub fn unify_ctr_gadt_bool_test() {
       #("False", v.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
     ])
   let ctx0 =
-    context.push_var(new_ctx, #(
+    context.push_var_opt(new_ctx, #(
       "Bool",
       Some(v.TypeDef([], tdef)),
       Some(v.Typ(0)),
@@ -180,7 +180,7 @@ pub fn unify_ctr_gadt_option_test() {
       #("Some", v.Variant([], tm.Var(0), tm.Ctr("Option", tm.Var(0)))),
     ])
   let ctx0 =
-    context.push_var(new_ctx, #(
+    context.push_var_opt(new_ctx, #(
       "Option",
       Some(v.TypeDef([], tdef)),
       Some(v.Typ(0)),
@@ -240,7 +240,7 @@ pub fn unify_ctr_gadt_vec_test() {
     )
   let ctx0 =
     Context(
-      ..context.push_var(new_ctx, #(
+      ..context.push_var_opt(new_ctx, #(
         "Vec",
         Some(v.TypeDef([], tdef)),
         Some(v.Typ(0)),

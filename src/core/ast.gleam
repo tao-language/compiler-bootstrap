@@ -100,6 +100,74 @@ pub fn bindings(pattern: Pattern) -> List(String) {
   }
 }
 
+// TODO: use a Set
+pub fn free_vars(term: Expr) -> List(String) {
+  case term.data {
+    Typ(_) -> []
+    Hole(_) -> []
+    Lit(_) -> []
+    LitT(_) -> []
+    Var(name) -> [name]
+    Ctr(_, arg) -> free_vars(arg)
+    Rcd(fields, opt_tail) ->
+      list.fold(fields, [], fn(names, field) {
+        let #(_, #(opt_value, opt_default)) = field
+        names
+        |> union(free_vars_opt(opt_value))
+        |> union(free_vars_opt(opt_default))
+      })
+      |> union(free_vars_opt(opt_tail))
+    Ann(term, type_) -> todo
+    For(#(name, typ), body) ->
+      list.filter(free_vars(body), fn(x) { x != name })
+      |> union(free_vars_opt(typ))
+    Lam(#(name, typ), body) ->
+      list.filter(free_vars(body), fn(x) { x != name })
+      |> union(free_vars_opt(typ))
+    Pi(#(name, typ), body) ->
+      list.filter(free_vars(body), fn(x) { x != name })
+      |> union(free_vars_opt(typ))
+    Fix(name, body) -> todo
+    App(fun, arg) -> union(free_vars(fun), free_vars(arg))
+    Match(arg, cases) -> union(free_vars(arg), free_vars_cases(cases))
+    Call(name, arg) -> todo
+    TypeDef(type_def) -> todo
+    Err -> []
+  }
+}
+
+fn union(xs: List(a), ys: List(a)) -> List(a) {
+  list.append(xs, ys) |> list.unique
+}
+
+fn free_vars_opt(opt_term: Option(Expr)) -> List(String) {
+  case opt_term {
+    Some(term) -> free_vars(term)
+    None -> []
+  }
+}
+
+fn free_vars_cases(cases: List(Case)) -> List(String) {
+  case cases {
+    [] -> []
+    [c, ..cases] -> {
+      let bound = bindings(c.pattern)
+      let #(guard_names, bound) = case c.guard {
+        None -> #([], bound)
+        Some(#(cond, guard)) -> {
+          let names =
+            list.filter(free_vars(cond), fn(x) { !list.contains(bound, x) })
+          #(names, list.append(bound, bindings(guard)))
+        }
+      }
+      let body_names =
+        list.filter(free_vars(c.body), fn(x) { !list.contains(bound, x) })
+      list.append(guard_names, body_names)
+      |> list.append(free_vars_cases(cases))
+    }
+  }
+}
+
 pub fn contains(term: Expr, name: String) -> Bool {
   case term.data {
     Var(x) if x == name -> True

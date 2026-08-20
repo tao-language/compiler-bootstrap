@@ -19,9 +19,9 @@ import tao/tests.{type TestDef, TestDef}
 import utils/list_utils
 
 pub fn package(ctx: Context, mods: List(Module)) -> Context {
-  let defs = declare.package(mods)
-  let ctx = define.declarations(ctx, defs)
-  resolve.context(ctx)
+  // let defs = declare.package(mods)
+  // define.package(ctx, defs, mods)
+  todo
 }
 
 pub fn declarations(
@@ -67,7 +67,7 @@ pub fn tests(ctx: Context, mods: List(Module)) -> List(TestDef) {
           panic as "test module not in context"
         }
       }
-      let term = tm.dot(tm.Var(mod_index), ">>> " <> test_name)
+      let term = tm.dot(tm.Var(mod_index), test_name)
       TestDef(test_name, term, expr, expect)
     })
   })
@@ -82,7 +82,11 @@ fn declare_module(
   let #(values, types, ctx) = declare_stmt_list(ctx, env, stmts)
   let exports = list.map(values, fn(decl) { decl.0 })
   let ctx =
-    context.push_var(ctx, #(mod_name, Some(v.rcd(values)), Some(v.rcd(types))))
+    context.push_var_opt(ctx, #(
+      mod_name,
+      Some(v.rcd(values)),
+      Some(v.rcd(types)),
+    ))
   #(#(mod_name, exports), ctx)
 }
 
@@ -202,7 +206,7 @@ fn define_module(
   let mod_val = eval(ctx.ffi, ctx.env, mod_term)
   case context.lookup(ctx, mod_name) {
     Some(#(mod_idx, _)) ->
-      case list_utils.list_at(ctx.env, mod_idx) {
+      case list_utils.at(ctx.env, mod_idx) {
         Some(mod_decl) -> {
           // let #(mod_decl, ctx) = concretize_holes(ctx, mod_decl)
           unify(ctx, #(mod_decl, s), #(mod_val, s))

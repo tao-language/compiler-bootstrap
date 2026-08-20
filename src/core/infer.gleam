@@ -229,7 +229,7 @@ fn infer_for(
   }
   let param_type = eval(ctx.ffi, ctx.env, param_type_term)
   let level = list.length(ctx.env)
-  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(param_type)))
+  let ctx = context.push_var(ctx, #(name, v.var(level), param_type))
   let #(body, body_type_val, ctx) = infer(ctx, body)
   let body_type = quote(ctx.ffi, level + 1, body_type_val)
   let ctx = context.pop_vars(ctx, 1)
@@ -258,7 +258,7 @@ fn infer_lam(
   }
   let param_val = eval(ctx.ffi, ctx.env, type_)
   let level = list.length(ctx.env)
-  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(param_val)))
+  let ctx = context.push_var(ctx, #(name, v.var(level), param_val))
   let #(body, body_type_val, ctx) = infer(ctx, body)
   let body_type = quote(ctx.ffi, level + 1, body_type_val)
   let ctx = context.pop_vars(ctx, 1)
@@ -287,7 +287,7 @@ fn infer_pi(
   }
   let type_val = eval(ctx.ffi, ctx.env, type_)
   let level = list.length(ctx.env)
-  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(type_val)))
+  let ctx = context.push_var(ctx, #(name, v.var(level), type_val))
   let #(body, _, ctx) = infer(ctx, body)
   let ctx = context.pop_vars(ctx, 1)
   #(tm.Pi(#(name, type_), body), v.Typ(0), ctx)
@@ -302,7 +302,7 @@ fn infer_fix(
   let level = list.length(ctx.env)
   let #(id, ctx) = context.new_hole(ctx)
   let type_hole = v.hole(ctx.env, id)
-  let ctx = context.push_var(ctx, #(name, Some(v.var(level)), Some(type_hole)))
+  let ctx = context.push_var(ctx, #(name, v.var(level), type_hole))
   let #(body, body_type, ctx) = infer(ctx, body)
   let ctx = context.pop_vars(ctx, 1)
   let ctx = unify(ctx, #(type_hole, span), #(body_type, span))
@@ -325,7 +325,7 @@ fn infer_let(
   }
   let arg_val = eval(ctx.ffi, ctx.env, arg)
   let arg_type = quote(ctx.ffi, list.length(ctx.env), arg_type_val)
-  let ctx = context.push_var(ctx, #(name, Some(arg_val), Some(arg_type_val)))
+  let ctx = context.push_var(ctx, #(name, arg_val, arg_type_val))
   let #(body, body_type, ctx) = infer(ctx, body_ast)
   let ctx = context.pop_vars(ctx, 1)
   #(tm.let_var(#(name, arg_type, arg), body), body_type, ctx)
@@ -459,8 +459,8 @@ fn infer_pattern(
     ast.PLitT(lit) -> #(tm.PLitT(lit), v.Typ(0), ctx)
     ast.PAlias(pattern_ast, name) -> {
       let #(pattern, type_, ctx) = infer_pattern(ctx, pattern_ast)
-      let var = #(name, Some(v.var(list.length(ctx.env))), Some(type_))
-      let ctx = context.push_var(ctx, var)
+      let ctx =
+        context.push_var(ctx, #(name, v.var(list.length(ctx.env)), type_))
       #(tm.PAlias(name, pattern), type_, ctx)
     }
     ast.PCtr(tag, pattern_ast) -> {

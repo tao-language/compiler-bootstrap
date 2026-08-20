@@ -154,11 +154,11 @@ pub type Case {
 
 // Syntax sugar
 
-pub fn type_(span: Span) {
-  type_n(0, span)
+pub fn typ(span: Span) {
+  typ_n(0, span)
 }
 
-pub fn type_n(universe: Int, span: Span) {
+pub fn typ_n(universe: Int, span: Span) {
   ctr("Type", [#("", int(universe, span))], span)
 }
 
