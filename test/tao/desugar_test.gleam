@@ -14,36 +14,15 @@ fn fmt(e) {
 }
 
 pub fn desugar_stmt_import_simple_test() {
-  let stmt = tao.import_("m", None, [], s)
+  let stmt = tao.import_some("m", "n", [], s)
   let expr = desugar.statement([], new_block_ctx, stmt, unit)
   assert expr.trace == Some("import m")
-  assert fmt(expr) == "%let m = `/m`\n{}"
-}
-
-pub fn desugar_stmt_import_path_name_test() {
-  let stmt = tao.import_("path/to/m", None, [], s)
-  let expr = desugar.statement([], new_block_ctx, stmt, unit)
-  assert expr.trace == Some("import path/to/m")
-  assert fmt(expr) == "%let m = `/path/to/m`\n{}"
-}
-
-pub fn desugar_stmt_import_alias_test() {
-  let stmt = tao.import_("path/to/m", Some("n"), [], s)
-  let expr = desugar.statement([], new_block_ctx, stmt, unit)
-  assert expr.trace == Some("import path/to/m")
-  assert fmt(expr) == "%let n = `/path/to/m`\n{}"
+  assert fmt(expr) == "%let n = `/m`\n{}"
 }
 
 pub fn desugar_stmt_import_expose_name_test() {
-  let stmt = tao.import_("m", None, [#("x", None)], s)
+  let stmt = tao.import_some("m", "n", [#("x", "y")], s)
   let expr = desugar.statement([], new_block_ctx, stmt, unit)
   assert expr.trace == Some("import m")
-  assert fmt(expr) == "%let m = `/m`\n%let x = %get(`/m`).x\n{}"
-}
-
-pub fn desugar_stmt_import_expose_name_alias_test() {
-  let stmt = tao.import_("m", None, [#("x", Some("y"))], s)
-  let expr = desugar.statement([], new_block_ctx, stmt, unit)
-  assert expr.trace == Some("import m")
-  assert fmt(expr) == "%let m = `/m`\n%let y = %get(`/m`).x\n{}"
+  assert fmt(expr) == "%let n = `/m`\n%let y = %get(`/m`).x\n{}"
 }

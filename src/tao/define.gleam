@@ -67,24 +67,16 @@ pub fn statement(
   stmt: Stmt,
 ) -> #(v.Value, v.Type, Context) {
   case stmt.data {
-    tao.Import(path, opt_alias, names) -> {
-      let alias = case opt_alias {
-        Some(alias) -> alias
-        None -> filepath.base_name(path)
+    tao.Import(path, alias, tao.ImportAll) -> todo
+    tao.Import(path, alias, tao.ImportSome(names)) ->
+      case names {
+        [] -> todo
+        [#(x, y), ..] if name == y -> signature(ctx, defs, path, x)
+        [_, ..names] -> {
+          let stmt = tao.import_some(path, alias, names, stmt.span)
+          statement(ctx, defs, mod_name, name, stmt)
+        }
       }
-      let names =
-        list.map(names, fn(entry) {
-          let #(name, opt_alias) = entry
-          let alias = case opt_alias {
-            Some(alias) -> alias
-            None -> name
-          }
-          #(name, alias)
-        })
-      let import_stmt = #(path, alias, names)
-      stmt_type_import(ctx, defs, mod_name, name, import_stmt)
-    }
-    tao.ImportAll(path, alias) -> todo
     tao.Extern(name, params, returns) -> todo
     tao.LetVar(_, None, _) -> {
       let #(val, ctx) = hole_value(ctx)
@@ -110,21 +102,6 @@ pub fn statement(
     tao.Return(expr) -> todo
     tao.Break -> todo
     tao.Continue -> todo
-  }
-}
-
-fn stmt_type_import(
-  ctx: Context,
-  defs: List(#(ModName, List(#(Name, Stmt)))),
-  mod_name: ModName,
-  name: Name,
-  import_stmt: #(ModName, Name, List(#(Name, Name))),
-) -> #(v.Value, v.Type, Context) {
-  let #(path, alias, names) = import_stmt
-  case names {
-    [] -> todo as "check module alias itself"
-    [#(x, y), ..] if name == y -> signature(ctx, defs, path, x)
-    [_, ..names] -> stmt_type_import(ctx, defs, mod_name, name, import_stmt)
   }
 }
 

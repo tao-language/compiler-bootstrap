@@ -77,12 +77,7 @@ pub type Stmt {
 }
 
 pub type StmtData {
-  Import(
-    path: String,
-    alias: Option(String),
-    names: List(#(String, Option(String))),
-  )
-  ImportAll(path: String, alias: Option(String))
+  Import(path: String, alias: String, scope: ImportScope)
   Extern(name: String, params: Parameters, returns: Type)
   LetVar(name: String, opt_type: Option(Type), value: Expr)
   LetPat(pattern: Pattern, types: List(#(String, Type)), value: Expr)
@@ -103,6 +98,11 @@ pub type StmtData {
   Return(expr: Expr)
   Break
   Continue
+}
+
+pub type ImportScope {
+  ImportAll
+  ImportSome(List(#(String, String)))
 }
 
 pub type OverloadChoice {
@@ -355,13 +355,17 @@ pub fn pctr_open(
   Pattern(PCtr(tag, args, tail), span)
 }
 
-pub fn import_(
+pub fn import_all(path: String, alias: String, span: Span) {
+  Stmt(Import(path, alias, ImportAll), span)
+}
+
+pub fn import_some(
   path: String,
-  alias: Option(String),
-  names: List(#(String, Option(String))),
+  alias: String,
+  names: List(#(String, String)),
   span: Span,
 ) {
-  Stmt(Import(path, alias, names), span)
+  Stmt(Import(path, alias, ImportSome(names)), span)
 }
 
 pub fn let_var(name: String, opt_type: Option(Type), value: Expr, span: Span) {

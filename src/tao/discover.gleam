@@ -5,7 +5,6 @@ pub fn definitions(stmts: List(Stmt)) -> List(String) {
   list.flat_map(stmts, fn(stmt) {
     case stmt.data {
       tao.Import(..) -> []
-      tao.ImportAll(..) -> []
       tao.Extern(..) -> todo
       tao.LetVar(name, ..) -> [name]
       tao.LetPat(pattern, ..) -> definitions_pattern(pattern)
@@ -28,7 +27,6 @@ pub fn tests(stmts: List(Stmt)) -> List(#(String, Expr, Pattern)) {
   list.flat_map(stmts, fn(stmt) {
     case stmt.data {
       tao.Import(..) -> []
-      tao.ImportAll(..) -> []
       tao.Extern(..) -> todo
       tao.LetVar(..) -> []
       tao.LetPat(..) -> []

@@ -128,7 +128,7 @@ pub fn define_signature_indirect_reverse_test() {
 pub fn define_signature_imported_name_test() {
   let ctx = context.new_ctx
   let let_int = tao.let_var("int", Some(tao.typ(s)), tao.int_t(s), s)
-  let import_m1_int = tao.import_("m1", None, [#("int", Some("m1_int"))], s)
+  let import_m1_int = tao.import_some("m1", "", [#("int", "m1_int")], s)
   let let_x = tao.let_var("x", Some(tao.var("m1_int", s)), tao.int(1, s), s)
   let defs = [
     #("m1", [#("int", let_int)]),
@@ -150,7 +150,7 @@ pub fn define_signature_imported_name_test() {
 pub fn define_signature_imported_name_reverse_test() {
   let ctx = context.new_ctx
   let let_int = tao.let_var("int", Some(tao.typ(s)), tao.int_t(s), s)
-  let import_m1_int = tao.import_("m1", None, [#("int", Some("m1_int"))], s)
+  let import_m1_int = tao.import_some("m1", "", [#("int", "m1_int")], s)
   let let_x = tao.let_var("x", Some(tao.var("m1_int", s)), tao.int(1, s), s)
   let defs = [
     #("m2", [#("m1_int", import_m1_int), #("x", let_x)]),

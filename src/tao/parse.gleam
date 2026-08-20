@@ -314,24 +314,29 @@ fn import_(file: String) -> Parser(Stmt, Token, String) {
     use start <- do(get_span(file))
     use _ <- do(nibble.token(KwImport))
     use path <- do(import_path())
-    use alias <- do(nibble.optional(import_alias()))
-    use data <- do(
+    use alias <- do(
+      nibble.one_of([
+        import_alias(),
+        return(filepath.base_name(path)),
+      ]),
+    )
+    use scope <- do(
       nibble.one_of([
         {
           use _ <- do(nibble.token(Mul))
-          return(tao.ImportAll(path, alias))
+          return(tao.ImportAll)
         },
         {
           use _ <- do(nibble.token(LBrace))
           use names <- do(sequence(import_name(), Comma))
           use _ <- do(nibble.token(RBrace))
-          return(tao.Import(path, alias, names))
+          return(tao.ImportSome(names))
         },
-        return(tao.Import(path, alias, [])),
+        return(tao.ImportSome([])),
       ]),
     )
     use end <- do(get_span(file))
-    return(tao.Stmt(data, span.merge(start, end)))
+    return(tao.Stmt(tao.Import(path, alias, scope), span.merge(start, end)))
   }
   |> nibble.in("import statement")
 }
@@ -353,9 +358,9 @@ fn import_alias() -> Parser(String, Token, String) {
   var_name()
 }
 
-fn import_name() -> Parser(#(String, Option(String)), Token, String) {
+fn import_name() -> Parser(#(String, String), Token, String) {
   use name <- do(var_name())
-  use alias <- do(nibble.optional(import_alias()))
+  use alias <- do(nibble.one_of([import_alias(), return(name)]))
   return(#(name, alias))
 }
 
@@ -371,7 +376,7 @@ fn extern(file: String) -> Parser(Stmt, Token, String) {
     use _ <- do(nibble.token(ThinArrow))
     use returns <- do(expr(file))
     use end <- do(get_span(file))
-    return(tao.extern(name, params, returns, merge(start, end)))
+    return(tao.extern("@" <> name, params, returns, merge(start, end)))
   }
   |> nibble.in("extern declaration")
 }

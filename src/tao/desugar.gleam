@@ -351,41 +351,33 @@ pub fn statement(
   next: core.Expr,
 ) -> core.Expr {
   case stmt.data {
-    tao.Import(path, opt_alias, []) -> {
-      let alias = case opt_alias {
-        Some(alias) -> alias
-        None -> filepath.base_name(path)
-      }
+    tao.Import(path, alias, tao.ImportAll) -> {
       let mod_name = "/" <> path
-      let def = #(alias, None, core.var(mod_name, stmt.span))
-      core.let_var_trace(def, next, stmt.span, Some("import " <> path))
-    }
-    tao.Import(path, opt_alias, [#(name, opt_name_alias), ..names]) -> {
-      let stmt = tao.import_(path, opt_alias, names, stmt.span)
-      let name_alias = case opt_name_alias {
-        Some(alias) -> alias
-        None -> name
-      }
-      let mod_name = "/" <> path
-      let access = core.dot(core.var(mod_name, stmt.span), name, stmt.span)
-      let next =
-        core.let_var_trace(
-          #(name_alias, None, access),
-          next,
-          stmt.span,
-          Some("import " <> path <> " {" <> name <> "}"),
-        )
-      statement(exports, block_ctx, stmt, next)
-    }
-    tao.ImportAll(path, opt_alias) -> {
-      let mod_name = "/" <> path
-      let names =
+      let scope =
         list.key_find(exports, mod_name)
         |> result.unwrap([])
         |> list.filter(is_public_name)
-        |> list.map(fn(x) { #(x, None) })
-      let stmt = tao.Stmt(tao.Import(path, opt_alias, names), stmt.span)
+        |> list.map(fn(x) { #(x, x) })
+        |> tao.ImportSome
+      let stmt = tao.Stmt(tao.Import(path, alias, scope), stmt.span)
       statement(exports, block_ctx, stmt, next)
+    }
+    tao.Import(path, alias, tao.ImportSome(names)) -> {
+      let mod_name = "/" <> path
+      case names {
+        [] -> {
+          let def = #(alias, None, core.var(mod_name, stmt.span))
+          core.let_var_trace(def, next, stmt.span, Some("import " <> path))
+        }
+        [#(x, y), ..names] -> {
+          let stmt = tao.import_some(path, alias, names, stmt.span)
+          let access = core.dot(core.var(mod_name, stmt.span), x, stmt.span)
+          let trace = Some("import " <> path <> " {" <> x <> "}")
+          let next =
+            core.let_var_trace(#(y, None, access), next, stmt.span, trace)
+          statement(exports, block_ctx, stmt, next)
+        }
+      }
     }
     tao.Extern(..) -> next
     tao.LetVar(name, opt_type, value) -> {

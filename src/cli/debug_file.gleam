@@ -51,9 +51,8 @@ pub fn debug_file(
     list.append(mods, pkg_mods),
     list.append(errors, pkg_errors),
   )
-  let mods = topological_sort(mods)
   io.println("modules loaded: " <> int.to_string(list.length(mods)))
-  list.map(mods, fn(mod) { io.println("- " <> mod.0) })
+  list.map(mods, fn(mod) { io.println("  - " <> mod.0) })
   io.println("")
 
   case list.length(errors) {
@@ -70,66 +69,48 @@ pub fn debug_file(
     }
   }
 
-  echo "> stmts = load.module(filename)"
-  let #(#(name, stmts), errors) = load.module(paths, filename)
-  io.println("module name: " <> string.inspect(name))
-  case list.length(errors) {
-    0 -> Nil
-    n -> {
-      io.println_error("---- SYNTAX ERRORS ----")
-      list.map(errors, fn(err) {
-        let msg = error.display_syntax(err)
-        io.println_error("❌ " <> msg)
-      })
-      io.println("")
-      io.println_error(int.to_string(n) <> " syntax errors")
-      exit(1)
-    }
-  }
+  // echo "> stmts = load.module(filename)"
+  // let #(#(name, stmts), errors) = load.module(paths, filename)
+  // io.println("module name: " <> string.inspect(name))
+  // case list.length(errors) {
+  //   0 -> Nil
+  //   n -> {
+  //     io.println_error("---- SYNTAX ERRORS ----")
+  //     list.map(errors, fn(err) {
+  //       let msg = error.display_syntax(err)
+  //       io.println_error("❌ " <> msg)
+  //     })
+  //     io.println("")
+  //     io.println_error(int.to_string(n) <> " syntax errors")
+  //     exit(1)
+  //   }
+  // }
 
-  let exports = discover.definitions(stmts)
-  io.println("exports: " <> int.to_string(list.length(exports)) <> " length")
-  list.map(exports, fn(name) { io.println("- " <> name) })
-  io.println("")
-
-  let ctx = Context(..new_ctx, ffi: ffi.build)
-  // let env = v.env_push(ctx.env, list.length(mods))
   // Define helpers to print and format.
+  let ctx = Context(..new_ctx, ffi: ffi.build)
   let names = list.map(ctx.types, fn(x) { x.0 })
   let fmt_expr = fn(expr) { format.expr(expr, width, 2) }
   let fmt_term = fn(term) { format.term(names, term, width, 2) }
   let fmt_value = fn(val) { format.value(ffi.build, names, val, width, 2) }
   let fmt_pattern = fn(pat) { format.pattern(pat, width, 2) }
 
-  todo as "declare + define + resolve"
-  // echo "> defs = declare.package(mods)"
-  // echo "> defs = declare.overloads(defs)"
-  // // let #(exports, ctx) = compile.declarations(ctx, env, mods)
-  // let defs = declare.package(mods)
-  // let defs = declare.overloads(defs)
-  // let exports = declare.exports(defs)
-  // list.map(defs, fn(def) {
-  //   let #(mod_name, declarations) = def
-  //   list.map(declarations, fn(decl) {
-  //     let #(name, #(stmt, opt_type)) = decl
-  //     let typ = case opt_type {
-  //       None -> "?"
-  //       Some(typ) -> {
-  //         let core_typ = desugar.expr(exports, typ)
-  //         fmt_expr(core_typ)
-  //       }
-  //     }
-  //     io.println(
-  //       "- "
-  //       <> string.inspect(mod_name)
-  //       <> "."
-  //       <> string.inspect(name)
-  //       <> ": "
-  //       <> typ,
-  //     )
-  //   })
-  // })
-  // io.println("")
+  echo "> defs = declare.modules(mods)"
+  let defs = declare.modules(mods)
+  list.map(defs, fn(def) {
+    let #(mod_name, mod_defs) = def
+    io.println(string.inspect(mod_name) <> ":")
+    list.map(mod_defs, fn(local) {
+      let #(name, stmt) = local
+      let name = case name, stmt.data {
+        "", tao.Import(path, alias, tao.ImportAll) ->
+          "<any> import " <> path <> " as " <> alias <> " *"
+        _, _ -> string.inspect(name)
+      }
+      io.println("  - " <> name)
+    })
+  })
+  io.println("")
+  todo
 
   // echo "> ctx = define.declarations(ctx, defs, mods)"
   // let ctx = define.package(ctx, defs, mods)
@@ -226,69 +207,6 @@ pub fn debug_file(
   //   _ -> io.println("- " <> int.to_string(unknown) <> " unkown result state")
   // }
   // io.println("")
-}
-
-// ============================================================================
-// Topological sort for module dependency ordering
-// ============================================================================
-
-/// Extract the set of module names this module imports from its statements.
-fn module_deps(stmts: List(Stmt)) -> List(String) {
-  list.flat_map(stmts, fn(stmt) {
-    case stmt.data {
-      tao.Import(path, _, _) -> ["/" <> path]
-      tao.ImportAll(path, _) -> ["/" <> path]
-      _ -> []
-    }
-  })
-}
-
-/// Topologically sort modules so that dependencies come before dependents.
-/// Uses Kahn's algorithm.
-fn topological_sort(mods: List(Module)) -> List(Module) {
-  let names = list.map(mods, fn(m) { m.0 })
-  // Build adjacency: (module_name, [dependency_names_in_graph])
-  let adj: List(#(String, List(String))) =
-    list.map(mods, fn(m) {
-      let #(name, stmts) = m
-      let deps = module_deps(stmts)
-      #(name, list.filter(deps, fn(d) { list.contains(names, d) }))
-    })
-  topological_sort_loop(adj, mods, names, [])
-}
-
-fn topological_sort_loop(
-  adj: List(#(String, List(String))),
-  mods: List(Module),
-  names: List(String),
-  sorted: List(Module),
-) -> List(Module) {
-  // Find nodes with zero in-degree: modules not listed as a dependency
-  // by any other remaining module
-  let zero_in =
-    list.filter(names, fn(n) {
-      !list.any(adj, fn(entry) { list.contains(entry.1, n) })
-    })
-
-  case zero_in {
-    [] -> list.reverse(sorted)
-    [node, ..] -> {
-      // Remove this node from adjacency list
-      let new_adj = list.filter(adj, fn(entry) { entry.0 != node })
-      // Remove node from dependency lists of remaining entries
-      let new_adj =
-        list.map(new_adj, fn(entry) {
-          #(entry.0, list.filter(entry.1, fn(d) { d != node }))
-        })
-      let new_names = list.filter(names, fn(n) { n != node })
-      // Find the module for this node and add to sorted
-      let module = case list.find(mods, fn(m) { m.0 == node }) {
-        Ok(m) -> m
-        Error(_) -> panic as "module not found in topological sort"
-      }
-      topological_sort_loop(new_adj, mods, new_names, [module, ..sorted])
-    }
-  }
 }
 
 // Declare the external Erlang halt function

@@ -23,16 +23,19 @@ pub fn modules(mods: List(Module)) -> List(#(ModName, List(#(Name, Stmt)))) {
 
 pub fn statement(stmt: Stmt) -> List(#(Name, Stmt)) {
   case stmt.data {
-    tao.Import(path, alias, names) -> todo
-    tao.ImportAll(path, alias) -> todo
-    tao.Extern(name, params, returns) -> todo
+    tao.Import(_, alias, tao.ImportAll) -> [#(alias, stmt), #("", stmt)]
+    tao.Import(_, alias, tao.ImportSome(names)) -> [
+      #(alias, stmt),
+      ..list.map(names, fn(x) { #(x.1, stmt) })
+    ]
+    tao.Extern(name, params, returns) -> [#(name, stmt)]
     tao.LetVar(name, opt_type, value) -> [#(name, stmt)]
     tao.LetPat(pattern, types, value) -> todo
     tao.LetMut(name, opt_type, value) -> todo
     tao.Mut(name, value) -> todo
-    tao.Test(name, expr, expect) -> todo
+    tao.Test(name, _, _) -> [#(name, stmt)]
     tao.FnDef(name, implicits, params, returns, body) -> todo
-    tao.FnOverload(name, choices) -> todo
+    tao.FnOverload(name, _) -> [#(name, stmt)]
     tao.TypeDef(type_def) -> todo
     tao.For(iterator, range, body) -> todo
     tao.While(condition, body) -> todo
