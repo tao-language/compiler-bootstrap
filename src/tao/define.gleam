@@ -22,7 +22,14 @@ pub fn types(
   ctx: Context,
   defs: List(#(ModName, List(#(Name, Stmt)))),
 ) -> Context {
-  todo
+  list.fold(defs, ctx, fn(ctx, def) {
+    let #(mod_name, mod_defs) = def
+    list.fold(mod_defs, ctx, fn(ctx, mod_def) {
+      let #(name, stmt) = mod_def
+      let #(_, _, ctx) = type_stmt(ctx, defs, mod_name, name, stmt)
+      ctx
+    })
+  })
 }
 
 pub fn modules(
@@ -33,7 +40,7 @@ pub fn modules(
   todo
 }
 
-pub fn signature(
+pub fn type_name(
   ctx: Context,
   defs: List(#(ModName, List(#(Name, Stmt)))),
   mod_name: ModName,
@@ -53,13 +60,29 @@ pub fn signature(
               echo #(mod_name, name)
               todo as "error: definition not found"
             }
-            Ok(stmt) -> statement(ctx, defs, mod_name, name, stmt)
+            Ok(stmt) -> type_stmt(ctx, defs, mod_name, name, stmt)
           }
       }
   }
 }
 
-pub fn statement(
+pub fn type_name_list(
+  ctx: Context,
+  defs: List(#(ModName, List(#(Name, Stmt)))),
+  mod_name: ModName,
+  names: List(Name),
+) -> #(List(#(Name, v.Value)), List(#(Name, v.Type)), Context) {
+  case names {
+    [] -> #([], [], ctx)
+    [name, ..names] -> {
+      let #(val, typ, ctx) = type_name(ctx, defs, mod_name, name)
+      let #(values, types, ctx) = type_name_list(ctx, defs, mod_name, names)
+      #([#(name, val), ..values], [#(name, typ), ..types], ctx)
+    }
+  }
+}
+
+pub fn type_stmt(
   ctx: Context,
   defs: List(#(ModName, List(#(Name, Stmt)))),
   mod_name: ModName,
@@ -67,26 +90,50 @@ pub fn statement(
   stmt: Stmt,
 ) -> #(v.Value, v.Type, Context) {
   case stmt.data {
-    tao.Import(path, alias, tao.ImportAll) -> todo
-    tao.Import(path, alias, tao.ImportSome(names)) ->
-      case names {
-        [] -> todo
-        [#(x, y), ..] if name == y -> signature(ctx, defs, path, x)
-        [_, ..names] -> {
-          let stmt = tao.import_some(path, alias, names, stmt.span)
-          statement(ctx, defs, mod_name, name, stmt)
+    tao.Import(path, alias, tao.ImportAll) -> {
+      let names = case list.key_find(defs, "/" <> path) {
+        Ok(mod_defs) -> list.map(mod_defs, fn(entry) { #(entry.0, entry.0) })
+        Error(Nil) -> {
+          todo as "error: module not found"
         }
       }
-    tao.Extern(name, params, returns) -> todo
-    tao.LetVar(_, None, _) -> {
-      let #(val, ctx) = hole_value(ctx)
-      let #(typ, ctx) = hole_value(ctx)
-      let ctx = set_var(ctx, mod_name, name, val, typ)
-      #(val, typ, ctx)
+      let stmt = tao.import_some(path, alias, names, stmt.span)
+      type_stmt(ctx, defs, mod_name, name, stmt)
     }
-    tao.LetVar(_, Some(typ), _) -> {
+    tao.Import(path, alias, tao.ImportSome(names)) ->
+      case names {
+        [] ->
+          case list.key_find(defs, "/" <> path) {
+            Ok(mod_defs) -> {
+              let names = list.map(mod_defs, fn(entry) { entry.0 })
+              let #(values, types, ctx) =
+                type_name_list(ctx, defs, mod_name, names)
+              #(v.rcd(values), v.rcd(types), ctx)
+            }
+            Error(Nil) -> {
+              echo list.map(defs, fn(entry) { entry.0 })
+              echo path
+              todo as "error: module not found"
+            }
+          }
+        [#(x, y), ..] if name == y -> type_name(ctx, defs, "/" <> path, x)
+        [_, ..names] -> {
+          let stmt = tao.import_some(path, alias, names, stmt.span)
+          type_stmt(ctx, defs, mod_name, name, stmt)
+        }
+      }
+    tao.Extern(_, params, returns) -> {
+      let tao_type = tao.fn_t(#([], None), params, returns, stmt.span)
+      let #(typ, ctx) = expr_value(ctx, defs, mod_name, tao_type)
+      let ctx = set_var(ctx, mod_name, name, v.Err, typ)
+      #(v.Err, typ, ctx)
+    }
+    tao.LetVar(_, opt_type, _) -> {
       let #(val, ctx) = hole_value(ctx)
-      let #(typ, ctx) = expr_value(ctx, defs, mod_name, typ)
+      let #(typ, ctx) = case opt_type {
+        Some(tao_type) -> expr_value(ctx, defs, mod_name, tao_type)
+        None -> hole_value(ctx)
+      }
       let ctx = set_var(ctx, mod_name, name, val, typ)
       #(val, typ, ctx)
     }
@@ -161,7 +208,7 @@ fn expr_value(
   let deps = core.free_vars(core_expr)
   let ctx =
     list.fold(deps, ctx, fn(ctx, name) {
-      let #(val, typ, ctx) = signature(ctx, defs, mod_name, name)
+      let #(val, typ, ctx) = type_name(ctx, defs, mod_name, name)
       context.push_var(ctx, #(name, val, typ))
     })
   let #(term, _, ctx) = infer(ctx, core_expr)

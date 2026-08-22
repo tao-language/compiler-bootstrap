@@ -12,18 +12,19 @@ pub type Name =
   String
 
 pub fn modules(mods: List(Module)) -> List(#(ModName, List(#(Name, Stmt)))) {
-  case mods {
+  let defs = case mods {
     [] -> []
     [#(mod_name, stmts), ..mods] -> {
       let mod_defs = list.flat_map(stmts, statement)
       [#(mod_name, mod_defs), ..modules(mods)]
     }
   }
+  imports(defs)
 }
 
 pub fn statement(stmt: Stmt) -> List(#(Name, Stmt)) {
   case stmt.data {
-    tao.Import(_, alias, tao.ImportAll) -> [#(alias, stmt), #("", stmt)]
+    tao.Import(_, alias, tao.ImportAll) -> [#(alias, stmt)]
     tao.Import(_, alias, tao.ImportSome(names)) -> [
       #(alias, stmt),
       ..list.map(names, fn(x) { #(x.1, stmt) })
@@ -43,6 +44,33 @@ pub fn statement(stmt: Stmt) -> List(#(Name, Stmt)) {
     tao.Break -> todo
     tao.Continue -> todo
   }
+}
+
+pub fn imports(
+  defs: List(#(ModName, List(#(Name, Stmt)))),
+) -> List(#(ModName, List(#(Name, Stmt)))) {
+  list.map(defs, fn(def) {
+    let #(mod_name, mod_defs) = def
+    let mod_defs =
+      list.flat_map(mod_defs, fn(mod_def) {
+        let #(name, stmt) = mod_def
+        case stmt.data {
+          tao.Import(path, _, tao.ImportAll) -> {
+            let exposed = case list.key_find(defs, "/" <> path) {
+              Error(Nil) -> todo as "error: module not found"
+              Ok(import_defs) ->
+                list.map(import_defs, fn(mod_def) {
+                  let #(name, _) = mod_def
+                  #(name, stmt)
+                })
+            }
+            [#(name, stmt), ..exposed]
+          }
+          _ -> [#(name, stmt)]
+        }
+      })
+    #(mod_name, mod_defs)
+  })
 }
 
 pub fn exports(

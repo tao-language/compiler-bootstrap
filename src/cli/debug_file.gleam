@@ -101,19 +101,43 @@ pub fn debug_file(
     io.println(string.inspect(mod_name) <> ":")
     list.map(mod_defs, fn(local) {
       let #(name, stmt) = local
-      let name = case name, stmt.data {
-        "", tao.Import(path, alias, tao.ImportAll) ->
-          "<any> import " <> path <> " as " <> alias <> " *"
-        _, _ -> string.inspect(name)
+      let stmt_str = case stmt.data {
+        tao.Import(path, alias, scope) -> "import " <> path
+        tao.Extern(name, params, returns) -> "extern"
+        tao.LetVar(name, opt_type, value) -> "let-var"
+        tao.LetPat(pattern, types, value) ->
+          "let-pat " <> string.inspect(pattern)
+        tao.LetMut(name, opt_type, value) -> "let-mut"
+        tao.Mut(name, value) -> todo
+        tao.Test(name, expr, expect) -> "test"
+        tao.FnDef(name, implicits, params, returns, body) -> todo
+        tao.FnOverload(name, choices) -> "fn-overload"
+        tao.TypeDef(type_def) -> todo
+        tao.For(iterator, range, body) -> todo
+        tao.While(condition, body) -> todo
+        tao.Return(expr) -> todo
+        tao.Break -> todo
+        tao.Continue -> todo
       }
-      io.println("  - " <> name)
+      io.println("  - " <> string.inspect(name) <> ": " <> stmt_str)
     })
   })
   io.println("")
+
+  echo "> ctx = define.types(ctx, defs, mods)"
+  let ctx = define.types(ctx, defs)
+  list.map(list.zip(ctx.types, ctx.env), fn(entry) {
+    let #(#(name, mod_type), mod_value) = entry
+    io.print("ctx.env[" <> string.inspect(name) <> "]: ")
+    io.println(fmt_value(mod_value))
+    io.print("ctx.types[" <> string.inspect(name) <> "]: ")
+    io.println(fmt_value(mod_type))
+    io.println("")
+  })
   todo
 
-  // echo "> ctx = define.declarations(ctx, defs, mods)"
-  // let ctx = define.package(ctx, defs, mods)
+  echo "> ctx = define.modules(ctx, defs, mods)"
+  let ctx = define.modules(ctx, defs, mods)
   list.map(list.zip(ctx.types, ctx.env), fn(entry) {
     let #(#(name, mod_type), mod_value) = entry
     io.print("ctx.env[" <> string.inspect(name) <> "]: ")
