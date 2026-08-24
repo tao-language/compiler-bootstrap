@@ -205,7 +205,7 @@ pub fn define_type_name_indirect_reverse_test() {
 pub fn define_type_name_imported_name_test() {
   let ctx = context.new_ctx
   let let_int = tao.let_var("int", Some(tao.typ(s)), tao.int_t(s), s)
-  let import_m1_int = tao.import_some("m1", "", [#("int", "m1_int")], s)
+  let import_m1_int = tao.import_some("/m1", "", [#("int", "m1_int")], s)
   let let_x = tao.let_var("x", Some(tao.var("m1_int", s)), tao.int(1, s), s)
   let defs = [
     #("/m1", [#("int", let_int)]),
@@ -218,16 +218,17 @@ pub fn define_type_name_imported_name_test() {
   assert ctx.types
     == [
       #("/m1", v.rcd([#("int", v.Typ(0))])),
-      #("/m2", v.rcd([#("x", v.hole([], 1))])),
+      #("/m2", v.rcd([#("m1_int", v.Typ(0)), #("x", typ)])),
     ]
-  assert ctx.env == [v.rcd([#("int", typ)]), v.rcd([#("x", val)])]
+  assert ctx.env
+    == [v.rcd([#("int", typ)]), v.rcd([#("m1_int", typ), #("x", val)])]
   assert ctx.hole_counter == 2
 }
 
 pub fn define_type_name_imported_name_reverse_test() {
   let ctx = context.new_ctx
   let let_int = tao.let_var("int", Some(tao.typ(s)), tao.int_t(s), s)
-  let import_m1_int = tao.import_some("m1", "", [#("int", "m1_int")], s)
+  let import_m1_int = tao.import_some("/m1", "", [#("int", "m1_int")], s)
   let let_x = tao.let_var("x", Some(tao.var("m1_int", s)), tao.int(1, s), s)
   let defs = [
     #("/m2", [#("m1_int", import_m1_int), #("x", let_x)]),
@@ -240,8 +241,9 @@ pub fn define_type_name_imported_name_reverse_test() {
   assert ctx.types
     == [
       #("/m1", v.rcd([#("int", v.Typ(0))])),
-      #("/m2", v.rcd([#("x", v.hole([], 1))])),
+      #("/m2", v.rcd([#("m1_int", v.Typ(0)), #("x", typ)])),
     ]
-  assert ctx.env == [v.rcd([#("int", typ)]), v.rcd([#("x", val)])]
+  assert ctx.env
+    == [v.rcd([#("int", typ)]), v.rcd([#("m1_int", typ), #("x", val)])]
   assert ctx.hole_counter == 2
 }

@@ -37,9 +37,15 @@ pub fn types(
 pub fn modules(
   ctx: Context,
   defs: List(#(ModName, List(#(Name, Stmt)))),
-  mods: List(Module),
 ) -> Context {
-  todo
+  let exports = declare.exports(defs)
+  list.fold(defs, ctx, fn(ctx, def) {
+    let #(mod_name, mod_defs) = def
+    list.fold(mod_defs, ctx, fn(ctx, mod_def) {
+      let #(name, stmt) = mod_def
+      value_stmt(ctx, exports, mod_name, name, stmt)
+    })
+  })
 }
 
 pub fn type_name(
@@ -54,13 +60,13 @@ pub fn type_name(
       case list.key_find(defs, mod_name) {
         Error(Nil) -> {
           echo mod_name
-          todo as "error: module not found"
+          panic as "error: module not found"
         }
         Ok(mod_defs) ->
           case list.key_find(mod_defs, name) {
             Error(Nil) -> {
               echo #(mod_name, name)
-              todo as "error: definition not found"
+              panic as "error: definition not found"
             }
             Ok(stmt) -> type_stmt(ctx, defs, mod_name, name, stmt)
           }
@@ -91,9 +97,9 @@ pub fn type_stmt(
   name: Name,
   stmt: Stmt,
 ) -> #(v.Value, v.Type, Context) {
-  case stmt.data {
+  let #(val, typ, ctx) = case stmt.data {
     tao.Import(path, alias, tao.ImportAll) -> {
-      let names = case list.key_find(defs, "/" <> path) {
+      let names = case list.key_find(defs, path) {
         Ok(mod_defs) -> list.map(mod_defs, fn(entry) { #(entry.0, entry.0) })
         Error(Nil) -> {
           todo as "error: module not found"
@@ -105,7 +111,7 @@ pub fn type_stmt(
     tao.Import(path, alias, tao.ImportSome(names)) ->
       case names {
         [] ->
-          case list.key_find(defs, "/" <> path) {
+          case list.key_find(defs, path) {
             Ok(mod_defs) -> {
               let names = list.map(mod_defs, fn(entry) { entry.0 })
               let #(values, types, ctx) =
@@ -118,7 +124,7 @@ pub fn type_stmt(
               todo as "error: module not found"
             }
           }
-        [#(x, y), ..] if name == y -> type_name(ctx, defs, "/" <> path, x)
+        [#(x, y), ..] if name == y -> type_name(ctx, defs, path, x)
         [_, ..names] -> {
           let stmt = tao.import_some(path, alias, names, stmt.span)
           type_stmt(ctx, defs, mod_name, name, stmt)
@@ -127,7 +133,6 @@ pub fn type_stmt(
     tao.Extern(_, params, returns) -> {
       let tao_type = tao.fn_t(#([], None), params, returns, stmt.span)
       let #(typ, _, ctx) = expr_value(ctx, defs, mod_name, tao_type)
-      let ctx = set_var(ctx, mod_name, name, v.Err, typ)
       #(v.Err, typ, ctx)
     }
     tao.LetVar(_, opt_type, _) -> {
@@ -139,20 +144,21 @@ pub fn type_stmt(
         }
         None -> hole_value(ctx)
       }
-      let ctx = set_var(ctx, mod_name, name, val, typ)
       #(val, typ, ctx)
     }
     tao.LetPat(pattern, types, value) -> todo
     tao.LetMut(name, opt_type, value) -> todo
     tao.Mut(name, value) -> todo
-    tao.Test(name, expr, expect) -> todo
+    tao.Test(name, expr, expect) -> {
+      let #(val, ctx) = hole_value(ctx)
+      let #(typ, ctx) = hole_value(ctx)
+      #(val, typ, ctx)
+    }
     tao.FnDef(name, implicits, params, returns, body) -> todo
     tao.FnOverload(name, choices) -> {
       let s = stmt.span
       let tao_expr = tao.do([stmt, tao.return(tao.var(name, s), s)], s)
-      let #(val, typ, ctx) = expr_value(ctx, defs, mod_name, tao_expr)
-      let ctx = set_var(ctx, mod_name, name, val, typ)
-      #(val, typ, ctx)
+      expr_value(ctx, defs, mod_name, tao_expr)
     }
     tao.TypeDef(type_def) -> todo
     tao.For(iterator, range, body) -> todo
@@ -161,6 +167,19 @@ pub fn type_stmt(
     tao.Break -> todo
     tao.Continue -> todo
   }
+  let ctx = set_var(ctx, mod_name, name, val, typ)
+  #(val, typ, ctx)
+}
+
+pub fn value_stmt(
+  ctx: Context,
+  exports: List(#(ModName, List(Name))),
+  mod_name: ModName,
+  name: Name,
+  stmt: Stmt,
+) -> Context {
+  echo #("value_stmt", mod_name, name)
+  todo
 }
 
 pub fn get_var(

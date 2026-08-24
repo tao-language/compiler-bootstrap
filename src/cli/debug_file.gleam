@@ -134,40 +134,19 @@ pub fn debug_file(
     io.println(fmt_value(mod_type))
     io.println("")
   })
-  todo
 
-  echo "> ctx = define.modules(ctx, defs, mods)"
-  let ctx = define.modules(ctx, defs, mods)
+  echo "> ctx = define.modules(ctx, defs)"
+  let ctx = define.modules(ctx, defs)
   list.map(list.zip(ctx.types, ctx.env), fn(entry) {
     let #(#(name, mod_type), mod_value) = entry
     io.print("ctx.env[" <> string.inspect(name) <> "]: ")
     io.println(fmt_value(mod_value))
-    io.print("ctx.types[" <> string.inspect(name) <> "]: ")
-    io.println(fmt_value(mod_type))
+    // io.print("ctx.types[" <> string.inspect(name) <> "]: ")
+    // io.println(fmt_value(mod_type))
     io.println("")
   })
-  todo
-  // echo "> ctx = compile.definitions(ctx, exports, mods)"
-  // let ctx = compile.definitions(ctx, exports, mods)
-  // io.println(
-  //   "// ctx.subst: " <> int.to_string(list.length(ctx.subst)) <> " solved holes",
-  // )
-  // let solved = list.map(ctx.subst, fn(kv) { kv.0 }) |> list.sort(int.compare)
-  // io.println("// solved: " <> string.inspect(solved))
-  // let unsolved =
-  //   int.range(ctx.hole_counter - 1, -1, [], list.prepend)
-  //   |> list.filter(fn(id) { !list.contains(solved, id) })
-  //   |> list.map(int.to_string)
-  // io.println("// unsolved: " <> string.inspect(unsolved))
-  // // Uncomment to see the solved holes values in the order they were solved.
-  // list.map(ctx.subst, fn(entry) {
-  //   let #(id, value) = entry
-  //   // TODO: save ctx.types.names in ctx.subst to display var names.
-  //   let fmt_subst = format.value(ctx.ffi, [], value, width, 2)
-  //   io.println("- " <> int.to_string(id) <> ": " <> fmt_subst)
-  // })
-  // io.println("")
 
+  todo
   // echo "> resolve.context(ctx)"
   // let ctx = resolve.context(ctx)
   // list.index_map(list.zip(ctx.types, ctx.env), fn(entry, index) {

@@ -188,7 +188,6 @@ fn doc_term(term: Expr, indent: Int) -> Document {
     }
     ast.Call(name, arg) -> {
       doc.concat([
-        doc_text("@"),
         doc_text(name),
         doc_text("("),
         doc_term(arg, indent),

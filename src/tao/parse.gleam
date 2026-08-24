@@ -350,7 +350,7 @@ fn import_path() -> Parser(String, Token, String) {
     nibble.map(take_int(), int.to_string),
   ]
   use parts <- do(nibble.many1(nibble.one_of(path_valid)))
-  return(string.join(parts, ""))
+  return("/" <> string.join(parts, ""))
 }
 
 fn import_alias() -> Parser(String, Token, String) {
@@ -531,7 +531,7 @@ fn fn_overload_choice_fun(
     {
       use _ <- do(nibble.token(At))
       use name <- do(var_name())
-      return(tao.OverloadCall(name))
+      return(tao.OverloadCall("@" <> name))
     },
   ])
 }
