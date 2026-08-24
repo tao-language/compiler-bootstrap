@@ -3,7 +3,9 @@ import core/context.{type Context}
 import core/eval.{eval}
 import core/format
 import core/infer.{check, infer}
+import core/quote
 import core/resolve
+import core/term as tm
 import core/unify.{unify}
 import core/value as v
 import filepath
@@ -12,7 +14,7 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
-import syntax/span.{Span}
+import syntax/span.{type Span, Span}
 import tao/ast.{type Module, type Stmt, type Type} as tao
 import tao/declare.{type ModName, type Name}
 import tao/desugar.{type BlockCtx}
@@ -124,14 +126,17 @@ pub fn type_stmt(
       }
     tao.Extern(_, params, returns) -> {
       let tao_type = tao.fn_t(#([], None), params, returns, stmt.span)
-      let #(typ, ctx) = expr_value(ctx, defs, mod_name, tao_type)
+      let #(typ, _, ctx) = expr_value(ctx, defs, mod_name, tao_type)
       let ctx = set_var(ctx, mod_name, name, v.Err, typ)
       #(v.Err, typ, ctx)
     }
     tao.LetVar(_, opt_type, _) -> {
       let #(val, ctx) = hole_value(ctx)
       let #(typ, ctx) = case opt_type {
-        Some(tao_type) -> expr_value(ctx, defs, mod_name, tao_type)
+        Some(tao_type) -> {
+          let #(typ, _, ctx) = expr_value(ctx, defs, mod_name, tao_type)
+          #(typ, ctx)
+        }
         None -> hole_value(ctx)
       }
       let ctx = set_var(ctx, mod_name, name, val, typ)
@@ -142,7 +147,13 @@ pub fn type_stmt(
     tao.Mut(name, value) -> todo
     tao.Test(name, expr, expect) -> todo
     tao.FnDef(name, implicits, params, returns, body) -> todo
-    tao.FnOverload(name, choices) -> todo
+    tao.FnOverload(name, choices) -> {
+      let s = stmt.span
+      let tao_expr = tao.do([stmt, tao.return(tao.var(name, s), s)], s)
+      let #(val, typ, ctx) = expr_value(ctx, defs, mod_name, tao_expr)
+      let ctx = set_var(ctx, mod_name, name, val, typ)
+      #(val, typ, ctx)
+    }
     tao.TypeDef(type_def) -> todo
     tao.For(iterator, range, body) -> todo
     tao.While(condition, body) -> todo
@@ -202,7 +213,7 @@ fn expr_value(
   defs: List(#(ModName, List(#(Name, Stmt)))),
   mod_name: ModName,
   expr: tao.Expr,
-) -> #(v.Value, Context) {
+) -> #(v.Value, v.Type, Context) {
   let exports = declare.exports(defs)
   let core_expr = desugar.expr(exports, expr)
   let deps = core.free_vars(core_expr)
@@ -211,10 +222,10 @@ fn expr_value(
       let #(val, typ, ctx) = type_name(ctx, defs, mod_name, name)
       context.push_var(ctx, #(name, val, typ))
     })
-  let #(term, _, ctx) = infer(ctx, core_expr)
+  let #(term, typ, ctx) = infer(ctx, core_expr)
   let value = eval(ctx.ffi, ctx.env, term)
   let ctx = context.pop_vars(ctx, list.length(deps))
-  #(value, ctx)
+  #(value, typ, ctx)
 }
 // pub fn package(
 //   ctx: Context,

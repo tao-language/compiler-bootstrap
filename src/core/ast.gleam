@@ -130,7 +130,7 @@ pub fn free_vars(term: Expr) -> List(String) {
     Fix(name, body) -> todo
     App(fun, arg) -> union(free_vars(fun), free_vars(arg))
     Match(arg, cases) -> union(free_vars(arg), free_vars_cases(cases))
-    Call(name, arg) -> todo
+    Call(name, arg) -> union([name], free_vars(arg))
     TypeDef(type_def) -> todo
     Err -> []
   }

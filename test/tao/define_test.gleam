@@ -82,27 +82,45 @@ pub fn define_type_stmt_fn_overload_test() {
   let ctx = context.new_ctx
   let defs = [
     #("m", [
-      #("f1", tao.extern("f1", #([], None), tao.int_t(s), s)),
-      #("f2", tao.extern("f2", #([], None), tao.float_t(s), s)),
+      #("@call", tao.extern("@call", #([], None), tao.int_t(s), s)),
     ]),
   ]
   let choices = [
-    tao.OverloadChoice(tao.OverloadCall("f1"), [], None, s),
-    tao.OverloadChoice(tao.OverloadCall("f2"), [], None, s),
+    tao.OverloadChoice(tao.OverloadCall("@call"), [], None, s),
   ]
   let stmt = tao.fn_overload("f", choices, s)
   let #(val, typ, ctx) = define.type_stmt(ctx, defs, "m", "f", stmt)
-  assert ctx.errors == []
-  assert val == v.Err
-  assert typ
-    == v.Pi(
+  let call_val = v.Err
+  let call_typ =
+    v.Pi(
       [],
       #("__args", v.rcd([])),
-      tm.Match(tm.Var(0), [tm.Case(tm.PRcd([], None), None, tm.int_t)]),
+      tm.Match(tm.Var(0), [tm.Case(tm.prcd_strict([]), None, tm.int_t)]),
     )
-  assert ctx.types == []
-  assert ctx.env == []
-  assert ctx.hole_counter == 0
+  assert ctx.errors == []
+  assert val
+    == v.For(
+      [call_val, v.rcd([#("@call", call_val)])],
+      #("__type", v.Typ(0)),
+      tm.Lam(
+        #("__args", tm.Var(0)),
+        tm.Match(tm.Var(1), [
+          tm.Case(tm.prcd_strict([]), None, tm.Call("@call", tm.Var(0))),
+        ]),
+      ),
+    )
+  assert typ
+    == v.For(
+      [call_val, v.rcd([#("@call", call_val)])],
+      #("__type", v.Typ(0)),
+      tm.Pi(
+        #("__args", tm.Var(0)),
+        tm.Match(tm.Var(1), [tm.Case(tm.prcd_strict([]), None, tm.hole(0))]),
+      ),
+    )
+  assert ctx.types == [#("m", v.rcd([#("@call", call_typ), #("f", typ)]))]
+  assert ctx.env == [v.rcd([#("@call", call_val), #("f", val)])]
+  assert ctx.hole_counter == 1
 }
 
 pub fn define_type_name_cached_test() {
