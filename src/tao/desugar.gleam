@@ -352,7 +352,7 @@ pub fn statement(
 ) -> core.Expr {
   case stmt.data {
     tao.Import(path, alias, tao.ImportAll) -> {
-      let mod_name = "/" <> path
+      let mod_name = path
       let scope =
         list.key_find(exports, mod_name)
         |> result.unwrap([])
@@ -363,7 +363,7 @@ pub fn statement(
       statement(exports, block_ctx, stmt, next)
     }
     tao.Import(path, alias, tao.ImportSome(names)) -> {
-      let mod_name = "/" <> path
+      let mod_name = path
       case names {
         [] -> {
           let def = #(alias, None, core.var(mod_name, stmt.span))

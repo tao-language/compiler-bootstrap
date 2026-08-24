@@ -34,16 +34,23 @@ pub fn types(
   })
 }
 
-pub fn modules(
+pub fn values(
   ctx: Context,
   defs: List(#(ModName, List(#(Name, Stmt)))),
 ) -> Context {
-  let exports = declare.exports(defs)
   list.fold(defs, ctx, fn(ctx, def) {
     let #(mod_name, mod_defs) = def
     list.fold(mod_defs, ctx, fn(ctx, mod_def) {
       let #(name, stmt) = mod_def
-      value_stmt(ctx, exports, mod_name, name, stmt)
+      case get_var(ctx, mod_name, name) {
+        Some(#(v.Neut(v.NHole(..)) as hole, typ)) -> {
+          let s = stmt.span
+          let #(val, _, ctx) =
+            stmt_value(ctx, defs, mod_name, name, stmt, Some(typ))
+          unify(ctx, #(val, s), #(hole, s))
+        }
+        _ -> ctx
+      }
     })
   })
 }
@@ -59,12 +66,14 @@ pub fn type_name(
     None ->
       case list.key_find(defs, mod_name) {
         Error(Nil) -> {
+          echo list.map(defs, fn(entry) { entry.0 })
           echo mod_name
           panic as "error: module not found"
         }
         Ok(mod_defs) ->
           case list.key_find(mod_defs, name) {
             Error(Nil) -> {
+              echo list.map(mod_defs, fn(entry) { entry.0 })
               echo #(mod_name, name)
               panic as "error: definition not found"
             }
@@ -132,16 +141,13 @@ pub fn type_stmt(
       }
     tao.Extern(_, params, returns) -> {
       let tao_type = tao.fn_t(#([], None), params, returns, stmt.span)
-      let #(typ, _, ctx) = expr_value(ctx, defs, mod_name, tao_type)
+      let #(typ, ctx) = type_value(ctx, defs, mod_name, tao_type)
       #(v.Err, typ, ctx)
     }
     tao.LetVar(_, opt_type, _) -> {
       let #(val, ctx) = hole_value(ctx)
       let #(typ, ctx) = case opt_type {
-        Some(tao_type) -> {
-          let #(typ, _, ctx) = expr_value(ctx, defs, mod_name, tao_type)
-          #(typ, ctx)
-        }
+        Some(tao_type) -> type_value(ctx, defs, mod_name, tao_type)
         None -> hole_value(ctx)
       }
       #(val, typ, ctx)
@@ -155,11 +161,7 @@ pub fn type_stmt(
       #(val, typ, ctx)
     }
     tao.FnDef(name, implicits, params, returns, body) -> todo
-    tao.FnOverload(name, choices) -> {
-      let s = stmt.span
-      let tao_expr = tao.do([stmt, tao.return(tao.var(name, s), s)], s)
-      expr_value(ctx, defs, mod_name, tao_expr)
-    }
+    tao.FnOverload(name, _) -> stmt_value(ctx, defs, mod_name, name, stmt, None)
     tao.TypeDef(type_def) -> todo
     tao.For(iterator, range, body) -> todo
     tao.While(condition, body) -> todo
@@ -169,17 +171,6 @@ pub fn type_stmt(
   }
   let ctx = set_var(ctx, mod_name, name, val, typ)
   #(val, typ, ctx)
-}
-
-pub fn value_stmt(
-  ctx: Context,
-  exports: List(#(ModName, List(Name))),
-  mod_name: ModName,
-  name: Name,
-  stmt: Stmt,
-) -> Context {
-  echo #("value_stmt", mod_name, name)
-  todo
 }
 
 pub fn get_var(
@@ -232,19 +223,48 @@ fn expr_value(
   defs: List(#(ModName, List(#(Name, Stmt)))),
   mod_name: ModName,
   expr: tao.Expr,
+  opt_type: Option(v.Type),
 ) -> #(v.Value, v.Type, Context) {
   let exports = declare.exports(defs)
   let core_expr = desugar.expr(exports, expr)
-  let deps = core.free_vars(core_expr)
+  let deps =
+    core.free_vars(core_expr)
+    |> list.filter(fn(name) { !string.starts_with(name, "/") })
   let ctx =
     list.fold(deps, ctx, fn(ctx, name) {
       let #(val, typ, ctx) = type_name(ctx, defs, mod_name, name)
       context.push_var(ctx, #(name, val, typ))
     })
-  let #(term, typ, ctx) = infer(ctx, core_expr)
+  let #(term, typ, ctx) = case opt_type {
+    Some(typ) -> check(ctx, core_expr, #(typ, expr.span))
+    None -> infer(ctx, core_expr)
+  }
   let value = eval(ctx.ffi, ctx.env, term)
   let ctx = context.pop_vars(ctx, list.length(deps))
   #(value, typ, ctx)
+}
+
+fn type_value(
+  ctx: Context,
+  defs: List(#(ModName, List(#(Name, Stmt)))),
+  mod_name: ModName,
+  typ: tao.Type,
+) -> #(v.Type, Context) {
+  let #(core_type, _, ctx) = expr_value(ctx, defs, mod_name, typ, None)
+  #(core_type, ctx)
+}
+
+fn stmt_value(
+  ctx: Context,
+  defs: List(#(ModName, List(#(Name, Stmt)))),
+  mod_name: ModName,
+  name: Name,
+  stmt: tao.Stmt,
+  opt_type: Option(v.Type),
+) -> #(v.Value, v.Type, Context) {
+  let s = stmt.span
+  let tao_expr = tao.do([stmt, tao.return(tao.var(name, s), s)], s)
+  expr_value(ctx, defs, mod_name, tao_expr, opt_type)
 }
 // pub fn package(
 //   ctx: Context,

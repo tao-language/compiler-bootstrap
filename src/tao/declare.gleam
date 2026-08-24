@@ -57,7 +57,11 @@ pub fn imports(
         case stmt.data {
           tao.Import(path, _, tao.ImportAll) -> {
             let exposed = case list.key_find(defs, path) {
-              Error(Nil) -> todo as "error: module not found"
+              Error(Nil) -> {
+                echo path
+                echo list.map(defs, fn(entry) { entry.0 })
+                todo as "error: module not found"
+              }
               Ok(import_defs) ->
                 list.map(import_defs, fn(mod_def) {
                   let #(name, _) = mod_def

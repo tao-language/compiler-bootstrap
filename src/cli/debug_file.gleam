@@ -134,8 +134,8 @@ pub fn debug_file(
     io.println("")
   })
 
-  echo "> ctx = define.modules(ctx, defs)"
-  let ctx = define.modules(ctx, defs)
+  echo "> ctx = define.values(ctx, defs)"
+  let ctx = define.values(ctx, defs)
   list.map(list.zip(ctx.types, ctx.env), fn(entry) {
     let #(#(name, mod_type), mod_value) = entry
     io.print("ctx.env[" <> string.inspect(name) <> "]: ")
@@ -145,35 +145,61 @@ pub fn debug_file(
     io.println("")
   })
 
-  todo
-  // echo "> resolve.context(ctx)"
-  // let ctx = resolve.context(ctx)
-  // list.index_map(list.zip(ctx.types, ctx.env), fn(entry, index) {
-  //   let #(#(name, mod_type), mod_value) = entry
-  //   let idx = int.to_string(index)
-  //   io.println("// " <> idx <> ": ctx.env[" <> string.inspect(name) <> "]")
-  //   io.println(fmt_value(mod_value))
-  //   io.println("// " <> idx <> ": ctx.types[" <> string.inspect(name) <> "]")
-  //   io.println(fmt_value(mod_type))
-  //   io.println("")
+  echo "> ctx.subst"
+  let subst = list.sort(ctx.subst, fn(a, b) { int.compare(a.0, b.0) })
+  let solved = list.map(subst, fn(entry) { entry.0 })
+  let unsolved =
+    int.range(ctx.hole_counter - 1, -1, [], list.prepend)
+    |> list.filter(fn(id) { !list.contains(solved, id) })
+  io.println("// " <> int.to_string(ctx.hole_counter) <> " holes total")
+  io.println(
+    "// "
+    <> int.to_string(list.length(unsolved))
+    <> " unsolved: "
+    <> string.inspect(unsolved),
+  )
+  io.println(
+    "// "
+    <> int.to_string(list.length(solved))
+    <> " solved: "
+    <> string.inspect(solved),
+  )
+  // Uncomment to view hole solution values.
+  // list.map(subst, fn(entry) {
+  //   let #(id, value) = entry
+  //   io.println("- " <> int.to_string(id) <> ": " <> fmt_value(value))
   // })
+  io.println("")
 
-  // case ctx.errors {
-  //   [] -> io.println("0 build errors")
-  //   errors -> {
-  //     let n = list.length(errors)
-  //     io.println_error("---- BUILD ERRORS ----")
-  //     list.map(ctx.errors, fn(err) {
-  //       let msg = error.display(ctx.ffi, ctx.types, err)
-  //       io.println_error("❌ " <> msg)
-  //     })
-  //     io.println("")
-  //     io.println_error(int.to_string(n) <> " build errors")
-  //     exit(1)
-  //   }
-  // }
-  // io.println("")
+  echo "> resolve.context(ctx)"
+  let ctx = resolve.context(ctx)
+  list.index_map(list.zip(ctx.types, ctx.env), fn(entry, index) {
+    let #(#(name, mod_type), mod_value) = entry
+    let idx = int.to_string(index)
+    io.println("// " <> idx <> ": ctx.env[" <> string.inspect(name) <> "]")
+    io.println(fmt_value(mod_value))
+    io.println("// " <> idx <> ": ctx.types[" <> string.inspect(name) <> "]")
+    io.println(fmt_value(mod_type))
+    io.println("")
+  })
+  todo
 
+  case ctx.errors {
+    [] -> io.println("0 build errors")
+    errors -> {
+      let n = list.length(errors)
+      io.println_error("---- BUILD ERRORS ----")
+      list.map(ctx.errors, fn(err) {
+        let msg = error.display(ctx.ffi, ctx.types, err)
+        io.println_error("❌ " <> msg)
+      })
+      io.println("")
+      io.println_error(int.to_string(n) <> " build errors")
+      exit(1)
+    }
+  }
+  io.println("")
+  todo as "Stop here, end of phase"
   // echo "> tests = compile.tests(mod)"
   // let tests = compile.tests(ctx, [mod])
   // let test_results =
