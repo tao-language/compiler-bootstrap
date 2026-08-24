@@ -18,7 +18,6 @@ import tao/compile
 import tao/declare
 import tao/define
 import tao/desugar
-import tao/discover
 import tao/load
 import utils/fs
 
