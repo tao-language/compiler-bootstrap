@@ -3,7 +3,7 @@ import core/error.{type Error} as e
 import core/ffi.{type FFI}
 import core/quote.{quote}
 import core/term.{type Case, type Term} as tm
-import core/unwrap.{unwrap}
+import core/unwrap.{unwrap, unwrap_seen}
 import core/value.{type Env, type Neut, type Value} as v
 import gleam/list
 import gleam/option.{None, Some}
@@ -117,9 +117,51 @@ fn term_seen(
   }
 }
 
+/// Resolve all holes in a value using the substitution.
+///
+/// See `value_seen/4` for cycle detection: a hole's captured environment may
+/// contain the very value that holds the hole (module-scope holes capture the
+/// module records, which hold the hole as a field), so resolving a hole can
+/// re-encounter the same hole through its environment or its solution.
 pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
-  let self = fn(v) { value(ffi, subst, v) }
-  case unwrap(ffi, subst, val) {
+  value_seen(ffi, subst, val, [])
+}
+fn value_seen(
+  ffi: FFI,
+  subst: Subst,
+  val: Value,
+  seen: List(Int),
+) -> Value {
+  let self = fn(v) { value_seen(ffi, subst, v, seen) }
+  case val {
+    // A hole is resolved with its ID pushed on the seen stack: its solution
+    // and every captured environment it carries (NHole env, NMatch env, ...
+    // through its unwrapped solution) are walked with the ID on the stack, so
+    // any re-encounter of the hole is caught by the cycle guard.
+    v.Neut(v.NHole(_, Some(id))) ->
+      // Cycle detection: if this hole is already being resolved up the
+      // stack (its solution or a captured environment references it
+      // again), return it as-is to break the infinite loop.
+      case list.contains(seen, id) {
+        True -> val
+        False -> {
+          let resolved = unwrap_seen(ffi, subst, val, seen)
+          let seen = [id, ..seen]
+          case resolved {
+            // If unwrap still returns a Neut, just resolve its parts.
+            // No need to try to re-evaluate it into a concrete value.
+            v.Neut(neut) -> v.Neut(neutral_seen(ffi, subst, neut, seen))
+            solved -> value_seen(ffi, subst, solved, seen)
+          }
+        }
+      }
+    v.Neut(v.NHole(_, None)) -> {
+      let resolved = unwrap_seen(ffi, subst, val, seen)
+      case resolved {
+        v.Neut(neut) -> v.Neut(neutral_seen(ffi, subst, neut, seen))
+        solved -> value_seen(ffi, subst, solved, seen)
+      }
+    }
     v.Typ(u) -> v.Typ(u)
     v.Lit(k) -> v.Lit(k)
     v.LitT(k) -> v.LitT(k)
@@ -137,24 +179,24 @@ pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
     }
     // If unwrap still returns a Neut, just reolve its parts.
     // No need to try to re-evaluate it into a concrete value.
-    v.Neut(neut) -> v.Neut(neutral(ffi, subst, neut))
+    v.Neut(neut) -> v.Neut(neutral_seen(ffi, subst, neut, seen))
     v.For(env, #(name, typ), body) -> {
-      let env = list.map(env, value(ffi, subst, _))
+      let env = list.map(env, self)
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.For(env, #(name, self(typ)), body)
     }
     v.Lam(env, #(name, typ), body) -> {
-      let env = list.map(env, value(ffi, subst, _))
+      let env = list.map(env, self)
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Lam(env, #(name, self(typ)), body)
     }
     v.Pi(env, #(name, typ), body) -> {
-      let env = list.map(env, value(ffi, subst, _))
+      let env = list.map(env, self)
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Pi(env, #(name, self(typ)), body)
     }
     v.Fix(env, name, body) -> {
-      let env = list.map(env, value(ffi, subst, _))
+      let env = list.map(env, self)
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Fix(env, name, body)
     }
@@ -163,21 +205,26 @@ pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
   }
 }
 
-fn neutral(ffi: FFI, subst: Subst, neut: Neut) -> Neut {
+fn neutral_seen(
+  ffi: FFI,
+  subst: Subst,
+  neut: Neut,
+  seen: List(Int),
+) -> Neut {
   case neut {
     v.NVar(lvl) -> v.NVar(lvl)
     v.NHole(env, id) -> {
-      let env = list.map(env, value(ffi, subst, _))
+      let env = list.map(env, fn(val) { value_seen(ffi, subst, val, seen) })
       v.NHole(env, id)
     }
     v.NApp(fun_neut, arg) -> {
-      let fun_neut = neutral(ffi, subst, fun_neut)
-      let arg = value(ffi, subst, arg)
+      let fun_neut = neutral_seen(ffi, subst, fun_neut, seen)
+      let arg = value_seen(ffi, subst, arg, seen)
       v.NApp(fun_neut, arg)
     }
     v.NMatch(env, arg_neut, cases) -> {
-      let env = list.map(env, value(ffi, subst, _))
-      let arg_neut = neutral(ffi, subst, arg_neut)
+      let env = list.map(env, fn(val) { value_seen(ffi, subst, val, seen) })
+      let arg_neut = neutral_seen(ffi, subst, arg_neut, seen)
       let cases =
         list.map(cases, fn(c) {
           let size = list.length(env) + list.length(tm.bindings(c.pattern))
@@ -195,7 +242,7 @@ fn neutral(ffi: FFI, subst: Subst, neut: Neut) -> Neut {
       v.NMatch(env, arg_neut, cases)
     }
     v.NCall(name, arg) -> {
-      let arg = value(ffi, subst, arg)
+      let arg = value_seen(ffi, subst, arg, seen)
       v.NCall(name, arg)
     }
   }
