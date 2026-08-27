@@ -45,9 +45,21 @@ pub fn values(
       case get_var(ctx, mod_name, name) {
         Some(#(v.Neut(v.NHole(..)) as hole, typ)) -> {
           let s = stmt.span
-          let #(val, _, ctx) =
-            stmt_value(ctx, defs, mod_name, name, stmt, Some(typ))
-          unify(ctx, #(val, s), #(hole, s))
+          // An annotated statement has a concrete stored type: check the
+          // statement against it. An untyped statement stores a type hole:
+          // infer the statement, then unify the inferred type with the hole
+          // (and the computed value with the value hole) to solve both.
+          let opt_typ = case typ {
+            v.Neut(v.NHole(..)) -> None
+            _ -> Some(typ)
+          }
+          let #(val, inferred, ctx) =
+            stmt_value(ctx, defs, mod_name, name, stmt, opt_typ)
+          let ctx = unify(ctx, #(val, s), #(hole, s))
+          case opt_typ {
+            None -> unify(ctx, #(inferred, s), #(typ, s))
+            _ -> ctx
+          }
         }
         _ -> ctx
       }
@@ -106,6 +118,30 @@ pub fn type_stmt(
   name: Name,
   stmt: Stmt,
 ) -> #(v.Value, v.Type, Context) {
+  // Reuse the existing entry when present. define.types processes every
+  // entry of every module, and an import pre-creates the imported module's
+  // entries (via type_name) before the module's own entries are processed.
+  // Re-creating the holes here would overwrite the module's record with
+  // fresh holes and orphan the copies already stored in the importing
+  // module's record — holes that are never re-evaluated and can therefore
+  // never be solved.
+  case get_var(ctx, mod_name, name) {
+    Some(#(val, typ)) -> #(val, typ, ctx)
+    None -> {
+      let #(val, typ, ctx) = type_stmt_data(ctx, defs, mod_name, name, stmt)
+      let ctx = set_var(ctx, mod_name, name, val, typ)
+      #(val, typ, ctx)
+    }
+  }
+}
+
+fn type_stmt_data(
+  ctx: Context,
+  defs: List(#(ModName, List(#(Name, Stmt)))),
+  mod_name: ModName,
+  name: Name,
+  stmt: Stmt,
+) -> #(v.Value, v.Type, Context) {
   let #(val, typ, ctx) = case stmt.data {
     tao.Import(path, alias, tao.ImportAll) -> {
       let names = case list.key_find(defs, path) {
@@ -123,8 +159,10 @@ pub fn type_stmt(
           case list.key_find(defs, path) {
             Ok(mod_defs) -> {
               let names = list.map(mod_defs, fn(entry) { entry.0 })
+              // The names belong to the imported module (path), not the
+              // importing module (mod_name).
               let #(values, types, ctx) =
-                type_name_list(ctx, defs, mod_name, names)
+                type_name_list(ctx, defs, path, names)
               #(v.rcd(values), v.rcd(types), ctx)
             }
             Error(Nil) -> {
@@ -169,7 +207,6 @@ pub fn type_stmt(
     tao.Break -> todo
     tao.Continue -> todo
   }
-  let ctx = set_var(ctx, mod_name, name, val, typ)
   #(val, typ, ctx)
 }
 

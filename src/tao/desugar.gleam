@@ -2,6 +2,7 @@ import core/ast as core
 import core/format
 import core/literals as lit
 import filepath
+import tao/declare.{is_public_name}
 import gleam/int
 import gleam/io
 import gleam/list
@@ -448,15 +449,6 @@ pub fn statement(
     tao.Return(ret_expr) -> expr(exports, ret_expr)
     tao.Break -> todo
     tao.Continue -> todo
-  }
-}
-
-fn is_public_name(name: String) -> Bool {
-  case name {
-    "_" <> _ -> False
-    "@" <> _ -> False
-    ">>> " <> _ -> False
-    _ -> True
   }
 }
 

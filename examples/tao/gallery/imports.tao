@@ -1,0 +1,4 @@
+import prelude/math *
+
+>>> 10 + 20
+30

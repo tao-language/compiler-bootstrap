@@ -63,7 +63,11 @@ pub fn imports(
                 todo as "error: module not found"
               }
               Ok(import_defs) ->
-                list.map(import_defs, fn(mod_def) {
+                // Flatten only public names into the import scope, matching
+                // desugar.is_public_name: non-public entries (externs, tests)
+                // must not become entries of the importing module.
+                list.filter(import_defs, fn(mod_def) { is_public_name(mod_def.0) })
+                |> list.map(fn(mod_def) {
                   let #(name, _) = mod_def
                   #(name, stmt)
                 })
@@ -84,4 +88,15 @@ pub fn exports(
     let #(mod_name, mod_defs) = def
     #(mod_name, list.map(mod_defs, fn(def) { def.0 }))
   })
+}
+
+/// A name is public if it can be imported from a module. Externs (`@…`),
+/// private names (`_…`) and tests (`>>> …`) are not importable.
+pub fn is_public_name(name: String) -> Bool {
+  case name {
+    "_" <> _ -> False
+    "@" <> _ -> False
+    ">>> " <> _ -> False
+    _ -> True
+  }
 }
