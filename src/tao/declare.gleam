@@ -12,14 +12,22 @@ pub type Name =
   String
 
 pub fn modules(mods: List(Module)) -> List(#(ModName, List(#(Name, Stmt)))) {
-  let defs = case mods {
+  // Build the complete defs list first, then resolve imports once against
+  // it. Resolving against a partial list (e.g. from a recursive step) would
+  // fail to find modules that appear later in the list, making the result
+  // depend on module order.
+  let defs = module_defs(mods)
+  imports(defs)
+}
+
+fn module_defs(mods: List(Module)) -> List(#(ModName, List(#(Name, Stmt)))) {
+  case mods {
     [] -> []
     [#(mod_name, stmts), ..mods] -> {
       let mod_defs = list.flat_map(stmts, statement)
-      [#(mod_name, mod_defs), ..modules(mods)]
+      [#(mod_name, mod_defs), ..module_defs(mods)]
     }
   }
-  imports(defs)
 }
 
 pub fn statement(stmt: Stmt) -> List(#(Name, Stmt)) {
