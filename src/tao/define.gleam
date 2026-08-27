@@ -45,21 +45,9 @@ pub fn values(
       case get_var(ctx, mod_name, name) {
         Some(#(v.Neut(v.NHole(..)) as hole, typ)) -> {
           let s = stmt.span
-          // An annotated statement has a concrete stored type: check the
-          // statement against it. An untyped statement stores a type hole:
-          // infer the statement, then unify the inferred type with the hole
-          // (and the computed value with the value hole) to solve both.
-          let opt_typ = case typ {
-            v.Neut(v.NHole(..)) -> None
-            _ -> Some(typ)
-          }
-          let #(val, inferred, ctx) =
-            stmt_value(ctx, defs, mod_name, name, stmt, opt_typ)
-          let ctx = unify(ctx, #(val, s), #(hole, s))
-          case opt_typ {
-            None -> unify(ctx, #(inferred, s), #(typ, s))
-            _ -> ctx
-          }
+          let #(val, _, ctx) =
+            stmt_value(ctx, defs, mod_name, name, stmt, Some(typ))
+          unify(ctx, #(val, s), #(hole, s))
         }
         _ -> ctx
       }
@@ -161,8 +149,7 @@ fn type_stmt_data(
               let names = list.map(mod_defs, fn(entry) { entry.0 })
               // The names belong to the imported module (path), not the
               // importing module (mod_name).
-              let #(values, types, ctx) =
-                type_name_list(ctx, defs, path, names)
+              let #(values, types, ctx) = type_name_list(ctx, defs, path, names)
               #(v.rcd(values), v.rcd(types), ctx)
             }
             Error(Nil) -> {
