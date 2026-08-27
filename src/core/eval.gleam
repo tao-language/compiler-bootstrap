@@ -82,7 +82,13 @@ pub fn do_app(ffi: FFI, fun_val: Value, arg_val: Value) -> Value {
 }
 
 pub fn do_call(ffi: FFI, name: String, arg_val: Value) -> Value {
-  let result = case list.key_find(ffi, name) {
+  // The `@` prefix marks an FFI builtin at the source level (e.g. `@int_add`);
+  // the FFI table is keyed by the bare name.
+  let ffi_name = case name {
+    "@" <> rest -> rest
+    _ -> name
+  }
+  let result = case list.key_find(ffi, ffi_name) {
     Ok(call_def) -> call_def(arg_val)
     Error(Nil) -> None
   }

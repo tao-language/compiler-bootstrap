@@ -1,6 +1,5 @@
 import core/context.{Context, new_ctx}
 import core/error
-import core/eval.{eval}
 import core/ffi
 import core/format
 import core/resolve
@@ -19,6 +18,7 @@ import tao/declare
 import tao/define
 import tao/desugar
 import tao/load
+import tao/tests
 import utils/fs
 
 pub fn debug_file(
@@ -89,9 +89,7 @@ pub fn debug_file(
   let ctx = Context(..new_ctx, ffi: ffi.build)
   let names = list.map(ctx.types, fn(x) { x.0 })
   let fmt_expr = fn(expr) { format.expr(expr, width, 2) }
-  let fmt_term = fn(term) { format.term(names, term, width, 2) }
   let fmt_value = fn(val) { format.value(ffi.build, names, val, width, 2) }
-  let fmt_pattern = fn(pat) { format.pattern(pat, width, 2) }
 
   echo "> defs = declare.modules(mods)"
   let defs = declare.modules(mods)
@@ -182,7 +180,6 @@ pub fn debug_file(
     io.println(fmt_value(mod_type))
     io.println("")
   })
-  todo
 
   case ctx.errors {
     [] -> io.println("0 build errors")
@@ -199,42 +196,49 @@ pub fn debug_file(
     }
   }
   io.println("")
-  todo as "Stop here, end of phase"
-  // echo "> tests = compile.tests(mod)"
-  // let tests = compile.tests(ctx, [mod])
-  // let test_results =
-  //   list.map(tests, fn(t) {
-  //     let core_expr = desugar.expr(exports, t.expr)
-  //     let core_expect = desugar.pattern(t.expect)
-  //     let value = eval(ctx.ffi, ctx.env, t.term)
-  //     io.println("/// " <> t.name)
-  //     io.println(">>> " <> fmt_expr(core_expr))
-  //     io.println("expect: " <> fmt_pattern(core_expect))
-  //     io.println("result: " <> fmt_value(value))
-  //     io.println("test_term: " <> fmt_term(t.term))
-  //     io.println("")
-  //     value
-  //   })
 
-  // let #(passed, failed, unknown) =
-  //   list.fold(test_results, #(0, 0, 0), fn(acc, value) {
-  //     let #(passed, failed, unknown) = acc
-  //     case value {
-  //       v.Ctr("Pass", _) -> #(passed + 1, failed, unknown)
-  //       v.Ctr("Fail", _) -> #(passed, failed + 1, unknown)
-  //       _ -> #(passed, failed, unknown + 1)
-  //     }
-  //   })
-
-  // io.println("test results")
-  // io.println("- " <> int.to_string(list.length(test_results)) <> " total")
-  // io.println("- " <> int.to_string(passed) <> " passed")
-  // io.println("- " <> int.to_string(failed) <> " failed")
-  // case unknown {
-  //   0 -> Nil
-  //   _ -> io.println("- " <> int.to_string(unknown) <> " unkown result state")
-  // }
-  // io.println("")
+  echo "> tests = compile.tests(ctx, mods)"
+  let test_defs = compile.tests(ctx, mods)
+  let exports = declare.exports(defs)
+  let results =
+    list.map(test_defs, fn(t) {
+      let res = tests.run(ctx, t)
+      let expr = fmt_expr(desugar.expr(exports, t.expr))
+      case res {
+        tests.TestPass(name) -> io.println("✓ " <> name <> "  >>> " <> expr)
+        tests.TestFail(name, got, _, _) -> {
+          io.println_error("✗ " <> name <> "  >>> " <> expr)
+          io.println_error("  got: " <> fmt_value(got))
+        }
+        tests.TestNeutral(name, got, _, _) -> {
+          io.println("? " <> name <> "  >>> " <> expr)
+          io.println("  got: " <> fmt_value(got))
+        }
+      }
+      res
+    })
+  let #(passed, failed, neutral) =
+    list.fold(results, #(0, 0, 0), fn(acc, res) {
+      let #(passed, failed, neutral) = acc
+      case res {
+        tests.TestPass(..) -> #(passed + 1, failed, neutral)
+        tests.TestFail(..) -> #(passed, failed + 1, neutral)
+        tests.TestNeutral(..) -> #(passed, failed, neutral + 1)
+      }
+    })
+  io.println("test results")
+  io.println("- " <> int.to_string(list.length(results)) <> " total")
+  io.println("- " <> int.to_string(passed) <> " passed")
+  io.println("- " <> int.to_string(failed) <> " failed")
+  case neutral {
+    0 -> Nil
+    _ -> io.println("- " <> int.to_string(neutral) <> " neutral")
+  }
+  io.println("")
+  case failed {
+    0 -> Nil
+    _ -> exit(1)
+  }
 }
 
 // Declare the external Erlang halt function

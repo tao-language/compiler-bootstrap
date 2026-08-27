@@ -17,12 +17,12 @@ pub fn desugar_stmt_import_simple_test() {
   let stmt = tao.import_some("m", "n", [], s)
   let expr = desugar.statement([], new_block_ctx, stmt, unit)
   assert expr.trace == Some("import m")
-  assert fmt(expr) == "%let n = `/m`\n{}"
+  assert fmt(expr) == "%let n = m\n{}"
 }
 
 pub fn desugar_stmt_import_expose_name_test() {
   let stmt = tao.import_some("m", "n", [#("x", "y")], s)
   let expr = desugar.statement([], new_block_ctx, stmt, unit)
   assert expr.trace == Some("import m")
-  assert fmt(expr) == "%let n = `/m`\n%let y = %get(`/m`).x\n{}"
+  assert fmt(expr) == "%let n = m\n%let y = %get(m).x\n{}"
 }

@@ -249,8 +249,13 @@ fn neutral_seen(
 }
 
 pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
-  // TODO: resolve terms/values in each error variant
   let data = case err.data {
+    // Syntax errors carry no values or terms to resolve.
+    e.UnexpectedToken(x) -> e.UnexpectedToken(x)
+    e.ExpectedToken(x, y) -> e.ExpectedToken(x, y)
+    e.UnexpectedEndOfInput -> e.UnexpectedEndOfInput
+    e.SyntaxError(message) -> e.SyntaxError(message)
+    // Type-checking errors
     e.VarUndefined(x) -> e.VarUndefined(x)
     e.TypeMismatch(#(a, s1), #(b, s2)) -> {
       let a = value(ffi, subst, a)
@@ -267,10 +272,12 @@ pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
       let fun_type = value(ffi, subst, fun_type)
       e.NotAFunction(fun, fun_type)
     }
-    _ -> {
-      echo err.data
-      todo
+    e.AppExpectedExplicitArg(fun_type) -> {
+      let fun_type = value(ffi, subst, fun_type)
+      e.AppExpectedExplicitArg(fun_type)
     }
+    // The variant terms are left unresolved for now.
+    e.TypeVariantUndefined(tag, variants) -> e.TypeVariantUndefined(tag, variants)
   }
   e.Error(..err, data: data)
 }
