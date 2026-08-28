@@ -205,7 +205,7 @@ pub fn debug_file(
       let res = tests.run(ctx, t)
       let expr = fmt_expr(desugar.expr(exports, t.expr))
       case res {
-        tests.TestPass(name) -> io.println("✓ " <> name <> "  >>> " <> expr)
+        tests.TestPass(name) -> io.println("✓ " <> name)
         tests.TestFail(name, got, _, _) -> {
           io.println_error("✗ " <> name <> "  >>> " <> expr)
           io.println_error("  got: " <> fmt_value(got))
@@ -226,6 +226,8 @@ pub fn debug_file(
         tests.TestNeutral(..) -> #(passed, failed, neutral + 1)
       }
     })
+  io.println("")
+
   io.println("test results")
   io.println("- " <> int.to_string(list.length(results)) <> " total")
   io.println("- " <> int.to_string(passed) <> " passed")
@@ -234,6 +236,7 @@ pub fn debug_file(
     0 -> Nil
     _ -> io.println("- " <> int.to_string(neutral) <> " neutral")
   }
+  io.println("- " <> int.to_string(list.length(unsolved)) <> " unsolved holes")
   io.println("")
   case failed {
     0 -> Nil
