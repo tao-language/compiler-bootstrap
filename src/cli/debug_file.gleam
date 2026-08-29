@@ -197,21 +197,19 @@ pub fn debug_file(
   }
   io.println("")
 
-  echo "> tests = compile.tests(ctx, mods)"
+  echo "> test_defs = compile.tests(ctx, mods)"
   let test_defs = compile.tests(ctx, mods)
-  let exports = declare.exports(defs)
   let results =
     list.map(test_defs, fn(t) {
       let res = tests.run(ctx, t)
-      let expr = fmt_expr(desugar.expr(exports, t.expr))
       case res {
         tests.TestPass(name) -> io.println("✓ " <> name)
         tests.TestFail(name, got, _, _) -> {
-          io.println_error("✗ " <> name <> "  >>> " <> expr)
+          io.println_error("✗ " <> name)
           io.println_error("  got: " <> fmt_value(got))
         }
         tests.TestNeutral(name, got, _, _) -> {
-          io.println("? " <> name <> "  >>> " <> expr)
+          io.println("? " <> name)
           io.println("  got: " <> fmt_value(got))
         }
       }
@@ -236,7 +234,17 @@ pub fn debug_file(
     0 -> Nil
     _ -> io.println("- " <> int.to_string(neutral) <> " neutral")
   }
-  io.println("- " <> int.to_string(list.length(unsolved)) <> " unsolved holes")
+  case list.length(unsolved) {
+    0 -> Nil
+    n ->
+      io.println(
+        "- "
+        <> int.to_string(n)
+        <> " unsolved holes, "
+        <> int.to_string(ctx.hole_counter)
+        <> " total",
+      )
+  }
   io.println("")
   case failed {
     0 -> Nil

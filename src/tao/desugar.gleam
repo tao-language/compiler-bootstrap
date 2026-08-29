@@ -352,22 +352,21 @@ pub fn statement(
         |> list.filter(is_public_name)
         |> list.map(fn(x) { #(x, x) })
         |> tao.ImportSome
-      let stmt = tao.Stmt(tao.Import(path, alias, scope), stmt.span)
+      let stmt = tao.Stmt(tao.Import(path, alias, scope), s)
       statement(exports, block_ctx, stmt, next)
     }
     tao.Import(path, alias, tao.ImportSome(names)) -> {
       let mod_name = path
       case names {
         [] -> {
-          let def = #(alias, None, core.var(mod_name, stmt.span))
-          core.let_var_trace(def, next, stmt.span, Some("import " <> path))
+          let def = #(alias, None, core.var(mod_name, s))
+          core.let_var_trace(def, next, s, Some("import " <> path))
         }
         [#(x, y), ..names] -> {
-          let stmt = tao.import_some(path, alias, names, stmt.span)
-          let access = core.dot(core.var(mod_name, stmt.span), x, stmt.span)
+          let stmt = tao.import_some(path, alias, names, s)
+          let access = core.dot(core.var(mod_name, s), x, s)
           let trace = Some("import " <> path <> " {" <> x <> "}")
-          let next =
-            core.let_var_trace(#(y, None, access), next, stmt.span, trace)
+          let next = core.let_var_trace(#(y, None, access), next, s, trace)
           statement(exports, block_ctx, stmt, next)
         }
       }
@@ -388,7 +387,7 @@ pub fn statement(
       core.let_var_trace(
         #(name, None, core_value),
         next,
-        stmt.span,
+        s,
         Some("extern " <> name),
       )
     }
@@ -398,7 +397,7 @@ pub fn statement(
       core.let_var_trace(
         #(name, core_type, core_value),
         next,
-        stmt.span,
+        s,
         Some("let-var " <> name),
       )
     }
@@ -406,7 +405,7 @@ pub fn statement(
       // core.let_pat_trace(
       //   #(core_pattern, core_types, core_value),
       //   next,
-      //   stmt.span,
+      //   s,
       //   Some("let " <> format.pattern(core_pattern, 80, 2)),
       // )
       todo
@@ -422,10 +421,10 @@ pub fn statement(
           params,
           returns,
           body,
-          stmt.span,
+          s,
           Some("fn " <> name),
         )
-      core.let_var(#(name, None, core_fn), next, stmt.span)
+      core.let_var(#(name, None, core_fn), next, s)
     }
     tao.FnOverload(name, choices) -> {
       let param1 = #("__type", Some(core.typ(0, s)))
@@ -450,8 +449,13 @@ pub fn statement(
           core.ctr("Fail", core.var("got", arg.span), arg.span),
         ),
       ]
-      let core_test = core.match(core_arg, core_cases, stmt.span)
-      core.let_var_trace(#(name, None, core_test), next, stmt.span, Some(name))
+      let core_test =
+        core.lam(
+          #("__test", Some(core.rcd([], None, s))),
+          core.match(core_arg, core_cases, s),
+          s,
+        )
+      core.let_var_trace(#(name, None, core_test), next, s, Some(name))
     }
     tao.TypeDef(type_def) -> todo
     tao.For(iterator, range, body) -> todo
