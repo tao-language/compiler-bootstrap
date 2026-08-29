@@ -203,8 +203,8 @@ fn infer_call(
   arg_ast: Expr,
 ) -> #(Term, Type, Context) {
   let #(ret, _, ctx) = infer(ctx, ret_ast)
-  let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
-  let typ = v.Pi(ctx.env, #("@" <> name, arg_type), ret)
+  let #(arg, _, ctx) = infer(ctx, arg_ast)
+  let typ = eval(ctx.ffi, ctx.env, ret)
   #(tm.Call(name, ret, arg), typ, ctx)
 }
 

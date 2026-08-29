@@ -68,59 +68,60 @@ pub fn define_type_stmt_extern_test() {
   assert ctx.errors == []
   // Externs are first-class functions: the value is a hole that
   // define.values fills with a lambda wrapping the FFI call.
-  assert val == v.hole([], 0)
+  assert val
+    == v.Lam([], #("__args", v.rcd([])), tm.Call("f", tm.int_t, tm.Var(0)))
   // The type is a pi whose domain is the (empty) record of param types and
   // whose codomain is the return type directly (no unpack when there is
   // nothing to bind).
   assert typ == v.Pi([], #("__args", v.rcd([])), tm.int_t)
   assert ctx.types == [#("m", v.rcd([#("f", typ)]))]
   assert ctx.env == [v.rcd([#("f", val)])]
-  assert ctx.hole_counter == 1
+  assert ctx.hole_counter == 0
 }
 
 pub fn define_type_stmt_fn_overload_test() {
-  //   let ctx = context.new_ctx
-  //   let defs = [
-  //     #("m", [
-  //       #("call", tao.extern("call", #([], None), tao.int_t(s), s)),
-  //     ]),
-  //   ]
-  //   let choices = [
-  //     tao.OverloadVar("@call"), [], None, s),
-  //   ]
-  //   let stmt = tao.fn_overload("f", choices, s)
-  //   let #(val, typ, ctx) = define.type_stmt(ctx, defs, "m", "f", stmt)
-  //   // The extern's value is a hole (filled in define.values with a lambda
-  //   // wrapping the FFI call); the overload captures it in its environment.
-  //   let call_val = v.hole([], 0)
-  //   let call_typ = v.Pi([], #("__args", v.rcd([])), tm.int_t)
-  //   assert ctx.errors == []
-  //   assert val
-  //     == v.For(
-  //       [call_val, v.rcd([#("call", call_val)])],
-  //       #("__type", v.Typ(0)),
-  //       tm.Lam(
-  //         #("__args", tm.Var(0)),
-  //         tm.Match(tm.Var(1), [
-  //           tm.Case(tm.prcd_strict([]), None, tm.Call("@call", tm.Var(0))),
-  //         ]),
-  //       ),
-  //     )
-  //   assert typ
-  //     == v.For(
-  //       [call_val, v.rcd([#("call", call_val)])],
-  //       #("__type", v.Typ(0)),
-  //       tm.Pi(
-  //         #("__args", tm.Var(0)),
-  //         tm.Match(tm.Var(1), [tm.Case(tm.prcd_strict([]), None, tm.hole(1))]),
-  //       ),
-  //     )
-  //   assert ctx.types == [#("m", v.rcd([#("call", call_typ), #("f", typ)]))]
-  //   assert ctx.env == [v.rcd([#("call", call_val), #("f", val)])]
-  //   // Hole 0: the extern's value. Hole 1: the call's type (infer_call still
-  //   // gives builtin calls a fresh hole in this path).
-  //   assert ctx.hole_counter == 2
   todo
+  // let ctx = context.new_ctx
+  // let defs = [
+  //   #("m", [
+  //     #("call", tao.extern("call", #([], None), tao.int_t(s), s)),
+  //   ]),
+  // ]
+  // let choices = [
+  //   tao.OverloadVar("@call"), [], None, s),
+  // ]
+  // let stmt = tao.fn_overload("f", choices, s)
+  // let #(val, typ, ctx) = define.type_stmt(ctx, defs, "m", "f", stmt)
+  // // The extern's value is a hole (filled in define.values with a lambda
+  // // wrapping the FFI call); the overload captures it in its environment.
+  // let call_val = v.hole([], 0)
+  // let call_typ = v.Pi([], #("__args", v.rcd([])), tm.int_t)
+  // assert ctx.errors == []
+  // assert val
+  //   == v.For(
+  //     [call_val, v.rcd([#("call", call_val)])],
+  //     #("__type", v.Typ(0)),
+  //     tm.Lam(
+  //       #("__args", tm.Var(0)),
+  //       tm.Match(tm.Var(1), [
+  //         tm.Case(tm.prcd_strict([]), None, tm.Call("@call", tm.Var(0))),
+  //       ]),
+  //     ),
+  //   )
+  // assert typ
+  //   == v.For(
+  //     [call_val, v.rcd([#("call", call_val)])],
+  //     #("__type", v.Typ(0)),
+  //     tm.Pi(
+  //       #("__args", tm.Var(0)),
+  //       tm.Match(tm.Var(1), [tm.Case(tm.prcd_strict([]), None, tm.hole(1))]),
+  //     ),
+  //   )
+  // assert ctx.types == [#("m", v.rcd([#("call", call_typ), #("f", typ)]))]
+  // assert ctx.env == [v.rcd([#("call", call_val), #("f", val)])]
+  // // Hole 0: the extern's value. Hole 1: the call's type (infer_call still
+  // // gives builtin calls a fresh hole in this path).
+  // assert ctx.hole_counter == 2
 }
 
 pub fn define_type_name_cached_test() {

@@ -235,18 +235,7 @@ pub fn get_mod_vars(
 
 fn hole_value(ctx: Context) -> #(v.Value, Context) {
   let #(id, ctx) = context.new_hole(ctx)
-  // Module-scope entry holes capture an empty environment.
-  //
-  // Capturing ctx.env here would store the module records (including the
-  // very record this hole is being added to) inside the hole's neutral
-  // environment, making the hole structurally self-referential:
-  // record -> hole -> record. Environment walks in resolve/unwrap would then
-  // re-enter the module record that holds the hole.
-  //
-  // The env is safe to leave empty: a module-scope entry's solution is
-  // computed by name (imports, calls) rather than by de Bruijn level, and
-  // `resolve.value` now guards hole cycles as well (see `value_seen`).
-  #(v.hole([], id), ctx)
+  #(v.hole(ctx.env, id), ctx)
 }
 
 fn expr_value(

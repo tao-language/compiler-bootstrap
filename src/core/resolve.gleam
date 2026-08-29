@@ -178,22 +178,18 @@ fn value_seen(ffi: FFI, subst: Subst, val: Value, seen: List(Int)) -> Value {
     // No need to try to re-evaluate it into a concrete value.
     v.Neut(neut) -> v.Neut(neutral_seen(ffi, subst, neut, seen))
     v.For(env, #(name, typ), body) -> {
-      let env = list.map(env, self)
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.For(env, #(name, self(typ)), body)
     }
     v.Lam(env, #(name, typ), body) -> {
-      let env = list.map(env, self)
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Lam(env, #(name, self(typ)), body)
     }
     v.Pi(env, #(name, typ), body) -> {
-      let env = list.map(env, self)
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Pi(env, #(name, self(typ)), body)
     }
     v.Fix(env, name, body) -> {
-      let env = list.map(env, self)
       let body = term(ffi, subst, list.length(env) + 1, body)
       v.Fix(env, name, body)
     }
@@ -205,17 +201,13 @@ fn value_seen(ffi: FFI, subst: Subst, val: Value, seen: List(Int)) -> Value {
 fn neutral_seen(ffi: FFI, subst: Subst, neut: Neut, seen: List(Int)) -> Neut {
   case neut {
     v.NVar(lvl) -> v.NVar(lvl)
-    v.NHole(env, id) -> {
-      let env = list.map(env, fn(val) { value_seen(ffi, subst, val, seen) })
-      v.NHole(env, id)
-    }
+    v.NHole(env, id) -> v.NHole(env, id)
     v.NApp(fun_neut, arg) -> {
       let fun_neut = neutral_seen(ffi, subst, fun_neut, seen)
       let arg = value_seen(ffi, subst, arg, seen)
       v.NApp(fun_neut, arg)
     }
     v.NMatch(env, arg_neut, cases) -> {
-      let env = list.map(env, fn(val) { value_seen(ffi, subst, val, seen) })
       let arg_neut = neutral_seen(ffi, subst, arg_neut, seen)
       let cases =
         list.map(cases, fn(c) {
