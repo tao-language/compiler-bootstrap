@@ -373,12 +373,16 @@ pub fn statement(
     }
     tao.Extern(name, args, ret) -> {
       let s = stmt.span
-      let core_args = parameters_type(exports, args, s)
+      let core_args =
+        list.index_map(args, fn(arg, index) {
+          let name = int.to_string(index + 1)
+          #(name, expr(exports, arg))
+        })
       let core_ret = expr(exports, ret)
       let core_value =
         core.lam(
-          #("@" <> name, Some(core_args)),
-          core.call(name, core_ret, core.var("@" <> name, s), s),
+          #("__args", Some(core.rcd_values(core_args, None, s))),
+          core.call(name, core_ret, core.var("__args", s), s),
           s,
         )
       core.let_var_trace(

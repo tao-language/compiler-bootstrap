@@ -370,7 +370,7 @@ fn extern(file: String) -> Parser(Stmt, Token, String) {
     use _ <- do(nibble.token(KwExtern))
     use name <- do(var_name())
     use _ <- do(nibble.token(LParen))
-    use params <- do(parameters(file))
+    use params <- do(nibble.sequence(expr(file), nibble.token(Comma)))
     use _ <- do(nibble.token(RParen))
     use _ <- do(nibble.token(ThinArrow))
     use returns <- do(expr(file))

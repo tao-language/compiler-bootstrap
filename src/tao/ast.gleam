@@ -77,7 +77,7 @@ pub type Stmt {
 
 pub type StmtData {
   Import(path: String, alias: String, scope: ImportScope)
-  Extern(name: String, params: Parameters, returns: Type)
+  Extern(name: String, params: List(Type), returns: Type)
   LetVar(name: String, opt_type: Option(Type), value: Expr)
   LetPat(pattern: Pattern, types: List(#(String, Type)), value: Expr)
   LetMut(name: String, opt_type: Option(Type), value: Expr)
@@ -366,7 +366,7 @@ pub fn let_var(name: String, opt_type: Option(Type), value: Expr, span: Span) {
   Stmt(LetVar(name, opt_type, value), span)
 }
 
-pub fn extern(name: String, params: Parameters, returns: Type, span: Span) {
+pub fn extern(name: String, params: List(Type), returns: Type, span: Span) {
   Stmt(Extern(name, params, returns), span)
 }
 

@@ -63,7 +63,7 @@ pub fn define_type_stmt_let_var_typed_test() {
 
 pub fn define_type_stmt_extern_test() {
   let ctx = context.new_ctx
-  let stmt = tao.extern("f", #([], None), tao.int_t(s), s)
+  let stmt = tao.extern("f", [], tao.int_t(s), s)
   let #(val, typ, ctx) = define.type_stmt(ctx, [], "m", "f", stmt)
   assert ctx.errors == []
   // Externs are first-class functions: the value is a hole that
