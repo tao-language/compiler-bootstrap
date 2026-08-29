@@ -106,16 +106,12 @@ pub type ImportScope {
 
 pub type OverloadChoice {
   OverloadChoice(
-    fun_choice: OverloadChoiceFun,
+    mod_name: Option(String),
+    name: String,
     args: List(#(String, Pattern)),
     guard: Option(#(Expr, Option(Pattern))),
     span: Span,
   )
-}
-
-pub type OverloadChoiceFun {
-  OverloadVar(name: String)
-  OverloadModuleVar(mod_name: String, name: String)
 }
 
 pub type TypeDefinition {

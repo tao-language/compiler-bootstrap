@@ -66,13 +66,8 @@ pub fn define_type_stmt_extern_test() {
   let stmt = tao.extern("f", [], tao.int_t(s), s)
   let #(val, typ, ctx) = define.type_stmt(ctx, [], "m", "f", stmt)
   assert ctx.errors == []
-  // Externs are first-class functions: the value is a hole that
-  // define.values fills with a lambda wrapping the FFI call.
   assert val
     == v.Lam([], #("__args", v.rcd([])), tm.Call("f", tm.int_t, tm.Var(0)))
-  // The type is a pi whose domain is the (empty) record of param types and
-  // whose codomain is the return type directly (no unpack when there is
-  // nothing to bind).
   assert typ == v.Pi([], #("__args", v.rcd([])), tm.int_t)
   assert ctx.types == [#("m", v.rcd([#("f", typ)]))]
   assert ctx.env == [v.rcd([#("f", val)])]
@@ -80,7 +75,6 @@ pub fn define_type_stmt_extern_test() {
 }
 
 pub fn define_type_stmt_fn_overload_test() {
-  todo
   // let ctx = context.new_ctx
   // let defs = [
   //   #("m", [
@@ -88,7 +82,7 @@ pub fn define_type_stmt_fn_overload_test() {
   //   ]),
   // ]
   // let choices = [
-  //   tao.OverloadVar("@call"), [], None, s),
+  //   tao.OverloadVar("@call", [], None, s),
   // ]
   // let stmt = tao.fn_overload("f", choices, s)
   // let #(val, typ, ctx) = define.type_stmt(ctx, defs, "m", "f", stmt)
@@ -122,6 +116,7 @@ pub fn define_type_stmt_fn_overload_test() {
   // // Hole 0: the extern's value. Hole 1: the call's type (infer_call still
   // // gives builtin calls a fresh hole in this path).
   // assert ctx.hole_counter == 2
+  todo
 }
 
 pub fn define_type_name_cached_test() {

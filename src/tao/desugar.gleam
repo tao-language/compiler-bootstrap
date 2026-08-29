@@ -342,6 +342,7 @@ pub fn statement(
   stmt: Stmt,
   next: core.Expr,
 ) -> core.Expr {
+  let s = stmt.span
   case stmt.data {
     tao.Import(path, alias, tao.ImportAll) -> {
       let mod_name = path
@@ -372,7 +373,6 @@ pub fn statement(
       }
     }
     tao.Extern(name, args, ret) -> {
-      let s = stmt.span
       let core_args =
         list.index_map(args, fn(arg, index) {
           let name = int.to_string(index + 1)
@@ -428,7 +428,6 @@ pub fn statement(
       core.let_var(#(name, None, core_fn), next, stmt.span)
     }
     tao.FnOverload(name, choices) -> {
-      let s = stmt.span
       let param1 = #("__type", Some(core.typ(0, s)))
       let match_body =
         list.map(choices, overload_choice(exports, _, core.var("__args", s)))
@@ -468,19 +467,14 @@ fn overload_choice(
   choice: tao.OverloadChoice,
   core_arg: core.Expr,
 ) -> core.Case {
-  let tao.OverloadChoice(fun_choice, args, opt_guard, s) = choice
-  let core_pat = arguments_pat(args, None, s)
-  let core_guard = option.map(opt_guard, case_guard(exports, _))
-  let core_body = case fun_choice {
-    tao.OverloadVar(name) -> {
-      let core_fun = core.var(name, s)
-      core.app(core_fun, core_arg, s)
-    }
-    tao.OverloadModuleVar(name, field) -> {
-      let core_fun = core.dot(core.var(name, s), field, s)
-      core.app(core_fun, core_arg, s)
-    }
+  let s = choice.span
+  let core_pat = arguments_pat(choice.args, None, s)
+  let core_guard = option.map(choice.guard, case_guard(exports, _))
+  let core_fun = case choice.mod_name {
+    Some(mod_name) -> core.dot(core.var(mod_name, s), choice.name, s)
+    None -> core.var(choice.name, s)
   }
+  let core_body = core.app(core_fun, core_arg, s)
   core.Case(core_pat, core_guard, core_body)
 }
 

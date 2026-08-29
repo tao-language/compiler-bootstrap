@@ -12,8 +12,8 @@ import nibble/lexer.{type Lexer}
 import nibble/pratt
 import syntax/span.{type Span, Span, merge}
 import tao/ast.{
-  type BinaryOp, type Case, type Expr, type OverloadChoice,
-  type OverloadChoiceFun, type Parameters, type Pattern, type Stmt, type UnaryOp,
+  type BinaryOp, type Case, type Expr, type OverloadChoice, type Parameters,
+  type Pattern, type Stmt, type UnaryOp,
 } as tao
 
 const reserved = [
@@ -495,14 +495,21 @@ fn fn_overload(
       nibble.many({
         use _ <- do(nibble.token(Pipe))
         use start <- do(get_span(file))
-        use fun_choice <- do(fn_overload_choice_fun(file))
+        use mod_name <- do(
+          nibble.optional({
+            use mod_name <- do(var_name())
+            use _ <- do(nibble.token(Dot))
+            return(mod_name)
+          }),
+        )
+        use name <- do(var_name())
         use _ <- do(nibble.token(LParen))
         use args <- do(arguments(file, pattern(file)))
         use _ <- do(nibble.token(RParen))
         use opt_guard <- do(nibble.optional(guard(file)))
         use end <- do(get_span(file))
         let s = merge(start, end)
-        return(tao.OverloadChoice(fun_choice, args, opt_guard, s))
+        return(tao.OverloadChoice(mod_name, name, args, opt_guard, s))
       }),
     )
     use _ <- do(nibble.token(RBrace))
@@ -510,24 +517,6 @@ fn fn_overload(
     return(tao.fn_overload(name, choices, merge(start, end)))
   }
   |> nibble.in("function overload")
-}
-
-fn fn_overload_choice_fun(
-  file: String,
-) -> Parser(OverloadChoiceFun, Token, String) {
-  nibble.one_of([
-    {
-      use name <- do(var_name())
-      use _ <- do(nibble.token(Dot))
-      use field <- do(var_name())
-      return(tao.OverloadModuleVar(name, field))
-    },
-    {
-      // This must go after OverloadDot to avoid ambiguity.
-      use name <- do(var_name())
-      return(tao.OverloadVar(name))
-    },
-  ])
 }
 
 fn test_(file: String) -> Parser(Stmt, Token, String) {
