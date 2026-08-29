@@ -25,15 +25,31 @@ pub fn core_factorial_test() {
   // }
   let #(f, x, n) = #(ast.var("f", s), ast.var("x", s), ast.var("n", s))
   let i1 = ast.int(1, s)
-  let mul = fn(x, y) { ast.call_args("int_mul", [#("", x), #("", y)], s) }
-  let sub = fn(x, y) { ast.call_args("int_sub", [#("", x), #("", y)], s) }
+  let mul = fn(x, y) {
+    ast.app(ast.var("mul", s), ast.rcd_values([#("", x), #("", y)], None, s), s)
+  }
+  let sub = fn(x, y) {
+    ast.app(ast.var("sub", s), ast.rcd_values([#("", x), #("", y)], None, s), s)
+  }
   let case0 = ast.Case(ast.pint(0, s), None, ast.int(1, s))
   let case_ =
     ast.Case(ast.pvar("n", s), None, mul(n, ast.app(f, sub(n, i1), s)))
   let ast_fn =
     ast.fix("f", ast.lam(#("x", None), ast.match(x, [case0, case_], s), s), s)
 
-  let ctx0 = Context(..new_ctx, ffi: ffi.build)
+  let int_args = #("args", v.rcd([#("x", v.int_t), #("y", v.int_t)]))
+  let ctx0 =
+    Context(..new_ctx, ffi: ffi.build)
+    |> context.push_var(#(
+      "sub",
+      v.Lam([], int_args, tm.Call("int_sub", tm.int_t, tm.Var(0))),
+      v.Pi([], int_args, tm.int_t),
+    ))
+    |> context.push_var(#(
+      "mul",
+      v.Lam([], int_args, tm.Call("int_mul", tm.int_t, tm.Var(0))),
+      v.Pi([], int_args, tm.int_t),
+    ))
   let #(term, type_, ctx) = infer(ctx0, ast_fn)
   let ctx = resolve.context(ctx)
   assert ctx.errors == []
@@ -50,6 +66,7 @@ pub fn core_factorial_test() {
             None,
             tm.Call(
               "int_mul",
+              tm.int_t,
               tm.rcd([
                 #("", tm.Var(0)),
                 #(
@@ -58,6 +75,7 @@ pub fn core_factorial_test() {
                     tm.Var(2),
                     tm.Call(
                       "int_sub",
+                      tm.int_t,
                       tm.rcd([#("", tm.Var(0)), #("", tm.int(1))]),
                     ),
                   ),
@@ -70,11 +88,11 @@ pub fn core_factorial_test() {
     )
   assert type_
     == v.Pi(
-      [v.var(0)],
-      #("x", v.hole_open([v.var(0)], Some(1))),
+      [v.var(2), ..ctx0.env],
+      #("x", v.hole_open([v.var(2), ..ctx0.env], Some(1))),
       tm.Match(tm.Var(0), [
         tm.Case(tm.pint(0), None, tm.int_t),
-        tm.Case(tm.pvar("n"), None, tm.Hole(Some(3))),
+        tm.Case(tm.pvar("n"), None, tm.int_t),
       ]),
     )
   let factorial = fn(n) { eval(ctx.ffi, ctx.env, tm.App(term, tm.int(n))) }

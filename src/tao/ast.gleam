@@ -36,7 +36,6 @@ pub type ExprData {
   Match(arg: Expr, cases: List(Case))
   Op1(op: UnaryOp, expr: Expr)
   Op2(op: BinaryOp, lhs: Expr, rhs: Expr)
-  Call(name: String, args: List(#(String, Expr)))
   Do(Block)
   Err
 }
@@ -116,7 +115,6 @@ pub type OverloadChoice {
 
 pub type OverloadChoiceFun {
   OverloadVar(name: String)
-  OverloadCall(name: String)
   OverloadModuleVar(mod_name: String, name: String)
 }
 
@@ -296,10 +294,6 @@ pub fn mul(lhs: Expr, rhs: Expr, span: Span) {
 
 pub fn div(lhs: Expr, rhs: Expr, span: Span) {
   op2(Div, lhs, rhs, span)
-}
-
-pub fn call(name: String, args: List(#(String, Expr)), span: Span) {
-  Expr(Call(name, args), span)
 }
 
 pub fn do(stmts: List(Stmt), span: Span) {

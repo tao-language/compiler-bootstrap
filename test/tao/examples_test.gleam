@@ -2,7 +2,7 @@ import core/context.{type Context, Context, new_ctx}
 import core/eval.{eval}
 import core/ffi
 import core/infer.{infer}
-import core/term.{type Term}
+import core/term.{type Term} as tm
 import core/value.{type Value} as v
 import gleam/io
 import gleam/option.{None, Some}
@@ -24,8 +24,8 @@ pub fn tao_factorial_test() {
   // }
   let i1 = tao.int(1, s)
   let #(f, x, n) = #(tao.var("f", s), tao.var("x", s), tao.var("n", s))
-  let sub = fn(x, y) { tao.call("int_sub", [#("", x), #("", y)], s) }
-  let mul = fn(x, y) { tao.call("int_mul", [#("", x), #("", y)], s) }
+  let sub = fn(x, y) { tao.app(tao.var("sub", s), [#("", x), #("", y)], s) }
+  let mul = fn(x, y) { tao.app(tao.var("mul", s), [#("", x), #("", y)], s) }
   let case0 = tao.Case(tao.pint(0, s), None, i1)
   let case_ =
     tao.Case(tao.pvar("n", s), None, mul(n, tao.app(f, [#("", sub(n, i1))], s)))
@@ -47,7 +47,19 @@ pub fn tao_factorial_test() {
     )
   }
   io.println("\n")
-  let ctx = Context(..new_ctx, ffi: ffi.build)
+  let int_args = #("args", v.rcd([#("x", v.int_t), #("y", v.int_t)]))
+  let ctx =
+    Context(..new_ctx, ffi: ffi.build)
+    |> context.push_var(#(
+      "sub",
+      v.Lam([], int_args, tm.Call("int_sub", tm.int_t, tm.Var(0))),
+      v.Pi([], int_args, tm.int_t),
+    ))
+    |> context.push_var(#(
+      "mul",
+      v.Lam([], int_args, tm.Call("int_mul", tm.int_t, tm.Var(0))),
+      v.Pi([], int_args, tm.int_t),
+    ))
   // factorial(0) = 1
   let #(term, type_, ctx) = check_expr(ctx, factorial(0))
   assert ctx.errors == []

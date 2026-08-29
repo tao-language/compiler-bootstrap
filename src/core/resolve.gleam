@@ -74,9 +74,10 @@ fn term_seen(
       let tail = option.map(tail, self(size, _))
       tm.Rcd(fields, tail)
     }
-    tm.Call(name, arg) -> {
+    tm.Call(name, ret, arg) -> {
+      let ret = self(size, ret)
       let arg = self(size, arg)
-      tm.Call(name, arg)
+      tm.Call(name, ret, arg)
     }
     tm.Ann(t, type_) -> {
       let t = self(size, t)
@@ -126,12 +127,8 @@ fn term_seen(
 pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
   value_seen(ffi, subst, val, [])
 }
-fn value_seen(
-  ffi: FFI,
-  subst: Subst,
-  val: Value,
-  seen: List(Int),
-) -> Value {
+
+fn value_seen(ffi: FFI, subst: Subst, val: Value, seen: List(Int)) -> Value {
   let self = fn(v) { value_seen(ffi, subst, v, seen) }
   case val {
     // A hole is resolved with its ID pushed on the seen stack: its solution
@@ -205,12 +202,7 @@ fn value_seen(
   }
 }
 
-fn neutral_seen(
-  ffi: FFI,
-  subst: Subst,
-  neut: Neut,
-  seen: List(Int),
-) -> Neut {
+fn neutral_seen(ffi: FFI, subst: Subst, neut: Neut, seen: List(Int)) -> Neut {
   case neut {
     v.NVar(lvl) -> v.NVar(lvl)
     v.NHole(env, id) -> {
@@ -241,9 +233,10 @@ fn neutral_seen(
         })
       v.NMatch(env, arg_neut, cases)
     }
-    v.NCall(name, arg) -> {
+    v.NCall(name, ret, arg) -> {
+      let ret = value_seen(ffi, subst, ret, seen)
       let arg = value_seen(ffi, subst, arg, seen)
-      v.NCall(name, arg)
+      v.NCall(name, ret, arg)
     }
   }
 }
@@ -277,7 +270,8 @@ pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
       e.AppExpectedExplicitArg(fun_type)
     }
     // The variant terms are left unresolved for now.
-    e.TypeVariantUndefined(tag, variants) -> e.TypeVariantUndefined(tag, variants)
+    e.TypeVariantUndefined(tag, variants) ->
+      e.TypeVariantUndefined(tag, variants)
   }
   e.Error(..err, data: data)
 }

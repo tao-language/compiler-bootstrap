@@ -39,7 +39,7 @@ pub type ExprData {
   Fix(name: String, body: Expr)
   App(fun: Expr, arg: Expr)
   Match(arg: Expr, cases: List(Case))
-  Call(name: String, arg: Expr)
+  Call(name: String, ret: Type, arg: Expr)
   TypeDef(type_def: TypeDefinition)
   Err
 }
@@ -130,7 +130,7 @@ pub fn free_vars(term: Expr) -> List(String) {
     Fix(name, body) -> todo
     App(fun, arg) -> union(free_vars(fun), free_vars(arg))
     Match(arg, cases) -> union(free_vars(arg), free_vars_cases(cases))
-    Call(name, arg) -> union([name], free_vars(arg))
+    Call(_, ret, arg) -> union(free_vars(ret), free_vars(arg))
     TypeDef(type_def) -> todo
     Err -> []
   }
@@ -189,7 +189,7 @@ pub fn contains(term: Expr, name: String) -> Bool {
     App(fun, arg) -> contains(fun, name) || contains(arg, name)
     Match(arg, cases) ->
       contains(arg, name) || list.any(cases, contains_case(_, name))
-    Call(_, arg) -> contains(arg, name)
+    Call(_, ret, arg) -> contains(ret, name) || contains(arg, name)
     TypeDef(type_def) -> todo
     _ -> False
   }
@@ -380,16 +380,21 @@ pub fn match(arg: Expr, cases: List(Case), span: Span) {
   Expr(Match(arg, cases), span, None)
 }
 
-pub fn call(name: String, arg: Expr, span: Span) {
-  Expr(Call(name, arg), span, None)
+pub fn call(name: String, ret: Type, arg: Expr, span: Span) {
+  Expr(Call(name, ret, arg), span, None)
 }
 
-pub fn call_args(name: String, args: List(#(String, Expr)), span: Span) {
-  call(name, rcd_values(args, None, span), span)
+pub fn call_args(
+  name: String,
+  ret: Type,
+  args: List(#(String, Expr)),
+  span: Span,
+) {
+  call(name, ret, rcd_values(args, None, span), span)
 }
 
-pub fn call0(name: String, span: Span) {
-  call_args(name, [], span)
+pub fn call0(name: String, ret: Type, span: Span) {
+  call_args(name, ret, [], span)
 }
 
 pub fn let_var(def: #(String, Option(Type), Expr), body: Expr, span: Span) {

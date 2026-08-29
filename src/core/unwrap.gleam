@@ -67,9 +67,9 @@ pub fn unwrap_neut(
           |> unwrap_seen(ffi, subst, _, seen)
       }
     }
-    v.NCall(name, arg) -> {
+    v.NCall(name, ret, arg) -> {
       let arg = unwrap_seen(ffi, subst, arg, seen)
-      eval.do_call(ffi, name, arg)
+      eval.do_call(ffi, name, ret, arg)
     }
   }
 }

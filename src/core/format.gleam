@@ -186,9 +186,11 @@ fn doc_term(term: Expr, indent: Int) -> Document {
       ])
       |> doc.group
     }
-    ast.Call(name, arg) -> {
+    ast.Call(name, ret, arg) -> {
       doc.concat([
-        doc_text(name),
+        doc_text("@" <> name <> "<"),
+        doc_term(ret, indent),
+        doc_text(">"),
         doc_text("("),
         doc_term(arg, indent),
         doc_text(")"),

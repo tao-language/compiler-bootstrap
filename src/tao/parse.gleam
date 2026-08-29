@@ -368,7 +368,6 @@ fn extern(file: String) -> Parser(Stmt, Token, String) {
   {
     use start <- do(get_span(file))
     use _ <- do(nibble.token(KwExtern))
-    use _ <- do(nibble.token(At))
     use name <- do(var_name())
     use _ <- do(nibble.token(LParen))
     use params <- do(parameters(file))
@@ -376,7 +375,7 @@ fn extern(file: String) -> Parser(Stmt, Token, String) {
     use _ <- do(nibble.token(ThinArrow))
     use returns <- do(expr(file))
     use end <- do(get_span(file))
-    return(tao.extern("@" <> name, params, returns, merge(start, end)))
+    return(tao.extern(name, params, returns, merge(start, end)))
   }
   |> nibble.in("extern declaration")
 }
@@ -527,11 +526,6 @@ fn fn_overload_choice_fun(
       // This must go after OverloadDot to avoid ambiguity.
       use name <- do(var_name())
       return(tao.OverloadVar(name))
-    },
-    {
-      use _ <- do(nibble.token(At))
-      use name <- do(var_name())
-      return(tao.OverloadCall("@" <> name))
     },
   ])
 }

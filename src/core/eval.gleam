@@ -28,9 +28,10 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       let tail_val = option.map(tail, eval(ffi, env, _))
       v.Rcd(fields_val, tail_val)
     }
-    tm.Call(name, arg) -> {
+    tm.Call(name, ret, arg) -> {
+      let ret_val = eval(ffi, env, ret)
       let arg_val = eval(ffi, env, arg)
-      do_call(ffi, name, arg_val)
+      do_call(ffi, name, ret_val, arg_val)
     }
     tm.Ann(term, _) -> eval(ffi, env, term)
     tm.For(#(name, param), body) -> {
@@ -81,20 +82,14 @@ pub fn do_app(ffi: FFI, fun_val: Value, arg_val: Value) -> Value {
   }
 }
 
-pub fn do_call(ffi: FFI, name: String, arg_val: Value) -> Value {
-  // The `@` prefix marks an FFI builtin at the source level (e.g. `@int_add`);
-  // the FFI table is keyed by the bare name.
-  let ffi_name = case name {
-    "@" <> rest -> rest
-    _ -> name
-  }
-  let result = case list.key_find(ffi, ffi_name) {
+pub fn do_call(ffi: FFI, name: String, ret_val: Type, arg_val: Value) -> Value {
+  let result = case list.key_find(ffi, name) {
     Ok(call_def) -> call_def(arg_val)
     Error(Nil) -> None
   }
   case result {
     Some(value) -> value
-    None -> v.call(name, arg_val)
+    None -> v.call(name, ret_val, arg_val)
   }
 }
 

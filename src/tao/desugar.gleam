@@ -2,7 +2,6 @@ import core/ast as core
 import core/format
 import core/literals as lit
 import filepath
-import tao/declare.{is_public_name}
 import gleam/int
 import gleam/io
 import gleam/list
@@ -11,7 +10,8 @@ import gleam/regexp
 import gleam/result
 import gleam/string
 import syntax/span.{type Span, Span}
-import tao/ast.{type Case, type Module, type Pattern, type Stmt} as tao
+import tao/ast.{type Case, type Expr, type Module, type Pattern, type Stmt} as tao
+import tao/declare.{is_public_name}
 
 pub type BlockCtx {
   BlockCtx(
@@ -94,15 +94,6 @@ pub fn expr(exports: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
       let fun = tao.var(op_name, e.span)
       let args = [#("", lhs), #("", rhs)]
       expr(exports, tao.app(fun, args, e.span))
-    }
-    tao.Call(name, args) -> {
-      let fields =
-        list.map(args, fn(arg) {
-          let #(name, value) = arg
-          #(name, Some(value))
-        })
-      let core_arg = expr(exports, tao.rcd(fields, None, e.span))
-      core.call(name, core_arg, e.span)
     }
     tao.Do(block) -> {
       let return = core.rcd([], None, e.span)
@@ -380,7 +371,23 @@ pub fn statement(
         }
       }
     }
-    tao.Extern(..) -> next
+    tao.Extern(name, args, ret) -> {
+      let s = stmt.span
+      let core_args = parameters_type(exports, args, s)
+      let core_ret = expr(exports, ret)
+      let core_value =
+        core.lam(
+          #("@" <> name, Some(core_args)),
+          core.call(name, core_ret, core.var("@" <> name, s), s),
+          s,
+        )
+      core.let_var_trace(
+        #(name, None, core_value),
+        next,
+        stmt.span,
+        Some("extern " <> name),
+      )
+    }
     tao.LetVar(name, opt_type, value) -> {
       let core_type = opt_expr(exports, opt_type)
       let core_value = expr(exports, value)
@@ -465,7 +472,6 @@ fn overload_choice(
       let core_fun = core.var(name, s)
       core.app(core_fun, core_arg, s)
     }
-    tao.OverloadCall(name) -> core.call(name, core_arg, s)
     tao.OverloadModuleVar(name, field) -> {
       let core_fun = core.dot(core.var(name, s), field, s)
       core.app(core_fun, core_arg, s)

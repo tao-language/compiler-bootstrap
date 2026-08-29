@@ -24,8 +24,10 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       let ctx = unify(ctx, #(v.Neut(fun1), s1), #(v.Neut(fun2), s2))
       unify(ctx, #(arg1, s1), #(arg2, s2))
     }
-    v.Neut(v.NCall(x, arg1)), v.Neut(v.NCall(y, arg2)) if x == y ->
+    v.Neut(v.NCall(x, ret1, arg1)), v.Neut(v.NCall(y, ret2, arg2)) if x == y -> {
+      let ctx = unify(ctx, #(ret1, s1), #(ret2, s2))
       unify(ctx, #(arg1, s1), #(arg2, s2))
+    }
     v.Neut(v.NMatch(env1, arg1, cases1)), v.Neut(v.NMatch(env2, arg2, cases2))
     -> {
       let ctx = unify(ctx, #(v.Neut(arg1), s1), #(v.Neut(arg2), s2))
@@ -186,7 +188,7 @@ fn check_neut_with_concrete(
     v.NApp(fun_neut, arg_val) -> todo
     v.NMatch(env, arg_val, cases) ->
       check_neut_with_concrete_cases(ctx, env, arg_val, a, #(cases, s2))
-    v.NCall(_, _) -> ctx
+    v.NCall(_, _, _) -> ctx
   }
 }
 

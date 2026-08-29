@@ -40,7 +40,7 @@ pub fn infer(ctx: Context, term_ast: ast.Expr) -> #(Term, Type, Context) {
     ast.Var(name) -> infer_var(ctx, name, term_ast.span)
     ast.Ctr(tag, arg) -> infer_ctr(ctx, tag, arg)
     ast.Rcd(fields, tail) -> infer_rcd(ctx, fields, tail)
-    ast.Call(name, arg) -> infer_call(ctx, name, arg)
+    ast.Call(name, ret, arg) -> infer_call(ctx, name, ret, arg)
     ast.Ann(inner, type_) -> infer_ann(ctx, inner, type_)
     ast.For(param, body) -> infer_for(ctx, param, body)
     ast.Lam(param, body) -> infer_lam(ctx, param, body)
@@ -199,11 +199,13 @@ fn infer_rcd_fields(
 fn infer_call(
   ctx: Context,
   name: String,
+  ret_ast: Expr,
   arg_ast: Expr,
 ) -> #(Term, Type, Context) {
-  let #(id, ctx) = context.new_hole(ctx)
-  let #(arg, _, ctx) = infer(ctx, arg_ast)
-  #(tm.Call(name, arg), v.hole(ctx.env, id), ctx)
+  let #(ret, _, ctx) = infer(ctx, ret_ast)
+  let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
+  let typ = v.Pi(ctx.env, #("@" <> name, arg_type), ret)
+  #(tm.Call(name, ret, arg), typ, ctx)
 }
 
 fn infer_ann(ctx: Context, ast: Expr, type_: Expr) -> #(Term, Type, Context) {

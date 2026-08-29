@@ -47,7 +47,7 @@ pub type Neut {
   NHole(env: Env, id: Option(Int))
   NApp(fun: Neut, arg: Value)
   NMatch(env: Env, arg: Neut, cases: List(Case))
-  NCall(name: String, arg: Value)
+  NCall(name: String, ret: Type, arg: Value)
 }
 
 pub type Env =
@@ -88,8 +88,8 @@ pub fn match(env: Env, arg: Neut, cases: List(Case)) -> Value {
   Neut(NMatch(env, arg, cases))
 }
 
-pub fn call(name: String, arg: Value) -> Value {
-  Neut(NCall(name, arg))
+pub fn call(name: String, ret: Type, arg: Value) -> Value {
+  Neut(NCall(name, ret, arg))
 }
 
 pub fn int(value: Int) -> Value {

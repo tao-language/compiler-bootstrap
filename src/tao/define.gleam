@@ -164,11 +164,7 @@ fn type_stmt_data(
           type_stmt(ctx, defs, mod_name, name, stmt)
         }
       }
-    tao.Extern(_, params, returns) -> {
-      let tao_type = tao.fn_t(#([], None), params, returns, stmt.span)
-      let #(typ, ctx) = type_value(ctx, defs, mod_name, tao_type)
-      #(v.Err, typ, ctx)
-    }
+    tao.Extern(name, ..) -> stmt_value(ctx, defs, mod_name, name, stmt, None)
     tao.LetVar(_, opt_type, _) -> {
       let #(val, ctx) = hole_value(ctx)
       let #(typ, ctx) = case opt_type {
