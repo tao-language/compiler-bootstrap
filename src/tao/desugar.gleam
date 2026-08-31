@@ -449,12 +449,7 @@ pub fn statement(
           core.ctr("Fail", core.var("got", arg.span), arg.span),
         ),
       ]
-      let core_test =
-        core.lam(
-          #("__test", Some(core.rcd([], None, s))),
-          core.match(core_arg, core_cases, s),
-          s,
-        )
+      let core_test = core.match(core_arg, core_cases, s)
       core.let_var_trace(#(name, None, core_test), next, s, Some(name))
     }
     tao.TypeDef(type_def) -> todo
@@ -514,16 +509,4 @@ fn rcdt_fields(
     }
     #(name, #(type_term, default_term))
   })
-}
-
-fn to_valid_var(name: String) -> String {
-  let name = name |> string.replace("-", "_") |> string.replace(".", "_")
-  case string.first(name) {
-    Ok(first) ->
-      case first {
-        "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" -> "_" <> name
-        _ -> name
-      }
-    _ -> name
-  }
 }

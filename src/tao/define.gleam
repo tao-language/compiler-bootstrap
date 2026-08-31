@@ -274,7 +274,7 @@ fn type_value(
   #(core_type, ctx)
 }
 
-fn stmt_value(
+pub fn stmt_value(
   ctx: Context,
   defs: List(#(ModName, List(#(Name, Stmt)))),
   mod_name: ModName,
@@ -286,103 +286,3 @@ fn stmt_value(
   let tao_expr = tao.do([stmt, tao.return(tao.var(name, s), s)], s)
   expr_value(ctx, defs, mod_name, tao_expr, opt_type)
 }
-// pub fn package(
-//   ctx: Context,
-//   defs: List(#(ModName, Declarations)),
-//   mods: List(Module),
-// ) -> Context {
-//   let exports = declare.exports(defs)
-//   let ctx = skeletons(ctx, defs, exports)
-//   list.fold(mods, ctx, fn(ctx, mod) { module(ctx, exports, mod) })
-
-//   // DELETE ME
-//   // let ctx = resolve.context(ctx)
-//   case ctx.errors {
-//     [] -> Nil
-//     _ -> {
-//       echo ctx.errors
-//       panic
-//     }
-//   }
-//   list.map(list.zip(ctx.types, ctx.env), fn(entry) {
-//     let names = list.map(ctx.types, fn(x) { x.0 })
-//     let #(#(name, mod_type), mod_value) = entry
-//     io.print("ctx.env[" <> string.inspect(name) <> "]: ")
-//     io.println(format.value(ctx.ffi, names, mod_value, 80, 2))
-//     io.print("ctx.types[" <> string.inspect(name) <> "]: ")
-//     io.println(format.value(ctx.ffi, names, mod_type, 80, 2))
-//     io.println("")
-//   })
-//   todo
-// }
-
-// fn skeletons(
-//   ctx: Context,
-//   defs: List(#(ModName, Declarations)),
-//   exports: List(#(ModName, List(Name))),
-// ) -> Context {
-//   list.fold(defs, ctx, fn(ctx, def) {
-//     let #(mod_name, declarations) = def
-//     list.fold(declarations, ctx, fn(ctx, declaration) {
-//       let #(name, #(stmt, opt_tao_type)) = declaration
-//       let #(value_id, ctx) = context.new_hole(ctx)
-//       let value = v.hole(ctx.env, value_id)
-//       case stmt.data, opt_tao_type {
-//         tao.Extern(..), _ -> ctx
-//         _, Some(tao_type) -> {
-//           let core_type_expr = desugar.expr(exports, tao_type)
-//           let deps = core.free_vars(core_type_expr)
-//           // TODO: define dependencies first
-//           assert deps == []
-//           let #(core_type_term, _, ctx) = infer(ctx, core_type_expr)
-//           let core_type = eval(ctx.ffi, ctx.env, core_type_term)
-//           push(ctx, mod_name, name, value, core_type)
-//         }
-//         _, None -> {
-//           let #(type_id, ctx) = context.new_hole(ctx)
-//           push(ctx, mod_name, name, value, v.hole(ctx.env, type_id))
-//         }
-//       }
-//     })
-//   })
-// }
-
-// fn push(
-//   ctx: Context,
-//   mod_name: ModName,
-//   name: Name,
-//   value: v.Value,
-//   typ: v.Type,
-// ) -> Context {
-//   let #(mod_val, mod_typ) = case context.lookup_var(ctx, mod_name) {
-//     Some(#(v.Rcd(values, None), v.Rcd(types, None))) -> #(
-//       v.Rcd(list_utils.set(values, name, #(value, None)), None),
-//       v.Rcd(list_utils.set(types, name, #(typ, None)), None),
-//     )
-//     _ -> #(v.rcd([#(name, value)]), v.rcd([#(name, typ)]))
-//   }
-//   context.set_var(ctx, mod_name, mod_val, mod_typ)
-// }
-
-// pub fn module(
-//   ctx: Context,
-//   exports: List(#(String, List(String))),
-//   mod: Module,
-// ) -> Context {
-//   let #(mod_name, stmts) = mod
-//   let mod_expr = desugar.module(exports, mod)
-//   let mod_type =
-//     list.key_find(ctx.types, mod_name)
-//     |> result.unwrap(v.hole_open(ctx.env, None))
-//   let s = Span(mod_name, 0, 0, 0, 0)
-//   let #(mod_term, _, ctx) = check(ctx, mod_expr, #(mod_type, s))
-//   let mod_val = eval(ctx.ffi, ctx.env, mod_term)
-//   case context.lookup(ctx, mod_name) {
-//     Some(#(mod_idx, _)) ->
-//       case list_utils.at(ctx.env, mod_idx) {
-//         Some(mod_decl) -> unify(ctx, #(mod_decl, s), #(mod_val, s))
-//         None -> panic as "module not found"
-//       }
-//     None -> panic as "module not declared"
-//   }
-// }

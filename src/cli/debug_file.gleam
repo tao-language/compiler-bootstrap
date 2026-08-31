@@ -197,8 +197,8 @@ pub fn debug_file(
   }
   io.println("")
 
-  echo "> test_defs = compile.tests(ctx, mods)"
-  let test_defs = compile.tests(ctx, mods)
+  echo "> test_defs, ctx = compile.tests(ctx, mods)"
+  let #(test_defs, ctx) = compile.tests(ctx, mods)
   let results =
     list.map(test_defs, fn(t) {
       let res = tests.run(ctx, t)

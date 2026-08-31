@@ -47,7 +47,7 @@ pub fn run_all(ctx: Context, tests: List(TestDef)) -> TestResultSummary {
 }
 
 pub fn run(ctx: Context, t: TestDef) -> TestResult {
-  case eval(ctx.ffi, ctx.env, tm.App(t.term, tm.rcd([]))) {
+  case eval(ctx.ffi, ctx.env, t.term) {
     v.Ctr("Pass", _) -> TestPass(t.name)
     v.Ctr("Fail", got) -> TestFail(t.name, got, t.expr, t.expect)
     got -> TestNeutral(t.name, got, t.expr, t.expect)

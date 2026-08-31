@@ -42,7 +42,7 @@ pub fn statement(stmt: Stmt) -> List(#(Name, Stmt)) {
     tao.LetPat(pattern, types, value) -> todo
     tao.LetMut(name, opt_type, value) -> todo
     tao.Mut(name, value) -> todo
-    tao.Test(name, _, _) -> [#(name, stmt)]
+    tao.Test(name, _, _) -> []
     tao.FnDef(name, implicits, params, returns, body) -> todo
     tao.FnOverload(name, _) -> [#(name, stmt)]
     tao.TypeDef(type_def) -> todo
@@ -74,7 +74,9 @@ pub fn imports(
                 // Flatten only public names into the import scope, matching
                 // desugar.is_public_name: non-public entries (externs, tests)
                 // must not become entries of the importing module.
-                list.filter(import_defs, fn(mod_def) { is_public_name(mod_def.0) })
+                list.filter(import_defs, fn(mod_def) {
+                  is_public_name(mod_def.0)
+                })
                 |> list.map(fn(mod_def) {
                   let #(name, _) = mod_def
                   #(name, stmt)
