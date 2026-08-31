@@ -1,3 +1,8 @@
+/// Tao Language Parser
+///
+/// Parses Tao source text into `tao/ast` statements/expressions using the
+/// nibble parser combinator library. Tag names (constructor/type names)
+/// start with an uppercase letter; everything else is a variable name.
 import core/error as e
 import filepath
 import gleam/float
@@ -159,6 +164,7 @@ fn lexer_() -> Lexer(Token, Nil) {
 // PUBLIC API
 // ============================================================================
 
+/// Parse a single Tao expression (used by the REPL/`-c`).
 pub fn expression(file: String, source: String) -> Result(Expr, e.Error) {
   use tokens <- try(lex(file, source))
   case
@@ -173,6 +179,7 @@ pub fn expression(file: String, source: String) -> Result(Expr, e.Error) {
   }
 }
 
+/// Parse a whole Tao module into its top-level statements.
 pub fn statements(file: String, source: String) -> Result(List(Stmt), e.Error) {
   use tokens <- try(lex(file, source))
   case
@@ -871,6 +878,7 @@ fn get_span(file: String) -> Parser(Span, Token, String) {
   return(Span(file, s.row_start, s.col_start, s.row_end, s.col_end))
 }
 
+/// Tags are identifiers whose first non-`_` grapheme is uppercase.
 fn is_tag_name(name: String) -> Bool {
   case string.pop_grapheme(name) {
     Ok(#("_", _)) -> is_tag_name(name)

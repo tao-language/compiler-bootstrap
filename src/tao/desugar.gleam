@@ -1,3 +1,8 @@
+/// Tao → Core Desugaring
+///
+/// Converts Tao AST to Core AST (named terms). Functions desugar to
+/// lambdas over a single `__args` record, applications to applications
+/// of record arguments, and `if` to matches on `True`/`False`.
 import core/ast as core
 import core/format
 import core/literals as lit
@@ -27,6 +32,9 @@ pub const new_block_ctx = BlockCtx(
   mutables: [],
 )
 
+/// Desugar a whole module: the statements are let-bound in order and the
+/// module's public exports are returned as a record, so importing a
+/// module gives a record of its definitions.
 pub fn module(
   exports: List(#(String, List(String))),
   mod: Module,
@@ -43,6 +51,8 @@ pub fn expr(exports: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
     tao.Hole(id) -> core.hole_open(id, e.span)
     tao.Lit(value) -> core.lit(value, e.span)
     tao.Var(name) -> core.var(name, e.span)
+    // Special-cased constructors: `Type(n)` is a universe type and the
+    // unapplied `Int`/`Float` tags are literal types, not values.
     tao.Ctr("Type", [#(_, tao.Expr(tao.Lit(lit.Int(u)), _))], None) ->
       core.typ(u, e.span)
     tao.Ctr("Int", [], None) -> core.int_t(e.span)
@@ -96,6 +106,7 @@ pub fn expr(exports: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
       expr(exports, tao.app(fun, args, e.span))
     }
     tao.Do(block) -> {
+      // A block with no `return` statement returns the empty record.
       let return = core.rcd([], None, e.span)
       statement_list(exports, new_block_ctx, block, return)
     }
@@ -158,6 +169,10 @@ fn parameters_type(
   core.rcd(param_fields, core_params_tail, span)
 }
 
+/// Turn a parameter list into a match that binds the `__args` record to
+/// the individual parameter patterns. Fields are matched *positionally*
+/// (numbered `1..n`), so the caller must pass a record with the fields
+/// in declaration order.
 fn parameters_unpack(
   exports: List(#(String, List(String))),
   var_name: String,
@@ -176,6 +191,8 @@ fn parameters_unpack(
   expr(exports, match_expr)
 }
 
+/// A function as `fix name. lam __args => match __args { | strict(params) => body }`
+/// (the `fix` is elided by Core when the name is unused).
 fn function(
   exports: List(#(String, List(String))),
   opt_fun_name: Option(String),
@@ -289,6 +306,8 @@ fn case_guard(
   }
 }
 
+/// Convert a Tao pattern to a Core pattern, with the same
+/// special-casing of `Type(n)`, `Int` and `Float` as `expr`.
 pub fn pattern(p: Pattern) -> core.Pattern {
   case p.data {
     tao.PAny -> core.pany(p.span)
@@ -321,6 +340,9 @@ pub fn pattern(p: Pattern) -> core.Pattern {
   }
 }
 
+/// Statements as a chain of `let`s: each statement is let-bound and
+/// `next` (ultimately `return`) is the body. The `return` expression is
+/// what the block evaluates to.
 pub fn statement_list(
   exports: List(#(String, List(String))),
   block_ctx: BlockCtx,
@@ -426,6 +448,8 @@ pub fn statement(
         )
       core.let_var(#(name, None, core_fn), next, s)
     }
+    // Overloaded functions are polymorphic: for each implicit `__type`
+    // the function matches the argument record against the choices.
     tao.FnOverload(name, choices) -> {
       let param1 = #("__type", Some(core.typ(0, s)))
       let match_body =

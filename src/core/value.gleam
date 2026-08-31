@@ -10,8 +10,15 @@ import gleam/option.{type Option, None, Some}
 
 /// Core values - normalized terms after evaluation.
 ///
-/// Values use De Bruijn levels for variables (relative to their
-/// binding site), and De Bruijn indices for bodies.
+/// `NVar(level)` refers to an environment entry by *de Bruijn level*:
+/// level `n` is the `n`th entry from the outermost end (the number of
+/// entries the environment had when the entry was pushed). Levels are
+/// unchanged by pushing or popping innermost entries, so captured
+/// environments (`Pi`/`Lam`/`For`/`Fix` bodies, `NMatch`) stay valid
+/// across inference. Quoting converts a level to a de Bruijn *index*
+/// with `index = env_size - level - 1` (see `quote`).
+///
+/// Bodies are Terms, which use plain de Bruijn *indices* (0 = innermost).
 pub type Value {
   Typ(universe: Int)
   Lit(literal: Literal)
@@ -50,11 +57,15 @@ pub type Neut {
   NCall(name: String, ret: Type, arg: Value)
 }
 
+/// Values environment, innermost (newest) first.
 pub type Env =
   List(Value)
 
 // Helper functions
 
+/// Push `num_vars` fresh neutral entries in one go (e.g. for a pattern
+/// binding several variables). The new entries take the next levels
+/// (`length(env)` upwards); existing entries' levels are untouched.
 pub fn env_push(env: Env, num_vars: Int) -> Env {
   int.range(
     from: list.length(env),
@@ -68,6 +79,8 @@ pub fn env_push(env: Env, num_vars: Int) -> Env {
 
 // Syntax sugar
 
+/// A neutral variable for the entry at the given de Bruijn level (counted
+/// from the outermost end; see the `Value` docs).
 pub fn var(level: Int) -> Value {
   Neut(NVar(level))
 }
@@ -76,18 +89,25 @@ pub fn hole(env: Env, id: Int) -> Value {
   hole_open(env, Some(id))
 }
 
+/// A neutral hole that captured `env` at creation, so neutral variables
+/// in its eventual solution are addressable when it is re-evaluated.
 pub fn hole_open(env: Env, id: Option(Int)) -> Value {
   Neut(NHole(env, id))
 }
 
+/// A neutral application: the function head is not (yet) a lambda.
 pub fn app(fun: Neut, arg: Value) -> Value {
   Neut(NApp(fun, arg))
 }
 
+/// A neutral match: the scrutinee is not (yet) a concrete value.
 pub fn match(env: Env, arg: Neut, cases: List(Case)) -> Value {
   Neut(NMatch(env, arg, cases))
 }
 
+/// A deferred call to a name with no FFI definition (an `extern`), kept
+/// neutral so it can be quoted back to source. `ret` is its return type,
+/// used for type checking only.
 pub fn call(name: String, ret: Type, arg: Value) -> Value {
   Neut(NCall(name, ret, arg))
 }
@@ -126,6 +146,7 @@ pub const f32 = LitT(lit.F32)
 
 pub const f64 = LitT(lit.F64)
 
+/// A closed record value (no default values on any field).
 pub fn rcd(fields: List(#(String, Value))) -> Value {
   rcd_open(fields, None)
 }
@@ -139,6 +160,7 @@ pub fn rcd_open(fields: List(#(String, Value)), tail: Option(Value)) -> Value {
   Rcd(fields, tail)
 }
 
+/// A constructor value: a record of (possibly positional) arguments.
 pub fn ctr(tag: String, args: List(#(String, Value))) -> Value {
   Ctr(tag, rcd(args))
 }

@@ -1,4 +1,5 @@
-/// Debug Core CLI Command — Inspect the full compiler pipeline
+/// `tao debug-core` — run a Core expression through parse, infer,
+/// resolve and eval, printing each stage.
 import core/ast
 import core/context.{new_ctx}
 import core/error
@@ -14,9 +15,7 @@ import gleam/option.{None}
 import gleam/string
 import syntax/span.{Span}
 
-/// This command takes a Core expression string and runs the entire
-/// pipeline, printing structured debug information at each stage.
-pub fn debug_core(source: String, width: Int) {
+pub fn debug_core(source: String, width: Int) -> Nil {
   io.println(">> source")
   io.println(source)
   io.println("")

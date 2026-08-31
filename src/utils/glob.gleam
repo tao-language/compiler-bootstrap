@@ -2,6 +2,7 @@ import gleam/list
 import gleam/regexp
 import gleam/string
 
+/// Compile glob patterns (alternated with `|`) into a single regexp.
 pub fn glob_compile(patterns: List(String)) -> regexp.Regexp {
   let pattern = list.map(patterns, glob_to_regex) |> string.join("|")
   let assert Ok(re) = regexp.from_string(pattern)
@@ -13,6 +14,8 @@ pub fn glob_match(text: String, patterns: List(String)) -> Bool {
   regexp.check(re, text)
 }
 
+/// Translate one glob pattern to a regex fragment: `*` matches within a
+/// path segment, `**` matches across segments.
 pub fn glob_to_regex(pattern: String) -> String {
   pattern
   |> string.replace("\\", "\\\\")

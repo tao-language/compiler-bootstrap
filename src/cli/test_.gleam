@@ -14,6 +14,8 @@ import tao/load
 import tao/tests.{type TestResultSummary}
 import utils/fs
 
+/// `tao test` — compile the project, then compile and run the test
+/// modules under `paths`, filtering tests whose names match `patterns`.
 pub fn test_(
   root: String,
   paths: List(String),

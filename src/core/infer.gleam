@@ -66,6 +66,11 @@ pub fn infer(ctx: Context, term_ast: ast.Expr) -> #(Term, Type, Context) {
 ///
 /// This is a thin wrapper: infer the term, then fill in any missing
 /// record defaults at the value level before unifying.
+///
+/// Literal literals are a deliberate subtyping convenience: an int
+/// literal type-checks against *any* numeric literal type (it is
+/// silently converted to a float for float types, with no range check
+/// for fixed-width ints), and a hole type-checks against anything.
 pub fn check(
   ctx: Context,
   ast: Expr,
@@ -259,6 +264,11 @@ fn infer_lam(
     }
   }
   let param_val = eval(ctx.ffi, ctx.env, type_)
+  // The parameter's value is a neutral for its binding, at the level of
+  // the env size *before* the push (levels don't change when the binding
+  // itself is pushed). The body type is quoted at level+1 (with the
+  // parameter in scope) *before* popping, so the quoted Pi body may
+  // mention the parameter.
   let level = list.length(ctx.env)
   let ctx = context.push_var(ctx, #(name, v.var(level), param_val))
   let #(body, body_type_val, ctx) = infer(ctx, body)
@@ -301,6 +311,9 @@ fn infer_fix(
   body: Expr,
   span: Span,
 ) -> #(Term, Type, Context) {
+  // The fixpoint's type is a hole; binding the name to it lets the body
+  // refer to its own type. The final unification (with an occurs check
+  // in solve_hole) rejects non-well-founded types.
   let level = list.length(ctx.env)
   let #(id, ctx) = context.new_hole(ctx)
   let type_hole = v.hole(ctx.env, id)
@@ -347,6 +360,9 @@ fn infer_app(
       let ret_type = eval(ctx.ffi, [arg_type, ..env], codomain)
       #(tm.App(fun, arg), ret_type, ctx)
     }
+    // The function type is an unsolved hole: unify it against a fresh
+    // `Pi` whose codomain is the return-type hole, recording the argument
+    // as a constraint and deferring the rest.
     v.Neut(v.NHole(env, _)) -> {
       let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
       let #(id, ctx) = context.new_hole(ctx)
@@ -357,6 +373,8 @@ fn infer_app(
       let ret_type = v.hole([arg_val, ..ctx.env], id)
       #(tm.App(fun, arg), ret_type, ctx)
     }
+    // As above, but the function type is a neutral match: its codomain
+    // depends on the scrutinee and may become a `Pi` once solved.
     v.Neut(v.NMatch(env, _, _)) -> {
       let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
       let #(id, ctx) = context.new_hole(ctx)
@@ -379,6 +397,10 @@ fn infer_app(
   }
 }
 
+/// Apply implicit arguments to a polymorphic function: each `For`
+/// quantifier is instantiated with a fresh hole (the implicit argument),
+/// which later unification solves. Returns the (possibly re-applied)
+/// term and its instantiated type.
 fn instantiate(
   ctx: Context,
   fun: Term,
@@ -397,6 +419,11 @@ fn instantiate(
   }
 }
 
+/// Infer a match. The scrutinee and case bodies are inferred, then the
+/// match is *immediately reduced* (`do_match`): with a concrete
+/// scrutinee the result is the selected body (the match disappears from
+/// the term); with a neutral scrutinee a `NMatch` value is kept so the
+/// match re-reduces once the scrutinee is known.
 fn infer_match(
   ctx: Context,
   arg_ast: Expr,
@@ -427,6 +454,12 @@ fn infer_match_case_list(
   }
 }
 
+/// Infer one case: check the pattern against the scrutinee type, bind
+/// the guard, infer the body, then *quote the body's type while the
+/// pattern bindings are still pushed* so the quoted type may mention
+/// them (dependent bodies). The type is thus a Term whose variables
+/// index into an environment that no longer exists, so it is only ever
+/// re-evaluated by `do_match`, which rebuilds that environment.
 fn infer_match_case(
   ctx: Context,
   arg_type: #(Value, Span),

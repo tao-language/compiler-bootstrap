@@ -5,6 +5,7 @@ import gleam/result.{try}
 import gleam/string
 import simplifile
 
+/// List a directory's entries as plain names.
 pub fn list(dir: String) -> Result(List(String), String) {
   case simplifile.read_directory(dir) {
     Ok(files) -> Ok(files)
@@ -12,6 +13,8 @@ pub fn list(dir: String) -> Result(List(String), String) {
   }
 }
 
+/// Recursively list paths under `dir` (relative to `dir`) matching the
+/// filter. Subdirectories are traversed regardless of the filter.
 pub fn list_recursive(
   dir: String,
   filter: fn(String) -> Bool,
@@ -54,3 +57,5 @@ pub fn is_directory(path: String) -> Result(Bool, String) {
 pub fn find(dir: String, match: Regexp) -> List(String) {
   todo
 }
+
+// TODO: implement

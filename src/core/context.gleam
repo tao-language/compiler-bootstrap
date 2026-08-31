@@ -26,8 +26,12 @@ import utils/list_utils.{at}
 /// * `types`: Types environment, used for type inference and checking
 /// * `subst`: Hole substitutions (hole_id → value)
 /// * `errors`: Accumulated errors during type checking
+/// * `trace`: Breadcrumb labels for error reporting (innermost first)
 /// * `ffi`: FFI builtin definitions available at runtime
 /// * `hole_counter`: Next fresh hole ID
+///
+/// Invariant: `env` and `types` always have the same length and the same
+/// order (innermost first); `lookup` returns an index valid for *both*.
 pub type Context {
   Context(
     env: Env,
@@ -45,6 +49,8 @@ pub type Subst =
 
 pub const new_ctx = Context([], [], [], [], [], [], 0)
 
+/// Look up a variable by name, returning its index (innermost-first)
+/// and type. Only the first (innermost) binding is found.
 pub fn lookup(ctx: Context, name: String) -> Option(#(Int, Value)) {
   lookup_loop(ctx.types, name, 0)
 }
@@ -61,6 +67,8 @@ fn lookup_loop(
   }
 }
 
+/// Look up a type definition by name, returning its captured
+/// environment (so its parameters are addressable) and the definition.
 pub fn lookup_type_def(
   ctx: Context,
   name: String,
@@ -78,6 +86,7 @@ fn lookup_in_env(ctx: Context, name: String) -> Option(Value) {
   }
 }
 
+/// Look up a variable by name, returning both its value and its type.
 pub fn lookup_var(ctx: Context, name: String) -> Option(#(Value, Type)) {
   case ctx.types, ctx.env {
     [#(x, typ), ..], [val, ..] if x == name -> Some(#(val, typ))
@@ -89,6 +98,9 @@ pub fn lookup_var(ctx: Context, name: String) -> Option(#(Value, Type)) {
   }
 }
 
+/// Bind `name` to a new value/type, replacing an existing binding *in
+/// place* (preserving its position, so de Bruijn levels of other
+/// variables stay valid) or prepending if the name is new.
 pub fn set_var(ctx: Context, name: String, value: Value, typ: Type) -> Context {
   case ctx.types, ctx.env {
     [#(x, _), ..types], [_, ..env] if x == name ->
@@ -106,16 +118,20 @@ pub fn set_var(ctx: Context, name: String, value: Value, typ: Type) -> Context {
   }
 }
 
+/// Record an error, tagged with the current trace. Identical errors
+/// (same data, span and trace) are deduplicated.
 pub fn with_err(ctx: Context, err_data: ErrorData, span: Span) -> Context {
   let err = Error(err_data, span, list.reverse(ctx.trace))
   Context(..ctx, errors: list.unique([err, ..ctx.errors]))
 }
 
+/// Allocate a fresh hole ID.
 pub fn new_hole(ctx: Context) -> #(Int, Context) {
   let id = ctx.hole_counter
   #(id, Context(..ctx, hole_counter: id + 1))
 }
 
+/// Allocate `num_holes` fresh hole IDs at once.
 pub fn new_hole_list(ctx: Context, num_holes: Int) -> #(List(Int), Context) {
   case num_holes > 0 {
     True -> {
@@ -127,6 +143,7 @@ pub fn new_hole_list(ctx: Context, num_holes: Int) -> #(List(Int), Context) {
   }
 }
 
+/// Push a (name, value, type) binding as the new innermost scope.
 pub fn push_var(ctx: Context, var: #(String, Value, Value)) -> Context {
   let #(name, val, typ) = var
   Context(..ctx, env: [val, ..ctx.env], types: [#(name, typ), ..ctx.types])
@@ -145,7 +162,9 @@ pub fn push_var_list(
   }
 }
 
-// DEPRECATED
+/// Push a binding where the value and/or type may be unknown, in which
+/// case a fresh (unsolved) hole is used as a placeholder to be solved by
+/// unification later.
 pub fn push_var_opt(
   ctx: Context,
   var: #(String, Option(Value), Option(Value)),
@@ -165,7 +184,7 @@ pub fn push_var_opt(
   push_var(ctx, #(name, val, typ))
 }
 
-// DEPRECATED
+/// `push_var_opt` applied to a list of bindings, innermost first.
 pub fn push_var_opt_list(
   ctx: Context,
   vars: List(#(String, Option(Value), Option(Value))),
@@ -179,6 +198,7 @@ pub fn push_var_opt_list(
   }
 }
 
+/// Drop the innermost `num_vars` bindings (value and type together).
 pub fn pop_vars(ctx: Context, num_vars: Int) -> Context {
   Context(
     ..ctx,
@@ -191,6 +211,8 @@ pub fn pop_vars(ctx: Context, num_vars: Int) -> Context {
 // ERROR TRACE
 // ============================================================================
 
+/// Push a breadcrumb label, used to report which construct an error
+/// occurred inside.
 pub fn push_trace(ctx: Context, trace: #(String, Span)) -> Context {
   Context(..ctx, trace: [trace, ..ctx.trace])
 }

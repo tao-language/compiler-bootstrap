@@ -3,22 +3,23 @@
 /// The core language is language-agnostic. It defines the fundamental
 /// terms and values that make up the compiler's internal representation.
 ///
-/// Terms use De Bruijn **indices** for variables. Values use De Bruijn
-/// **levels** for runtime representation.
+/// Terms use De Bruijn **indices** for variables, values use De Bruijn
+/// **levels**.
 ///
-/// De Bruijn **indices** (Term `Var(n)`): relative to binders. `Var(0)` is
-/// the innermost binder, `Var(1)` is the next one out, etc.
+/// De Bruijn **indices** (Term `Var(n)`): count binders *inwards* from the
+/// use site. `Var(0)` is the innermost binder, `Var(1)` the next out.
+/// Indices shift whenever binders are added or removed between a use and
+/// its binder, so they are only meaningful inside a fixed term.
 ///
-/// De Bruijn **levels** (Value `HVar(n)`): absolute positions in the
-/// environment (`state.vars`). Level 0 is the most-recently-pushed entry
-/// (innermost binder), level 1 is the next, etc.
-///
-/// Because `state.vars` is ordered innermost-first (see `state.gleam`),
-/// levels and indices use the **same** counting convention:
-///   level 0 = index 0 = innermost binder
-///   level 1 = index 1 = next binder out
-///   ...
-/// This means quoting a level to an index is the identity conversion.
+/// De Bruijn **levels** (Value `NVar(n)`): count binders *outwards* —
+/// level `n` is the `n`th binder from the outermost end of the
+/// environment (equivalently, the number of entries the environment had
+/// when the entry was pushed). Pushing or popping innermost binders
+/// leaves existing levels unchanged, so values that capture an
+/// environment keep their variable references valid across inference.
+/// Quoting converts a level to an index with `index = env_size - level - 1`
+/// (see `quote`); the conversion is *not* the identity — a level only
+/// equals an index when the environment has not been extended.
 import core/ast
 import core/literals.{type Literal, type LiteralType} as lit
 import gleam/int
@@ -87,6 +88,9 @@ pub type Variant {
 
 // Helper functions
 
+/// Remove a field from a record, returning its value and the remaining
+/// fields. An empty field name is positional: it matches whichever field
+/// comes next (including the first one).
 pub fn pop_field(
   fields: List(#(String, a)),
   name: String,
@@ -104,6 +108,7 @@ pub fn pop_field(
   }
 }
 
+/// Names bound by a pattern, last-bound first.
 pub fn bindings(p: Pattern) -> List(String) {
   case p {
     PAny -> []
@@ -124,6 +129,9 @@ pub fn bindings(p: Pattern) -> List(String) {
   }
 }
 
+/// Convert a Term to a named AST Expr, turning de Bruijn indices into
+/// names from `names` (indexed innermost-first). Unknown indices render
+/// as `$n`. Not yet total: `Ann`/`TypeDef`/`PErr` crash.
 pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
   case term {
     Typ(u) -> ast.typ(u, s)
@@ -262,6 +270,7 @@ pub fn hole(id: Int) -> Term {
   Hole(Some(id))
 }
 
+/// Left-associative application.
 pub fn app(fun: Term, args: List(Term)) -> Term {
   case args {
     [] -> fun
@@ -269,6 +278,7 @@ pub fn app(fun: Term, args: List(Term)) -> Term {
   }
 }
 
+/// A closed record term (no default values on any field).
 pub fn rcd(fields: List(#(String, Term))) -> Term {
   rcd_open(fields, None)
 }
@@ -282,10 +292,12 @@ pub fn rcd_open(fields: List(#(String, Term)), tail: Option(Term)) -> Term {
   Rcd(fields, tail)
 }
 
+/// A constructor term: a record of (possibly positional) arguments.
 pub fn ctr(tag: String, args: List(#(String, Term))) -> Term {
   Ctr(tag, rcd(args))
 }
 
+/// `let` as beta-reducible application: `(lam x => body) value`.
 pub fn let_var(def: #(String, Type, Term), body: Term) -> Term {
   let #(name, type_, value) = def
   App(Lam(#(name, type_), body), value)
@@ -303,6 +315,7 @@ pub fn let_pat(def: #(Pattern, Term), body: Term) -> Term {
   Match(value, [Case(pattern, None, body)])
 }
 
+/// Field access as a single-case match with an open (row-polymorphic) tail.
 pub fn dot(term: Term, field: String) -> Term {
   let pattern = PRcd([#(field, pvar(field))], Some(PAny))
   Match(term, [Case(pattern, None, Var(0))])
@@ -320,6 +333,7 @@ pub fn pfloat(value: Float) -> Pattern {
   PLit(lit.Float(value))
 }
 
+/// Record pattern with an open (wildcard) tail.
 pub fn prcd(fields: List(#(String, Pattern))) {
   prcd_tail(fields, PAny)
 }
@@ -328,6 +342,7 @@ pub fn prcd_tail(fields: List(#(String, Pattern)), tail: Pattern) {
   PRcd(fields, Some(tail))
 }
 
+/// Record pattern with a closed tail: every field must match exactly.
 pub fn prcd_strict(fields: List(#(String, Pattern))) {
   PRcd(fields, None)
 }

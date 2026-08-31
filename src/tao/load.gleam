@@ -10,6 +10,7 @@ import tao/ast.{type Module, type Stmt}
 import tao/parse.{expression, statements}
 import utils/fs
 
+/// Read and parse one `.tao` file, collecting errors instead of failing.
 pub fn file(full_filename: String) -> #(List(Stmt), List(e.Error)) {
   let #(source, errors) = case simplifile.read(full_filename) {
     Ok(source) -> #(source, [])
@@ -24,6 +25,8 @@ pub fn file(full_filename: String) -> #(List(Stmt), List(e.Error)) {
   #(stmts, errors)
 }
 
+/// Load one module; the module name is its file path without extension,
+/// prefixed with `/` (module names always start with `/`).
 pub fn module(
   paths: List(String),
   filename: String,
@@ -59,6 +62,8 @@ pub fn directory(dir: String) -> #(List(Module), List(e.Error)) {
   #(mods, list.append(e1, e2))
 }
 
+/// Load a package from `paths`, at `version` or its newest version.
+/// Module names are prefixed with the package name.
 pub fn package(
   paths: List(String),
   name: String,

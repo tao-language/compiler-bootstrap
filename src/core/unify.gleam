@@ -11,6 +11,13 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
+/// Unify two values, updating hole substitutions in `ctx`.
+///
+/// Holes are flexible: they are solved (with an occurs check) as soon as
+/// they meet a value. `For` quantifiers are instantiated with a fresh hole
+/// when unified against a non-`For` value. Neutral variables (`NVar`) are
+/// rigid but are *not* checked against their environment types — see
+/// `check_neut_with_concrete` for the soundness caveat.
 pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   let #(value1, s1) = a
   let #(value2, s2) = b
@@ -73,7 +80,7 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       let value2 = eval(ctx.ffi, env, body)
       unify(ctx, #(value1, s1), #(value2, s2))
     }
-    // Unify concrete values
+    // Unify concrete values (order-independent rows and tags handled below)
     v.Typ(u1), v.Typ(u2) if u1 == u2 -> ctx
     v.Lit(v1), v.Lit(v2) if v1 == v2 -> ctx
     v.LitT(v1), v.LitT(v2) if v1 == v2 -> ctx
@@ -96,7 +103,7 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     }
     v.Typ(_) as value1, v.Rcd(..) as value2 ->
       unify(ctx, #(value2, s2), #(value1, s1))
-    // Record row polymorphism
+    // Record row polymorphism: fields may be split between head and tail
     v.Rcd(fields1, tail1), v.Rcd(fields2, tail2) ->
       unify_rcd(ctx, #(#(fields1, tail1), s1), #(#(fields2, tail2), s2))
     // Lambdas
@@ -130,6 +137,9 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   }
 }
 
+/// Unify two record rows, allowing fields to appear in either head or
+/// tail. An open tail (or `Rcd([], None)`) acts as a row variable and can
+/// absorb the other side's remaining fields.
 pub fn unify_rcd(
   ctx: Context,
   a: #(#(List(#(String, #(Value, Option(Value)))), Option(Value)), Span),
@@ -158,6 +168,9 @@ pub fn unify_rcd(
           }
           unify_rcd(ctx, #(#(rest1, tail1), s1), #(#(rest2, tail2), s2))
         }
+        // Field not in b's head: b's open tail must provide it. Introduce
+        // a row-hole so the tail's remaining fields stay extensible after
+        // this field is peeled off (row polymorphism).
         None, Some(tail2) -> {
           let #(id, ctx1) = context.new_hole(ctx)
           let hole = Some(v.hole([], id))
@@ -174,6 +187,15 @@ pub fn unify_rcd(
   }
 }
 
+/// Check that a concrete value `a` agrees with a neutral `b`.
+///
+/// Soundness caveat: an `NVar` (or `NCall`) is accepted against *any*
+/// concrete value. Captured environments do not carry type information,
+/// so we cannot check `a` against the variable's actual type. This is
+/// deliberate: in dependent matches the neutral is a case-bound variable
+/// whose body type may legitimately depend on it. The cost is that
+/// constraints on the match *scrutinee* from dependent bodies are never
+/// propagated back to the scrutinee's type.
 fn check_neut_with_concrete(
   ctx: Context,
   a: #(Value, Span),
@@ -354,8 +376,8 @@ fn solve_hole(
           case list.key_find(ctx.subst, id) {
             Error(Nil) -> Context(..ctx, subst: [#(id, value), ..ctx.subst])
             Ok(existing) ->
-              // TODO: save spans in ctx.types for better error reporting
-              // TODO: does the subst need to be replaced with the new value?
+              // Already solved: unify the two solutions instead of
+              // overwriting, so both constraints are kept.
               unify(ctx, #(value, span), #(existing, span))
           }
       }

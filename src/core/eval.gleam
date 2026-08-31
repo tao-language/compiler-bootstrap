@@ -5,6 +5,9 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import utils/list_utils.{at}
 
+/// Normalize a Term to a Value by walking it and β-reducing where
+/// possible. Anything depending on a hole or a variable is preserved as
+/// a *neutral* value so it re-evaluates correctly once holes are solved.
 pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
   case term {
     tm.Typ(universe) -> v.Typ(universe)
@@ -64,6 +67,8 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
   }
 }
 
+/// Apply a value to an argument. Neutral function heads stay neutral
+/// (`NApp`); `For`/`Lam` β-reduce; `Fix` feeds itself as the argument.
 pub fn do_app(ffi: FFI, fun_val: Value, arg_val: Value) -> Value {
   case fun_val {
     // Neutral application
@@ -82,6 +87,8 @@ pub fn do_app(ffi: FFI, fun_val: Value, arg_val: Value) -> Value {
   }
 }
 
+/// Call a builtin by name: reduce via the FFI table if defined, otherwise
+/// keep a neutral `NCall` (an `extern`, unresolvable at type-check time).
 pub fn do_call(ffi: FFI, name: String, ret_val: Type, arg_val: Value) -> Value {
   let result = case list.key_find(ffi, name) {
     Ok(call_def) -> call_def(arg_val)
@@ -93,6 +100,8 @@ pub fn do_call(ffi: FFI, name: String, ret_val: Type, arg_val: Value) -> Value {
   }
 }
 
+/// Reduce a match: evaluate cases against a concrete scrutinee, or keep
+/// a neutral `NMatch` (capturing `env`) when the scrutinee is not yet known.
 pub fn do_match(
   ffi: FFI,
   env: Env,
@@ -148,6 +157,10 @@ fn do_match_guard(ffi: FFI, env: Env, guard: #(Term, Pattern)) -> Option(Env) {
   }
 }
 
+/// Match a pattern against a concrete value, returning the bindings in
+/// innermost-first order. Record fields are matched in pattern order;
+/// a field absent from the value's head is searched for in its tail,
+/// which must be a record.
 pub fn match_pattern(pattern: Pattern, value: Value) -> Option(List(Value)) {
   case pattern, value {
     tm.PAny, _ -> Some([])
@@ -177,6 +190,9 @@ pub fn match_pattern(pattern: Pattern, value: Value) -> Option(List(Value)) {
   }
 }
 
+/// Find one record field and match it, returning the bindings and the
+/// *remaining* record (field removed; tail left intact or peeled into a
+/// record tail), so subsequent fields keep matching positionally.
 fn match_pattern_rcd_field(
   name: String,
   pattern: Pattern,

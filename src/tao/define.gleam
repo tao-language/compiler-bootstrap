@@ -1,3 +1,10 @@
+/// Module Definition — two-phase type checking of Tao modules
+///
+/// `types` runs first over all modules, creating the module records
+/// (values and types as unsolved holes). `values` then infers each
+/// definition and unifies it with its declared hole. Because every
+/// module record exists before any body is checked, definitions may
+/// reference each other — including across modules — in any order.
 import core/ast as core
 import core/context.{type Context}
 import core/eval.{eval}
@@ -20,6 +27,9 @@ import tao/declare.{type ModName, type Name}
 import tao/desugar.{type BlockCtx}
 import utils/list_utils
 
+/// Phase 1: register every definition, creating module records whose
+/// entries are unsolved holes. Returns the context with all modules in
+/// scope.
 pub fn types(
   ctx: Context,
   defs: List(#(ModName, List(#(Name, Stmt)))),
@@ -34,6 +44,10 @@ pub fn types(
   })
 }
 
+/// Phase 2: infer each definition's body and unify the result with the
+/// hole created in phase 1. Definitions are processed in module order;
+/// ordering does not affect the *solvability* of holes (all constraints
+/// are accumulated) but can affect error reporting.
 pub fn values(
   ctx: Context,
   defs: List(#(ModName, List(#(Name, Stmt)))),
@@ -55,6 +69,9 @@ pub fn values(
   })
 }
 
+/// Look up a definition by (module, name), lazily running phase 1 for
+/// it if its module record does not exist yet. Panics if the module or
+/// name is not in `defs` (a desugaring bug, not a user error).
 pub fn type_name(
   ctx: Context,
   defs: List(#(ModName, List(#(Name, Stmt)))),
@@ -83,6 +100,7 @@ pub fn type_name(
   }
 }
 
+/// `type_name` for a list of names in the same module.
 pub fn type_name_list(
   ctx: Context,
   defs: List(#(ModName, List(#(Name, Stmt)))),
@@ -193,6 +211,7 @@ fn type_stmt_data(
   #(val, typ, ctx)
 }
 
+/// Read one entry from a module record, if the module is in scope.
 pub fn get_var(
   ctx: Context,
   mod_name: ModName,
@@ -209,6 +228,8 @@ pub fn get_var(
   }
 }
 
+/// Write one entry into a module record, creating the record if the
+/// module is not in scope yet.
 pub fn set_var(
   ctx: Context,
   mod_name: ModName,
@@ -226,6 +247,7 @@ pub fn set_var(
   context.set_var(ctx, mod_name, mod_val, mod_typ)
 }
 
+/// Not implemented: list a module's entries with optional value/type.
 pub fn get_mod_vars(
   ctx: Context,
   mod_name: ModName,
@@ -247,6 +269,9 @@ fn expr_value(
 ) -> #(v.Value, v.Type, Context) {
   let exports = declare.exports(defs)
   let core_expr = desugar.expr(exports, expr)
+  // Free variables that are not module names (names start with "/") are
+  // local definitions of the current module; each one is brought into
+  // scope by lazily registering it (which may create fresh holes).
   let deps =
     core.free_vars(core_expr)
     |> list.filter(fn(name) { !string.starts_with(name, "/") })
@@ -274,6 +299,8 @@ fn type_value(
   #(core_type, ctx)
 }
 
+/// Infer a statement as the body of a block that returns the bound
+/// name, so the statement's value is the name's value in scope.
 pub fn stmt_value(
   ctx: Context,
   defs: List(#(ModName, List(#(Name, Stmt)))),

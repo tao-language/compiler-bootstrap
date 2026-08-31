@@ -8,16 +8,22 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
+/// eval → quote: reduce a term and turn it back into a term whose
+/// variables are de Bruijn indices into `env`.
 pub fn normalize_term(ffi: FFI, env: Env, term: Term) -> Term {
   eval(ffi, env, term)
   |> quote(ffi, list.length(env), _)
 }
 
+/// quote → eval: re-express a value's holes as terms relative to `env`,
+/// then re-evaluate. Used to transplant a hole solution captured in a
+/// different environment into the current one.
 pub fn normalize_value(ffi: FFI, env: Env, value: Value) -> Value {
   quote(ffi, list.length(env), value)
   |> eval(ffi, env, _)
 }
 
+/// quote → lift: a value as a named AST expression (for display).
 pub fn lift(
   ffi: FFI,
   env: Env,
@@ -42,6 +48,10 @@ fn find_index(env: Env, target: v.Value) -> Option(Int) {
   }
 }
 
+/// Turn a Value back into a Term. `size` is the size of the environment
+/// the value's neutral variables are relative to. Bodies of `For`/`Lam`/
+/// `Pi`/`Fix` are re-normalized in their own captured environments plus
+/// one fresh parameter slot.
 pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
   case value {
     v.Typ(universe) -> tm.Typ(universe)
@@ -88,7 +98,10 @@ pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
 
 fn quote_neut(ffi: FFI, env: Env, neut: Neut) -> Term {
   case neut {
+    // Level → de Bruijn index: index = env_size - level - 1 (see `Value`).
     v.NVar(level) -> tm.Var(list.length(env) - level - 1)
+    // A hole stored as an environment entry quotes as a variable; only
+    // exact structural equality with the current env matches.
     v.NHole(env, id) ->
       case find_index(env, v.hole_open(env, id)) {
         Some(index) -> tm.Var(index)

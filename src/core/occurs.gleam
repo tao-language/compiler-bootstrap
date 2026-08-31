@@ -7,6 +7,8 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 
 // TODO: replace ctx with only ffi, do not unwrap
+/// Check whether a hole occurs inside its own prospective solution.
+/// Called before solving; a positive result is an infinite type.
 pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
   case unwrap(ctx.ffi, ctx.subst, value) {
     v.Typ(_) -> False
@@ -50,6 +52,7 @@ pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
   }
 }
 
+/// `occurs` for an optional value (record defaults, tails).
 pub fn occurs_opt(
   ctx: Context,
   hole_id: Int,
@@ -61,6 +64,8 @@ pub fn occurs_opt(
   }
 }
 
+/// `occurs` inside a value body: the term is evaluated first so that
+/// variables and holes in the body are seen as values.
 pub fn occurs_term(ctx: Context, env: Env, hole_id: Int, term: Term) -> Bool {
   let value = eval(ctx.ffi, env, term)
   occurs(ctx, hole_id, value)

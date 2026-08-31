@@ -1,8 +1,18 @@
+/// Tao Abstract Syntax Tree
+///
+/// The surface-language AST produced by `tao/parse`. It keeps names
+/// (no de Bruijn conversion); desugaring to Core happens in
+/// `tao/desugar`.
+///
+/// Records, constructors and applications use named argument lists where
+/// an empty name (`""`) marks a positional argument: positional args
+/// bind by order, named args by name.
 import core/literals.{type Literal, type LiteralType} as lit
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
+/// A parsed module: `(module name, top-level statements)`.
 pub type Module =
   #(String, List(Stmt))
 
@@ -59,6 +69,9 @@ pub type BinaryOp {
   Div
 }
 
+/// The name a binary operator is looked up as (e.g. `"+"`), used both
+/// when calling the corresponding function and when parsing operator
+/// variables like `fn (+)`.
 pub fn binop_name(op: BinaryOp) -> String {
   case op {
     Add -> "+"
@@ -152,6 +165,8 @@ pub fn typ(span: Span) {
   typ_n(0, span)
 }
 
+/// The `Type` constructor: in Tao, types are values, so `%Type` is just
+/// the universe-0 type written as `Type(0)`.
 pub fn typ_n(universe: Int, span: Span) {
   ctr("Type", [#("", int(universe, span))], span)
 }
@@ -238,6 +253,8 @@ pub fn ann(expr: Expr, type_: Type, span: Span) {
   Expr(Ann(expr, type_), span)
 }
 
+/// Function *type*: `FnT(implicits, params, returns)`. `implicits` are
+/// the quantified (implicit) arguments of a polymorphic type.
 pub fn fn_t(
   implicits: Parameters,
   params: Parameters,
@@ -316,10 +333,12 @@ pub fn pfloat(value: Float, span: Span) {
   Pattern(PLit(lit.Float(value)), span)
 }
 
+/// Record pattern with an open (wildcard) tail.
 pub fn prcd(fields: List(#(String, Pattern)), span: Span) {
   prcd_open(fields, Some(pany(span)), span)
 }
 
+/// Record pattern with a closed tail: every field must match exactly.
 pub fn prcd_strict(fields: List(#(String, Pattern)), span: Span) {
   prcd_open(fields, None, span)
 }

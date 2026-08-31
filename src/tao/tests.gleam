@@ -26,6 +26,8 @@ pub type TestResultSummary {
   )
 }
 
+/// Run all tests, accumulating a summary (errors come from the context,
+/// i.e. type-checking errors, not from evaluation).
 pub fn run_all(ctx: Context, tests: List(TestDef)) -> TestResultSummary {
   case tests {
     [] -> TestResultSummary(ctx.errors, [], 0, 0, 0)
@@ -46,6 +48,9 @@ pub fn run_all(ctx: Context, tests: List(TestDef)) -> TestResultSummary {
   }
 }
 
+/// Evaluate one test term: `Pass`/`Fail` constructors are the expected
+/// outcomes, anything else (a neutral) means the test could not be
+/// fully evaluated.
 pub fn run(ctx: Context, t: TestDef) -> TestResult {
   case eval(ctx.ffi, ctx.env, t.term) {
     v.Ctr("Pass", _) -> TestPass(t.name)

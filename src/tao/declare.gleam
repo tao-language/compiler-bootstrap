@@ -11,6 +11,8 @@ pub type ModName =
 pub type Name =
   String
 
+/// Collect all module definitions and expand imports into the full
+/// definition list, so every name maps to the statement that defines it.
 pub fn modules(mods: List(Module)) -> List(#(ModName, List(#(Name, Stmt)))) {
   // Build the complete defs list first, then resolve imports once against
   // it. Resolving against a partial list (e.g. from a recursive step) would
@@ -30,6 +32,8 @@ fn module_defs(mods: List(Module)) -> List(#(ModName, List(#(Name, Stmt)))) {
   }
 }
 
+/// The names a statement introduces in its module (imports introduce
+/// many; tests introduce none).
 pub fn statement(stmt: Stmt) -> List(#(Name, Stmt)) {
   case stmt.data {
     tao.Import(_, alias, tao.ImportAll) -> [#(alias, stmt)]
@@ -54,6 +58,9 @@ pub fn statement(stmt: Stmt) -> List(#(Name, Stmt)) {
   }
 }
 
+/// Expand `import` statements: every name introduced by an import maps
+/// to the *import* statement, so looking the name up later re-runs the
+/// import's desugaring.
 pub fn imports(
   defs: List(#(ModName, List(#(Name, Stmt)))),
 ) -> List(#(ModName, List(#(Name, Stmt)))) {
@@ -91,6 +98,8 @@ pub fn imports(
   })
 }
 
+/// For each module, the list of names it defines (used for module
+/// records and import scopes).
 pub fn exports(
   defs: List(#(ModName, List(#(Name, Stmt)))),
 ) -> List(#(ModName, List(Name))) {

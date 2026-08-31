@@ -21,13 +21,16 @@ import tao/load
 import tao/tests
 import utils/fs
 
+/// `tao debug-file` — load the project (plus dependencies), run the full
+/// compile pipeline with per-phase output, then run the tests. Exits
+/// non-zero on syntax errors, build errors, or failed tests.
 pub fn debug_file(
   src_dir: String,
   paths: List(String),
   packages: List(#(String, Option(String))),
   filename: String,
   width: Int,
-) {
+) -> Nil {
   io.println("src_dir: " <> string.inspect(src_dir))
   io.println("paths: " <> string.inspect(paths))
   io.println("packages: " <> string.inspect(packages))
@@ -252,6 +255,6 @@ pub fn debug_file(
   }
 }
 
-// Declare the external Erlang halt function
+/// Terminate the process with `status`.
 @external(erlang, "erlang", "halt")
 pub fn exit(status: Int) -> Nil

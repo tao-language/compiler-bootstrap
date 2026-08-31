@@ -8,6 +8,8 @@ import core/value.{type Env, type Neut, type Value} as v
 import gleam/list
 import gleam/option.{None, Some}
 
+/// Finalize a context after type checking: resolve every hole in the
+/// environment, the type bindings, and the accumulated errors.
 pub fn context(ctx: Context) -> Context {
   let env = list.map(ctx.env, value(ctx.ffi, ctx.subst, _))
   let types =
@@ -233,6 +235,8 @@ fn neutral_seen(ffi: FFI, subst: Subst, neut: Neut, seen: List(Int)) -> Neut {
   }
 }
 
+/// Resolve hole references inside the values carried by an error, so
+/// displayed types show their solutions rather than `?n`.
 pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
   let data = case err.data {
     // Syntax errors carry no values or terms to resolve.

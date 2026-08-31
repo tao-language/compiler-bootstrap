@@ -27,7 +27,9 @@ Usage:
   tao --help                            Show this help
 "
 
-pub fn main() {
+/// The CLI entry point. Commands: `test`, `debug-expr`, `debug-file`,
+/// `debug-core`, `--help`. The REPL and file runners are TODO.
+pub fn main() -> Nil {
   let Argv(arguments: args, ..) = argv.load()
   case args {
     [] -> todo as "TODO: CLI repl"
@@ -140,6 +142,6 @@ pub fn main() {
 //   }
 // }
 
-// Declare the external Erlang halt function
+/// Terminate the process with `status`.
 @external(erlang, "erlang", "halt")
 pub fn exit(status: Int) -> Nil

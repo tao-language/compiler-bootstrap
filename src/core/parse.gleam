@@ -74,6 +74,7 @@ pub type Token {
 // PUBLIC API
 // ============================================================================
 
+/// Lex Core source into tokens.
 pub fn lex(
   file: String,
   source: String,
@@ -88,6 +89,9 @@ pub fn lex(
   }
 }
 
+/// Parse Core source into a named AST. Only the first dead end is
+/// reported, as a generic "syntax error" (the parser has no error
+/// recovery).
 pub fn parse(file: String, source: String) -> Result(Expr, e.Error) {
   use tokens <- try(lex(file, source))
   case nibble.run(tokens, expr(file)) {
@@ -213,6 +217,7 @@ fn expr(file: String) -> Parser(Expr, Token, Nil) {
     // paren_expr(file),
     ]),
   )
+  // A single application `f(x)` is accepted; chaining (`f(x)(y)`) is not.
   nibble.one_of([
     {
       // Function application: f(x)

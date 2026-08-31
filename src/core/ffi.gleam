@@ -6,9 +6,13 @@ import gleam/option.{type Option, None, Some}
 pub type FFI =
   List(#(String, BuiltIn))
 
+/// A builtin takes its (single record) argument and returns `None` when
+/// it cannot reduce the call (wrong shape), so the caller keeps a neutral
+/// `NCall` instead.
 pub type BuiltIn =
   fn(Value) -> Option(Value)
 
+/// The builtins available at type-checking time (the prelude).
 pub const build = [
   #("int_add", int_add),
   #("int_sub", int_sub),

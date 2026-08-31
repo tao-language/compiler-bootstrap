@@ -80,6 +80,7 @@ pub type Variant {
 
 // Helper functions
 
+/// Names bound by a pattern, last-bound first.
 pub fn bindings(pattern: Pattern) -> List(String) {
   case pattern.data {
     PAlias(pattern, x) -> [x, ..bindings(pattern)]
@@ -100,6 +101,9 @@ pub fn bindings(pattern: Pattern) -> List(String) {
   }
 }
 
+/// Free variable names of a term (duplicates kept, order = encounter
+/// order). Binders exclude their bound name; case bodies exclude the
+/// names bound by the pattern and guard pattern.
 // TODO: use a Set
 pub fn free_vars(term: Expr) -> List(String) {
   case term.data {
@@ -168,6 +172,7 @@ fn free_vars_cases(cases: List(Case)) -> List(String) {
   }
 }
 
+/// Whether `name` occurs free in `term`.
 pub fn contains(term: Expr, name: String) -> Bool {
   case term.data {
     Var(x) if x == name -> True
@@ -361,6 +366,8 @@ pub fn pi(param: Param, body: Expr, span: Span) {
   Expr(Pi(param, body), span, None)
 }
 
+/// `%fix name. body`. If `name` does not occur free in the body the fix
+/// is unneeded and elided entirely.
 pub fn fix(name: String, body: Expr, span: Span) {
   case contains(body, name) {
     True -> Expr(Fix(name, body), span, None)
@@ -368,6 +375,7 @@ pub fn fix(name: String, body: Expr, span: Span) {
   }
 }
 
+/// `%fix name. body` without the unused-name elision.
 pub fn fix_strict(name: String, body: Expr, span: Span) {
   Expr(Fix(name, body), span, None)
 }
@@ -397,6 +405,8 @@ pub fn call0(name: String, ret: Type, span: Span) {
   call_args(name, ret, [], span)
 }
 
+/// `let name: opt_type = value; body` as `(lam name => body) value`, so
+/// the binder is beta-reducible during evaluation and inference.
 pub fn let_var(def: #(String, Option(Type), Expr), body: Expr, span: Span) {
   let_var_trace(def, body, span, None)
 }
@@ -411,6 +421,8 @@ pub fn let_var_trace(
   Expr(App(lam(#(name, opt_type), body, span), value), span, trace)
 }
 
+/// Pattern `let` desugared to a single-case match; a plain variable
+/// pattern becomes a `let_var`. An explicit type annotates the body.
 pub fn let_pat(def: #(Pattern, Option(Type), Expr), body: Expr, span: Span) {
   let #(pattern, opt_type, value) = def
   case pattern.data {
@@ -446,6 +458,8 @@ pub fn let_pat_trace(
   }
 }
 
+/// Field access `expr.field` as a single-case match with an open
+/// (row-polymorphic) tail.
 pub fn dot(expr: Expr, field: String, span: Span) {
   dot_trace(expr, field, span, None)
 }
@@ -469,6 +483,7 @@ pub fn ptyp(universe: Int, span: Span) {
 }
 
 pub fn pvar(name: String, span: Span) {
+  // A variable pattern is an alias over the wildcard pattern.
   palias(pany(span), name, span)
 }
 
@@ -545,6 +560,7 @@ pub fn prcd(
   tail: Option(Pattern),
   span: Span,
 ) {
+  // `tail == None` means a closed record pattern; `Some(t)` a row tail.
   Pattern(PRcd(fields, tail), span)
 }
 

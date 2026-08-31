@@ -8,6 +8,8 @@ import tao/declare
 import tao/define
 import tao/tests.{type TestDef, TestDef}
 
+/// Compile a set of modules: declare, define (both phases), and resolve
+/// all holes. The resulting context's errors hold any type errors.
 pub fn modules(ctx: Context, mods: List(Module)) -> Context {
   let defs = declare.modules(mods)
   let ctx = define.types(ctx, defs)
@@ -15,6 +17,8 @@ pub fn modules(ctx: Context, mods: List(Module)) -> Context {
   resolve.context(ctx)
 }
 
+/// Extract and type-check the `>>> test` statements from modules, each
+/// reduced to a term that evaluates to a `Pass` or `Fail` constructor.
 pub fn tests(ctx: Context, mods: List(Module)) -> #(List(TestDef), Context) {
   let defs = declare.modules(mods)
   let #(raw, ctx) =

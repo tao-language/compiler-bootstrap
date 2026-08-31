@@ -16,16 +16,20 @@ import gleam/regexp
 import gleam/string
 import syntax/span
 
+/// Format a named AST expression using the `%`-prefixed Core syntax.
 pub fn expr(e: Expr, width: Int, indent: Int) -> String {
   doc_term(e, indent)
   |> doc.to_string(width)
 }
 
+/// Format a Term, rendering de Bruijn indices with `names`
+/// (innermost first); unknown indices print as `$n`.
 pub fn term(names: List(String), t: Term, width: Int, indent: Int) -> String {
   tm.lift(t, names, span.empty("", 0, 0))
   |> expr(width, indent)
 }
 
+/// Format a Value by quoting it relative to `names` first.
 pub fn value(
   ffi: FFI,
   names: List(String),
@@ -37,6 +41,7 @@ pub fn value(
   |> term(names, _, width, indent)
 }
 
+/// Format a named AST pattern.
 pub fn pattern(p: Pattern, width: Int, indent: Int) -> String {
   doc_pattern(p, indent)
   |> doc.to_string(width)
@@ -46,6 +51,9 @@ fn doc_text(text: String) -> Document {
   doc.from_string(text)
 }
 
+/// Quote a name for display, backtick-escaping anything that is not a
+/// plain identifier (e.g. the generated `__0` names are fine, but
+/// arbitrary strings are not).
 fn var_name(name: String) -> String {
   let assert Ok(var_re) = regexp.from_string("^[_a-zA-Z$][_\\w$]*$")
   case regexp.check(var_re, name) {

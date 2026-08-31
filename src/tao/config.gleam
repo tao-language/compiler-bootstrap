@@ -4,6 +4,7 @@ import simplifile
 
 const config_file = "tao.toml"
 
+/// Walk up from `path` looking for a `tao.toml` project marker file.
 pub fn find_project_root(path: String) -> Option(String) {
   let filename = filepath.join(path, config_file)
   case simplifile.is_file(filename), path {
