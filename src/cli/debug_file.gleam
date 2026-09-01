@@ -110,7 +110,7 @@ pub fn debug_file(
         tao.LetMut(name, opt_type, value) -> "let-mut"
         tao.Mut(name, value) -> todo
         tao.Test(name, expr, expect) -> "test"
-        tao.FnDef(name, implicits, params, returns, body) -> todo
+        tao.FnDef(name, implicits, params, returns, body) -> "fn"
         tao.FnOverload(name, choices) -> "fn-overload"
         tao.TypeDef(type_def) -> todo
         tao.For(iterator, range, body) -> todo

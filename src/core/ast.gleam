@@ -105,6 +105,7 @@ pub fn bindings(pattern: Pattern) -> List(String) {
 /// order). Binders exclude their bound name; case bodies exclude the
 /// names bound by the pattern and guard pattern.
 // TODO: use a Set
+
 pub fn free_vars(term: Expr) -> List(String) {
   case term.data {
     Typ(_) -> []
@@ -121,7 +122,7 @@ pub fn free_vars(term: Expr) -> List(String) {
         |> union(free_vars_opt(opt_default))
       })
       |> union(free_vars_opt(opt_tail))
-    Ann(term, type_) -> todo
+    Ann(term, type_) -> union(free_vars(term), free_vars(type_))
     For(#(name, typ), body) ->
       list.filter(free_vars(body), fn(x) { x != name })
       |> union(free_vars_opt(typ))

@@ -47,7 +47,7 @@ pub fn statement(stmt: Stmt) -> List(#(Name, Stmt)) {
     tao.LetMut(name, opt_type, value) -> todo
     tao.Mut(name, value) -> todo
     tao.Test(name, _, _) -> []
-    tao.FnDef(name, implicits, params, returns, body) -> todo
+    tao.FnDef(name, ..) -> [#(name, stmt)]
     tao.FnOverload(name, _) -> [#(name, stmt)]
     tao.TypeDef(type_def) -> todo
     tao.For(iterator, range, body) -> todo

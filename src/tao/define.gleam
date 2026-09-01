@@ -199,7 +199,10 @@ fn type_stmt_data(
       let #(typ, ctx) = hole_value(ctx)
       #(val, typ, ctx)
     }
-    tao.FnDef(name, implicits, params, returns, body) -> todo
+    tao.FnDef(name, ..) ->
+      // TODO: Only derive the type annotation? Would this work for cyclic definitions?
+      // If cyclic definitions still work like this, maybe separate define.types and define.values are not needed (could be simplified).
+      stmt_value(ctx, defs, mod_name, name, stmt, None)
     tao.FnOverload(name, _) -> stmt_value(ctx, defs, mod_name, name, stmt, None)
     tao.TypeDef(type_def) -> todo
     tao.For(iterator, range, body) -> todo
