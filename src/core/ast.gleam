@@ -132,7 +132,7 @@ pub fn free_vars(term: Expr) -> List(String) {
     Pi(#(name, typ), body) ->
       list.filter(free_vars(body), fn(x) { x != name })
       |> union(free_vars_opt(typ))
-    Fix(name, body) -> todo
+    Fix(name, body) -> list.filter(free_vars(body), fn(x) { x != name })
     App(fun, arg) -> union(free_vars(fun), free_vars(arg))
     Match(arg, cases) -> union(free_vars(arg), free_vars_cases(cases))
     Call(_, ret, arg) -> union(free_vars(ret), free_vars(arg))
