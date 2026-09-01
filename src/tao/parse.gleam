@@ -310,7 +310,8 @@ fn stmt(file: String) -> Parser(Stmt, Token, String) {
   nibble.one_of([
     import_(file),
     extern(file),
-    let_(file),
+    let_var(file),
+    let_pat(file),
     fn_def(file),
     test_(file),
   ])
@@ -387,7 +388,26 @@ fn extern(file: String) -> Parser(Stmt, Token, String) {
   |> nibble.in("extern declaration")
 }
 
-fn let_(file: String) -> Parser(Stmt, Token, String) {
+fn let_var(file: String) -> Parser(Stmt, Token, String) {
+  {
+    use start <- do(get_span(file))
+    use _ <- do(nibble.token(KwLet))
+    use name <- do(var_name())
+    use typ <- do(
+      nibble.optional({
+        use _ <- do(nibble.token(Colon))
+        expr(file)
+      }),
+    )
+    use _ <- do(nibble.token(Equals))
+    use val <- do(expr(file))
+    use end <- do(get_span(file))
+    return(tao.let_var(name, typ, val, merge(start, end)))
+  }
+  |> nibble.in("let binding")
+}
+
+fn let_pat(file: String) -> Parser(Stmt, Token, String) {
   {
     use start <- do(get_span(file))
     use _ <- do(nibble.token(KwLet))
