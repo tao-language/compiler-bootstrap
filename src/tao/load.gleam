@@ -6,9 +6,54 @@ import gleam/order
 import gleam/string
 import simplifile
 import syntax/span.{type Span, Span}
-import tao/ast.{type Module, type Stmt}
+import tao/ast.{type Module, type Stmt, Import, import_all}
 import tao/parse.{expression, statements}
 import utils/fs
+
+/// Append an implicit `import <path> *` to every module that is not itself
+/// a prelude module and does not already import it. The prelude (the
+/// standard library, loaded with `--add`) is implicitly imported into every
+/// other module, so its names (e.g. the operators `+`, `-`, `*`) are in
+/// scope without an explicit `import`. Appending after the module's own
+/// statements gives local definitions precedence over the imported names
+/// (the first matching entry in a module's definition list wins).
+pub fn implicit_prelude_imports(
+  mods: List(Module),
+  prelude: List(Module),
+) -> List(Module) {
+  let prelude_names = list.map(prelude, fn(m) { m.0 })
+  list.map(mods, fn(mod) {
+    let #(name, stmts) = mod
+    case list.contains(prelude_names, name) {
+      True -> mod
+      False -> {
+        let existing = imported_paths(stmts)
+        let implicit =
+          list.map(prelude, fn(m) {
+            let path = m.0
+            case list.contains(existing, path) {
+              True -> []
+              False -> [
+                import_all(path, filepath.base_name(path), Span(name, 0, 0, 0, 0)),
+              ]
+            }
+          })
+          |> list.flatten
+        #(name, list.append(stmts, implicit))
+      }
+    }
+  })
+}
+
+/// The paths of the `import` statements in a module.
+fn imported_paths(stmts: List(Stmt)) -> List(String) {
+  list.flat_map(stmts, fn(stmt) {
+    case stmt.data {
+      Import(path, _, _) -> [path]
+      _ -> []
+    }
+  })
+}
 
 /// Read and parse one `.tao` file, collecting errors instead of failing.
 pub fn file(full_filename: String) -> #(List(Stmt), List(e.Error)) {

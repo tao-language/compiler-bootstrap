@@ -53,6 +53,8 @@ pub fn debug_file(
     list.append(mods, pkg_mods),
     list.append(errors, pkg_errors),
   )
+  // Make prelude (standard library) names available in every module.
+  let mods = load.implicit_prelude_imports(mods, pkg_mods)
   io.println("modules loaded: " <> int.to_string(list.length(mods)))
   list.map(mods, fn(mod) { io.println("  - " <> mod.0) })
   io.println("")
