@@ -20,12 +20,12 @@ pub fn tao_factorial_test() {
   // fn f(x) -> Int
   // = match x {
   // | 0 => 1
-  // | n => @int_mul<Int>(n, f(@int_sub<Int>(n, 1)))
+  // | n => n * factorial(n - 1)
   // }
   let i1 = tao.int(1, s)
   let #(f, x, n) = #(tao.var("f", s), tao.var("x", s), tao.var("n", s))
-  let sub = fn(x, y) { tao.app(tao.var("sub", s), [#("", x), #("", y)], s) }
-  let mul = fn(x, y) { tao.app(tao.var("mul", s), [#("", x), #("", y)], s) }
+  let sub = fn(x, y) { tao.app(tao.var("-", s), [#("", x), #("", y)], s) }
+  let mul = fn(x, y) { tao.app(tao.var("*", s), [#("", x), #("", y)], s) }
   let case0 = tao.Case(tao.pint(0, s), None, i1)
   let case_ =
     tao.Case(tao.pvar("n", s), None, mul(n, tao.app(f, [#("", sub(n, i1))], s)))
@@ -51,12 +51,12 @@ pub fn tao_factorial_test() {
   let ctx =
     Context(..new_ctx, ffi: ffi.build)
     |> context.push_var(#(
-      "sub",
+      "-",
       v.Lam([], int_args, tm.Call("int_sub", tm.int_t, tm.Var(0))),
       v.Pi([], int_args, tm.int_t),
     ))
     |> context.push_var(#(
-      "mul",
+      "*",
       v.Lam([], int_args, tm.Call("int_mul", tm.int_t, tm.Var(0))),
       v.Pi([], int_args, tm.int_t),
     ))
