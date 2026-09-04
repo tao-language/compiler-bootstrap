@@ -6,7 +6,7 @@ import core/ffi.{type FFI}
 import core/literals.{type LiteralType} as l
 import core/quote.{quote}
 import core/term.{type Term} as tm
-import core/value.{type Value}
+import core/value.{env_push, type Value}
 import glam/doc.{type Document}
 import gleam/float
 import gleam/int
@@ -37,7 +37,7 @@ pub fn value(
   width: Int,
   indent: Int,
 ) -> String {
-  quote(ffi, list.length(names), val)
+  quote(ffi, env_push([], list.length(names)), val)
   |> term(names, _, width, indent)
 }
 

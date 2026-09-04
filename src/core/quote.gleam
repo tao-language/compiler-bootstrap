@@ -12,14 +12,14 @@ import syntax/span.{type Span}
 /// variables are de Bruijn indices into `env`.
 pub fn normalize_term(ffi: FFI, env: Env, term: Term) -> Term {
   eval(ffi, env, term)
-  |> quote(ffi, list.length(env), _)
+  |> quote(ffi, env, _)
 }
 
 /// quote → eval: re-express a value's holes as terms relative to `env`,
 /// then re-evaluate. Used to transplant a hole solution captured in a
 /// different environment into the current one.
 pub fn normalize_value(ffi: FFI, env: Env, value: Value) -> Value {
-  quote(ffi, list.length(env), value)
+  quote(ffi, env, value)
   |> eval(ffi, env, _)
 }
 
@@ -31,67 +31,53 @@ pub fn lift(
   value: Value,
   span: Span,
 ) -> ast.Expr {
-  quote(ffi, list.length(env), value)
+  quote(ffi, env, value)
   |> tm.lift(names, span)
 }
 
-fn find_index(env: Env, target: v.Value) -> Option(Int) {
-  case env {
-    [] -> None
-    [val, ..rest] if val == target -> Some(0)
-    [_, ..rest] -> {
-      case find_index(rest, target) {
-        Some(i) -> Some(i + 1)
-        None -> None
-      }
-    }
-  }
-}
-
-/// Turn a Value back into a Term. `size` is the size of the environment
-/// the value's neutral variables are relative to. Bodies of `For`/`Lam`/
-/// `Pi`/`Fix` are re-normalized in their own captured environments plus
-/// one fresh parameter slot.
-pub fn quote(ffi: FFI, size: Int, value: Value) -> Term {
+/// Turn a Value back into a Term. `env` is the environment the value's
+/// neutral variables are relative to, so a neutral `NVar(level)` becomes
+/// `Var(len(env) - level - 1)` — the de Bruijn index of that level in `env`.
+/// Bodies of `For`/`Lam`/`Pi`/`Fix` are re-normalized in their own 
+/// captured environments plus one fresh parameter slot.
+pub fn quote(ffi: FFI, env: Env, value: Value) -> Term {
   case value {
     v.Typ(universe) -> tm.Typ(universe)
     v.Lit(lit) -> tm.Lit(lit)
     v.LitT(lit) -> tm.LitT(lit)
-    v.Ctr(tag, arg_val) -> tm.Ctr(tag, quote(ffi, size, arg_val))
+    v.Ctr(tag, arg_val) -> tm.Ctr(tag, quote(ffi, env, arg_val))
     v.Rcd(fields_val, tail_val) -> {
       let fields =
         list.map(fields_val, fn(field) {
           let #(name, #(value, default_val)) = field
-          let term = quote(ffi, size, value)
-          let default = option.map(default_val, quote(ffi, size, _))
+          let term = quote(ffi, env, value)
+          let default = option.map(default_val, quote(ffi, env, _))
           #(name, #(term, default))
         })
-      let tail = option.map(tail_val, quote(ffi, size, _))
+      let tail = option.map(tail_val, quote(ffi, env, _))
       tm.Rcd(fields, tail)
     }
-    v.Neut(neut) -> quote_neut(ffi, v.env_push([], size), neut)
-    v.For(env, #(name, param_val), body) -> {
-      let param = quote(ffi, size, param_val)
-      let body = normalize_term(ffi, v.env_push(env, 1), body)
+    v.Neut(neut) -> quote_neut(ffi, env, neut)
+    v.For(captured, #(name, param_val), body) -> {
+      let param = quote(ffi, captured, param_val)
+      let body = normalize_term(ffi, v.env_push(captured, 1), body)
       tm.For(#(name, param), body)
     }
-    v.Lam(env, #(name, param_val), body) -> {
-      let param = quote(ffi, size, param_val)
-      let body = normalize_term(ffi, v.env_push(env, 1), body)
+    v.Lam(captured, #(name, param_val), body) -> {
+      let param = quote(ffi, captured, param_val)
+      let body = normalize_term(ffi, v.env_push(captured, 1), body)
       tm.Lam(#(name, param), body)
     }
-    v.Pi(env, #(name, param_val), body) -> {
-      let param = quote(ffi, size, param_val)
-      let body = normalize_term(ffi, v.env_push(env, 1), body)
+    v.Pi(captured, #(name, param_val), body) -> {
+      let param = quote(ffi, captured, param_val)
+      let body = normalize_term(ffi, v.env_push(captured, 1), body)
       tm.Pi(#(name, param), body)
     }
-    v.Fix(env, name, body) -> {
-      let body = normalize_term(ffi, v.env_push(env, 1), body)
+    v.Fix(captured, name, body) -> {
+      let body = normalize_term(ffi, v.env_push(captured, 1), body)
       tm.Fix(name, body)
     }
-    v.TypeDef(env, v.TypeDefinition(params, arg, variants)) -> {
-      todo
-    }
+    v.TypeDef(_, _) -> todo
     v.Err -> tm.Err
   }
 }
@@ -100,16 +86,13 @@ fn quote_neut(ffi: FFI, env: Env, neut: Neut) -> Term {
   case neut {
     // Level → de Bruijn index: index = env_size - level - 1 (see `Value`).
     v.NVar(level) -> tm.Var(list.length(env) - level - 1)
-    // A hole stored as an environment entry quotes as a variable; only
-    // exact structural equality with the current env matches.
-    v.NHole(env, id) ->
-      case find_index(env, v.hole_open(env, id)) {
-        Some(index) -> tm.Var(index)
-        None -> tm.Hole(id)
-      }
+    // A hole quotes as itself; only exact structural equality with a
+    // placeholder of the same size would ever match, so this is a stable
+    // `tm.Hole(id)` (re-resolved later by `resolve`).
+    v.NHole(_captured, id) -> tm.Hole(id)
     v.NApp(fun_neut, arg_val) -> {
       let fun = quote_neut(ffi, env, fun_neut)
-      let arg = quote(ffi, list.length(env), arg_val)
+      let arg = quote(ffi, env, arg_val)
       tm.App(fun, arg)
     }
     v.NMatch(captured_env, arg_neut, cases) -> {
@@ -118,8 +101,8 @@ fn quote_neut(ffi: FFI, env: Env, neut: Neut) -> Term {
       tm.Match(arg, cases)
     }
     v.NCall(name, ret_val, arg_val) -> {
-      let ret = quote(ffi, list.length(env), ret_val)
-      let arg = quote(ffi, list.length(env), arg_val)
+      let ret = quote(ffi, env, ret_val)
+      let arg = quote(ffi, env, arg_val)
       tm.Call(name, ret, arg)
     }
   }

@@ -238,7 +238,7 @@ fn infer_for(
   let level = list.length(ctx.env)
   let ctx = context.push_var(ctx, #(name, v.var(level), param_type))
   let #(body, body_type_val, ctx) = infer(ctx, body)
-  let body_type = quote(ctx.ffi, level + 1, body_type_val)
+  let body_type = quote(ctx.ffi, ctx.env, body_type_val)
   let ctx = context.pop_vars(ctx, 1)
   #(
     tm.For(#(name, param_type_term), body),
@@ -272,7 +272,7 @@ fn infer_lam(
   let level = list.length(ctx.env)
   let ctx = context.push_var(ctx, #(name, v.var(level), param_val))
   let #(body, body_type_val, ctx) = infer(ctx, body)
-  let body_type = quote(ctx.ffi, level + 1, body_type_val)
+  let body_type = quote(ctx.ffi, ctx.env, body_type_val)
   let ctx = context.pop_vars(ctx, 1)
   #(
     tm.Lam(#(name, type_), body),
@@ -339,7 +339,7 @@ fn infer_let(
     None -> infer(ctx, arg_ast)
   }
   let arg_val = eval(ctx.ffi, ctx.env, arg)
-  let arg_type = quote(ctx.ffi, list.length(ctx.env), arg_type_val)
+  let arg_type = quote(ctx.ffi, ctx.env, arg_type_val)
   let ctx = context.push_var(ctx, #(name, arg_val, arg_type_val))
   let #(body, body_type, ctx) = infer(ctx, body_ast)
   let ctx = context.pop_vars(ctx, 1)
@@ -435,7 +435,7 @@ fn infer_match(
   let arg_val = eval(ctx.ffi, ctx.env, arg)
   let value = eval.do_match(ctx.ffi, ctx.env, arg_val, cases)
   let type_ = eval.do_match(ctx.ffi, ctx.env, arg_val, cases_type)
-  #(quote(ctx.ffi, list.length(ctx.env), value), type_, ctx)
+  #(quote(ctx.ffi, ctx.env, value), type_, ctx)
 }
 
 fn infer_match_case_list(
@@ -469,7 +469,7 @@ fn infer_match_case(
   let #(pattern, ctx) = check_pattern(ctx, case_ast.pattern, arg_type)
   let #(guard, ctx) = bind_guard(ctx, case_ast.guard)
   let #(body, body_type_val, ctx) = infer(ctx, case_ast.body)
-  let body_type = quote(ctx.ffi, list.length(ctx.env), body_type_val)
+  let body_type = quote(ctx.ffi, ctx.env, body_type_val)
   let ctx = context.pop_vars(ctx, list.length(ctx.env) - old_env_size)
   #(tm.Case(pattern, guard, body), tm.Case(pattern, guard, body_type), ctx)
 }

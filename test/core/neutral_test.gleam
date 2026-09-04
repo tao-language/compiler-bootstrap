@@ -23,10 +23,9 @@ import gleam/option.{None, Some}
 
 /// The value-reduction pipeline: quote → resolve holes → re-evaluate.
 fn reduce(ffi: ffi.FFI, subst: Subst, env: Env, value: Value) -> Value {
-  let size = list.length(env)
   value
-  |> quote(ffi, size, _)
-  |> resolve.term(ffi, subst, size, _)
+  |> quote(ffi, env, _)
+  |> resolve.term(ffi, subst, env, _)
   |> eval(ffi, env, _)
 }
 

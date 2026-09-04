@@ -65,7 +65,7 @@ pub fn debug_core(source: String, width: Int) -> Nil {
   io.println("")
 
   io.println("// Term (holes resolved)")
-  let term = resolve.term(ctx.ffi, ctx.subst, 0, term)
+  let term = resolve.term(ctx.ffi, ctx.subst, [], term)
   io.println(format.term([], term, width, 2))
   io.println("")
 

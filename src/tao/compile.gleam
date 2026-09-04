@@ -32,9 +32,8 @@ pub fn tests(ctx: Context, mods: List(Module)) -> #(List(TestDef), Context) {
             tao.Test(name, expr, expect) -> {
               let #(value, _, ctx) =
                 define.stmt_value(ctx, defs, mod_name, name, stmt, None)
-              let size = list.length(ctx.env)
-              let term = quote(ctx.ffi, size, value)
-              let term = resolve.term(ctx.ffi, ctx.subst, size, term)
+              let term = quote(ctx.ffi, ctx.env, value)
+              let term = resolve.term(ctx.ffi, ctx.subst, ctx.env, term)
               #([TestDef(name, term, expr, expect), ..raw], ctx)
             }
             _ -> acc

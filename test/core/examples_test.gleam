@@ -53,7 +53,7 @@ pub fn core_factorial_test() {
   let #(term, type_, ctx) = infer(ctx0, ast_fn)
   let ctx = resolve.context(ctx)
   assert ctx.errors == []
-  let term = resolve.term(ctx.ffi, ctx.subst, list.length(ctx.env), term)
+  let term = resolve.term(ctx.ffi, ctx.subst, ctx.env, term)
   assert term
     == tm.Fix(
       "f",

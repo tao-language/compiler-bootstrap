@@ -30,7 +30,7 @@ pub fn resolve_value_cycle_terminates_test() {
 pub fn resolve_term_cycle_terminates_test() {
   let ffi = ffi.build
   let subst = [#(0, v.Lam([], #("x", v.int_t), tm.Hole(Some(0))))]
-  assert resolve.term(ffi, subst, 0, tm.Hole(Some(0)))
+  assert resolve.term(ffi, subst, [], tm.Hole(Some(0)))
     == tm.Lam(#("x", tm.int_t), tm.Hole(Some(0)))
 }
 
@@ -75,7 +75,7 @@ pub fn resolve_context_finalizes_env_types_errors_test() {
 /// quoted solution; unsolved holes (with or without an ID) are untouched.
 pub fn resolve_term_hole_with_concrete_solution_test() {
   let ffi = ffi.build
-  assert resolve.term(ffi, [#(0, v.int_t)], 0, tm.Hole(Some(0))) == tm.int_t
-  assert resolve.term(ffi, [], 0, tm.Hole(Some(5))) == tm.Hole(Some(5))
-  assert resolve.term(ffi, [], 0, tm.Hole(None)) == tm.Hole(None)
+  assert resolve.term(ffi, [#(0, v.int_t)], [], tm.Hole(Some(0))) == tm.int_t
+  assert resolve.term(ffi, [], [], tm.Hole(Some(5))) == tm.Hole(Some(5))
+  assert resolve.term(ffi, [], [], tm.Hole(None)) == tm.Hole(None)
 }

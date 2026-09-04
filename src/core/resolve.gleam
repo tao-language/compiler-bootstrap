@@ -30,18 +30,18 @@ pub fn context(ctx: Context) -> Context {
 /// The `seen` argument tracks hole IDs currently being resolved to detect
 /// self-referential cycles. This happens when a term-level hole is unified
 /// with a value (e.g., a Lam) whose body term still contains that same hole.
-pub fn term(ffi: FFI, subst: Subst, size: Int, t: Term) -> Term {
-  term_seen(ffi, subst, size, t, [])
+pub fn term(ffi: FFI, subst: Subst, env: Env, t: Term) -> Term {
+  term_seen(ffi, subst, env, t, [])
 }
 
 fn term_seen(
   ffi: FFI,
   subst: Subst,
-  size: Int,
+  env: Env,
   t: Term,
   seen: List(Int),
 ) -> Term {
-  let self = fn(size, t) { term_seen(ffi, subst, size, t, seen) }
+  let self = fn(env, t) { term_seen(ffi, subst, env, t, seen) }
   case t {
     tm.Typ(_) -> t
     tm.Hole(None) -> t
@@ -55,65 +55,65 @@ fn term_seen(
             Error(Nil) -> t
             Ok(value) -> {
               let value = unwrap(ffi, subst, value)
-              let quoted = quote(ffi, size, value)
+              let quoted = quote(ffi, env, value)
               // Add this hole ID to the seen set for this resolution chain.
-              term_seen(ffi, subst, size, quoted, [id, ..seen])
+              term_seen(ffi, subst, env, quoted, [id, ..seen])
             }
           }
       }
     tm.Lit(_) -> t
     tm.LitT(_) -> t
     tm.Var(_) -> t
-    tm.Ctr(tag, arg) -> tm.Ctr(tag, self(size, arg))
+    tm.Ctr(tag, arg) -> tm.Ctr(tag, self(env, arg))
     tm.Rcd(fields, tail) -> {
       let fields =
         list.map(fields, fn(field) {
           let #(name, #(v, t)) = field
-          let v = self(size, v)
-          let t = option.map(t, self(size, _))
+          let v = self(env, v)
+          let t = option.map(t, self(env, _))
           #(name, #(v, t))
         })
-      let tail = option.map(tail, self(size, _))
+      let tail = option.map(tail, self(env, _))
       tm.Rcd(fields, tail)
     }
     tm.Call(name, ret, arg) -> {
-      let ret = self(size, ret)
-      let arg = self(size, arg)
+      let ret = self(env, ret)
+      let arg = self(env, arg)
       tm.Call(name, ret, arg)
     }
     tm.Ann(t, type_) -> {
-      let t = self(size, t)
-      let type_ = self(size, type_)
+      let t = self(env, t)
+      let type_ = self(env, type_)
       tm.Ann(t, type_)
     }
     tm.For(#(name, param), body) -> {
-      let param = self(size, param)
-      let body = self(size + 1, body)
+      let param = self(env, param)
+      let body = self(v.env_push(env, 1), body)
       tm.For(#(name, param), body)
     }
     tm.Lam(#(name, param), body) -> {
-      let param = self(size, param)
-      let body = self(size + 1, body)
+      let param = self(env, param)
+      let body = self(v.env_push(env, 1), body)
       tm.Lam(#(name, param), body)
     }
     tm.Pi(#(name, domain), codomain) -> {
-      let domain = self(size, domain)
-      let codomain = self(size + 1, codomain)
+      let domain = self(env, domain)
+      let codomain = self(v.env_push(env, 1), codomain)
       tm.Pi(#(name, domain), codomain)
     }
     tm.Fix(name, body) -> {
-      let body = self(size + 1, body)
+      let body = self(v.env_push(env, 1), body)
       tm.Fix(name, body)
     }
     tm.App(fun, arg) -> {
-      let fun = self(size, fun)
-      let arg = self(size, arg)
+      let fun = self(env, fun)
+      let arg = self(env, arg)
       tm.App(fun, arg)
     }
     tm.TypeDef(type_def) -> todo
     tm.Match(arg, cases) -> {
-      let arg = self(size, arg)
-      let cases = list.map(cases, resolve_case(ffi, subst, size, seen, _))
+      let arg = self(env, arg)
+      let cases = list.map(cases, resolve_case(ffi, subst, env, seen, _))
       tm.Match(arg, cases)
     }
     tm.Err -> t
@@ -180,19 +180,19 @@ fn value_seen(ffi: FFI, subst: Subst, val: Value, seen: List(Int)) -> Value {
     // No need to try to re-evaluate it into a concrete value.
     v.Neut(neut) -> v.Neut(neutral_seen(ffi, subst, neut, seen))
     v.For(env, #(name, typ), body) -> {
-      let body = term(ffi, subst, list.length(env) + 1, body)
+      let body = term(ffi, subst, v.env_push(env, 1), body)
       v.For(env, #(name, self(typ)), body)
     }
     v.Lam(env, #(name, typ), body) -> {
-      let body = term(ffi, subst, list.length(env) + 1, body)
+      let body = term(ffi, subst, v.env_push(env, 1), body)
       v.Lam(env, #(name, self(typ)), body)
     }
     v.Pi(env, #(name, typ), body) -> {
-      let body = term(ffi, subst, list.length(env) + 1, body)
+      let body = term(ffi, subst, v.env_push(env, 1), body)
       v.Pi(env, #(name, self(typ)), body)
     }
     v.Fix(env, name, body) -> {
-      let body = term(ffi, subst, list.length(env) + 1, body)
+      let body = term(ffi, subst, v.env_push(env, 1), body)
       v.Fix(env, name, body)
     }
     v.TypeDef(env, type_def) -> todo
@@ -209,23 +209,23 @@ fn neutral_seen(ffi: FFI, subst: Subst, neut: Neut, seen: List(Int)) -> Neut {
       let arg = value_seen(ffi, subst, arg, seen)
       v.NApp(fun_neut, arg)
     }
-    v.NMatch(env, arg_neut, cases) -> {
+    v.NMatch(captured_env, arg_neut, cases) -> {
       let arg_neut = neutral_seen(ffi, subst, arg_neut, seen)
       let cases =
         list.map(cases, fn(c) {
-          let size = list.length(env) + list.length(tm.bindings(c.pattern))
-          let #(guard, size) = case c.guard {
+          let env = v.env_push(captured_env, list.length(tm.bindings(c.pattern)))
+          let #(guard, env) = case c.guard {
             Some(#(cond, pattern)) -> {
-              let cond = term(ffi, subst, size, cond)
-              let size = size + list.length(tm.bindings(pattern))
-              #(Some(#(cond, pattern)), size)
+              let env = v.env_push(env, list.length(tm.bindings(pattern)))
+              let cond = term(ffi, subst, env, cond)
+              #(Some(#(cond, pattern)), env)
             }
-            None -> #(None, 0)
+            None -> #(None, env)
           }
-          let body = term(ffi, subst, size, c.body)
+          let body = term(ffi, subst, env, c.body)
           tm.Case(c.pattern, guard, body)
         })
-      v.NMatch(env, arg_neut, cases)
+      v.NMatch(captured_env, arg_neut, cases)
     }
     v.NCall(name, ret, arg) -> {
       let ret = value_seen(ffi, subst, ret, seen)
@@ -257,7 +257,7 @@ pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
     }
     e.RcdFieldNotFound(field) -> e.RcdFieldNotFound(field)
     e.NotAFunction(fun, fun_type) -> {
-      let fun = term(ffi, subst, list.length(env), fun)
+      let fun = term(ffi, subst, env, fun)
       let fun_type = value(ffi, subst, fun_type)
       e.NotAFunction(fun, fun_type)
     }
@@ -275,18 +275,18 @@ pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
 fn resolve_case(
   ffi: FFI,
   subst: Subst,
-  size: Int,
+  env: Env,
   seen: List(Int),
   c: Case,
 ) -> Case {
-  let size = size + list.length(tm.bindings(c.pattern))
-  let #(guard, size) = case c.guard {
+  let env = v.env_push(env, list.length(tm.bindings(c.pattern)))
+  let #(guard, env) = case c.guard {
     Some(#(g_term, g_pattern)) -> {
-      let size = size + list.length(tm.bindings(g_pattern))
-      let g_term = term_seen(ffi, subst, size, g_term, seen)
-      #(Some(#(g_term, g_pattern)), size)
+      let env = v.env_push(env, list.length(tm.bindings(g_pattern)))
+      let g_term = term_seen(ffi, subst, env, g_term, seen)
+      #(Some(#(g_term, g_pattern)), env)
     }
-    None -> #(None, size)
+    None -> #(None, env)
   }
-  tm.Case(c.pattern, guard, term_seen(ffi, subst, size, c.body, seen))
+  tm.Case(c.pattern, guard, term_seen(ffi, subst, env, c.body, seen))
 }

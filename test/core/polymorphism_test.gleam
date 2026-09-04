@@ -109,7 +109,7 @@ pub fn polymorphism_polymorphic_lam_test() {
   let fn_term = polymorphic_term()
   let expr = core.app(fn_expr, core.int(42, s), s)
   let #(term, type_, ctx) = infer(ctx, expr)
-  assert resolve.term(ctx.ffi, ctx.subst, list.length(ctx.env), term)
+  assert resolve.term(ctx.ffi, ctx.subst, ctx.env, term)
     == tm.app(fn_term, [tm.int_t, tm.int(42)])
   assert resolve.value(ctx.ffi, ctx.subst, type_) == v.int_t
   assert ctx.hole_counter == 1
@@ -122,7 +122,7 @@ pub fn polymorphism_polymorphic_var_test() {
   let f = core.var("fun", s)
   let expr = core.app(f, core.int(42, s), s)
   let #(term, type_, ctx) = infer(ctx, expr)
-  assert resolve.term(ctx.ffi, ctx.subst, list.length(ctx.env), term)
+  assert resolve.term(ctx.ffi, ctx.subst, ctx.env, term)
     == tm.app(tm.Var(0), [tm.int(42)])
   assert resolve.value(ctx.ffi, ctx.subst, type_)
     == v.hole([v.int(42), fn_val], 1)
@@ -146,7 +146,7 @@ pub fn polymorphism_polymorphic_declaration_test() {
   let f = core.dot(core.var("mod", s), "fun", s)
   let expr = core.app(f, core.int(42, s), s)
   let #(term, type_, ctx) = infer(ctx, expr)
-  assert resolve.term(ctx.ffi, ctx.subst, list.length(ctx.env), term)
+  assert resolve.term(ctx.ffi, ctx.subst, ctx.env, term)
     == tm.app(tm.hole(0), [tm.int_t, tm.int(42)])
   assert resolve.value(ctx.ffi, ctx.subst, type_) == v.int_t
   assert ctx.hole_counter == 4
@@ -161,7 +161,7 @@ pub fn polymorphism_polymorphic_declaration_test() {
   assert ctx.types == [#("mod", mod_types)]
   assert ctx.env == [v.rcd([#("fun", fn_val)])]
   // After definitions, the application term should be solved.
-  let app_term = resolve.term(ctx.ffi, ctx.subst, list.length(ctx.env), term)
+  let app_term = resolve.term(ctx.ffi, ctx.subst, ctx.env, term)
   assert app_term == tm.app(fn_term, [tm.int_t, tm.int(42)])
   assert eval(ctx.ffi, ctx.env, app_term) == v.int(42)
 }

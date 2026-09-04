@@ -17,31 +17,31 @@ import gleam/option.{None, Some}
 
 pub fn quote_vtyp_test() {
   let value = v.Typ(0)
-  let term = quote([], 0, value)
+  let term = quote([], [], value)
   assert term == tm.Typ(0)
 }
 
 pub fn quote_vlit_test() {
   let value = v.Lit(lit.Int(42))
-  let term = quote([], 0, value)
+  let term = quote([], [], value)
   assert term == tm.Lit(lit.Int(42))
 }
 
 pub fn quote_vlitt_test() {
   let value = v.LitT(lit.IntT)
-  let term = quote([], 0, value)
+  let term = quote([], [], value)
   assert term == tm.LitT(lit.IntT)
 }
 
 pub fn quote_vctr_test() {
   let value = v.Ctr("A", v.int(42))
-  let term = quote([], 0, value)
+  let term = quote([], [], value)
   assert term == tm.Ctr("A", tm.Lit(lit.Int(42)))
 }
 
 pub fn quote_vrcd_test() {
   let value = v.rcd_open([#("x", v.int_t), #("y", v.float_t)], None)
-  let term = quote([], 0, value)
+  let term = quote([], [], value)
   assert term
     == tm.rcd_open(
       [#("x", tm.LitT(lit.IntT)), #("y", tm.LitT(lit.FloatT))],
@@ -54,20 +54,21 @@ pub fn quote_vrcd_test() {
 // ============================================================================
 
 pub fn quote_vneut_nvar_test() {
-  // DeBruijn adjustment: term level = size - level - 1
-  assert quote([], 1, v.var(0)) == tm.Var(0)
-  assert quote([], 2, v.var(0)) == tm.Var(1)
-  assert quote([], 3, v.var(0)) == tm.Var(2)
-  assert quote([], 2, v.var(1)) == tm.Var(0)
-  assert quote([], 3, v.var(1)) == tm.Var(1)
-  assert quote([], 4, v.var(1)) == tm.Var(2)
-  assert quote([], 3, v.var(2)) == tm.Var(0)
-  assert quote([], 4, v.var(2)) == tm.Var(1)
-  assert quote([], 5, v.var(2)) == tm.Var(2)
+  // DeBruijn adjustment: index = len(env) - level - 1
+  let q = fn(size, value) { quote([], v.env_push([], size), value) }
+  assert q(1, v.var(0)) == tm.Var(0)
+  assert q(2, v.var(0)) == tm.Var(1)
+  assert q(3, v.var(0)) == tm.Var(2)
+  assert q(2, v.var(1)) == tm.Var(0)
+  assert q(3, v.var(1)) == tm.Var(1)
+  assert q(4, v.var(1)) == tm.Var(2)
+  assert q(3, v.var(2)) == tm.Var(0)
+  assert q(4, v.var(2)) == tm.Var(1)
+  assert q(5, v.var(2)) == tm.Var(2)
 }
 
 pub fn quote_vneut_nhole_test() {
   let value = v.hole_open([], Some(42))
-  let term = quote([], 0, value)
+  let term = quote([], [], value)
   assert term == tm.Hole(Some(42))
 }

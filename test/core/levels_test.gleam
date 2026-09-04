@@ -22,8 +22,8 @@ pub fn quote_nvar_index_conversion_test() {
   // env of size 2, innermost first: [var(1), var(0)]
   let env = v.env_push([], 2)
   assert env == [v.var(1), v.var(0)]
-  assert quote(ffi, 2, v.var(1)) == tm.Var(0)
-  assert quote(ffi, 2, v.var(0)) == tm.Var(1)
+  assert quote(ffi, env, v.var(1)) == tm.Var(0)
+  assert quote(ffi, env, v.var(0)) == tm.Var(1)
 }
 
 /// 2. A level keeps naming the same entry across push/pop: the value
@@ -40,7 +40,7 @@ pub fn quote_level_stable_across_push_pop_test() {
   let env2 = v.env_push(env0, 1)
   // `a` must be addressed at index 1 (the outermost entry), not at 0
   // (which would bind to `y` — the entry that merely sits innermost).
-  assert quote(ffi, 2, v_a) == tm.Var(1)
+  assert quote(ffi, env2, v_a) == tm.Var(1)
   // Round-trip: re-evaluating that index in env2 gives `a` back.
   assert eval(ffi, env2, tm.Var(1)) == v_a
 }
@@ -55,7 +55,6 @@ pub fn eval_quote_round_trip_test() {
   // Every entry of `env` is a var with its own level, so evaluating a
   // quoted index hands the same value back.
   let env = v.env_push([], 3) // [var(2), var(1), var(0)]
-  let size = list.length(env)
   let values = [
     v.var(0),
     v.var(1),
@@ -75,6 +74,6 @@ pub fn eval_quote_round_trip_test() {
     v.Pi(env, #("a", v.int_t), tm.Var(0)),
   ]
   assert list.all(values, fn(value) {
-    eval(ffi, env, quote(ffi, size, value)) == value
+    eval(ffi, env, quote(ffi, env, value)) == value
   })
 }

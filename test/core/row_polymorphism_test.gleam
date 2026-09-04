@@ -679,14 +679,14 @@ pub fn occurs_rcd_field_with_hole_test() {
 
 pub fn quote_rcd_empty_test() {
   let value = v.Rcd([], None)
-  let term = quote([], 0, value)
+  let term = quote([], [], value)
   assert term == tm.Rcd([], None)
 }
 
 pub fn quote_rcd_with_fields_test() {
   let value =
     v.Rcd([#("x", #(v.int_t, None)), #("y", #(v.float_t, None))], None)
-  let term = quote([], 0, value)
+  let term = quote([], [], value)
   assert term
     == tm.Rcd(
       [#("x", #(tm.LitT(lit.IntT), None)), #("y", #(tm.LitT(lit.FloatT), None))],
@@ -697,7 +697,7 @@ pub fn quote_rcd_with_fields_test() {
 pub fn quote_rcd_with_tail_test() {
   let tail = v.Rcd([#("z", #(v.i64, None))], None)
   let value = v.Rcd([#("x", #(v.int_t, None))], Some(tail))
-  let term = quote([], 0, value)
+  let term = quote([], [], value)
   assert term
     == tm.Rcd(
       [#("x", #(tm.LitT(lit.IntT), None))],
@@ -709,7 +709,7 @@ pub fn quote_rcd_field_order_preserved_test() {
   // Field order should be preserved through quote
   let value =
     v.Rcd([#("b", #(v.float_t, None)), #("a", #(v.int_t, None))], None)
-  let term = quote([], 0, value)
+  let term = quote([], [], value)
   assert term
     == tm.Rcd(
       [#("b", #(tm.LitT(lit.FloatT), None)), #("a", #(tm.LitT(lit.IntT), None))],
