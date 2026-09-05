@@ -4,7 +4,9 @@ import core/ffi
 import core/infer.{infer}
 import core/term.{type Term} as tm
 import core/value.{type Value} as v
+import gleam/int
 import gleam/io
+import gleam/list
 import gleam/option.{None, Some}
 import syntax/span.{Span}
 import tao/ast.{type Expr} as tao
@@ -14,6 +16,20 @@ const s = Span("tao/examples_test", 0, 0, 0, 0)
 
 pub fn check_expr(ctx: Context, expr: Expr) -> #(Term, Value, Context) {
   infer(ctx, desugar.expr([], expr))
+}
+
+fn op(
+  name: String,
+  call: String,
+  args: List(v.Type),
+  ret: tm.Type,
+) -> #(String, Value, v.Type) {
+  let args_fields =
+    list.index_map(args, fn(arg, i) { #(int.to_string(i + 1), arg) })
+  let args_rcd = #("args", v.rcd(args_fields))
+  let value = v.Lam([], args_rcd, tm.Call(call, ret, tm.Var(0)))
+  let typ = v.Pi([], args_rcd, ret)
+  #(name, value, typ)
 }
 
 pub fn tao_factorial_test() {
@@ -47,19 +63,10 @@ pub fn tao_factorial_test() {
     )
   }
   io.println("\n")
-  let int_args = #("args", v.rcd([#("x", v.int_t), #("y", v.int_t)]))
   let ctx =
     Context(..new_ctx, ffi: ffi.build)
-    |> context.push_var(#(
-      "-",
-      v.Lam([], int_args, tm.Call("int_sub", tm.int_t, tm.Var(0))),
-      v.Pi([], int_args, tm.int_t),
-    ))
-    |> context.push_var(#(
-      "*",
-      v.Lam([], int_args, tm.Call("int_mul", tm.int_t, tm.Var(0))),
-      v.Pi([], int_args, tm.int_t),
-    ))
+    |> context.push_var(op("-", "int_sub", [v.int_t, v.int_t], tm.int_t))
+    |> context.push_var(op("*", "int_mul", [v.int_t, v.int_t], tm.int_t))
   // factorial(0) = 1
   let #(term, type_, ctx) = check_expr(ctx, factorial(0))
   assert ctx.errors == []
