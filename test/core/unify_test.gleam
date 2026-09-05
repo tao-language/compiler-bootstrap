@@ -449,11 +449,13 @@ pub fn unify_neut_ncall_same_test() {
 }
 
 pub fn unify_neut_ncall_name_mismatch_test() {
+  // These are different neutral calls, but could still give the same value.
+  // We don't have enough information to give an error here.
   let a = v.Neut(v.NCall("f", v.int_t, v.rcd([])))
   let b = v.Neut(v.NCall("g", v.int_t, v.rcd([])))
   let ctx0 = new_ctx
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
-  assert ctx.errors != []
+  assert ctx.errors == []
 }
 
 pub fn unify_neut_ncall_arg_mismatch_test() {
