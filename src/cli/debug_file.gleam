@@ -128,25 +128,25 @@ pub fn debug_file(
 
   echo "> ctx = define.types(ctx, defs, mods)"
   let ctx = define.types(ctx, defs)
-  list.map(list.zip(ctx.types, ctx.env), fn(entry) {
-    let #(#(name, mod_type), mod_value) = entry
-    io.print("ctx.env[" <> string.inspect(name) <> "]: ")
-    io.println(fmt_value(mod_value))
-    io.print("ctx.types[" <> string.inspect(name) <> "]: ")
-    io.println(fmt_value(mod_type))
-    io.println("")
-  })
+  // list.map(list.zip(ctx.types, ctx.env), fn(entry) {
+  //   let #(#(name, mod_type), mod_value) = entry
+  //   io.print("ctx.env[" <> string.inspect(name) <> "]: ")
+  //   io.println(fmt_value(mod_value))
+  //   io.print("ctx.types[" <> string.inspect(name) <> "]: ")
+  //   io.println(fmt_value(mod_type))
+  //   io.println("")
+  // })
 
   echo "> ctx = define.values(ctx, defs)"
   let ctx = define.values(ctx, defs)
-  list.map(list.zip(ctx.types, ctx.env), fn(entry) {
-    let #(#(name, mod_type), mod_value) = entry
-    io.print("ctx.env[" <> string.inspect(name) <> "]: ")
-    io.println(fmt_value(mod_value))
-    // io.print("ctx.types[" <> string.inspect(name) <> "]: ")
-    // io.println(fmt_value(mod_type))
-    io.println("")
-  })
+  // list.map(list.zip(ctx.types, ctx.env), fn(entry) {
+  //   let #(#(name, mod_type), mod_value) = entry
+  //   io.print("ctx.env[" <> string.inspect(name) <> "]: ")
+  //   io.println(fmt_value(mod_value))
+  //   // io.print("ctx.types[" <> string.inspect(name) <> "]: ")
+  //   // io.println(fmt_value(mod_type))
+  //   io.println("")
+  // })
 
   echo "> ctx.subst"
   let subst = list.sort(ctx.subst, fn(a, b) { int.compare(a.0, b.0) })
