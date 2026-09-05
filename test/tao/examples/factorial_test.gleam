@@ -18,17 +18,33 @@ pub fn check_expr(ctx: Context, expr: Expr) -> #(Term, Value, Context) {
   infer(ctx, desugar.expr([], expr))
 }
 
-fn op(
-  name: String,
-  call: String,
-  args: List(v.Type),
-  ret: tm.Type,
-) -> #(String, Value, v.Type) {
-  let args_fields =
-    list.index_map(args, fn(arg, i) { #(int.to_string(i + 1), arg) })
-  let args_rcd = #("args", v.rcd(args_fields))
-  let value = v.Lam([], args_rcd, tm.Call(call, ret, tm.Var(0)))
-  let typ = v.Pi([], args_rcd, ret)
+fn op(name: String, call_suffix: String) -> #(String, Value, v.Type) {
+  // %for(__type: %Type).
+  // %lam(__args: __type) => %match (__type) {
+  // | {1: %Int,   2: %Int}   => @int_add<%Int>(__args)
+  // | {1: %Float, 2: %Float} => @float_add<%Float>(__args)
+  // }
+  let for_type = v.For([], #("__type", v.Typ(0)), _)
+  let lam_args = tm.Lam(#("__args", tm.Var(0)), _)
+  let match_type = tm.Match(tm.Var(1), _)
+  let pargs = fn(a) { tm.prcd_strict([#("1", a), #("2", a)]) }
+  let call = fn(prefix, ret) { tm.Call(prefix <> call_suffix, ret, tm.Var(0)) }
+  let value_cases = [
+    tm.Case(pargs(tm.pint_t), None, call("int_", tm.int_t)),
+    tm.Case(pargs(tm.pfloat_t), None, call("float_", tm.float_t)),
+  ]
+  let value = for_type(lam_args(match_type(value_cases)))
+  // %for(__type: %Type).
+  // %pi(__args: __type) -> %match (__type) {
+  // | {1: %Int,   2: %Int}   => %Int
+  // | {1: %Float, 2: %Float} => %Float
+  // }
+  let pi_args = tm.Pi(#("__args", tm.Var(0)), _)
+  let type_cases = [
+    tm.Case(pargs(tm.pint_t), None, tm.int_t),
+    tm.Case(pargs(tm.pfloat_t), None, tm.float_t),
+  ]
+  let typ = for_type(pi_args(match_type(type_cases)))
   #(name, value, typ)
 }
 
@@ -65,8 +81,8 @@ pub fn tao_factorial_test() {
   io.println("\n")
   let ctx =
     Context(..new_ctx, ffi: ffi.build)
-    |> context.push_var(op("-", "int_sub", [v.int_t, v.int_t], tm.int_t))
-    |> context.push_var(op("*", "int_mul", [v.int_t, v.int_t], tm.int_t))
+    |> context.push_var(op("-", "sub"))
+    |> context.push_var(op("*", "mul"))
   // factorial(0) = 1
   let #(term, type_, ctx) = check_expr(ctx, factorial(0))
   assert ctx.errors == []

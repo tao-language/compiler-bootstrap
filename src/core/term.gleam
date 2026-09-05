@@ -333,6 +333,10 @@ pub fn pfloat(value: Float) -> Pattern {
   PLit(lit.Float(value))
 }
 
+pub const pint_t = PLitT(lit.IntT)
+
+pub const pfloat_t = PLitT(lit.FloatT)
+
 /// Record pattern with an open (wildcard) tail.
 pub fn prcd(fields: List(#(String, Pattern))) {
   prcd_tail(fields, PAny)
