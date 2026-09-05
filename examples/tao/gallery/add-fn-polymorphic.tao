@@ -1,0 +1,8 @@
+fn double<a>(x: a) -> a
+= x + x
+
+>>> double(10)
+20
+
+>>> double(10.0)
+20.0
