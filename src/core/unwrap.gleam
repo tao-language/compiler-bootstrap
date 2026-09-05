@@ -5,7 +5,7 @@ import core/quote.{quote}
 import core/term.{type Case, type Term} as tm
 import core/value.{type Env, type Neut, type Value} as v
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 
 /// Looks up a hole in the substitution table,
 /// recursively stripping away solved wrappers.
@@ -27,11 +27,23 @@ pub fn unwrap_seen(
   }
 }
 
+pub fn opt_unwrap_seen(
+  ffi: FFI,
+  subst: Subst,
+  opt_value: Option(Value),
+  seen: List(Int),
+) -> Option(Value) {
+  case opt_value {
+    Some(value) -> Some(unwrap_seen(ffi, subst, value, seen))
+    None -> None
+  }
+}
+
 /// eval → unwrap → quote: fully resolve a term to a hole-free Term.
 pub fn unwrap_term(ffi: FFI, subst: Subst, env: Env, term: Term) -> Term {
   eval(ffi, env, term)
   |> unwrap(ffi, subst, _)
-  |> quote(ffi, list.length(env), _)
+  |> quote(ffi, env, _)
 }
 
 pub fn unwrap_neut(
@@ -69,11 +81,12 @@ pub fn unwrap_neut(
       }
     }
     v.NMatch(env, arg_neut, cases) -> {
-      case unwrap_neut(ffi, subst, arg_neut, seen) {
-        v.Neut(arg_neut) -> v.match(env, arg_neut, cases)
-        arg ->
+      let arg = unwrap_neut(ffi, subst, arg_neut, seen)
+      case v.is_concrete(arg) {
+        True ->
           eval.do_match(ffi, env, arg, cases)
           |> unwrap_seen(ffi, subst, _, seen)
+        False -> v.match(env, arg_neut, cases)
       }
     }
     v.NCall(name, ret, arg) -> {

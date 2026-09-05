@@ -77,6 +77,28 @@ pub fn env_push(env: Env, num_vars: Int) -> Env {
   |> list.append(env)
 }
 
+pub fn is_concrete(value: Value) -> Bool {
+  case value {
+    Neut(_) -> False
+    Ctr(_, arg) -> is_concrete(arg)
+    Rcd(fields, tail) ->
+      list.all(fields, is_concrete_field) && is_concrete_opt(tail)
+    _ -> True
+  }
+}
+
+fn is_concrete_field(field: #(String, #(Value, Option(Value)))) -> Bool {
+  let #(_, #(value, opt_default)) = field
+  is_concrete(value) && is_concrete_opt(opt_default)
+}
+
+fn is_concrete_opt(opt_value: Option(Value)) -> Bool {
+  case opt_value {
+    Some(value) -> is_concrete(value)
+    None -> True
+  }
+}
+
 // Syntax sugar
 
 /// A neutral variable for the entry at the given de Bruijn level (counted
