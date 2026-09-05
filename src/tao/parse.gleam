@@ -471,8 +471,17 @@ fn fn_def_body(
   name: String,
 ) -> Parser(Stmt, Token, String) {
   {
-    // TODO: implicit arguments
-    use implicits <- do(return(#([], None)))
+    use implicits <- do(
+      nibble.one_of([
+        {
+          use _ <- do(nibble.token(LAngle))
+          use implicits <- do(parameters(file))
+          use _ <- do(nibble.token(RAngle))
+          return(implicits)
+        },
+        return(#([], None)),
+      ]),
+    )
     use _ <- do(nibble.token(LParen))
     use params <- do(parameters(file))
     use _ <- do(nibble.token(RParen))
