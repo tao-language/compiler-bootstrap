@@ -2,6 +2,7 @@ import core/context.{type Context, Context, new_ctx}
 import core/eval.{eval}
 import core/ffi
 import core/infer.{infer}
+import core/resolve
 import core/term.{type Term} as tm
 import core/value.{type Value} as v
 import gleam/int
@@ -15,7 +16,10 @@ import tao/desugar
 const s = Span("tao/examples_test", 0, 0, 0, 0)
 
 pub fn check_expr(ctx: Context, expr: Expr) -> #(Term, Value, Context) {
-  infer(ctx, desugar.expr([], expr))
+  let #(term, typ, ctx) = infer(ctx, desugar.expr([], expr))
+  let term = resolve.term(ctx.ffi, ctx.subst, ctx.env, term)
+  let typ = resolve.value(ctx.ffi, ctx.subst, typ)
+  #(term, typ, ctx)
 }
 
 fn op(name: String, call_suffix: String) -> #(String, Value, v.Type) {

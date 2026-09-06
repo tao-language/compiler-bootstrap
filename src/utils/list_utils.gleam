@@ -1,11 +1,15 @@
 import gleam/option.{type Option, None, Some}
 
-/// Element at an index from the head; out-of-range indices give None.
+/// Element at an index from the head; out-of-range (including negative)
+/// indices give None. Negative indices must not be silently bound to the
+/// head: they indicate a corrupted de Bruijn index (e.g. a level that was
+/// not representable in the quoting env), and failing loudly keeps such
+/// bugs visible instead of silently rebinding the reference.
 pub fn at(list: List(a), index: Int) -> Option(a) {
   case list {
-    [head, ..] if index <= 0 -> Some(head)
-    [_, ..tail] -> at(tail, index - 1)
-    [] -> None
+    [head, ..] if index == 0 -> Some(head)
+    [_, ..tail] if index > 0 -> at(tail, index - 1)
+    _ -> None
   }
 }
 
