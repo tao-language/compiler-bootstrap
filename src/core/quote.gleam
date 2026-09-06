@@ -96,8 +96,12 @@ fn quote_neut(ffi: FFI, env: Env, neut: Neut) -> Term {
       tm.App(fun, arg)
     }
     v.NMatch(captured_env, arg_neut, cases) -> {
-      let arg = quote_neut(ffi, captured_env, arg_neut)
-      let cases = list.map(cases, quote_case(ffi, captured_env, _))
+      // Body terms are indexed into `captured_env`; the values' neutral
+      // levels are only addressable in `env`, the placement frame.
+      // `quote_case` keeps both conventions valid at once.
+      let arg = quote_neut(ffi, env, arg_neut)
+      let cases =
+        list.map(cases, fn(c) { quote_case(ffi, env, captured_env, c) })
       tm.Match(arg, cases)
     }
     v.NCall(name, ret_val, arg_val) -> {
@@ -108,16 +112,43 @@ fn quote_neut(ffi: FFI, env: Env, neut: Neut) -> Term {
   }
 }
 
-fn quote_case(ffi: FFI, env: Env, c: Case) -> Case {
-  let env = v.env_push(env, list.length(tm.bindings(c.pattern)))
-  let #(guard, env) = case c.guard {
+/// Quote one match case.
+///
+/// The body's de Bruijn *indices* index into `captured_env` (the env the
+/// match got stuck in), but the values' neutral *levels* are only
+/// addressable in `env` (the env the match is placed in). So eval and
+/// quote use different frames:
+/// - `eval_env`  = `[placeholders, ..captured_env]`, so the body's
+///   `Var(k)` lookups bind to the same values as when the body was written;
+/// - `quote_env` = `env_push(env, n)`, so level→index translation lands in
+///   the placement frame.
+///
+/// Each placeholder carries the level it would have in `env_push(env, n)`,
+/// so it re-quotes to the pattern binding's own `Var(i)`; when
+/// `captured_env == env` the two frames coincide and this reduces to a
+/// plain `normalize_term`.
+fn quote_case(ffi: FFI, env: Env, captured_env: Env, c: Case) -> Case {
+  let num_bindings = list.length(tm.bindings(c.pattern))
+  let eval_env = placeholder_env(env, num_bindings, captured_env)
+  let quote_env = v.env_push(env, num_bindings)
+  let #(guard, eval_env, quote_env) = case c.guard {
     Some(#(g_term, g_pattern)) -> {
-      let env = v.env_push(env, list.length(tm.bindings(g_pattern)))
-      let g_term = normalize_term(ffi, env, g_term)
-      #(Some(#(g_term, g_pattern)), env)
+      let num_guard = list.length(tm.bindings(g_pattern))
+      let eval_env = placeholder_env(quote_env, num_guard, eval_env)
+      let quote_env = v.env_push(quote_env, num_guard)
+      let g_term = eval(ffi, eval_env, g_term) |> quote(ffi, quote_env, _)
+      #(Some(#(g_term, g_pattern)), eval_env, quote_env)
     }
-    None -> #(None, env)
+    None -> #(None, eval_env, quote_env)
   }
-  let body = normalize_term(ffi, env, c.body)
+  let body = eval(ffi, eval_env, c.body) |> quote(ffi, quote_env, _)
   tm.Case(c.pattern, guard, body)
+}
+
+/// `env_push(levels_env, num)` with `frame` substituted for `levels_env`:
+/// the same `num` placeholder bindings (innermost first) layered over the
+/// term frame, so a body's `Var(0..num-1)` fetches them and they re-quote
+/// to themselves in `env_push(levels_env, num)`.
+fn placeholder_env(levels_env: Env, num: Int, frame: Env) -> Env {
+  list.append(list.take(v.env_push(levels_env, num), num), frame)
 }
