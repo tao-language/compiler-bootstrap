@@ -104,7 +104,7 @@ pub type StmtData {
     body: Expr,
   )
   FnOverload(name: String, choices: List(OverloadChoice))
-  TypeDef(type_def: TypeDefinition)
+  TypeDef(name: String, type_def: TypeDefinition)
   For(iterator: Pattern, range: Expr, body: Expr)
   While(condition: Expr, body: Expr)
   Return(expr: Expr)
@@ -127,18 +127,26 @@ pub type OverloadChoice {
   )
 }
 
+/// A custom ADT/GADT type definition. `params` are the type's
+/// (quantified) parameters, `(name, opt_type)` — untyped parameters are
+/// plain type variables. The type's name is on the `TypeDef` statement.
 pub type TypeDefinition {
   TypeDefinition(
-    params: List(#(String, #(Option(Type), Option(Expr)))),
+    params: List(#(String, Option(Type))),
     variants: List(Variant),
   )
 }
 
+/// One variant (constructor) of a type definition. `params` are the
+/// variant's own quantified parameters (GADT, e.g. `m` in `Cons<m>`),
+/// `args` the constructor's arguments as `(name, type)` (an empty name is
+/// positional), and `returns` the variant's return type (the enclosing
+/// type applied to its parameters, when not written explicitly).
 pub type Variant {
   Variant(
     tag: String,
-    params: List(#(String, #(Option(Type), Option(Expr)))),
-    args: List(#(String, Expr)),
+    params: List(#(String, Option(Type))),
+    args: List(#(String, Type)),
     returns: Type,
   )
 }

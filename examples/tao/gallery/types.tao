@@ -1,0 +1,23 @@
+// Monomorphic ADT
+type Bool {
+| True
+| False
+}
+
+// Polymorphic ADT
+type Option(a) {
+| Some(a)
+| None
+}
+
+// Recursive ADT
+type List(a: Type) {
+| Cons(x: a, xs: List(a))
+| Nil
+}
+
+// Generalized ADT (GADT)
+type Vec(n: Int, a: Type) {
+| VCons<m>(x: a, xs: Vec(m, a)) -> Vec(m + 1, a)
+| VNil -> Vec(0, a)
+}

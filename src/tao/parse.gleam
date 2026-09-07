@@ -32,6 +32,7 @@ const reserved = [
   "if",
   "else",
   "error",
+  "type",
 ]
 
 pub type Token {
@@ -46,6 +47,7 @@ pub type Token {
   KwIf
   KwElse
   KwError
+  KwType
 
   // Values
   Name(String)
@@ -114,6 +116,7 @@ fn lexer_() -> Lexer(Token, Nil) {
     lexer.keyword("if", "\\W", KwIf),
     lexer.keyword("else", "\\W", KwElse),
     lexer.keyword("error", "\\W", KwError),
+    lexer.keyword("type", "\\W", KwType),
 
     // Names
     lexer.identifier("[_a-zA-Z]", "[_\\w]", set.from_list(reserved), Name),
@@ -270,6 +273,7 @@ fn token_to_string(tok: Token) -> String {
     KwIf -> "if"
     KwElse -> "else"
     KwError -> "error"
+    KwType -> "type"
     Name(n) -> n
     IntLit(n) -> int.to_string(n)
     FloatLit(f) -> float.to_string(f)
@@ -313,8 +317,106 @@ fn stmt(file: String) -> Parser(Stmt, Token, String) {
     let_var(file),
     let_pat(file),
     fn_def(file),
+    type_def(file),
     test_(file),
   ])
+}
+
+/// A type definition: `type Name(p1: t1, p2, ...) { | Tag1(...) -> ... | ... }`
+fn type_def(file: String) -> Parser(Stmt, Token, String) {
+  {
+    use start <- do(get_span(file))
+    use _ <- do(nibble.token(KwType))
+    use name <- do(take_tag())
+    use opt_params <- do(
+      nibble.optional({
+        use _ <- do(nibble.token(LParen))
+        use params <- do(sequence(type_parameter(file), Comma))
+        use _ <- do(nibble.token(RParen))
+        return(params)
+      }),
+    )
+    let params = option.unwrap(opt_params, [])
+    use _ <- do(nibble.token(LBrace))
+    use variants <- do(nibble.many(variant(file, name, params)))
+    use _ <- do(nibble.token(RBrace))
+    use end <- do(get_span(file))
+    return(tao.Stmt(
+      tao.TypeDef(name, tao.TypeDefinition(params, variants)),
+      merge(start, end),
+    ))
+  }
+  |> nibble.in("type definition")
+}
+
+/// A type parameter: `a`, `a: Type`, `n: Int` — a name with an optional
+/// type annotation (untyped parameters are plain type variables).
+fn type_parameter(
+  file: String,
+) -> Parser(#(String, Option(tao.Type)), Token, String) {
+  use name <- do(var_name())
+  use opt_type <- do(
+    nibble.optional({
+      use _ <- do(nibble.token(Colon))
+      expr(file)
+    }),
+  )
+  return(#(name, opt_type))
+}
+
+/// A variant: `| Tag<p1, ...>(x: t1, ...) -> returns` where the
+/// parameters (GADT), arguments and return type are all optional. A
+/// variant without an explicit return type returns the enclosing type
+/// applied to its parameters.
+fn variant(
+  file: String,
+  type_name: String,
+  type_params: List(#(String, Option(tao.Type))),
+) -> Parser(tao.Variant, Token, String) {
+  {
+    use start <- do(get_span(file))
+    use _ <- do(nibble.token(Pipe))
+    use tag <- do(take_tag())
+    use opt_params <- do(
+      nibble.optional({
+        use _ <- do(nibble.token(LAngle))
+        use params <- do(sequence(type_parameter(file), Comma))
+        use _ <- do(nibble.token(RAngle))
+        return(params)
+      }),
+    )
+    let params = option.unwrap(opt_params, [])
+    use opt_args <- do(
+      nibble.optional({
+        use _ <- do(nibble.token(LParen))
+        use args <- do(arguments(file, expr(file)))
+        use _ <- do(nibble.token(RParen))
+        return(args)
+      }),
+    )
+    let args = option.unwrap(opt_args, [])
+    use opt_returns <- do(
+      nibble.optional({
+        use _ <- do(nibble.token(ThinArrow))
+        expr(file)
+      }),
+    )
+    let returns = case opt_returns {
+      Some(returns) -> returns
+      None ->
+        tao.ctr(
+          type_name,
+          list.map(type_params, fn(param) {
+            let #(pname, _) = param
+            #(pname, tao.var(pname, start))
+          }),
+          start,
+        )
+    }
+    use end <- do(get_span(file))
+    return(tao.Variant(tag, params, args, returns))
+  }
+  |> nibble.in("type variant")
 }
 
 fn import_(file: String) -> Parser(Stmt, Token, String) {

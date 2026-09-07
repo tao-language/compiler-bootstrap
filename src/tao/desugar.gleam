@@ -51,8 +51,7 @@ pub fn expr(exports: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
     tao.Hole(id) -> core.hole_open(id, e.span)
     tao.Lit(value) -> core.lit(value, e.span)
     tao.Var(name) -> core.var(name, e.span)
-    // Special-cased constructors: `Type(n)` is a universe type and the
-    // unapplied `Int`/`Float` tags are literal types, not values.
+    tao.Ctr("Type", [], None) -> core.typ(0, e.span)
     tao.Ctr("Type", [#(_, tao.Expr(tao.Lit(lit.Int(u)), _))], None) ->
       core.typ(u, e.span)
     tao.Ctr("Int", [], None) -> core.int_t(e.span)
@@ -476,12 +475,83 @@ pub fn statement(
       let core_test = core.match(core_arg, core_cases, s)
       core.let_var_trace(#(name, None, core_test), next, s, Some(name))
     }
-    tao.TypeDef(type_def) -> todo
+    // A type definition is let-bound under its name; the name has the
+    // universe type, since a type is a value of `Type`.
+    tao.TypeDef(name, type_def) -> {
+      let core_tdef = type_definition(exports, type_def, s)
+      let core_val = core.Expr(core.TypeDef(core_tdef), s, None)
+      core.let_var_trace(
+        #(name, Some(core.typ(0, s)), core_val),
+        next,
+        s,
+        Some("type " <> name),
+      )
+    }
     tao.For(iterator, range, body) -> todo
     tao.While(condition, body) -> todo
     tao.Return(ret_expr) -> expr(exports, ret_expr)
     tao.Break -> todo
     tao.Continue -> todo
+  }
+}
+
+/// Convert a Tao type definition to a Core one: parameters become
+/// `(name, type)` bindings (an open hole when untyped), the definition's
+/// `arg` is the type constructor's argument record built from the
+/// parameter variables, and each variant keeps its own parameters, its
+/// argument record and its return type.
+pub fn type_definition(
+  exports: List(#(String, List(String))),
+  type_def: tao.TypeDefinition,
+  span: Span,
+) -> core.TypeDefinition {
+  let tao.TypeDefinition(params, variants) = type_def
+  let core_params =
+    list.map(params, fn(param) {
+      let #(pname, opt_ptype) = param
+      #(pname, opt_type_or_hole(exports, opt_ptype, span))
+    })
+  let core_arg =
+    core.rcd_values(
+      list.map(params, fn(param) {
+        let #(pname, _) = param
+        #(pname, core.var(pname, span))
+      }),
+      None,
+      span,
+    )
+  let core_variants =
+    list.map(variants, fn(variant) {
+      let tao.Variant(tag, vparams, vargs, vret) = variant
+      let core_vparams =
+        list.map(vparams, fn(param) {
+          let #(vname, opt_vtype) = param
+          #(vname, opt_type_or_hole(exports, opt_vtype, span))
+        })
+      let core_varg =
+        core.rcd_values(
+          list.map(vargs, fn(arg) {
+            let #(vname, vtype) = arg
+            #(vname, expr(exports, vtype))
+          }),
+          None,
+          span,
+        )
+      let core_vret = expr(exports, vret)
+      #(tag, core.Variant(core_vparams, core_varg, core_vret))
+    })
+  core.TypeDefinition(core_params, core_arg, core_variants)
+}
+
+/// A type annotation, or an open hole when the binder is untyped.
+fn opt_type_or_hole(
+  exports: List(#(String, List(String))),
+  opt_type: Option(tao.Type),
+  span: Span,
+) -> core.Type {
+  case opt_type {
+    Some(type_) -> expr(exports, type_)
+    None -> core.hole_open(None, span)
   }
 }
 

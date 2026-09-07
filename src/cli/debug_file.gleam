@@ -114,7 +114,7 @@ pub fn debug_file(
         tao.Test(name, expr, expect) -> "test"
         tao.FnDef(name, implicits, params, returns, body) -> "fn"
         tao.FnOverload(name, choices) -> "fn-overload"
-        tao.TypeDef(type_def) -> todo
+        tao.TypeDef(_, _) -> "type"
         tao.For(iterator, range, body) -> todo
         tao.While(condition, body) -> todo
         tao.Return(expr) -> todo

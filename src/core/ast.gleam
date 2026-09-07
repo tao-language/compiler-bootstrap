@@ -136,7 +136,36 @@ pub fn free_vars(term: Expr) -> List(String) {
     App(fun, arg) -> union(free_vars(fun), free_vars(arg))
     Match(arg, cases) -> union(free_vars(arg), free_vars_cases(cases))
     Call(_, ret, arg) -> union(free_vars(ret), free_vars(arg))
-    TypeDef(type_def) -> todo
+    TypeDef(type_def) -> {
+      let TypeDefinition(params, arg, variants) = type_def
+      // The type's parameters bind throughout the definition; a variant's
+      // own parameters bind within that variant only.
+      let bound = list.map(params, fn(param) { param.0 })
+      let param_names =
+        list.map(params, fn(param) {
+          let #(_, typ) = param
+          list.filter(free_vars(typ), fn(x) { !list.contains(bound, x) })
+        })
+        |> list.flatten
+      let variant_names =
+        list.flat_map(variants, fn(variant) {
+          let #(_, Variant(vparams, varg, vret)) = variant
+          let bound =
+            list.append(bound, list.map(vparams, fn(param) { param.0 }))
+          list.map(vparams, fn(param) {
+            let #(_, typ) = param
+            free_vars(typ)
+          })
+          |> list.flatten
+          |> union(free_vars(varg))
+          |> union(free_vars(vret))
+          |> list.filter(fn(x) { !list.contains(bound, x) })
+        })
+      // `arg` is a record of the (bound) parameter variables.
+      let def_names =
+        list.filter(free_vars(arg), fn(x) { !list.contains(bound, x) })
+      list.append(list.append(param_names, variant_names), def_names)
+    }
     Err -> []
   }
 }
@@ -196,7 +225,35 @@ pub fn contains(term: Expr, name: String) -> Bool {
     Match(arg, cases) ->
       contains(arg, name) || list.any(cases, contains_case(_, name))
     Call(_, ret, arg) -> contains(ret, name) || contains(arg, name)
-    TypeDef(type_def) -> todo
+    TypeDef(type_def) -> {
+      let TypeDefinition(params, arg, variants) = type_def
+      // As in `free_vars`: the type's parameters bind throughout, a
+      // variant's own parameters bind within that variant only.
+      let bound = list.map(params, fn(param) { param.0 })
+      let param_contains =
+        list.map(params, fn(param) {
+          let #(_, typ) = param
+          contains(typ, name)
+        })
+        |> list.any(fn(b) { b })
+      let def_contains = !list.contains(bound, name) && contains(arg, name)
+      let variant_contains =
+        list.any(
+          variants,
+          fn(variant) {
+            let #(_, Variant(vparams, varg, vret)) = variant
+            let bound =
+              list.append(bound, list.map(vparams, fn(param) { param.0 }))
+            let vparam_contains =
+              list.map(vparams, fn(param) { contains(param.1, name) })
+              |> list.any(fn(b) { b })
+            vparam_contains
+              || {!list.contains(bound, name)
+                && {contains(varg, name) || contains(vret, name)}}
+          },
+        )
+      param_contains || def_contains || variant_contains
+    }
     _ -> False
   }
 }

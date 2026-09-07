@@ -49,7 +49,7 @@ pub fn statement(stmt: Stmt) -> List(#(Name, Stmt)) {
     tao.Test(name, _, _) -> []
     tao.FnDef(name, ..) -> [#(name, stmt)]
     tao.FnOverload(name, _) -> [#(name, stmt)]
-    tao.TypeDef(type_def) -> todo
+    tao.TypeDef(name, _) -> [#(name, stmt)]
     tao.For(iterator, range, body) -> todo
     tao.While(condition, body) -> todo
     tao.Return(expr) -> todo

@@ -204,7 +204,12 @@ fn type_stmt_data(
       // If cyclic definitions still work like this, maybe separate define.types and define.values are not needed (could be simplified).
       stmt_value(ctx, defs, mod_name, name, stmt, None)
     tao.FnOverload(name, _) -> stmt_value(ctx, defs, mod_name, name, stmt, None)
-    tao.TypeDef(type_def) -> todo
+    tao.TypeDef(_, _) -> {
+      // Phase 1 registers the name with an unsolved value and the
+      // universe type, since a type is a value of `Type`.
+      let #(val, ctx) = hole_value(ctx)
+      #(val, v.Typ(0), ctx)
+    }
     tao.For(iterator, range, body) -> todo
     tao.While(condition, body) -> todo
     tao.Return(expr) -> todo
