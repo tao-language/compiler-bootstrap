@@ -172,6 +172,12 @@ fn parameters_type(
 /// the individual parameter patterns. Fields are matched *positionally*
 /// (numbered `1..n`), so the caller must pass a record with the fields
 /// in declaration order.
+///
+/// Each parameter's annotation is checked *inside* the case body (where
+/// all the parameter names are bound), not on the lambda's parameter
+/// type: an annotation may mention a sibling parameter (e.g.
+/// `fn eval(a: Type, expr: Expr(a))`), which is not in scope at the
+/// lambda's parameter type position.
 fn parameters_unpack(
   exports: List(#(String, List(String))),
   var_name: String,
@@ -185,6 +191,38 @@ fn parameters_unpack(
       let #(p, _) = param
       #(int.to_string(index + 1), p)
     })
+  let checks =
+    list.index_map(args, fn(param, index) {
+      let #(p, #(opt_type, _)) = param
+      case p {
+        tao.Pattern(tao.PVar(name), _span) ->
+          case opt_type {
+            Some(type_) ->
+              Some(
+                tao.let_var(
+                  "__check" <> int.to_string(index + 1),
+                  Some(type_),
+                  tao.var(name, span),
+                  span,
+                )
+              )
+            None -> None
+          }
+        _ -> None
+      }
+    })
+  let check_stmts =
+    list.fold(checks, [], fn(acc, opt_stmt) {
+      case opt_stmt {
+        Some(stmt) -> list.append(acc, [stmt])
+        None -> acc
+      }
+    })
+  let body = case check_stmts {
+    [] -> body
+    [_, ..] ->
+      tao.do(list.append(check_stmts, [tao.return(body, span)]), span)
+  }
   let cases = [tao.Case(tao.prcd_strict(bindings, span), None, body)]
   let match_expr = tao.match(tao.var(var_name, span), cases, span)
   expr(exports, match_expr)
@@ -205,11 +243,12 @@ fn function(
   case implicits {
     #([], None) -> {
       let param_name = "__args"
-      // TODO: infer span from args
-      let args_span = span
-      let core_param_type = parameters_type(exports, params, args_span)
+      // The lambda's parameter is untyped: the parameter annotations are
+      // checked inside the unpacking match (see `parameters_unpack`), so
+      // an annotation may mention a sibling parameter. A fresh hole for
+      // the whole argument record is inferred in `infer_lam`.
       let core_body =
-        parameters_unpack(exports, param_name, params, body, args_span)
+        parameters_unpack(exports, param_name, params, body, span)
       let core_body = case opt_returns {
         None -> core_body
         Some(returns) -> {
@@ -219,7 +258,7 @@ fn function(
       }
       let core_fun =
         core.Expr(
-          core.Lam(#(param_name, Some(core_param_type)), core_body),
+          core.Lam(#(param_name, None), core_body),
           span,
           trace,
         )

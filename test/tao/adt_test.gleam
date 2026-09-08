@@ -105,6 +105,31 @@ pub fn gadt_impossible_case_test() {
 const expr_type =
   "type Expr(a) { | LitInt(Int) -> Expr(Int) | LitBool(Bool) -> Expr(Bool) | IsZero(Expr(Int)) -> Expr(Bool) }"
 
+/// A function whose parameter annotation mentions a sibling parameter
+/// (`expr: Expr(a)`) must not panic in the definition phase, and an
+/// evaluator over the GADT is well typed.
+pub fn gadt_sibling_param_test() {
+  let src = expr_type
+    <> nl
+    <> "fn eval(a: Type, e: Expr(a)) -> Int ="
+    <> nl
+    <> "match e {"
+    <> nl
+    <> "| LitInt(n) => n"
+    <> nl
+    <> "| _ => 0"
+    <> nl
+    <> "}"
+  assert check(src) == []
+}
+
+/// Unannotated parameters (inferred types) still work, alone and
+/// mixed with annotations.
+pub fn fn_unannotated_params_test() {
+  let src = "fn f(x) = x" <> nl <> "fn g(x: Int, y) = y"
+  assert check(src) == []
+}
+
 /// Compile an in-memory module and return its reported errors (or a
 /// parse error message).
 fn check(source: String) -> List(String) {
