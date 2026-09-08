@@ -50,9 +50,7 @@ pub fn infer(ctx: Context, term_ast: ast.Expr) -> #(Term, Type, Context) {
       infer_let(ctx, #(name, type_, arg), body)
     ast.App(fun, arg) -> infer_app(ctx, fun, arg, term_ast.span)
     ast.Match(arg, cases) -> infer_match(ctx, arg, cases)
-    ast.TypeDef(ast.TypeDefinition(params, arg, variants)) ->
-      // infer_type_def(ctx, params, constructors, term_ast.span)
-      todo
+    ast.TypeDef(type_def) -> infer_type_def(ctx, type_def)
     ast.Err -> infer_err(ctx)
   }
   let ctx = case term_ast.trace {
@@ -303,6 +301,76 @@ fn infer_pi(
   let #(body, _, ctx) = infer(ctx, body)
   let ctx = context.pop_vars(ctx, 1)
   #(tm.Pi(#(name, type_), body), v.Typ(0), ctx)
+}
+
+/// Infer a type definition (ADT/GADT). The type's parameters are
+/// inferred and bound; the definition's argument record and each
+/// variant's argument and return type are inferred with those in scope
+/// (a variant's own quantified parameters are bound within the variant
+/// only). Parameters are pushed in list order, the same order
+/// `unify.instantiate` uses, so the inner terms' de Bruijn indices
+/// line up with the definition's environment. The result has the
+/// universe type: a type definition is a value of `Type`.
+fn infer_type_def(
+  ctx: Context,
+  type_def: ast.TypeDefinition,
+) -> #(Term, Type, Context) {
+  let ast.TypeDefinition(params_ast, arg_ast, variants_ast) = type_def
+  let #(params, ctx) = infer_type_params(ctx, params_ast)
+  let #(arg, _arg_val, ctx) = infer(ctx, arg_ast)
+  let #(variants, ctx) =
+    list.fold(variants_ast, #([], ctx), fn(acc, variant) {
+      let #(variants, ctx) = acc
+      let #(tag, variant_ast) = variant
+      let #(variant_tm, ctx) = infer_variant(ctx, variant_ast)
+      #(list.append(variants, [#(tag, variant_tm)]), ctx)
+    })
+  let ctx = context.pop_vars(ctx, list.length(params))
+  #(tm.TypeDef(tm.TypeDefinition(params, arg, variants)), v.Typ(0), ctx)
+}
+
+/// Infer one variant of a type definition: its own quantified
+/// parameters are bound within the variant's argument and return type.
+fn infer_variant(
+  ctx: Context,
+  variant_ast: ast.Variant,
+) -> #(tm.Variant, Context) {
+  let ast.Variant(params_ast, arg_ast, returns_ast) = variant_ast
+  let #(params, ctx) = infer_type_params(ctx, params_ast)
+  let #(arg, _arg_val, ctx) = infer(ctx, arg_ast)
+  let #(returns, _returns_val, ctx) = infer(ctx, returns_ast)
+  let ctx = context.pop_vars(ctx, list.length(params))
+  #(tm.Variant(params, arg, returns), ctx)
+}
+
+/// Infer a type parameter list (a type definition's or a variant's
+/// quantified parameters) and bind them in `ctx`. Each parameter's type
+/// is inferred and *evaluated*, so the binding carries the type's value
+/// (`Int` evaluates to the `IntT` literal type, `Type(0)` to `Typ(0)`).
+fn infer_type_params(
+  ctx: Context,
+  params_ast: List(#(String, ast.Type)),
+) -> #(List(#(String, Term)), Context) {
+  let #(inferred, ctx) =
+    list.fold(params_ast, #([], ctx), fn(acc, param) {
+      let #(inferred, ctx) = acc
+      let #(name, type_ast) = param
+      let #(type_term, _type_of_type, ctx) = infer(ctx, type_ast)
+      let type_val = eval(ctx.ffi, ctx.env, type_term)
+      #(list.append(inferred, [#(name, #(type_term, type_val))]), ctx)
+    })
+  let ctx =
+    list.fold(inferred, ctx, fn(ctx, param) {
+      let #(name, #(_, type_val)) = param
+      let level = list.length(ctx.env)
+      context.push_var(ctx, #(name, v.var(level), type_val))
+    })
+  let params =
+    list.map(inferred, fn(param) {
+      let #(name, #(type_term, _)) = param
+      #(name, type_term)
+    })
+  #(params, ctx)
 }
 
 fn infer_fix(

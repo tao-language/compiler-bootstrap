@@ -369,18 +369,30 @@ fn doc_prcd(
   |> doc.group
 }
 
+/// A type definition: `type p1: t1, p2: t2 { | Tag(...) -> ret | ... }`.
 fn doc_typedef(td: TypeDefinition, indent: Int) -> Document {
-  let param_names =
-    td.params
-    |> list.map(fn(p) { p.0 })
-    |> string.join(" ")
+  let ast.TypeDefinition(params, _arg, variants) = td
+  let params_doc =
+    list.map(params, fn(param) {
+      let #(name, typ) = param
+      doc.concat([
+        doc_text(var_name(name)),
+        doc_text(": "),
+        doc_term(typ, indent),
+      ])
+    })
+    |> doc.join(with: doc_text(", "))
   let variant_docs =
-    td.variants
-    |> list.map(fn(v) { doc_variant(v.1, indent) })
+    list.map(variants, fn(variant) {
+      let #(tag, v) = variant
+      doc_variant(tag, v, indent)
+    })
+  let head = case params {
+    [] -> doc_text("type {")
+    _ -> doc.concat([doc_text("type "), params_doc, doc_text(" {")])
+  }
   doc.concat([
-    doc_text("type "),
-    doc_text(param_names),
-    doc_text(" {"),
+    head,
     doc.line,
     doc.nest(
       doc.join(variant_docs, doc.concat([doc_text("|"), doc.line])),
@@ -392,15 +404,62 @@ fn doc_typedef(td: TypeDefinition, indent: Int) -> Document {
   |> doc.group
 }
 
-fn doc_variant(v: Variant, indent: Int) -> Document {
-  let param_names =
-    v.params
-    |> list.map(fn(p) { p.0 })
-    |> string.join(" ")
+/// A variant: `| Tag<p1: t1, ...>(x: t) -> returns`, where the
+/// parameters (GADT), arguments and return type may be absent.
+fn doc_variant(tag: String, v: Variant, indent: Int) -> Document {
+  let ast.Variant(params, arg, returns) = v
+  let params_doc = case params {
+    [] -> doc_text("")
+    _ ->
+      doc.concat([
+        doc_text("<"),
+        list.map(params, fn(param) {
+          let #(name, typ) = param
+          doc.concat([
+            doc_text(var_name(name)),
+            doc_text(": "),
+            doc_term(typ, indent),
+          ])
+        })
+        |> doc.join(with: doc_text(", ")),
+        doc_text(">"),
+      ])
+  }
+  let args_doc = case arg.data {
+    ast.Rcd(fields, _tail) ->
+      case fields {
+        [] -> doc_text("")
+        _ ->
+          doc.concat([
+            doc_text("("),
+            list.map(fields, fn(field) {
+              let #(name, #(opt_value, _opt_default)) = field
+              // An empty name is a positional argument: print the type only.
+              case name, opt_value {
+                "", Some(value) -> doc_term(value, indent)
+                _, _ ->
+                  case opt_value {
+                    Some(value) ->
+                      doc.concat([
+                        doc_text(var_name(name)),
+                        doc_text(": "),
+                        doc_term(value, indent),
+                      ])
+                    None -> doc_text(var_name(name))
+                  }
+              }
+            })
+            |> doc.join(with: doc_text(", ")),
+            doc_text(")"),
+          ])
+      }
+    _ -> doc_term(arg, indent)
+  }
   doc.concat([
-    doc_text("| "),
-    doc_text(param_names),
+    doc_text("| " <> var_name(tag)),
+    params_doc,
+    args_doc,
     doc_text(" -> "),
-    doc_term(v.returns, indent),
+    doc_term(returns, indent),
   ])
 }

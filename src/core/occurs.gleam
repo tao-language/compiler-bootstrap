@@ -47,7 +47,27 @@ pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
       let env = v.env_push(env, 1)
       occurs_term(ctx, env, hole_id, body)
     }
-    v.TypeDef(env, v.TypeDefinition(params, arg, variants)) -> todo
+    // Type definitions: the parameter types live in the definition's
+    // frame; the argument and variant terms are evaluated with the
+    // parameters as fresh (rigid) bindings, like `For` bodies.
+    v.TypeDef(env, v.TypeDefinition(params, arg, variants)) -> {
+      let p_env = v.env_push(env, list.length(params))
+      list.any(params, fn(param) {
+        let #(_, typ) = param
+        occurs(ctx, hole_id, typ)
+      })
+      || occurs_term(ctx, p_env, hole_id, arg)
+      || list.any(variants, fn(variant) {
+        let #(_, v.Variant(vparams, varg, vret)) = variant
+        let vp_env = v.env_push(p_env, list.length(vparams))
+        list.any(vparams, fn(param) {
+          let #(_, typ) = param
+          occurs(ctx, hole_id, typ)
+        })
+        || occurs_term(ctx, vp_env, hole_id, varg)
+        || occurs_term(ctx, vp_env, hole_id, vret)
+      })
+    }
     v.Err -> False
   }
 }

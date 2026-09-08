@@ -44,7 +44,7 @@ pub fn desugar_stmt_type_def_bool_test() {
     )
   let expr = desugar.statement([], new_block_ctx, stmt, unit)
   // A type definition is let-bound under its name with the universe type.
-  assert fmt(expr) == "%let Bool: %Type = type  {\n|  -> #Bool|\n  |  -> #Bool\n}\n{}"
+  assert fmt(expr) == "%let Bool: %Type = type {\n| True -> #Bool|\n  | False -> #Bool\n}\n{}"
 }
 
 pub fn desugar_stmt_type_def_option_test() {
@@ -73,5 +73,5 @@ pub fn desugar_stmt_type_def_option_test() {
       s,
     )
   let expr = desugar.statement([], new_block_ctx, stmt, unit)
-  assert fmt(expr) == "%let Option: %Type = type a {\n|  -> #Option({a})|\n  |  -> #Option({a})\n}\n{}"
+  assert fmt(expr) == "%let Option: %Type = type a: ? {\n| Some(a) -> #Option({a})|\n  | None -> #Option({a})\n}\n{}"
 }

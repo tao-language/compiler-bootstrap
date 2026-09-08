@@ -110,7 +110,31 @@ fn term_seen(
       let arg = self(env, arg)
       tm.App(fun, arg)
     }
-    tm.TypeDef(type_def) -> todo
+    // Type definitions: the argument and variant terms index into
+    // frames with the parameters bound (and, per variant, the variant's
+    // own parameters bound innermost); the parameter types live in the
+    // surrounding frame.
+    tm.TypeDef(tm.TypeDefinition(params, arg, variants)) -> {
+      let p_env = v.env_push(env, list.length(params))
+      let params =
+        list.map(params, fn(param) {
+          let #(name, typ) = param
+          #(name, self(env, typ))
+        })
+      let arg = self(p_env, arg)
+      let variants =
+        list.map(variants, fn(variant) {
+          let #(tag, tm.Variant(vparams, varg, vret)) = variant
+          let vp_env = v.env_push(p_env, list.length(vparams))
+          let vparams =
+            list.map(vparams, fn(param) {
+              let #(name, typ) = param
+              #(name, self(p_env, typ))
+            })
+          #(tag, tm.Variant(vparams, self(vp_env, varg), self(vp_env, vret)))
+        })
+      tm.TypeDef(tm.TypeDefinition(params, arg, variants))
+    }
     tm.Match(arg, cases) -> {
       let arg = self(env, arg)
       let cases = list.map(cases, resolve_case(ffi, subst, env, seen, _))
@@ -195,7 +219,37 @@ fn value_seen(ffi: FFI, subst: Subst, val: Value, seen: List(Int)) -> Value {
       let body = term(ffi, subst, v.env_push(env, 1), body)
       v.Fix(env, name, body)
     }
-    v.TypeDef(env, type_def) -> todo
+    v.TypeDef(env, v.TypeDefinition(params, arg, variants)) -> {
+      // As in `term_seen`: the inner terms index into frames with the
+      // parameters bound; the captured environment is left as is (the
+      // entries' holes are resolved where they occur).
+      let p_env = v.env_push(env, list.length(params))
+      let params =
+        list.map(params, fn(param) {
+          let #(name, typ) = param
+          #(name, self(typ))
+        })
+      let arg = term(ffi, subst, p_env, arg)
+      let variants =
+        list.map(variants, fn(variant) {
+          let #(tag, v.Variant(vparams, varg, vret)) = variant
+          let vp_env = v.env_push(p_env, list.length(vparams))
+          let vparams =
+            list.map(vparams, fn(param) {
+              let #(name, typ) = param
+              #(name, self(typ))
+            })
+          #(
+            tag,
+            v.Variant(
+              vparams,
+              term(ffi, subst, vp_env, varg),
+              term(ffi, subst, vp_env, vret),
+            ),
+          )
+        })
+      v.TypeDef(env, v.TypeDefinition(params, arg, variants))
+    }
     v.Err -> v.Err
   }
 }

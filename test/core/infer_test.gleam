@@ -9,11 +9,13 @@
 /// Trivial data-pass-through tests (Lit, LitT, Typ, Ctr, Rcd, Call)
 /// have been removed — they only verify data flows through, not logic.
 import core/ast
-import core/context.{new_ctx}
+import core/context.{new_ctx, push_var}
 import core/error as e
+import core/eval.{eval}
 import core/infer.{check, infer}
 import core/resolve
 import core/term as tm
+import core/unify.{unify}
 import core/unwrap.{unwrap}
 import core/value as v
 import gleam/list
@@ -316,6 +318,219 @@ pub fn infer_app_implicit_solve_hole_test() {
 // ============================================================================
 //  TypeDef
 // ============================================================================
+
+pub fn infer_type_def_bool_test() {
+  let tdef =
+    ast.TypeDefinition(
+      params: [],
+      arg: ast.rcd_values([], None, s),
+      variants: [
+        #("True", ast.Variant([], ast.rcd_values([], None, s), ast.ctr0("Bool", s))),
+        #(
+          "False",
+          ast.Variant([], ast.rcd_values([], None, s), ast.ctr0("Bool", s)),
+        ),
+      ],
+    )
+  let ast = ast.Expr(ast.TypeDef(tdef), s, None)
+  let ctx0 = new_ctx
+  let #(term, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  // A type definition is a value of the universe
+  assert type_ == v.Typ(0)
+  assert term
+    == tm.TypeDef(
+      tm.TypeDefinition(
+        params: [],
+        arg: tm.rcd([]),
+        variants: [
+          #("True", tm.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
+          #("False", tm.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
+        ],
+      ),
+    )
+}
+
+pub fn infer_type_def_option_test() {
+  let tdef =
+    ast.TypeDefinition(
+      params: [#("a", ast.hole_open(None, s))],
+      arg: ast.rcd_values([#("a", ast.var("a", s))], None, s),
+      variants: [
+        #(
+          "None",
+          ast.Variant(
+            [],
+            ast.rcd_values([], None, s),
+            ast.ctr("Option", ast.rcd_values([#("a", ast.var("a", s))], None, s), s),
+          ),
+        ),
+        #(
+          "Some",
+          ast.Variant(
+            [],
+            ast.rcd_values([#("", ast.var("a", s))], None, s),
+            ast.ctr("Option", ast.rcd_values([#("a", ast.var("a", s))], None, s), s),
+          ),
+        ),
+      ],
+    )
+  let ast = ast.Expr(ast.TypeDef(tdef), s, None)
+  let ctx0 = new_ctx
+  let #(term, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  assert type_ == v.Typ(0)
+  // The untyped parameter is an open hole; the inner terms index into the
+  // parameter (de Bruijn 0, the innermost binder).
+  assert term
+    == tm.TypeDef(
+      tm.TypeDefinition(
+        params: [#("a", tm.Hole(Some(0)))],
+        arg: tm.rcd([#("a", tm.Var(0))]),
+        variants: [
+          #(
+            "None",
+            tm.Variant(
+              [],
+              tm.rcd([]),
+              tm.Ctr("Option", tm.rcd([#("a", tm.Var(0))])),
+            ),
+          ),
+          #(
+            "Some",
+            tm.Variant(
+              [],
+              tm.rcd([#("", tm.Var(0))]),
+              tm.Ctr("Option", tm.rcd([#("a", tm.Var(0))])),
+            ),
+          ),
+        ],
+      ),
+    )
+}
+
+pub fn infer_type_def_gadt_test() {
+  let tdef =
+    ast.TypeDefinition(
+      params: [#("n", ast.int_t(s)), #("a", ast.typ(0, s))],
+      arg: ast.rcd_values([#("n", ast.var("n", s)), #("a", ast.var("a", s))], None, s),
+      variants: [
+        #(
+          "VNil",
+          ast.Variant(
+            [],
+            ast.rcd_values([], None, s),
+            ast.ctr("Vec", ast.rcd_values([#("", ast.int(0, s)), #("", ast.var("a", s))], None, s), s),
+          ),
+        ),
+        #(
+          "VCons",
+          ast.Variant(
+            [#("m", ast.hole_open(None, s))],
+            ast.rcd_values(
+              [
+                #("x", ast.var("a", s)),
+                #(
+                  "xs",
+                  ast.ctr("Vec", ast.rcd_values([#("", ast.var("m", s)), #("", ast.var("a", s))], None, s), s),
+                ),
+              ],
+              None,
+              s,
+            ),
+            ast.ctr("Vec", ast.rcd_values([#("", ast.var("m", s)), #("", ast.var("a", s))], None, s), s),
+          ),
+        ),
+      ],
+    )
+  let ast = ast.Expr(ast.TypeDef(tdef), s, None)
+  let ctx0 = new_ctx
+  let #(term, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  assert type_ == v.Typ(0)
+  // `n` and `a` are the type's parameters (de Bruijn 1 and 0, last pushed
+  // innermost); `m` is VCons's own parameter (de Bruijn 0 within the
+  // variant, 1 and 2 for `a` and `n`).
+  assert term
+    == tm.TypeDef(
+      tm.TypeDefinition(
+        params: [#("n", tm.int_t), #("a", tm.Typ(0))],
+        arg: tm.rcd([#("n", tm.Var(1)), #("a", tm.Var(0))]),
+        variants: [
+          #(
+            "VNil",
+            tm.Variant(
+              [],
+              tm.rcd([]),
+              tm.ctr("Vec", [#("", tm.int(0)), #("", tm.Var(0))]),
+            ),
+          ),
+          #(
+            "VCons",
+            tm.Variant(
+              [#("m", tm.Hole(Some(0)))],
+              tm.rcd([
+                #("x", tm.Var(1)),
+                #("xs", tm.ctr("Vec", [#("", tm.Var(0)), #("", tm.Var(1))])),
+              ]),
+              tm.ctr("Vec", [#("", tm.Var(0)), #("", tm.Var(1))]),
+            ),
+          ),
+        ],
+      ),
+    )
+}
+
+pub fn infer_type_def_gadt_ctor_test() {
+  // Infer a type definition and keep it in scope (as the compiler's
+  // definition phases do), then check `Some(1)` against `Option(Int)`:
+  // the constructor unifies with the type definition via `unify_gadt`,
+  // binding the parameter `a` to `IntT`.
+  let tdef =
+    ast.TypeDefinition(
+      params: [#("a", ast.hole_open(None, s))],
+      arg: ast.rcd_values([#("a", ast.var("a", s))], None, s),
+      variants: [
+        #(
+          "Some",
+          ast.Variant(
+            [],
+            ast.rcd_values([#("", ast.var("a", s))], None, s),
+            ast.ctr("Option", ast.rcd_values([#("a", ast.var("a", s))], None, s), s),
+          ),
+        ),
+        #(
+          "None",
+          ast.Variant(
+            [],
+            ast.rcd_values([], None, s),
+            ast.ctr("Option", ast.rcd_values([#("a", ast.var("a", s))], None, s), s),
+          ),
+        ),
+      ],
+    )
+  let option_def = ast.Expr(ast.TypeDef(tdef), s, None)
+  let ctx0 = new_ctx
+  let #(option_def_term, _option_def_type, ctx) = infer(ctx0, option_def)
+  assert ctx.errors == []
+  let option_val = eval(ctx.ffi, ctx.env, option_def_term)
+  let ctx = push_var(ctx, #("Option", option_val, v.Typ(0)))
+  // The constructor's inferred type (arguments as types) against the
+  // expected type's value (the constructor applied to its argument).
+  let some_ast = ast.ctr("Some", ast.rcd_values([#("", ast.int(1, s))], None, s), s)
+  let option_ast = ast.ctr("Option", ast.rcd_values([#("", ast.int_t(s))], None, s), s)
+  let #(_, some_type, ctx) = infer(ctx, some_ast)
+  let #(option_term, _option_type, ctx) = infer(ctx, option_ast)
+  let option_val = eval(ctx.ffi, ctx.env, option_term)
+  let ctx = unify(ctx, #(some_type, s), #(option_val, s))
+  assert ctx.errors == []
+  assert some_type == v.Ctr("Some", v.rcd([#("", v.int_t)]))
+  // The type's parameter is solved to `IntT` by the unification
+  assert list.contains(
+    list.map(ctx.subst, fn(sub) { sub.1 }),
+    v.int_t,
+  )
+}
 
 // ============================================================================
 //  Let

@@ -77,7 +77,38 @@ pub fn quote(ffi: FFI, env: Env, value: Value) -> Term {
       let body = normalize_term(ffi, v.env_push(captured, 1), body)
       tm.Fix(name, body)
     }
-    v.TypeDef(_, _) -> todo
+    // Type definitions: quote the parameter types in the captured
+    // frame; the argument and variant terms in frames where the
+    // parameters (and, for variants, the variant's own parameters) are
+    // bound, like `For`/`Pi` bodies.
+    v.TypeDef(captured, v.TypeDefinition(params, arg, variants)) -> {
+      let p_env = v.env_push(captured, list.length(params))
+      let params =
+        list.map(params, fn(param) {
+          let #(name, typ) = param
+          #(name, quote(ffi, captured, typ))
+        })
+      let arg = normalize_term(ffi, p_env, arg)
+      let variants =
+        list.map(variants, fn(variant) {
+          let #(tag, v.Variant(vparams, varg, vret)) = variant
+          let vp_env = v.env_push(p_env, list.length(vparams))
+          let vparams =
+            list.map(vparams, fn(param) {
+              let #(name, typ) = param
+              #(name, quote(ffi, p_env, typ))
+            })
+          #(
+            tag,
+            tm.Variant(
+              vparams,
+              normalize_term(ffi, vp_env, varg),
+              normalize_term(ffi, vp_env, vret),
+            ),
+          )
+        })
+      tm.TypeDef(tm.TypeDefinition(params, arg, variants))
+    }
     v.Err -> tm.Err
   }
 }

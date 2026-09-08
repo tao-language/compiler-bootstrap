@@ -129,10 +129,14 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       let v2 = eval(ctx.ffi, v.env_push(env2, 1), b2)
       unify(ctx, #(v1, s1), #(v2, s2))
     }
-    // Type definitions
-    v.TypeDef(env1, tdef1), v.TypeDef(env2, tdef2) -> {
-      todo as "unify TypeDef"
-    }
+    // Type definitions: two definitions unify when structurally
+    // identical (the same definition seen twice); different definitions
+    // cannot be the same type.
+    v.TypeDef(_, tdef1), v.TypeDef(_, tdef2) ->
+      case tdef1 == tdef2 {
+        True -> ctx
+        False -> with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)
+      }
     v.Err, v.Err -> ctx
     // Anything else is an error
     value1, value2 ->

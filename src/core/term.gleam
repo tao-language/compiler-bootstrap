@@ -185,7 +185,57 @@ pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
       let arg_ast = lift(arg, names, s)
       ast.app(fun_ast, arg_ast, s)
     }
-    TypeDef(type_def) -> todo
+    TypeDef(TypeDefinition(params, arg, variants)) -> {
+      // The definition's inner terms index into a frame where the type's
+      // parameters are bound (last pushed innermost), and each variant's
+      // own parameters are bound within that variant.
+      let p_names =
+        list.append(
+          list.reverse(list.map(params, fn(p) {
+  let #(name, _) = p
+  name
+})),
+          names,
+        )
+      let params_ast =
+        list.map(params, fn(param) {
+          let #(name, typ) = param
+          #(name, lift(typ, names, s))
+        })
+      let arg_ast = lift(arg, p_names, s)
+      let variants_ast =
+        list.map(variants, fn(variant) {
+          let #(tag, Variant(vparams, varg, vret)) = variant
+          let frame =
+            list.append(
+              list.reverse(
+                list.map(vparams, fn(p) {
+  let #(name, _) = p
+  name
+}),
+              ),
+              p_names,
+            )
+          let vparams_ast =
+            list.map(vparams, fn(param) {
+              let #(name, typ) = param
+              #(name, lift(typ, p_names, s))
+            })
+          #(
+            tag,
+            ast.Variant(
+              vparams_ast,
+              lift(varg, frame, s),
+              lift(vret, frame, s),
+            ),
+          )
+        })
+      ast.Expr(
+        ast.TypeDef(ast.TypeDefinition(params_ast, arg_ast, variants_ast)),
+        s,
+        None,
+      )
+    }
     Match(arg, cases) -> {
       let arg_ast = lift(arg, names, s)
       let cases_ast = list.map(cases, lift_case(_, names, s))

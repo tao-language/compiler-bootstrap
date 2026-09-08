@@ -56,8 +56,23 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
       do_app(ffi, fun_val, arg_val)
     }
     tm.TypeDef(tm.TypeDefinition(params, arg, variants)) -> {
-      echo term
-      todo
+      let param_vals =
+        list.map(params, fn(param) {
+          let #(name, typ) = param
+          #(name, eval(ffi, env, typ))
+        })
+      let p_env = v.env_push(env, list.length(params))
+      let variant_vals =
+        list.map(variants, fn(variant) {
+          let #(tag, tm.Variant(vparams, varg, vret)) = variant
+          let vparam_vals =
+            list.map(vparams, fn(param) {
+              let #(name, typ) = param
+              #(name, eval(ffi, p_env, typ))
+            })
+          #(tag, v.Variant(vparam_vals, varg, vret))
+        })
+      v.TypeDef(env, v.TypeDefinition(param_vals, arg, variant_vals))
     }
     tm.Match(arg, cases) -> {
       let arg_val = eval(ffi, env, arg)
