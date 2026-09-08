@@ -69,14 +69,39 @@ fn lookup_loop(
 
 /// Look up a type definition by name, returning its captured
 /// environment (so its parameters are addressable) and the definition.
+/// The name is first looked up in the environment (local bindings); if
+/// not found there, the module records in the environment are searched,
+/// since type constructor applications are tags (not variables) and so
+/// never bring a module member into scope as a local binding.
 pub fn lookup_type_def(
   ctx: Context,
   name: String,
 ) -> Option(#(Env, TypeDefinition)) {
   case lookup_in_env(ctx, name) {
     Some(v.TypeDef(env, type_def)) -> Some(#(env, type_def))
-    _ -> None
+    Some(_) -> None
+    None -> lookup_in_modules(ctx, name)
   }
+}
+
+/// Search the module records of the environment for a definition of
+/// `name`. A module record is a closed record whose fields are
+/// `(name, #(value, default))` pairs.
+fn lookup_in_modules(
+  ctx: Context,
+  name: String,
+) -> Option(#(Env, TypeDefinition)) {
+  list.fold(ctx.env, None, fn(acc, val) {
+    case acc, val {
+      Some(found), _ -> Some(found)
+      None, v.Rcd(fields, None) ->
+        case list.key_find(fields, name) {
+          Ok(#(v.TypeDef(env, type_def), _)) -> Some(#(env, type_def))
+          _ -> None
+        }
+      None, _ -> None
+    }
+  })
 }
 
 fn lookup_in_env(ctx: Context, name: String) -> Option(Value) {

@@ -1,10 +1,12 @@
 /// Module Definition — two-phase type checking of Tao modules
 ///
-/// `types` runs first over all modules, creating the module records
-/// (values and types as unsolved holes). `values` then infers each
-/// definition and unifies it with its declared hole. Because every
-/// module record exists before any body is checked, definitions may
-/// reference each other — including across modules — in any order.
+/// `types` runs first over all modules, creating the module records.
+/// Functions and type definitions are evaluated eagerly (their values
+/// are concrete from the start); other definitions are registered as
+/// unsolved holes. `values` then infers each definition that is still
+/// a hole and unifies it with that hole. Because every module record
+/// exists before any body is checked, definitions may reference each
+/// other — including across modules — in any order.
 import core/ast as core
 import core/context.{type Context}
 import core/eval.{eval}
@@ -27,9 +29,8 @@ import tao/declare.{type ModName, type Name}
 import tao/desugar.{type BlockCtx}
 import utils/list_utils
 
-/// Phase 1: register every definition, creating module records whose
-/// entries are unsolved holes. Returns the context with all modules in
-/// scope.
+/// Phase 1: register every definition, creating the module records.
+/// Returns the context with all modules in scope.
 pub fn types(
   ctx: Context,
   defs: List(#(ModName, List(#(Name, Stmt)))),
@@ -44,10 +45,11 @@ pub fn types(
   })
 }
 
-/// Phase 2: infer each definition's body and unify the result with the
-/// hole created in phase 1. Definitions are processed in module order;
-/// ordering does not affect the *solvability* of holes (all constraints
-/// are accumulated) but can affect error reporting.
+/// Phase 2: infer each definition whose value is still an unsolved
+/// hole from phase 1, and unify the result with that hole. Definitions
+/// are processed in module order; ordering does not affect the
+/// *solvability* of holes (all constraints are accumulated) but can
+/// affect error reporting.
 pub fn values(
   ctx: Context,
   defs: List(#(ModName, List(#(Name, Stmt)))),
@@ -204,11 +206,16 @@ fn type_stmt_data(
       // If cyclic definitions still work like this, maybe separate define.types and define.values are not needed (could be simplified).
       stmt_value(ctx, defs, mod_name, name, stmt, None)
     tao.FnOverload(name, _) -> stmt_value(ctx, defs, mod_name, name, stmt, None)
-    tao.TypeDef(_, _) -> {
-      // Phase 1 registers the name with an unsolved value and the
-      // universe type, since a type is a value of `Type`.
-      let #(val, ctx) = hole_value(ctx)
-      #(val, v.Typ(0), ctx)
+    tao.TypeDef(..) -> {
+      // A type definition is a value of the universe `Type`, and its
+      // value can be computed directly in phase 1: the parameter types
+      // are evaluated without inference, and constructor applications
+      // inside the variants are tags (not references), so the
+      // definition cannot refer to itself through the environment.
+      // Storing the concrete value (instead of a hole) lets
+      // `lookup_type_def` find the definition while the other bodies
+      // are checked in phase 2.
+      stmt_value(ctx, defs, mod_name, name, stmt, None)
     }
     tao.For(iterator, range, body) -> todo
     tao.While(condition, body) -> todo
