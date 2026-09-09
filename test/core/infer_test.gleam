@@ -253,7 +253,7 @@ pub fn infer_app_error_not_a_function_test() {
   let ast = ast.app(ast.float(3.14, s1), ast.int(1, s), s)
   let ctx0 = new_ctx
   let #(term, type_, ctx) = infer(ctx0, ast)
-  assert ctx.errors == [e.Error(e.NotAFunction(tm.Err, v.float_t), s1, [])]
+  assert ctx.errors == [e.Error(e.NotAFunction(tm.float(3.14), v.float_t), s1, [])]
   assert term == tm.Err
   assert type_ == v.Err
 }

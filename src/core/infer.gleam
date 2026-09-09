@@ -453,13 +453,9 @@ fn infer_app(
       let ret_type = v.hole([arg_val, ..ctx.env], id)
       #(tm.App(fun, arg), ret_type, ctx)
     }
-    v.Neut(neut) -> {
-      echo neut
-      todo as "TODO: infer_app Neut"
-    }
     _ -> {
       let ctx =
-        context.with_err(ctx, e.NotAFunction(tm.Err, fun_type), fun_ast.span)
+        context.with_err(ctx, e.NotAFunction(fun, fun_type), fun_ast.span)
       #(tm.Err, v.Err, ctx)
     }
   }
