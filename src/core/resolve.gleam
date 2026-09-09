@@ -1,16 +1,21 @@
-import core/context.{type Context, type Subst, Context}
-import core/error.{type Error} as e
+import core/context.{type Context, type Subst, Context, with_err}
+import core/error as e
+import core/eval.{eval}
 import core/ffi.{type FFI}
 import core/quote.{quote}
 import core/term.{type Case, type Term} as tm
+import core/unify.{unify}
 import core/unwrap.{unwrap, unwrap_seen}
 import core/value.{type Env, type Neut, type Value} as v
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
+import syntax/span.{type Span}
 
-/// Finalize a context after type checking: resolve every hole in the
-/// environment, the type bindings, and the accumulated errors.
+/// Finalize a context after type checking: discharge every leftover
+/// deferred constraint, then resolve every hole in the environment, the
+/// type bindings, and the accumulated errors.
 pub fn context(ctx: Context) -> Context {
+  let ctx = discharge(ctx.deferred, ctx)
   let env = list.map(ctx.env, value(ctx.ffi, ctx.subst, _))
   let types =
     list.map(ctx.types, fn(name_type) {
@@ -291,7 +296,7 @@ fn neutral_seen(ffi: FFI, subst: Subst, neut: Neut, seen: List(Int)) -> Neut {
 
 /// Resolve hole references inside the values carried by an error, so
 /// displayed types show their solutions rather than `?n`.
-pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
+pub fn error(ffi: FFI, subst: Subst, env: Env, err: e.Error) -> e.Error {
   let data = case err.data {
     // Syntax errors carry no values or terms to resolve.
     e.UnexpectedToken(x) -> e.UnexpectedToken(x)
@@ -319,11 +324,122 @@ pub fn error(ffi: FFI, subst: Subst, env: Env, err: Error) -> Error {
       let fun_type = value(ffi, subst, fun_type)
       e.AppExpectedExplicitArg(fun_type)
     }
+    e.MatchGuardMismatch(guard, span) -> {
+      e.MatchGuardMismatch(term(ffi, subst, env, guard), span)
+    }
     // The variant terms are left unresolved for now.
     e.TypeVariantUndefined(tag, variants) ->
       e.TypeVariantUndefined(tag, variants)
   }
   e.Error(..err, data: data)
+}
+
+/// Discharge every leftover deferred constraint — a pair the unifier
+/// recorded while a side was still neutral and never re-decided as holes
+/// got solved. Each leftover is *discharged*, not raw-errorred:
+///
+/// * `NMatch` vs concrete: the match has the expected type if *some* case
+///   body has it (exists semantics — the scrutinee is neutral, so any
+///   case may be the one selected; a dependent dispatch whose cases
+///   intentionally differ must pass).
+/// * `NCall` vs concrete: the declared return type is unified with the
+///   expected value.
+/// * `NVar`/`NApp`/unsolved `NHole` vs concrete: accepted. A rigid
+///   variable's binding type is a dependent fact the value unifier cannot
+///   decide (e.g. an overloaded operator's `__type` vs the argument
+///   record), so it is left standing without an error.
+/// * Two neutrals: accepted (nothing to decide).
+fn discharge(deferred: List(#(#(v.Value, Span), #(v.Value, Span))), ctx: Context) -> Context {
+  list.fold(deferred, ctx, fn(acc, pair) { discharge_pair(acc, pair) })
+}
+
+fn discharge_pair(ctx: Context, pair: #(#(v.Value, Span), #(v.Value, Span))) -> Context {
+  let #(#(a, sa), #(b, sb)) = pair
+  case unwrap(ctx.ffi, ctx.subst, a), unwrap(ctx.ffi, ctx.subst, b) {
+    v.Neut(neut), b -> discharge_neut(ctx, neut, sa, b, sb)
+    a, v.Neut(neut) -> discharge_neut(ctx, neut, sb, a, sa)
+    // Both sides concrete: already decided by the retry; nothing to do.
+    _, _ -> ctx
+  }
+}
+
+fn discharge_neut(
+  ctx: Context,
+  neut: Neut,
+  neut_span: Span,
+  val: v.Value,
+  val_span: Span,
+) -> Context {
+  case neut {
+    // A rigid variable's binding type is a dependent fact the value
+    // unifier cannot decide (e.g. an overloaded operator's `__type` vs
+    // the argument record): accept it without an error.
+    v.NVar(_) -> ctx
+    v.NApp(_, _) -> ctx
+    v.NHole(_, _) -> ctx
+    // The call's declared return type must agree with the expected value.
+    v.NCall(_, ret, _) -> unify(ctx, #(ret, neut_span), #(val, val_span))
+    // A neutral match has the expected type if some case body has it.
+    v.NMatch(env, _, cases) ->
+      discharge_match(ctx, env, cases, neut_span, val, val_span)
+  }
+}
+
+/// Check the expected value against some case body of a neutral match.
+/// Each case is tried so an incompatible case leaks no errors; the first
+/// case that unifies cleanly is committed. If no case is compatible,
+/// report a `TypeMismatch` against the first body.
+fn discharge_match(
+  ctx: Context,
+  env: Env,
+  cases: List(Case),
+  s: Span,
+  val: v.Value,
+  vs: Span,
+) -> Context {
+  case discharge_match_case(ctx, env, cases, val, vs) {
+    Some(ctx) -> ctx
+    None ->
+      case cases {
+        [] -> ctx
+        [c, ..] -> {
+          let env = v.env_push(env, case_vars(c))
+          let body = eval(ctx.ffi, env, c.body)
+          with_err(ctx, e.TypeMismatch(#(body, s), #(val, vs)), s)
+        }
+      }
+  }
+}
+
+fn discharge_match_case(
+  ctx: Context,
+  env: Env,
+  cases: List(Case),
+  val: v.Value,
+  vs: Span,
+) -> Option(Context) {
+  case cases {
+    [] -> None
+    [c, ..cases] -> {
+      let env = v.env_push(env, case_vars(c))
+      let body = eval(ctx.ffi, env, c.body)
+      let num_errors = list.length(ctx.errors)
+      let ctx_try = unify(ctx, #(body, vs), #(val, vs))
+      case list.length(ctx_try.errors) > num_errors {
+        True -> discharge_match_case(ctx, env, cases, val, vs)
+        False -> Some(ctx_try)
+      }
+    }
+  }
+}
+
+/// Number of variables bound by a case's pattern and guard pattern.
+fn case_vars(c: Case) -> Int {
+  let n = list.length(tm.bindings(c.pattern))
+  case c.guard {
+    None -> n
+    Some(#(_, g_pattern)) -> n + list.length(tm.bindings(g_pattern))
+  }
 }
 
 fn resolve_case(

@@ -21,7 +21,11 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   let #(value1, s1) = a
   let #(value2, s2) = b
   case unwrap(ctx.ffi, ctx.subst, value1), unwrap(ctx.ffi, ctx.subst, value2) {
-    // Try to solve holes before unifying any concrete values
+    // Try to solve holes before unifying any concrete values.
+    // Two unknown holes (`id` = None on both sides) unify to nothing:
+    // open holes are placeholders that are instantiated with *fresh* holes
+    // at each use site (see `unify_gadt`'s `instantiate`), so no
+    // substitution is recorded.
     v.Neut(v.NHole(_, id1)), v.Neut(v.NHole(_, id2)) if id1 == id2 -> ctx
     value1, v.Neut(v.NHole(env, id)) -> solve_hole(ctx, id, value1, s1)
     v.Neut(v.NHole(env, id)), value2 -> solve_hole(ctx, id, value2, s2)
@@ -41,29 +45,18 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       let ctx = unify(ctx, #(v.Neut(arg1), s1), #(v.Neut(arg2), s2))
       let ctx = case list.length(cases1) == list.length(cases2) {
         True -> ctx
-        False -> {
-          echo cases1
-          echo cases2
-          echo #("trace", ctx.trace)
-          echo #(
-            "MatchCasesArityMismatch",
-            list.length(cases1),
-            list.length(cases2),
-          )
-          todo as "error: MatchCasesArityMismatch"
-        }
+        False ->
+          with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)
       }
       unify_match_case_list(ctx, #(env1, cases1, s1), #(env2, cases2, s2))
     }
-    // Neutrals could be anything, so we don't have enough information
-    // to give a concrete error if any side is a neutral.
-    _, v.Neut(_) -> ctx
-    v.Neut(_), _ -> ctx
-    // v.Neut(_) as value1, v.Neut(_) as value2 ->
-    //   with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)
-    // Try to unify neutrals with concrete values
-    // value1, v.Neut(neut) -> check_neut_with_concrete(ctx, #(value1, s1), #(neut, s2))
-    // v.Neut(neut), value2 -> check_neut_with_concrete(ctx, #(value2, s2), #(neut, s1))
+    // A neutral that cannot reduce yet: we don't have enough information
+    // to decide the constraint now (nor to give a concrete error). Record
+    // it in the deferred queue (`defer`); it is retried as holes get
+    // solved (`retry_deferred`) and any leftover is discharged when the
+    // context is resolved (`resolve.context`).
+    _, v.Neut(_) -> defer(ctx, #(value1, s1), #(value2, s2))
+    v.Neut(_), _ -> defer(ctx, #(value1, s1), #(value2, s2))
     // Quantifier instantiation
     v.For(env1, #(_, t1), body1), v.For(env2, #(_, t2), body2) -> {
       let ctx = unify(ctx, #(t1, s1), #(t2, s2))
@@ -194,123 +187,32 @@ pub fn unify_rcd(
   }
 }
 
-// /// Check that a concrete value `a` agrees with a neutral `b`.
-// ///
-// /// Soundness caveat: an `NVar` (or `NCall`) is accepted against *any*
-// /// concrete value. Captured environments do not carry type information,
-// /// so we cannot check `a` against the variable's actual type. This is
-// /// deliberate: in dependent matches the neutral is a case-bound variable
-// /// whose body type may legitimately depend on it. The cost is that
-// /// constraints on the match *scrutinee* from dependent bodies are never
-// /// propagated back to the scrutinee's type.
-// fn check_neut_with_concrete(
-//   ctx: Context,
-//   a: #(Value, Span),
-//   b: #(Neut, Span),
-// ) -> Context {
-//   // TODO: switch (a, b)
-//   let #(value, s1) = a
-//   let #(neut, s2) = b
-//   case neut {
-//     v.NVar(_) -> ctx
-//     v.NHole(env, id) -> todo
-//     v.NApp(fun_neut, arg_val) -> todo
-//     v.NMatch(env, arg_val, cases) ->
-//       check_neut_with_concrete_cases(ctx, env, arg_val, a, #(cases, s2))
-//     v.NCall(_, _, _) -> ctx
-//   }
-// }
+/// Record a constraint that could not be decided yet because a side is
+/// still neutral. Duplicates (same pair, same spans) are not queued twice.
+fn defer(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
+  case list.contains(ctx.deferred, #(a, b)) {
+    True -> ctx
+    False -> Context(..ctx, deferred: [#(a, b), ..ctx.deferred])
+  }
+}
 
-// /// Check that a concrete value `a` agrees with a neutral match's cases.
-// ///
-// /// The match has type `a` if *some* case body has type `a` (exists, not
-// /// forall). The scrutinee is still neutral, so we cannot know which case it
-// /// will select; a dependent dispatch — such as an overloaded operator, whose
-// /// cases intentionally have *different* types (e.g. `Int` and `Float`) — must
-// /// not be forced to equal `a` in every case. Each case is tried on a scratch
-// /// copy of the context so an incompatible case does not leak errors; the
-// /// first case that unifies cleanly is committed.
-// fn check_neut_with_concrete_cases(
-//   ctx: Context,
-//   env: Env,
-//   arg: Neut,
-//   a: #(Value, Span),
-//   b: #(List(Case), Span),
-// ) -> Context {
-//   // TODO: switch (a, b)
-//   let #(cases, s2) = b
-//   case cases {
-//     [] -> ctx
-//     [c, ..cases] -> {
-//       let num_vars = list.length(tm.bindings(c.pattern))
-//       let num_vars = case c.guard {
-//         None -> num_vars
-//         Some(#(_, g_pattern)) -> num_vars + list.length(tm.bindings(g_pattern))
-//       }
-//       let env = v.env_push(env, num_vars)
-//       let body_val = eval(ctx.ffi, env, c.body)
-//       let ctx = unify(ctx, a, #(body_val, s2))
-//       check_neut_with_concrete_cases(ctx, env, arg, a, #(cases, s2))
-//     }
-//   }
-// }
-
-// fn check_neut_with_concrete_cases(
-//   ctx: Context,
-//   env: Env,
-//   arg: Neut,
-//   a: #(Value, Span),
-//   b: #(List(Case), Span),
-// ) -> Context {
-//   // TODO: switch (a, b)
-//   let #(cases, s2) = b
-//   case check_neut_with_concrete_cases_rec(ctx, env, a, cases, s2) {
-//     Some(ctx) -> ctx
-//     None ->
-//       // No case body is compatible with `a`; report against the first body.
-//       case cases {
-//         [] -> ctx
-//         [c, ..] -> {
-//           let env = v.env_push(env, case_vars(c))
-//           let body_val = eval(ctx.ffi, env, c.body)
-//           context.with_err(ctx, e.TypeMismatch(#(a.0, s2), #(body_val, s2)), s2)
-//         }
-//       }
-//   }
-// }
-
-// /// Try to unify `a` with each case body on a scratch context, returning the
-// /// first case that unifies without introducing a new error.
-// fn check_neut_with_concrete_cases_rec(
-//   ctx: Context,
-//   env: Env,
-//   a: #(Value, Span),
-//   cases: List(Case),
-//   s2: Span,
-// ) -> Option(Context) {
-//   let num_errors = list.length(ctx.errors)
-//   case cases {
-//     [] -> None
-//     [c, ..cases] -> {
-//       let env = v.env_push(env, case_vars(c))
-//       let body_val = eval(ctx.ffi, env, c.body)
-//       let ctx_try = unify(ctx, a, #(body_val, s2))
-//       case list.length(ctx_try.errors) > num_errors {
-//         False -> Some(ctx_try)
-//         True -> check_neut_with_concrete_cases_rec(ctx, env, a, cases, s2)
-//       }
-//     }
-//   }
-// }
-
-// /// Number of variables bound by a case's pattern and guard pattern.
-// fn case_vars(c: Case) -> Int {
-//   let n = list.length(tm.bindings(c.pattern))
-//   case c.guard {
-//     None -> n
-//     Some(#(_, g_pattern)) -> n + list.length(tm.bindings(g_pattern))
-//   }
-// }
+/// Re-run every deferred constraint: a hole solution may have turned a
+/// neutral side into a concrete one, so the constraint may now be
+/// decidable. The queue is rebuilt from the re-unification (a constraint
+/// that is still neutral is re-deferred, a decided one is dropped).
+fn retry_deferred(ctx: Context) -> Context {
+  let pairs = ctx.deferred
+  case pairs {
+    [] -> ctx
+    _ -> {
+      let ctx = Context(..ctx, deferred: [])
+      list.fold(pairs, ctx, fn(acc, pair) {
+        let #(#(a, sa), #(b, sb)) = pair
+        unify(acc, #(a, sa), #(b, sb))
+      })
+    }
+  }
+}
 
 fn unify_with_term(
   ctx: Context,
@@ -410,7 +312,12 @@ fn unify_match_case(
       let env2 = v.env_push(env2, list.length(tm.bindings(expect2)))
       #(env1, env2, ctx)
     }
-    _, _ -> todo as "error: MatchCaseGuardMismatch"
+    // Exactly one case has a guard: the cases cannot both hold, so the
+    // matches cannot be the same.
+    Some(#(guard, _)), _ ->
+      #(env1, env2, with_err(ctx, e.MatchGuardMismatch(guard, s1), s1))
+    _, Some(#(guard, _)) ->
+      #(env1, env2, with_err(ctx, e.MatchGuardMismatch(guard, s2), s2))
   }
   let v1 = eval(ctx.ffi, env1, body1)
   let v2 = eval(ctx.ffi, env2, body2)
@@ -447,11 +354,16 @@ fn solve_hole(
         True -> with_err(ctx, e.InfiniteType(id, value), span)
         False ->
           case list.key_find(ctx.subst, id) {
-            Error(Nil) -> Context(..ctx, subst: [#(id, value), ..ctx.subst])
-            Ok(existing) ->
+            Error(Nil) -> {
+              let ctx = Context(..ctx, subst: [#(id, value), ..ctx.subst])
+              retry_deferred(ctx)
+            }
+            Ok(existing) -> {
               // Already solved: unify the two solutions instead of
               // overwriting, so both constraints are kept.
-              unify(ctx, #(value, span), #(existing, span))
+              let ctx = unify(ctx, #(value, span), #(existing, span))
+              retry_deferred(ctx)
+            }
           }
       }
     None -> {

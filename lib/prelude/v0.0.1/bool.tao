@@ -1,0 +1,8 @@
+// The built-in boolean type. The `True` and `False` literals desugar to
+// bare constructor tags, so the type definition is the only piece the
+// compiler needs in order to unify `True`/`False` against a `Bool`
+// annotation (e.g. `match l { | Nil => True | _ => False } -> Bool`).
+type Bool {
+| True
+| False
+}

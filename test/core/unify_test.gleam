@@ -291,6 +291,58 @@ pub fn unify_ctr_gadt_vec_test() {
   assert list.length(ctx.errors) == 1
 }
 
+/// B2: GADT refinement through a *hole* type parameter is recorded in the
+/// substitution. Unifying the `LitInt` constructor against `Expr(a)` with
+/// `a` an unsolved hole solves `a := Int` (via the variant's return type
+/// `Expr(Int)`), so a later conflicting constraint `a := Bool` is an
+/// error. (With a *neutral* parameter the refinement is instead left in
+/// the deferred queue and accepted at resolve time — the dependent case.)
+pub fn unify_gadt_hole_refinement_test() {
+  let bool_t = tm.ctr("Bool", [])
+  let tdef =
+    v.TypeDefinition(
+      params: [#("a", v.Typ(0))],
+      arg: tm.rcd([#("a", tm.Var(0))]),
+      variants: [
+        #(
+          "LitInt",
+          v.Variant(
+            [],
+            tm.rcd([#("x", tm.int_t)]),
+            tm.ctr("Expr", [#("", tm.int_t)]),
+          ),
+        ),
+        #(
+          "LitBool",
+          v.Variant(
+            [],
+            tm.rcd([#("x", bool_t)]),
+            tm.ctr("Expr", [#("", bool_t)]),
+          ),
+        ),
+      ],
+    )
+  let ctx0 =
+    context.push_var_opt(new_ctx, #(
+      "Expr",
+      Some(v.TypeDef([], tdef)),
+      Some(v.Typ(0)),
+    ))
+  // Check: LitInt(x: ?n) against Expr(?a) — the refinement ?a := Int is
+  // recorded by the return-type check.
+  let #(id_n, ctx1) = context.new_hole(ctx0)
+  let #(id_a, ctx2) = context.new_hole(ctx1)
+  let litint = v.ctr("LitInt", [#("x", v.hole([], id_n))])
+  let expr = v.ctr("Expr", [#("a", v.hole([], id_a))])
+  let ctx = unify(ctx2, #(litint, s1), #(expr, s2))
+  assert ctx.errors == []
+  assert list.key_find(ctx.subst, id_n) == Ok(v.int_t)
+  assert list.key_find(ctx.subst, id_a) == Ok(v.int_t)
+  // Error: forcing the refined parameter to Bool now conflicts.
+  let ctx = unify(ctx, #(v.hole([], id_a), s1), #(v.ctr("Bool", []), s2))
+  assert list.length(ctx.errors) == 1
+}
+
 // ============================================================================
 // Record unification
 // ============================================================================

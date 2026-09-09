@@ -43,6 +43,7 @@ pub type ErrorData {
   InfiniteType(hole_id: Int, type_: Value)
   NotAFunction(fun: tm.Term, fun_type: Value)
   AppExpectedExplicitArg(fun_type: Value)
+  MatchGuardMismatch(guard: tm.Term, span: Span)
   TypeVariantUndefined(
     tag: #(String, Span),
     variants: #(List(#(String, Variant)), Span),
@@ -144,6 +145,16 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
       <> detail("The function type is: " <> fmt_value(fun_type))
       <> detail("")
       <> detail("Use `f(arg)` for explicit arguments, not `f<arg>`.")
+    }
+
+    MatchGuardMismatch(guard, guard_span) -> {
+      summary(err.span, "match guard mismatch")
+      <> display_trace(err.trace)
+      <> detail(
+        "One case has a guard (" <> fmt_term(guard)
+          <> " at " <> span_location(guard_span)
+          <> ") but the corresponding case does not.",
+      )
     }
 
     TypeVariantUndefined(#(tag, tag_span), #(variants, type_span)) -> {

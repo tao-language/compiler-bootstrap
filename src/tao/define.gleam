@@ -9,6 +9,7 @@
 /// other — including across modules — in any order.
 import core/ast as core
 import core/context.{type Context}
+import core/error as e
 import core/eval.{eval}
 import core/format
 import core/infer.{check, infer}
@@ -72,8 +73,10 @@ pub fn values(
 }
 
 /// Look up a definition by (module, name), lazily running phase 1 for
-/// it if its module record does not exist yet. Panics if the module or
-/// name is not in `defs` (a desugaring bug, not a user error).
+/// it if its module record does not exist yet. Callers must guard with
+/// `has_def` so that an undefined *variable* is reported as an error
+/// (`VarUndefined`) rather than hitting the panic below, which marks a
+/// desugaring bug (the name was expected to be a module definition).
 pub fn type_name(
   ctx: Context,
   defs: List(#(ModName, List(#(Name, Stmt)))),
@@ -97,6 +100,29 @@ pub fn type_name(
               panic as "error: definition not found"
             }
             Ok(stmt) -> type_stmt(ctx, defs, mod_name, name, stmt)
+          }
+      }
+  }
+}
+
+/// Whether `name` is a definition of `mod_name`: either already
+/// registered in the context's module record, or pending in the
+/// declaration table (so `type_name` can lazily register it).
+fn has_def(
+  ctx: Context,
+  defs: List(#(ModName, List(#(Name, Stmt)))),
+  mod_name: ModName,
+  name: Name,
+) -> Bool {
+  case get_var(ctx, mod_name, name) {
+    Some(..) -> True
+    None ->
+      case list.key_find(defs, mod_name) {
+        Error(Nil) -> False
+        Ok(mod_defs) ->
+          case list.key_find(mod_defs, name) {
+            Ok(..) -> True
+            Error(Nil) -> False
           }
       }
   }
@@ -292,8 +318,20 @@ fn expr_value(
     |> list.filter(fn(name) { !string.starts_with(name, "/") })
   let ctx =
     list.fold(deps, ctx, fn(ctx, name) {
-      let #(val, typ, ctx) = type_name(ctx, defs, mod_name, name)
-      context.push_var(ctx, #(name, val, typ))
+      // A free local name must be a definition of the current module (or
+      // an import expanded into it). Anything else is an undefined
+      // variable: report it and bind `Err` so checking can continue and
+      // the rest of the definition still produces useful errors.
+      case has_def(ctx, defs, mod_name, name) {
+        True -> {
+          let #(val, typ, ctx) = type_name(ctx, defs, mod_name, name)
+          context.push_var(ctx, #(name, val, typ))
+        }
+        False -> {
+          let ctx = context.with_err(ctx, e.VarUndefined(name), expr.span)
+          context.push_var(ctx, #(name, v.Err, v.Err))
+        }
+      }
     })
   let #(term, typ, ctx) = case opt_type {
     Some(typ) -> check(ctx, core_expr, #(typ, expr.span))

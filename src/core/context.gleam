@@ -29,6 +29,9 @@ import utils/list_utils.{at}
 /// * `trace`: Breadcrumb labels for error reporting (innermost first)
 /// * `ffi`: FFI builtin definitions available at runtime
 /// * `hole_counter`: Next fresh hole ID
+/// * `deferred`: Constraints that could not be decided while a side was
+///   still neutral; retried as holes get solved and discharged when the
+///   context is resolved (`resolve.context`).
 ///
 /// Invariant: `env` and `types` always have the same length and the same
 /// order (innermost first); `lookup` returns an index valid for *both*.
@@ -41,13 +44,19 @@ pub type Context {
     trace: List(#(String, Span)),
     ffi: FFI,
     hole_counter: Int,
+    deferred: Deferred,
   )
 }
 
 pub type Subst =
   List(#(Int, Value))
 
-pub const new_ctx = Context([], [], [], [], [], [], 0)
+/// A deferred unification constraint: a pair that the unifier met while
+/// at least one side was neutral and could not be decided yet.
+pub type Deferred =
+  List(#(#(Value, Span), #(Value, Span)))
+
+pub const new_ctx = Context([], [], [], [], [], [], 0, [])
 
 /// Look up a variable by name, returning its index (innermost-first)
 /// and type. Only the first (innermost) binding is found.
@@ -72,7 +81,9 @@ fn lookup_loop(
 /// The name is first looked up in the environment (local bindings); if
 /// not found there, the module records in the environment are searched,
 /// since type constructor applications are tags (not variables) and so
-/// never bring a module member into scope as a local binding.
+/// never bring a module member into scope as a local binding. This is
+/// how prelude type definitions (e.g. `Bool` in `lib/prelude`) become
+/// visible to every module.
 pub fn lookup_type_def(
   ctx: Context,
   name: String,
