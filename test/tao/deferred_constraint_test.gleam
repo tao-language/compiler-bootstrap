@@ -99,6 +99,48 @@ pub fn impossible_litint_case_test() {
 }
 
 // ============================================================================
+// Discharge of the remaining neutral kinds
+// ============================================================================
+
+/// An `NCall` discharges by unifying its *declared* return type with the
+/// expected value: `extern bad() -> Int` cannot be `Bool`.
+pub fn discharge_ncall_return_mismatch_test() {
+  let src = "extern bad() -> Int" <> nl <> "fn f() -> Bool =" <> nl <> "bad()"
+  assert check(src) != []
+}
+
+/// The well-typed counterpart: the declared return type agrees, so the
+/// `NCall` discharges cleanly.
+pub fn discharge_ncall_return_ok_test() {
+  let src = "extern good() -> Int" <> nl <> "fn f() -> Int =" <> nl <> "good()"
+  assert check(src) == []
+}
+
+/// If *no* case body of a neutral match has the expected type, the
+/// discharge reports a `TypeMismatch` against the first body. The match
+/// sits in a top-level annotated `let` whose scrutinee is an `extern`
+/// call (a neutral `NCall`): the let checks the `NMatch` directly
+/// against `Int`. A function body would not work here: its desugared
+/// `__args` match wraps the body, and that outer `NMatch`'s case body is
+/// the inner `NMatch` — a neutral that merely re-defers.
+pub fn discharge_match_all_cases_incompatible_test() {
+  let src =
+    "extern e() -> Int"
+    <> nl
+    <> "let x = e()"
+    <> nl
+    <> "let b: Int = match x {"
+    <> nl
+    <> "| 0 => True"
+    <> nl
+    <> "| _ => False"
+    <> nl
+    <> "}"
+  let errors = check(src)
+  assert list.any(errors, fn(err) { string.contains(err, "type mismatch") })
+}
+
+// ============================================================================
 // Well-typed: the discharge must not create false positives
 // ============================================================================
 
@@ -195,6 +237,71 @@ pub fn well_typed_annotated_match_test() {
     <> "| _ => 2"
     <> nl
     <> "}"
+  assert check(src) == []
+}
+
+// ============================================================================
+// KNOWN UNSOUND ACCEPTANCES — pinned as regressions.
+//
+// The programs below are ill-typed but currently pass the type checker.
+// These tests assert the *permissive* behavior so that a future fix that
+// starts rejecting them fails here on purpose, making the fix a conscious
+// decision (it must not regress the dependent-dispatch cases above) rather
+// than a silent change in strictness.
+// ============================================================================
+
+/// Gap 1 — exists semantics in `discharge_match`. The neutral match
+/// `match x { | 0 => True | _ => 2 }` (scrutinee `x: Int`) has case bodies
+/// of types `Bool` and `Int`. Checking the declared return type `Int`
+/// against the `NMatch` discharges by finding *some* case body with type
+/// `Int` (the `_ => 2` case) and stops; the incompatible `True` case is
+/// never reported. Sound discharge would require *every* reachable case
+/// body to have the expected type, but that would reject the overload
+/// dispatches above, whose case bodies intentionally have different types
+/// (the scrutinee picks the case). Closing this gap needs reachability
+/// analysis (a case is checkable only if its pattern can match the
+/// neutral scrutinee's type), not a change to the quantifier.
+///
+/// As it stands, `f(0)` would return a value of type `Bool` from a
+/// function declared `-> Int`.
+pub fn known_unsound_mixed_case_bodies_test() {
+  let src =
+    "fn f(x: Int) -> Int ="
+    <> nl
+    <> "match x {"
+    <> nl
+    <> "| 0 => True"
+    <> nl
+    <> "| _ => 2"
+    <> nl
+    <> "}"
+  assert check(src) == []
+}
+
+/// Gap 2 — overload return types are unchecked at the use site. Applying
+/// the overloaded `+` with a `Float` argument defers `NMatch vs Pi` (the
+/// dispatch match on the implicit `__type` argument); at discharge the case
+/// bodies are neutral `NApp(NCall ...)` values that simply re-defer, so the
+/// `NCall`'s declared return type (`Float` for `float_add`) is never
+/// unified with the expected codomain (`Int` here). The return-type hole
+/// introduced at the application is solved from the *annotation* alone,
+/// so the declared extern return type is silently ignored. `g` is
+/// declared `-> Int` but its body evaluates to a `Float`.
+pub fn known_unsound_overload_return_test() {
+  let src =
+    "extern int_add(Int, Int) -> Int"
+    <> nl
+    <> "extern float_add(Float, Float) -> Float"
+    <> nl
+    <> "fn (+) {"
+    <> nl
+    <> "| int_add(Int, Int)"
+    <> nl
+    <> "| float_add(Float, Float)"
+    <> nl
+    <> "}"
+    <> nl
+    <> "fn g(x: Float) -> Int = x + 1.0"
   assert check(src) == []
 }
 

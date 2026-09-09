@@ -478,9 +478,63 @@ pub fn unify_neut_napp_test() {
 // Neutral match unification
 // ============================================================================
 
-// pub fn unify_neut_nmatch_empty_cases_test() { todo }
-// pub fn unify_neut_nmatch_case_without_bindings_test() { todo }
-// pub fn unify_neut_nmatch_case_with_bindings_test() { todo }
+pub fn unify_neut_nmatch_same_test() {
+  let a = v.Neut(v.NMatch([], v.NVar(0), [tm.Case(tm.PAny, None, tm.int(1))]))
+  let b = v.Neut(v.NMatch([], v.NVar(0), [tm.Case(tm.PAny, None, tm.int(1))]))
+  let ctx0 = new_ctx
+  assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
+}
+
+/// Matches with different numbers of cases cannot be the same value:
+/// a `TypeMismatch` is reported (this used to be a `todo` panic).
+pub fn unify_neut_nmatch_case_count_mismatch_test() {
+  let a = v.Neut(v.NMatch([], v.NVar(0), [tm.Case(tm.PAny, None, tm.int(1))]))
+  let b =
+    v.Neut(v.NMatch(
+      [],
+      v.NVar(0),
+      [tm.Case(tm.PAny, None, tm.int(1)), tm.Case(tm.PAny, None, tm.int(2))],
+    ))
+  let ctx = unify(new_ctx, #(a, s1), #(b, s2))
+  let is_mismatch = case ctx.errors {
+    [err, ..] -> err.data == e.TypeMismatch(#(a, s1), #(b, s2))
+    _ -> False
+  }
+  assert is_mismatch
+  assert list.length(ctx.errors) == 1
+}
+
+/// Exactly one case carrying a guard means the cases cannot both hold,
+/// so the matches cannot be the same value.
+pub fn unify_neut_nmatch_guard_mismatch_test() {
+  let a = v.Neut(v.NMatch([], v.NVar(0), [tm.Case(tm.PAny, None, tm.int(1))]))
+  let b = v.Neut(v.NMatch(
+    [],
+    v.NVar(0),
+    [tm.Case(tm.PAny, Some(#(tm.int(1), tm.PAny)), tm.int(1))],
+  ))
+  let ctx = unify(new_ctx, #(a, s1), #(b, s2))
+  let is_guard_mismatch = case ctx.errors {
+    [err, ..] -> case err.data {
+      e.MatchGuardMismatch(guard, _span) -> guard == tm.int(1)
+      _ -> False
+    }
+    _ -> False
+  }
+  assert is_guard_mismatch
+  assert list.length(ctx.errors) == 1
+}
+
+/// A neutral match vs a concrete value is undecided while the scrutinee
+/// is unknown: no error now, the pair is queued in `ctx.deferred` and
+/// re-decided as holes get solved (see `deferred_constraint_test`).
+pub fn unify_neut_nmatch_vs_concrete_is_deferred_test() {
+  let a = v.Neut(v.NMatch([], v.NVar(0), [tm.Case(tm.PAny, None, tm.int(1))]))
+  let b = v.int_t
+  let ctx = unify(new_ctx, #(a, s1), #(b, s2))
+  assert ctx.errors == []
+  assert list.length(ctx.deferred) == 1
+}
 
 // ============================================================================
 // Neutral call unification

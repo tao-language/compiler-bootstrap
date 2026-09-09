@@ -335,8 +335,9 @@ pub fn error(ffi: FFI, subst: Subst, env: Env, err: e.Error) -> e.Error {
 }
 
 /// Discharge every leftover deferred constraint — a pair the unifier
-/// recorded while a side was still neutral and never re-decided as holes
-/// got solved. Each leftover is *discharged*, not raw-errorred:
+/// recorded while a side was still neutral and the retries never decided.
+/// Each leftover is discharged with per-neutral semantics, not errored
+/// outright:
 ///
 /// * `NMatch` vs concrete: the match has the expected type if *some* case
 ///   body has it (exists semantics — the scrutinee is neutral, so any
@@ -349,6 +350,12 @@ pub fn error(ffi: FFI, subst: Subst, env: Env, err: e.Error) -> e.Error {
 ///   decide (e.g. an overloaded operator's `__type` vs the argument
 ///   record), so it is left standing without an error.
 /// * Two neutrals: accepted (nothing to decide).
+///
+/// Admitted unsoundnesses (pinned in the `known_unsound_*` tests): exists
+/// semantics silently drops *incompatible* case bodies (a neutral match
+/// with one `Bool` and one `Int` body type-checks against `Int`), and a
+/// case body that is itself neutral (an overload dispatch) re-defers
+/// without ever checking the `NCall`'s declared return type.
 fn discharge(deferred: List(#(#(v.Value, Span), #(v.Value, Span))), ctx: Context) -> Context {
   list.fold(deferred, ctx, fn(acc, pair) { discharge_pair(acc, pair) })
 }
@@ -371,13 +378,11 @@ fn discharge_neut(
   val_span: Span,
 ) -> Context {
   case neut {
-    // A rigid variable's binding type is a dependent fact the value
-    // unifier cannot decide (e.g. an overloaded operator's `__type` vs
-    // the argument record): accept it without an error.
+    // Binding types are dependent facts this unifier cannot decide
+    // (see the `discharge` docs): accept.
     v.NVar(_) -> ctx
     v.NApp(_, _) -> ctx
     v.NHole(_, _) -> ctx
-    // The call's declared return type must agree with the expected value.
     v.NCall(_, ret, _) -> unify(ctx, #(ret, neut_span), #(val, val_span))
     // A neutral match has the expected type if some case body has it.
     v.NMatch(env, _, cases) ->
@@ -397,7 +402,7 @@ fn discharge_match(
   val: v.Value,
   vs: Span,
 ) -> Context {
-  case discharge_match_case(ctx, env, cases, val, vs) {
+  case discharge_match_case(ctx, env, cases, s, val, vs) {
     Some(ctx) -> ctx
     None ->
       case cases {
@@ -415,6 +420,7 @@ fn discharge_match_case(
   ctx: Context,
   env: Env,
   cases: List(Case),
+  s: Span,
   val: v.Value,
   vs: Span,
 ) -> Option(Context) {
@@ -424,9 +430,9 @@ fn discharge_match_case(
       let env = v.env_push(env, case_vars(c))
       let body = eval(ctx.ffi, env, c.body)
       let num_errors = list.length(ctx.errors)
-      let ctx_try = unify(ctx, #(body, vs), #(val, vs))
+      let ctx_try = unify(ctx, #(body, s), #(val, vs))
       case list.length(ctx_try.errors) > num_errors {
-        True -> discharge_match_case(ctx, env, cases, val, vs)
+        True -> discharge_match_case(ctx, env, cases, s, val, vs)
         False -> Some(ctx_try)
       }
     }

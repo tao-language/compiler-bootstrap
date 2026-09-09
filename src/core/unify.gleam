@@ -21,11 +21,10 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   let #(value1, s1) = a
   let #(value2, s2) = b
   case unwrap(ctx.ffi, ctx.subst, value1), unwrap(ctx.ffi, ctx.subst, value2) {
-    // Try to solve holes before unifying any concrete values.
-    // Two unknown holes (`id` = None on both sides) unify to nothing:
-    // open holes are placeholders that are instantiated with *fresh* holes
-    // at each use site (see `unify_gadt`'s `instantiate`), so no
-    // substitution is recorded.
+    // The same hole on both sides needs no work. Two *open* holes
+    // (`id` = None) in particular unify to nothing: an open hole is a
+    // placeholder instantiated with a *fresh* hole at each use site (see
+    // `unify_gadt`'s `instantiate`), so no substitution is recorded.
     v.Neut(v.NHole(_, id1)), v.Neut(v.NHole(_, id2)) if id1 == id2 -> ctx
     value1, v.Neut(v.NHole(env, id)) -> solve_hole(ctx, id, value1, s1)
     v.Neut(v.NHole(env, id)), value2 -> solve_hole(ctx, id, value2, s2)
@@ -187,8 +186,9 @@ pub fn unify_rcd(
   }
 }
 
-/// Record a constraint that could not be decided yet because a side is
-/// still neutral. Duplicates (same pair, same spans) are not queued twice.
+/// Queue a constraint that could not be decided yet (a side is still
+/// neutral). Identical pairs — structural equality, captured environments
+/// included — are not queued twice.
 fn defer(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   case list.contains(ctx.deferred, #(a, b)) {
     True -> ctx
@@ -200,6 +200,10 @@ fn defer(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
 /// neutral side into a concrete one, so the constraint may now be
 /// decidable. The queue is rebuilt from the re-unification (a constraint
 /// that is still neutral is re-deferred, a decided one is dropped).
+///
+/// Called on *every* hole solve, so the queue is re-folded once per
+/// substitution: fine while queues are small, but O(queue) work per solve
+/// (and the fold can nest, since a re-unification may solve more holes).
 fn retry_deferred(ctx: Context) -> Context {
   let pairs = ctx.deferred
   case pairs {
@@ -220,7 +224,6 @@ fn unify_with_term(
   b: #(Env, Term, Span),
 ) -> Context {
   let #(env, term, s) = b
-  // let term = resolve(ctx.ffi, ctx.subst, list.length(ctx.env), term)
   let value = eval(ctx.ffi, env, term)
   unify(ctx, a, #(value, s))
 }
@@ -314,9 +317,9 @@ fn unify_match_case(
     }
     // Exactly one case has a guard: the cases cannot both hold, so the
     // matches cannot be the same.
-    Some(#(guard, _)), _ ->
+    Some(#(guard, _)), None ->
       #(env1, env2, with_err(ctx, e.MatchGuardMismatch(guard, s1), s1))
-    _, Some(#(guard, _)) ->
+    None, Some(#(guard, _)) ->
       #(env1, env2, with_err(ctx, e.MatchGuardMismatch(guard, s2), s2))
   }
   let v1 = eval(ctx.ffi, env1, body1)
@@ -359,10 +362,10 @@ fn solve_hole(
               retry_deferred(ctx)
             }
             Ok(existing) -> {
-              // Already solved: unify the two solutions instead of
-              // overwriting, so both constraints are kept.
-              let ctx = unify(ctx, #(value, span), #(existing, span))
-              retry_deferred(ctx)
+              // Defensive: a hole is solved exactly once, but if we ever
+              // meet it twice, merge the solutions instead of overwriting
+              // (any substitution the merge adds retries the queue itself).
+              unify(ctx, #(value, span), #(existing, span))
             }
           }
       }
