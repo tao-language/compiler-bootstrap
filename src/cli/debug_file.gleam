@@ -3,23 +3,17 @@ import core/error
 import core/ffi
 import core/format
 import core/resolve
-import core/unwrap
-import core/value as v
-import filepath
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/option.{type Option, None, Some}
-import gleam/result
+import gleam/option.{type Option}
 import gleam/string
-import tao/ast.{type Module, type Stmt} as tao
+import tao/ast as tao
 import tao/compile
 import tao/declare
 import tao/define
-import tao/desugar
 import tao/load
 import tao/tests
-import utils/fs
 
 /// `tao debug-file` — load the project (plus dependencies), run the full
 /// compile pipeline with per-phase output, then run the tests. Exits
@@ -93,7 +87,6 @@ pub fn debug_file(
   // Define helpers to print and format.
   let ctx = Context(..new_ctx, ffi: ffi.build)
   let names = list.map(ctx.types, fn(x) { x.0 })
-  let fmt_expr = fn(expr) { format.expr(expr, width, 2) }
   let fmt_value = fn(val) { format.value(ffi.build, names, val, width, 2) }
 
   echo "> defs = declare.modules(mods)"
@@ -104,20 +97,20 @@ pub fn debug_file(
     list.map(mod_defs, fn(local) {
       let #(name, stmt) = local
       let stmt_str = case stmt.data {
-        tao.Import(path, alias, scope) -> "import " <> path
-        tao.Extern(name, params, returns) -> "extern"
-        tao.LetVar(name, opt_type, value) -> "let-var"
-        tao.LetPat(pattern, types, value) ->
+        tao.Import(path, _alias, _scope) -> "import " <> path
+        tao.Extern(_name, _params, _returns) -> "extern"
+        tao.LetVar(_name, _opt_type, _value) -> "let-var"
+        tao.LetPat(pattern, _types, _value) ->
           "let-pat " <> string.inspect(pattern)
-        tao.LetMut(name, opt_type, value) -> "let-mut"
-        tao.Mut(name, value) -> todo
-        tao.Test(name, expr, expect) -> "test"
-        tao.FnDef(name, implicits, params, returns, body) -> "fn"
-        tao.FnOverload(name, choices) -> "fn-overload"
+        tao.LetMut(_name, _opt_type, _value) -> "let-mut"
+        tao.Mut(_name, _value) -> todo
+        tao.Test(_name, _expr, _expect) -> "test"
+        tao.FnDef(_name, _implicits, _params, _returns, _body) -> "fn"
+        tao.FnOverload(_name, _choices) -> "fn-overload"
         tao.TypeDef(_, _) -> "type"
-        tao.For(iterator, range, body) -> todo
-        tao.While(condition, body) -> todo
-        tao.Return(expr) -> todo
+        tao.For(_iterator, _range, _body) -> todo
+        tao.While(_condition, _body) -> todo
+        tao.Return(_expr) -> todo
         tao.Break -> todo
         tao.Continue -> todo
       }

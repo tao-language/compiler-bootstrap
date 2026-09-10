@@ -8,7 +8,7 @@
 /// the remaining fields). During unification, fields not found in the head
 /// are searched for in the tail recursively.
 import core/ast
-import core/context.{new_ctx, push_var_opt}
+import core/context.{new_ctx}
 import core/eval.{eval, match_pattern}
 import core/infer.{check, infer}
 import core/literals as lit
@@ -16,7 +16,6 @@ import core/occurs.{occurs}
 import core/quote.{normalize_term, quote}
 import core/term as tm
 import core/unify.{unify}
-import core/unwrap.{unwrap}
 import core/value as v
 import gleam/int
 import gleam/list
@@ -525,7 +524,7 @@ pub fn infer_rcd_multiple_fields_test() {
     #("y", #(Some(ast.float(3.14, s)), None)),
   ]
   let ast = ast.rcd(fields, None, s)
-  let #(term, type_, ctx) = infer(new_ctx, ast)
+  let #(_term, type_, ctx) = infer(new_ctx, ast)
   assert ctx.errors == []
   // Check field types are inferred correctly
   assert type_
@@ -620,7 +619,7 @@ pub fn check_rcd_subtype_with_rcd_tail_test() {
       [#("x", #(v.int_t, None))],
       Some(v.Rcd([#("y", #(v.int_t, None))], None)),
     )
-  let #(term, type_, ctx) = check(new_ctx, ast, #(expected, s))
+  let #(_term, type_, ctx) = check(new_ctx, ast, #(expected, s))
   // This works because the tail is a concrete record that matches field y
   assert ctx.errors == []
   assert type_ == expected
@@ -634,7 +633,7 @@ pub fn check_rcd_missing_field_error_test() {
     v.Rcd([#("x", #(v.int_t, None)), #("y", #(v.float_t, None))], None)
   let #(_, _, ctx) = check(new_ctx, ast, #(expected, s))
   // y is in expected but not in actual → field not found
-  assert list.length(ctx.errors) > 0
+  assert ctx.errors != []
 }
 
 // ============================================================================
@@ -735,7 +734,7 @@ pub fn unify_pi_rcd_domain_mismatch_test() {
   let b = v.Pi([], #("args", v.Rcd([#("y", #(v.int_t, None))], None)), tm.int_t)
   let ctx0 = new_ctx
   let ctx = unify(ctx0, #(a, s1), #(b, s2))
-  assert list.length(ctx.errors) > 0
+  assert ctx.errors != []
 }
 
 // ============================================================================
@@ -781,7 +780,7 @@ pub fn infer_app_rcd_arg_test() {
       tm.int_t,
     )
   let ctx0 = context.push_var_opt(new_ctx, #("f", Some(v.var(0)), Some(pi)))
-  let #(term, type_, ctx) = infer(ctx0, ast)
+  let #(_term, type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
   assert type_ == v.int_t
 }
@@ -850,7 +849,7 @@ pub fn infer_fix_rcd_simple_test() {
     )
   let ast = ast.fix("f", ast.var("args", s), s)
   let ctx0 = context.push_var_opt(new_ctx, #("args", None, Some(pi_type)))
-  let #(term, type_, ctx) = infer(ctx0, ast)
+  let #(_term, _type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
 }
 

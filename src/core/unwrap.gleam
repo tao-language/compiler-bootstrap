@@ -2,7 +2,7 @@ import core/context.{type Subst}
 import core/eval.{eval}
 import core/ffi.{type FFI}
 import core/quote.{quote}
-import core/term.{type Case, type Term} as tm
+import core/term.{type Term}
 import core/value.{type Env, type Neut, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}

@@ -101,10 +101,10 @@ pub fn bindings(pattern: Pattern) -> List(String) {
   }
 }
 
+// TODO: use a Set
 /// Free variable names of a term (duplicates kept, order = encounter
 /// order). Binders exclude their bound name; case bodies exclude the
 /// names bound by the pattern and guard pattern.
-// TODO: use a Set
 
 pub fn free_vars(term: Expr) -> List(String) {
   case term.data {

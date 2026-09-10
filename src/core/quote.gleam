@@ -5,7 +5,7 @@ import core/ffi.{type FFI}
 import core/term.{type Case, type Term} as tm
 import core/value.{type Env, type Neut, type Value} as v
 import gleam/list
-import gleam/option.{type Option, None, Some}
+import gleam/option.{None, Some}
 import syntax/span.{type Span}
 
 /// eval → quote: reduce a term and turn it back into a term whose

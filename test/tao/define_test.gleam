@@ -1,11 +1,9 @@
 import core/context
-import core/resolve
 import core/term as tm
 import core/value as v
 import gleam/option.{None, Some}
 import syntax/span.{Span}
 import tao/ast as tao
-import tao/declare
 import tao/define
 
 const s = Span("define_test", 0, 0, 0, 0)

@@ -99,7 +99,6 @@ fn has_err_or_negative_var(t: Term) -> Bool {
   case t {
     tm.Err -> True
     tm.Var(i) -> i < 0
-    tm.Var(_) -> False
     tm.Typ(_) -> False
     tm.Hole(_) -> False
     tm.Lit(_) -> False

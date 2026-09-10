@@ -3,11 +3,10 @@
 /// Each error variant carries `Span` location information so that
 /// `display` can produce messages in the familiar
 /// `file:line:col: message` format with additional context.
-import core/ast
 import core/ffi.{type FFI}
 import core/format
 import core/term as tm
-import core/value.{type Neut, type Value, type Variant} as v
+import core/value.{type Value, type Variant}
 import gleam/int
 import gleam/list
 import gleam/string
@@ -66,7 +65,6 @@ pub type ErrorData {
 /// can be formatted with proper names (De Bruijn indices → variable names).
 pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
   let names = list.map(types, fn(t) { t.0 })
-  let fmt_expr = fn(expr: ast.Expr) { format.expr(expr, 60, 0) }
   let fmt_value = fn(val: Value) { format.value(ffi, names, val, 60, 0) }
   let fmt_term = fn(term: tm.Term) { format.term(names, term, 60, 0) }
 
@@ -104,7 +102,7 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
       )
     }
 
-    TypeMismatch(#(got, got_span), #(expected, expected_span)) -> {
+    TypeMismatch(#(got, _got_span), #(expected, _expected_span)) -> {
       summary(err.span, "type mismatch")
       <> display_trace(err.trace)
       <> detail("Expected:   " <> fmt_value(expected))
@@ -208,20 +206,6 @@ fn span_short(span: Span) -> String {
   <> int.to_string(span.start_line)
   <> ":"
   <> int.to_string(span.start_col)
-}
-
-// ============================================================================
-// NEUTRAL VALUE FORMATTING
-// ============================================================================
-
-/// Format a `Neut` (neutral value) as a human-readable string.
-///
-/// Neutral values (unsolved holes, free variables, unresolved applications)
-/// have no named representation in the context, so we format them directly
-/// without going through `format.value`.
-fn neut_to_string(ffi: FFI, names: List(String), neut: Neut) -> String {
-  let value = v.Neut(neut)
-  format.value(ffi, names, value, 60, 2)
 }
 
 // ============================================================================

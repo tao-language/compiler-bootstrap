@@ -17,8 +17,8 @@ import nibble/lexer.{type Lexer}
 import nibble/pratt
 import syntax/span.{type Span, Span, merge}
 import tao/ast.{
-  type BinaryOp, type Case, type Expr, type OverloadChoice, type Parameters,
-  type Pattern, type Stmt, type UnaryOp,
+  type BinaryOp, type Case, type Expr, type Parameters,
+  type Pattern, type Stmt,
 } as tao
 
 const reserved = [
@@ -413,7 +413,7 @@ fn variant(
           start,
         )
     }
-    use end <- do(get_span(file))
+    use _end <- do(get_span(file))
     return(tao.Variant(tag, params, args, returns))
   }
   |> nibble.in("type variant")
@@ -983,7 +983,7 @@ fn sequence(
 }
 
 fn arguments(
-  file: String,
+  _file: String,
   item: Parser(a, Token, String),
 ) -> Parser(List(#(String, a)), Token, String) {
   let arg_parser = {

@@ -3,10 +3,9 @@ import core/context.{type Context, Context, with_err}
 import core/error as e
 import core/eval.{eval}
 import core/occurs.{occurs}
-import core/quote
 import core/term.{type Case, type Term} as tm
 import core/unwrap.{unwrap}
-import core/value.{type Env, type Neut, type TypeDefinition, type Value} as v
+import core/value.{type Env, type TypeDefinition, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
@@ -26,8 +25,8 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     // placeholder instantiated with a *fresh* hole at each use site (see
     // `unify_gadt`'s `instantiate`), so no substitution is recorded.
     v.Neut(v.NHole(_, id1)), v.Neut(v.NHole(_, id2)) if id1 == id2 -> ctx
-    value1, v.Neut(v.NHole(env, id)) -> solve_hole(ctx, id, value1, s1)
-    v.Neut(v.NHole(env, id)), value2 -> solve_hole(ctx, id, value2, s2)
+    value1, v.Neut(v.NHole(_env, id)) -> solve_hole(ctx, id, value1, s1)
+    v.Neut(v.NHole(_env, id)), value2 -> solve_hole(ctx, id, value2, s2)
     v.Neut(v.NVar(lv1)), v.Neut(v.NVar(lv2)) if lv1 == lv2 -> ctx
     v.Neut(v.NVar(_)) as value1, v.Neut(v.NVar(_)) as value2 ->
       with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)

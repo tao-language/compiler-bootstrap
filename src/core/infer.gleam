@@ -18,8 +18,7 @@ import core/value.{type Type, type Value} as v
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import syntax/span.{type Span, Span}
-import utils/list_utils
+import syntax/span.{type Span}
 
 /// Infer the type of a term (synthesis).
 ///

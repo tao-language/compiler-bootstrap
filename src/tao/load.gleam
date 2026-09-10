@@ -5,9 +5,9 @@ import gleam/option.{type Option, None, Some}
 import gleam/order
 import gleam/string
 import simplifile
-import syntax/span.{type Span, Span}
+import syntax/span.{Span}
 import tao/ast.{type Module, type Stmt, Import, import_all}
-import tao/parse.{expression, statements}
+import tao/parse.{statements}
 import utils/fs
 
 /// Append an implicit `import <path> *` to every module that is not itself

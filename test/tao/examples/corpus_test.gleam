@@ -25,7 +25,7 @@ pub fn corpus_compiles_test() {
   // implicitly imported into the gallery modules.
   let mods =
     list.append(gallery, prelude)
-    |> load.implicit_prelude_imports(_, prelude)
+    |> load.implicit_prelude_imports(prelude)
   let ctx =
     Context(..new_ctx, ffi: ffi.build)
     |> compile.modules(mods)
@@ -39,7 +39,7 @@ pub fn corpus_tests_pass_test() {
   let #(prelude, _e2) = load.package_list(["lib"], [#("prelude", None)])
   let mods =
     list.append(gallery, prelude)
-    |> load.implicit_prelude_imports(_, prelude)
+    |> load.implicit_prelude_imports(prelude)
   let ctx =
     Context(..new_ctx, ffi: ffi.build)
     |> compile.modules(mods)

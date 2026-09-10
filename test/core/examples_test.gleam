@@ -8,9 +8,7 @@ import core/ffi
 import core/infer.{infer}
 import core/resolve
 import core/term as tm
-import core/unwrap.{unwrap}
 import core/value as v
-import gleam/list
 import gleam/option.{None, Some}
 import syntax/span.{Span}
 

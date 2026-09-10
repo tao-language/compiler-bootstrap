@@ -1,7 +1,7 @@
 /// `tao debug-expr` — parse and debug a Tao expression. Not implemented.
 import gleam/io
 
-pub fn debug_expr(source: String, width: Int) -> Nil {
+pub fn debug_expr(source: String, _width: Int) -> Nil {
   io.println(">> source")
   io.println(source)
   io.println("")

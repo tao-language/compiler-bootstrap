@@ -4,18 +4,13 @@
 /// lambdas over a single `__args` record, applications to applications
 /// of record arguments, and `if` to matches on `True`/`False`.
 import core/ast as core
-import core/format
 import core/literals as lit
-import filepath
 import gleam/int
-import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import gleam/regexp
 import gleam/result
-import gleam/string
 import syntax/span.{type Span, Span}
-import tao/ast.{type Case, type Expr, type Module, type Pattern, type Stmt} as tao
+import tao/ast.{type Module, type Pattern, type Stmt} as tao
 import tao/declare.{is_public_name}
 
 pub type BlockCtx {
@@ -43,7 +38,7 @@ pub fn module(
   let span = Span(mod_name, 0, 0, 0, 0)
   let mod_exports = list.key_find(exports, mod_name) |> result.unwrap([])
   let return_expr = core.rcd_vars(mod_exports, None, span)
-  statement_list(exports, new_block_ctx, stmts, return_expr)
+  statement_list(exports, stmts, return_expr)
 }
 
 pub fn expr(exports: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
@@ -94,7 +89,7 @@ pub fn expr(exports: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
       let core_cases = case_list(exports, cases)
       core.match(core_arg, core_cases, e.span)
     }
-    tao.Op1(op, expr) -> {
+    tao.Op1(_op, _expr) -> {
       echo e.data
       todo
     }
@@ -107,7 +102,7 @@ pub fn expr(exports: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
     tao.Do(block) -> {
       // A block with no `return` statement returns the empty record.
       let return = core.rcd([], None, e.span)
-      statement_list(exports, new_block_ctx, block, return)
+      statement_list(exports, block, return)
     }
     tao.Err -> core.err(e.span)
   }
@@ -185,7 +180,7 @@ fn parameters_unpack(
   body: tao.Expr,
   span: Span,
 ) -> core.Expr {
-  let #(args, tail) = params
+  let #(args, _tail) = params
   let bindings =
     list.index_map(args, fn(param, index) {
       let #(p, _) = param
@@ -383,22 +378,20 @@ pub fn pattern(p: Pattern) -> core.Pattern {
 /// what the block evaluates to.
 pub fn statement_list(
   exports: List(#(String, List(String))),
-  block_ctx: BlockCtx,
   stmts: List(Stmt),
   return: core.Expr,
 ) -> core.Expr {
   case stmts {
     [] -> return
     [stmt, ..stmts] -> {
-      let next = statement_list(exports, block_ctx, stmts, return)
-      statement(exports, block_ctx, stmt, next)
+      let next = statement_list(exports, stmts, return)
+      statement(exports, stmt, next)
     }
   }
 }
 
 pub fn statement(
   exports: List(#(String, List(String))),
-  block_ctx: BlockCtx,
   stmt: Stmt,
   next: core.Expr,
 ) -> core.Expr {
@@ -413,7 +406,7 @@ pub fn statement(
         |> list.map(fn(x) { #(x, x) })
         |> tao.ImportSome
       let stmt = tao.Stmt(tao.Import(path, alias, scope), s)
-      statement(exports, block_ctx, stmt, next)
+      statement(exports, stmt, next)
     }
     tao.Import(path, alias, tao.ImportSome(names)) -> {
       let mod_name = path
@@ -427,7 +420,7 @@ pub fn statement(
           let access = core.dot(core.var(mod_name, s), x, s)
           let trace = Some("import " <> path <> " {" <> x <> "}")
           let next = core.let_var_trace(#(y, None, access), next, s, trace)
-          statement(exports, block_ctx, stmt, next)
+          statement(exports, stmt, next)
         }
       }
     }
@@ -461,7 +454,7 @@ pub fn statement(
         Some("let-var " <> name),
       )
     }
-    tao.LetPat(pattern, types, value) -> {
+    tao.LetPat(_pattern, _types, _value) -> {
       // core.let_pat_trace(
       //   #(core_pattern, core_types, core_value),
       //   next,
@@ -470,8 +463,8 @@ pub fn statement(
       // )
       todo
     }
-    tao.LetMut(name, opt_type, value) -> todo
-    tao.Mut(name, value) -> todo
+    tao.LetMut(_name, _opt_type, _value) -> todo
+    tao.Mut(_name, _value) -> todo
     tao.FnDef(name, implicits, params, returns, body) -> {
       let core_fn =
         function(
@@ -526,8 +519,8 @@ pub fn statement(
         Some("type " <> name),
       )
     }
-    tao.For(iterator, range, body) -> todo
-    tao.While(condition, body) -> todo
+    tao.For(_iterator, _range, _body) -> todo
+    tao.While(_condition, _body) -> todo
     tao.Return(ret_expr) -> expr(exports, ret_expr)
     tao.Break -> todo
     tao.Continue -> todo

@@ -332,7 +332,7 @@ fn check(source: String) -> List(String) {
         load.package_list(["lib"], [#("prelude", None)])
       let mods: List(Module) =
         list.append([#("scratch", stmts)], prelude)
-        |> load.implicit_prelude_imports(_, prelude)
+        |> load.implicit_prelude_imports(prelude)
       let ctx =
         Context(..new_ctx, ffi: ffi.build)
         |> compile.modules(mods)

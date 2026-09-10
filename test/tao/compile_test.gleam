@@ -1,19 +1,12 @@
-import core/context.{new_ctx}
-import core/eval.{eval}
-import core/term as tm
-import core/value as v
-import gleam/list
-import gleam/option.{None, Some}
-import syntax/span.{Span}
-import tao/ast as tao
-import tao/compile
-import tao/tests
+// TODO: implement tao/compile tests (sketches below)
+pub fn compile_tests_pending() -> Nil {
+  todo as "TODO: implement tao/compile tests"
+}
 
-const s = Span("compile_test", 0, 0, 0, 0)
-
-const s1 = Span("compile_test", 1, 1, 1, 1)
-
-const s2 = Span("compile_test", 2, 2, 2, 2)
+// const s = Span("compile_test", 0, 0, 0, 0)
+// const s1 = Span("compile_test", 1, 1, 1, 1)
+// const s2 = Span("compile_test", 2, 2, 2, 2)
+//
 // pub fn compile_package_empty_test() {
 //   let ctx0 = new_ctx
 //   let ctx = compile.package(ctx0, [])

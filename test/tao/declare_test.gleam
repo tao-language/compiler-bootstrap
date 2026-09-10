@@ -1,5 +1,4 @@
-import core/context
-import gleam/option.{None, Some}
+import gleam/option.{None}
 import syntax/span.{Span}
 import tao/ast as tao
 import tao/declare

@@ -12,7 +12,6 @@ import tao/ast.{type Module}
 import tao/compile
 import tao/parse as p
 import gleam/list
-import gleam/string
 
 const nl = "\n"
 

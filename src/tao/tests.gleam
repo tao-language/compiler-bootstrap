@@ -1,8 +1,7 @@
 import core/context.{type Context}
 import core/error.{type Error}
 import core/eval.{eval}
-import core/term.{type Term} as tm
-import core/unwrap.{unwrap}
+import core/term.{type Term}
 import core/value.{type Value} as v
 import tao/ast.{type Expr, type Pattern}
 

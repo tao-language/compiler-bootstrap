@@ -7,7 +7,7 @@
 /// Records, constructors and applications use named argument lists where
 /// an empty name (`""`) marks a positional argument: positional args
 /// bind by order, named args by name.
-import core/literals.{type Literal, type LiteralType} as lit
+import core/literals.{type Literal} as lit
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}

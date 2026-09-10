@@ -1,8 +1,4 @@
-import filepath
 import gleam/list
-import gleam/option.{type Option, None, Some}
-import gleam/result
-import syntax/span.{type Span}
 import tao/ast.{type Module, type Stmt} as tao
 
 pub type ModName =
@@ -41,18 +37,18 @@ pub fn statement(stmt: Stmt) -> List(#(Name, Stmt)) {
       #(alias, stmt),
       ..list.map(names, fn(x) { #(x.1, stmt) })
     ]
-    tao.Extern(name, params, returns) -> [#(name, stmt)]
-    tao.LetVar(name, opt_type, value) -> [#(name, stmt)]
-    tao.LetPat(pattern, types, value) -> todo
-    tao.LetMut(name, opt_type, value) -> todo
-    tao.Mut(name, value) -> todo
-    tao.Test(name, _, _) -> []
+    tao.Extern(name, _params, _returns) -> [#(name, stmt)]
+    tao.LetVar(name, _opt_type, _value) -> [#(name, stmt)]
+    tao.LetPat(_pattern, _types, _value) -> todo
+    tao.LetMut(_name, _opt_type, _value) -> todo
+    tao.Mut(_name, _value) -> todo
+    tao.Test(_name, _, _) -> []
     tao.FnDef(name, ..) -> [#(name, stmt)]
     tao.FnOverload(name, _) -> [#(name, stmt)]
     tao.TypeDef(name, _) -> [#(name, stmt)]
-    tao.For(iterator, range, body) -> todo
-    tao.While(condition, body) -> todo
-    tao.Return(expr) -> todo
+    tao.For(_iterator, _range, _body) -> todo
+    tao.While(_condition, _body) -> todo
+    tao.Return(_expr) -> todo
     tao.Break -> todo
     tao.Continue -> todo
   }

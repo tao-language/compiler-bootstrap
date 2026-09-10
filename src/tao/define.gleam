@@ -11,23 +11,15 @@ import core/ast as core
 import core/context.{type Context}
 import core/error as e
 import core/eval.{eval}
-import core/format
 import core/infer.{check, infer}
-import core/quote
-import core/resolve
-import core/term as tm
 import core/unify.{unify}
 import core/value as v
-import filepath
-import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
-import gleam/result
 import gleam/string
-import syntax/span.{type Span, Span}
-import tao/ast.{type Module, type Stmt, type Type} as tao
+import tao/ast.{type Stmt} as tao
 import tao/declare.{type ModName, type Name}
-import tao/desugar.{type BlockCtx}
+import tao/desugar
 import utils/list_utils
 
 /// Phase 1: register every definition, creating the module records.
@@ -219,10 +211,10 @@ fn type_stmt_data(
       }
       #(val, typ, ctx)
     }
-    tao.LetPat(pattern, types, value) -> todo
-    tao.LetMut(name, opt_type, value) -> todo
-    tao.Mut(name, value) -> todo
-    tao.Test(name, expr, expect) -> {
+    tao.LetPat(_pattern, _types, _value) -> todo
+    tao.LetMut(_name, _opt_type, _value) -> todo
+    tao.Mut(_name, _value) -> todo
+    tao.Test(_name, _expr, _expect) -> {
       let #(val, ctx) = hole_value(ctx)
       let #(typ, ctx) = hole_value(ctx)
       #(val, typ, ctx)
@@ -243,9 +235,9 @@ fn type_stmt_data(
       // are checked in phase 2.
       stmt_value(ctx, defs, mod_name, name, stmt, None)
     }
-    tao.For(iterator, range, body) -> todo
-    tao.While(condition, body) -> todo
-    tao.Return(expr) -> todo
+    tao.For(_iterator, _range, _body) -> todo
+    tao.While(_condition, _body) -> todo
+    tao.Return(_expr) -> todo
     tao.Break -> todo
     tao.Continue -> todo
   }
@@ -290,8 +282,8 @@ pub fn set_var(
 
 /// Not implemented: list a module's entries with optional value/type.
 pub fn get_mod_vars(
-  ctx: Context,
-  mod_name: ModName,
+  _ctx: Context,
+  _mod_name: ModName,
 ) -> List(#(Name, Option(v.Value), Option(v.Type))) {
   todo
 }

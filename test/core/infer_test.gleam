@@ -286,7 +286,7 @@ pub fn infer_app_hole_expansion_test() {
       Some(v.var(0)),
       Some(v.hole_open([], None)),
     ))
-  let #(term, type_, ctx) = infer(ctx0, ast)
+  let #(term, _type_, ctx) = infer(ctx0, ast)
   assert ctx.errors == []
   assert term == tm.App(tm.Var(0), tm.int(42))
 }

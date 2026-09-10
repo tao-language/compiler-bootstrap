@@ -1,12 +1,11 @@
 import core/ast as core
-import core/context.{Context, new_ctx}
+import core/context.{new_ctx}
 import core/eval.{eval}
 import core/infer.{check, infer}
 import core/resolve
 import core/term as tm
 import core/unify.{unify}
 import core/value as v
-import gleam/list
 import gleam/option.{None, Some}
 import syntax/span.{Span}
 

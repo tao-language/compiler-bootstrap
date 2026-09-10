@@ -1,9 +1,7 @@
 /// Core Language Parser
 ///
 /// Parses Core source text into AST using the nibble parser combinator library.
-import core/ast.{
-  type Case, type Expr, type Pattern, type TypeDefinition, type Variant,
-}
+import core/ast.{type Expr}
 import core/error as e
 import core/literals.{type LiteralType} as lit
 import gleam/option.{type Option, None, Some}

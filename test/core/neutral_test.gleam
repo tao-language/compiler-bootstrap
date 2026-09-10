@@ -18,7 +18,6 @@ import core/resolve
 import core/term as tm
 import core/unwrap.{unwrap}
 import core/value.{type Env, type Value} as v
-import gleam/list
 import gleam/option.{None, Some}
 
 /// The value-reduction pipeline: quote → resolve holes → re-evaluate.
