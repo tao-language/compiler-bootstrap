@@ -131,7 +131,7 @@ pub fn bindings(p: Pattern) -> List(String) {
 
 /// Convert a Term to a named AST Expr, turning de Bruijn indices into
 /// names from `names` (indexed innermost-first). Unknown indices render
-/// as `$n`. Not yet total: `Ann`/`TypeDef`/`PErr` crash.
+/// as `$n`.
 pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
   case term {
     Typ(u) -> ast.typ(u, s)
@@ -160,7 +160,8 @@ pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
       let arg_ast = lift(arg, names, s)
       ast.call(name, ret_ast, arg_ast, s)
     }
-    Ann(term, type_) -> todo
+    Ann(term, type_) ->
+      ast.ann(lift(term, names, s), lift(type_, names, s), s)
     For(#(name, type_), body) -> {
       let type_ast = lift(type_, names, s)
       let body_ast = lift(body, [name, ..names], s)
@@ -278,7 +279,7 @@ fn lift_pattern(p: Pattern) -> ast.Pattern {
       let tail_ast = option.map(tail, lift_pattern)
       ast.prcd(fields_ast, tail_ast, s)
     }
-    PErr -> todo
+    PErr -> ast.Pattern(ast.PErr, s)
   }
 }
 

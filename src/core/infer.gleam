@@ -39,7 +39,7 @@ pub fn infer(ctx: Context, term_ast: ast.Expr) -> #(Term, Type, Context) {
     ast.LitT(t) -> infer_litt(ctx, t)
     ast.Var(name) -> infer_var(ctx, name, term_ast.span)
     ast.Ctr(tag, arg) -> infer_ctr(ctx, tag, arg)
-    ast.Rcd(fields, tail) -> infer_rcd(ctx, fields, tail)
+    ast.Rcd(fields, tail) -> infer_rcd(ctx, fields, tail, term_ast.span)
     ast.Call(name, ret, arg) -> infer_call(ctx, name, ret, arg)
     ast.Ann(inner, type_) -> infer_ann(ctx, inner, type_)
     ast.For(param, body) -> infer_for(ctx, param, body)
@@ -62,8 +62,9 @@ pub fn infer(ctx: Context, term_ast: ast.Expr) -> #(Term, Type, Context) {
 
 /// Check that a term has the expected type (verification).
 ///
-/// This is a thin wrapper: infer the term, then fill in any missing
-/// record defaults at the value level before unifying.
+/// This is a thin wrapper: infer the term, fill in any record fields the
+/// term omits but the expected type gives a default for (`coerce`), then
+/// unify the inferred type with the expected one.
 ///
 /// Literal literals are a deliberate subtyping convenience: an int
 /// literal type-checks against *any* numeric literal type (it is
@@ -164,8 +165,9 @@ fn infer_rcd(
   ctx: Context,
   fields: List(#(String, #(Option(Expr), Option(Expr)))),
   tail: Option(Expr),
+  span: Span,
 ) -> #(Term, Type, Context) {
-  let #(fields, field_types, ctx) = infer_rcd_fields(ctx, fields)
+  let #(fields, field_types, ctx) = infer_rcd_fields(ctx, fields, span)
   let #(tail, tail_type, ctx) = case tail {
     None -> #(None, None, ctx)
     Some(tail) -> {
@@ -179,21 +181,22 @@ fn infer_rcd(
 fn infer_rcd_fields(
   ctx: Context,
   fields: List(#(String, #(Option(Expr), Option(Expr)))),
+  span: Span,
 ) -> #(List(#(String, Term)), List(#(String, Type)), Context) {
-  let s = Span("", 0, 0, 0, 0)
   case fields {
     [] -> #([], [], ctx)
     [#(name, #(opt_term, _)), ..fields] -> {
+      // A field whose value is missing is inferred from a hole. The field
+      // names carry no spans of their own, so the hole takes the record's.
       let #(term, ctx) = case opt_term {
         Some(term) -> #(term, ctx)
         None -> {
           let #(id, ctx) = context.new_hole(ctx)
-          // TODO: get span from field name
-          #(ast.Expr(ast.Hole(Some(id)), s, None), ctx)
+          #(ast.Expr(ast.Hole(Some(id)), span, None), ctx)
         }
       }
       let #(term, type_, ctx) = infer(ctx, term)
-      let #(fields, field_types, ctx) = infer_rcd_fields(ctx, fields)
+      let #(fields, field_types, ctx) = infer_rcd_fields(ctx, fields, span)
       #([#(name, term), ..fields], [#(name, type_), ..field_types], ctx)
     }
   }

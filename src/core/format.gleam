@@ -336,7 +336,6 @@ fn doc_pattern(pattern: Pattern, indent: Int) -> Document {
       ])
     PRcd(fields, opt_tail) -> doc_prcd(fields, opt_tail, indent)
     PErr -> doc_text("%error")
-    _ -> todo
   }
 }
 
