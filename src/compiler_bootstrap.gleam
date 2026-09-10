@@ -1,34 +1,23 @@
 /// Compiler Bootstrap CLI — entry point
 import argv.{Argv}
+import cli/check.{check}
 import cli/debug_core.{debug_core}
 import cli/debug_expr.{debug_expr}
 import cli/debug_file.{debug_file}
-import cli/test_.{test_}
+import cli/run.{run}
+import cli/run_tests.{parse_test_args, run_tests}
 import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
-import tao/config
-import utils/glob.{glob_compile}
 
 const format_width = 40
 
-const help = "Tao compiler bootstrap
+const help = "Tao compiler bootstrap\n\nUsage:\n  tao check [paths...]                  Type-check .tao files (default: .)\n  tao run <file>                        Compile and run a .tao file\n  tao test [paths...]                   Run tests in .tao files (default: .)\n                                        --filter <pattern>  only run matching tests (repeatable)\n                                        --skip <pattern>    skip matching tests (repeatable)\n  tao debug-expr 'expression'           Debug a Tao expression\n  tao debug-file <filename>             Debug a Tao module\n  tao debug-core 'core-term'            Debug a Core term\n  tao --help                            Show this help\n\ncheck and test accept file and directory paths; directories are searched\nrecursively for .tao files. If no paths are given, the current directory\nis used. test also accepts <path>:<test1,test2> to restrict the tests run\nin that file, and the --filter/--skip patterns match a test name or a\nmodule path with a test name (module/path.tao:test_name), with * and **\nglob wildcards.\n"
 
-Usage:
-  tao                                   Enter interactive REPL mode
-  tao <filename>                        Run a .tao or .core file
-  tao -c 'expression'                   Run a Tao expression
-  tao test [..path] [--name='pattern']  Run tests
-  tao debug-expr 'expression'           Debug a Tao expression
-  tao debug-file <filename>             Debug a Tao module
-  tao debug-core 'core-term'            Debug a Core term
-  tao --help                            Show this help
-"
-
-/// The CLI entry point. Commands: `test`, `debug-expr`, `debug-file`,
-/// `debug-core`, `--help`. The REPL and file runners are TODO.
+/// The CLI entry point. Commands: `check`, `run`, `test`, `debug-expr`,
+/// `debug-file`, `debug-core`, `--help`. The REPL is TODO.
 pub fn main() -> Nil {
   let Argv(arguments: args, ..) = argv.load()
   case args {
@@ -37,36 +26,22 @@ pub fn main() -> Nil {
       io.println(help)
       exit(0)
     }
-    ["test", ..args] -> {
-      // TODO: parse argument flags:
-      // --name for test name patterns
-      // --root for root directory
-      let root =
-        list.find_map(args, fn(arg) {
-          case arg {
-            "--root=" <> root -> Ok(root)
-            _ -> Error(Nil)
-          }
-        })
-        |> option.from_result
-        |> option.or(config.find_project_root("."))
-        |> option.unwrap(".")
-      let paths = list.filter(args, fn(arg) { !string.starts_with(arg, "--") })
-      let patterns =
-        list.filter_map(args, fn(arg) {
-          case arg {
-            "--name=" <> pattern -> Ok(pattern)
-            _ -> Error(Nil)
-          }
-        })
-      let summary = test_(root, paths, patterns)
-      let num_errors =
-        list.length(summary.errors) + summary.num_fail + summary.num_neutral
-      case num_errors > 0 {
-        True -> exit(1)
-        False -> Nil
-      }
+    ["check", ..paths] -> check(paths)
+    ["run", file] -> run([file])
+    ["run", ..] -> {
+      io.println_error("error: run takes exactly one file")
+      io.println(help)
+      exit(1)
     }
+    ["test", ..args] ->
+      case parse_test_args(args) {
+        Error(msg) -> {
+          io.println_error("error: " <> msg)
+          io.println(help)
+          exit(1)
+        }
+        Ok(parsed) -> run_tests(parsed)
+      }
     // ["-c", expr, ..rest] ->
     //   case rest {
     //     [] -> Ok(Run(Inline(expr), False, False))
@@ -122,8 +97,9 @@ pub fn main() -> Nil {
     //     _ -> Error("Too many arguments")
     //   }
     _ -> {
-      echo args
-      todo as "CLI command not implemented"
+      io.println_error("error: unknown command")
+      io.println(help)
+      exit(1)
     }
   }
 }
