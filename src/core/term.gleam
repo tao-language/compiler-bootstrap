@@ -148,8 +148,7 @@ pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
       let arg_ast = lift(arg, names, s)
       ast.call(name, ret_ast, arg_ast, s)
     }
-    Ann(term, type_) ->
-      ast.ann(lift(term, names, s), lift(type_, names, s), s)
+    Ann(term, type_) -> ast.ann(lift(term, names, s), lift(type_, names, s), s)
     For(#(name, type_), body) -> {
       let type_ast = lift(type_, names, s)
       let body_ast = lift(body, [name, ..names], s)
@@ -180,10 +179,12 @@ pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
       // own parameters are bound within that variant.
       let p_names =
         list.append(
-          list.reverse(list.map(params, fn(p) {
-  let #(name, _) = p
-  name
-})),
+          list.reverse(
+            list.map(params, fn(p) {
+              let #(name, _) = p
+              name
+            }),
+          ),
           names,
         )
       let params_ast =
@@ -199,9 +200,9 @@ pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
             list.append(
               list.reverse(
                 list.map(vparams, fn(p) {
-  let #(name, _) = p
-  name
-}),
+                  let #(name, _) = p
+                  name
+                }),
               ),
               p_names,
             )
@@ -212,11 +213,7 @@ pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
             })
           #(
             tag,
-            ast.Variant(
-              vparams_ast,
-              lift(varg, frame, s),
-              lift(vret, frame, s),
-            ),
+            ast.Variant(vparams_ast, lift(varg, frame, s), lift(vret, frame, s)),
           )
         })
       ast.Expr(

@@ -109,10 +109,10 @@ fn has_err_or_negative_var(t: Term) -> Bool {
         list.any(fields, fn(field) {
           let #(_, #(f, d)) = field
           has_err_or_negative_var(f)
-            || case d {
-              Some(d) -> has_err_or_negative_var(d)
-              None -> False
-            }
+          || case d {
+            Some(d) -> has_err_or_negative_var(d)
+            None -> False
+          }
         })
       let tail_bad = case tail {
         Some(t) -> has_err_or_negative_var(t)

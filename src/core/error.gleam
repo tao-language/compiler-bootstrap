@@ -149,9 +149,11 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
       summary(err.span, "match guard mismatch")
       <> display_trace(err.trace)
       <> detail(
-        "One case has a guard (" <> fmt_term(guard)
-          <> " at " <> span_location(guard_span)
-          <> ") but the corresponding case does not.",
+        "One case has a guard ("
+        <> fmt_term(guard)
+        <> " at "
+        <> span_location(guard_span)
+        <> ") but the corresponding case does not.",
       )
     }
 

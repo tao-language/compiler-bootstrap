@@ -12,13 +12,13 @@ pub fn unwrap_no_solution_test() {
 }
 
 pub fn unwrap_direct_solution_test() {
-  let subst = [#(10, v.int_t)]
+  let subst = [#(10, #([], v.int_t))]
   let solution = unwrap([], subst, v.hole_open([], Some(10)))
   assert solution == v.int_t
 }
 
 pub fn unwrap_indirect_solution_test() {
-  let subst = [#(10, v.hole_open([], Some(20))), #(20, v.int_t)]
+  let subst = [#(10, #([], v.hole_open([], Some(20)))), #(20, #([], v.int_t))]
   let solution = unwrap([], subst, v.hole_open([], Some(10)))
   assert solution == v.int_t
 }

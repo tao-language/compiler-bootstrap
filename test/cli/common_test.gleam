@@ -17,8 +17,7 @@ pub fn expand_paths_directory_test() {
 }
 
 pub fn expand_paths_file_test() {
-  assert expand_paths(["test/cli/data/f1.tao"])
-    == Ok(["test/cli/data/f1.tao"])
+  assert expand_paths(["test/cli/data/f1.tao"]) == Ok(["test/cli/data/f1.tao"])
 }
 
 pub fn expand_paths_normalizes_dot_slash_test() {

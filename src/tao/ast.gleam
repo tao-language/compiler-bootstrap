@@ -131,10 +131,7 @@ pub type OverloadChoice {
 /// (quantified) parameters, `(name, opt_type)` — untyped parameters are
 /// plain type variables. The type's name is on the `TypeDef` statement.
 pub type TypeDefinition {
-  TypeDefinition(
-    params: List(#(String, Option(Type))),
-    variants: List(Variant),
-  )
+  TypeDefinition(params: List(#(String, Option(Type))), variants: List(Variant))
 }
 
 /// One variant (constructor) of a type definition. `params` are the

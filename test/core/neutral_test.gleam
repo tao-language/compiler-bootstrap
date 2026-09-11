@@ -38,7 +38,7 @@ pub fn neutral_app_reduces_after_solve_test() {
   // Unsolved: still neutral.
   assert unwrap(ffi, [], n) == n
   // Solving `?0` to the identity lambda reduces the whole app to `1`.
-  let subst = [#(0, v.Lam([], #("x", v.int_t), tm.Var(0)))]
+  let subst = [#(0, #([], v.Lam([], #("x", v.int_t), tm.Var(0))))]
   assert unwrap(ffi, subst, n) == v.int(1)
 }
 
@@ -54,9 +54,9 @@ pub fn neutral_match_reduces_after_solve_test() {
   assert n == v.Neut(v.NMatch([], v.NHole([], Some(0)), cases))
   // Scrutinee 2: the catch-all case is picked post-solve, with the
   // binding — the match does not reduce eagerly.
-  assert unwrap(ffi, [#(0, v.int(2))], n) == v.int(2)
+  assert unwrap(ffi, [#(0, #([], v.int(2)))], n) == v.int(2)
   // Scrutinee 1: the literal case is picked instead.
-  assert unwrap(ffi, [#(0, v.int(1))], n) == v.int(10)
+  assert unwrap(ffi, [#(0, #([], v.int(1)))], n) == v.int(10)
 }
 
 /// 3. A neutral nested inside a value constructor (record or ctor) is
@@ -64,7 +64,7 @@ pub fn neutral_match_reduces_after_solve_test() {
 /// pipeline.
 pub fn neutral_nested_in_record_reduces_test() {
   let ffi = ffi.build
-  let subst = [#(0, v.Lam([], #("x", v.int_t), tm.Var(0)))]
+  let subst = [#(0, #([], v.Lam([], #("x", v.int_t), tm.Var(0))))]
   let app_neutral = v.Neut(v.NApp(v.NHole([], Some(0)), v.int(1)))
   // Record field.
   assert reduce(ffi, subst, [], v.rcd([#("f", app_neutral)]))
@@ -85,14 +85,20 @@ pub fn neutral_ffi_call_reduces_after_solve_test() {
     eval(
       ffi,
       [],
-      tm.Call("int_add", tm.int_t, tm.rcd([#("", tm.Hole(Some(0))), #("", tm.int(1))])),
+      tm.Call(
+        "int_add",
+        tm.int_t,
+        tm.rcd([#("", tm.Hole(Some(0))), #("", tm.int(1))]),
+      ),
     )
   assert n
-    == v.Neut(
-      v.NCall("int_add", v.int_t, v.rcd([#("", v.hole([], 0)), #("", v.int(1))])),
-    )
+    == v.Neut(v.NCall(
+      "int_add",
+      v.int_t,
+      v.rcd([#("", v.hole([], 0)), #("", v.int(1))]),
+    ))
   // Unsolved: still neutral...
   assert reduce(ffi, [], [], n) == n
   // ...solved: the builtin reduces.
-  assert reduce(ffi, [#(0, v.int(1))], [], n) == v.int(2)
+  assert reduce(ffi, [#(0, #([], v.int(1)))], [], n) == v.int(2)
 }

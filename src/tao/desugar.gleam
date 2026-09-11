@@ -193,14 +193,12 @@ fn parameters_unpack(
         tao.Pattern(tao.PVar(name), _span) ->
           case opt_type {
             Some(type_) ->
-              Some(
-                tao.let_var(
-                  "__check" <> int.to_string(index + 1),
-                  Some(type_),
-                  tao.var(name, span),
-                  span,
-                )
-              )
+              Some(tao.let_var(
+                "__check" <> int.to_string(index + 1),
+                Some(type_),
+                tao.var(name, span),
+                span,
+              ))
             None -> None
           }
         _ -> None
@@ -215,8 +213,7 @@ fn parameters_unpack(
     })
   let body = case check_stmts {
     [] -> body
-    [_, ..] ->
-      tao.do(list.append(check_stmts, [tao.return(body, span)]), span)
+    [_, ..] -> tao.do(list.append(check_stmts, [tao.return(body, span)]), span)
   }
   let cases = [tao.Case(tao.prcd_strict(bindings, span), None, body)]
   let match_expr = tao.match(tao.var(var_name, span), cases, span)
@@ -242,8 +239,7 @@ fn function(
       // checked inside the unpacking match (see `parameters_unpack`), so
       // an annotation may mention a sibling parameter. A fresh hole for
       // the whole argument record is inferred in `infer_lam`.
-      let core_body =
-        parameters_unpack(exports, param_name, params, body, span)
+      let core_body = parameters_unpack(exports, param_name, params, body, span)
       let core_body = case opt_returns {
         None -> core_body
         Some(returns) -> {
@@ -252,11 +248,7 @@ fn function(
         }
       }
       let core_fun =
-        core.Expr(
-          core.Lam(#(param_name, None), core_body),
-          span,
-          trace,
-        )
+        core.Expr(core.Lam(#(param_name, None), core_body), span, trace)
       case opt_fun_name {
         Some(fun_name) -> core.fix(fun_name, core_fun, span)
         None -> core_fun

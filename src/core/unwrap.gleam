@@ -44,7 +44,7 @@ pub fn unwrap_neut(
             // environment, so quote it against *this* hole's captured
             // env before re-evaluating: that turns the solution's
             // variable levels into indices valid here.
-            Ok(solution) ->
+            Ok(#(_, solution)) ->
               unwrap_seen(ffi, subst, solution, [id, ..seen])
               |> quote.normalize_value(ffi, env, _)
             Error(Nil) -> v.hole(env, id)

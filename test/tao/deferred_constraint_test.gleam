@@ -25,8 +25,7 @@ import tao/parse as p
 
 const nl = "\n"
 
-const expr_type =
-  "type Expr(a) { | LitInt(Int) -> Expr(Int) | LitBool(Bool) -> Expr(Bool) | IsZero(Expr(Int)) -> Expr(Bool) }"
+const expr_type = "type Expr(a) { | LitInt(Int) -> Expr(Int) | LitBool(Bool) -> Expr(Bool) | IsZero(Expr(Int)) -> Expr(Bool) }"
 
 // ============================================================================
 // Ill-typed: the annotation must be checked against the case bodies
@@ -36,11 +35,7 @@ const expr_type =
 /// annotation is a neutral match vs `Expr(Int)`, so the conflict only
 /// surfaces when the constraint is discharged against the case body.
 pub fn b1_fn_return_annot_litbool_test() {
-  let src = expr_type
-    <> nl
-    <> "fn f() -> Expr(Int) ="
-    <> nl
-    <> "LitBool(True)"
+  let src = expr_type <> nl <> "fn f() -> Expr(Int) =" <> nl <> "LitBool(True)"
   assert check(src) != []
 }
 
@@ -48,11 +43,8 @@ pub fn b1_fn_return_annot_litbool_test() {
 /// `Expr(Int)` — the `IsZero` variant returns `Expr(Bool)`, and its
 /// argument must be `Expr(Int)`.
 pub fn b1_fn_return_annot_iszero_litbool_test() {
-  let src = expr_type
-    <> nl
-    <> "fn f() -> Expr(Int) ="
-    <> nl
-    <> "IsZero(LitBool(True))"
+  let src =
+    expr_type <> nl <> "fn f() -> Expr(Int) =" <> nl <> "IsZero(LitBool(True))"
   assert check(src) != []
 }
 
@@ -84,7 +76,8 @@ pub fn c_ctor_signature_at_dependent_use_test() {
 /// A `LitInt` case against `Expr(Bool)` is impossible — the variant's
 /// return type `Expr(Int)` conflicts with the scrutinee type `Expr(Bool)`.
 pub fn impossible_litint_case_test() {
-  let src = expr_type
+  let src =
+    expr_type
     <> nl
     <> "fn f(e: Expr(Bool)) -> Int ="
     <> nl
@@ -148,7 +141,8 @@ pub fn discharge_match_all_cases_incompatible_test() {
 /// neutral body match discharges cleanly (a case body whose type is itself
 /// a neutral match simply re-defers, it does not error).
 pub fn well_typed_gadt_evaluator_test() {
-  let src = expr_type
+  let src =
+    expr_type
     <> nl
     <> "fn f(e: Expr(Int)) -> Int ="
     <> nl

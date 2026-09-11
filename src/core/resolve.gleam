@@ -56,11 +56,17 @@ fn term_seen(
         False ->
           case list.key_find(subst, id) {
             Error(Nil) -> t
-            Ok(value) -> {
+            Ok(#(env_h, value)) -> {
               let value = unwrap(ffi, subst, value)
-              let quoted = quote(ffi, env, value)
-              // Add this hole ID to the seen set for this resolution chain.
-              term_seen(ffi, subst, env, quoted, [id, ..seen])
+              // Quote against the env captured when the hole was solved,
+              // not the term's frame: the solution's variable levels are
+              // relative to the solve-time frame, which may contain
+              // bindings absent from the term's (shorter) frame.
+              let quoted = quote(ffi, env_h, value)
+              // Add this hole ID to the seen set for this resolution
+              // chain, continuing the walk in the captured frame: the
+              // quoted term's indices are relative to `env_h`.
+              term_seen(ffi, subst, env_h, quoted, [id, ..seen])
             }
           }
       }
@@ -264,9 +270,10 @@ fn neutral_seen(ffi: FFI, subst: Subst, neut: Neut, seen: List(Int)) -> Neut {
     }
     v.NMatch(captured_env, arg_neut, cases) -> {
       let arg_neut = neutral_seen(ffi, subst, arg_neut, seen)
-      let cases = list.map(cases, fn(c) {
-        resolve_case(ffi, subst, captured_env, seen, c)
-      })
+      let cases =
+        list.map(cases, fn(c) {
+          resolve_case(ffi, subst, captured_env, seen, c)
+        })
       v.NMatch(captured_env, arg_neut, cases)
     }
     v.NCall(name, ret, arg) -> {
@@ -333,11 +340,17 @@ pub fn error(ffi: FFI, subst: Subst, env: Env, err: e.Error) -> e.Error {
 /// with one `Bool` and one `Int` body type-checks against `Int`), and a
 /// case body that is itself neutral (an overload dispatch) re-defers
 /// without ever checking the `NCall`'s declared return type.
-fn discharge(deferred: List(#(#(v.Value, Span), #(v.Value, Span))), ctx: Context) -> Context {
+fn discharge(
+  deferred: List(#(#(v.Value, Span), #(v.Value, Span))),
+  ctx: Context,
+) -> Context {
   list.fold(deferred, ctx, fn(acc, pair) { discharge_pair(acc, pair) })
 }
 
-fn discharge_pair(ctx: Context, pair: #(#(v.Value, Span), #(v.Value, Span))) -> Context {
+fn discharge_pair(
+  ctx: Context,
+  pair: #(#(v.Value, Span), #(v.Value, Span)),
+) -> Context {
   let #(#(a, sa), #(b, sb)) = pair
   case unwrap(ctx.ffi, ctx.subst, a), unwrap(ctx.ffi, ctx.subst, b) {
     v.Neut(neut), b -> discharge_neut(ctx, neut, sa, b, sb)

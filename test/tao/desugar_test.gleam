@@ -32,19 +32,17 @@ pub fn desugar_stmt_type_def_bool_test() {
     tao.Stmt(
       tao.TypeDef(
         "Bool",
-        tao.TypeDefinition(
-          [],
-          [
-            tao.Variant("True", [], [], tao.ctr("Bool", [], s)),
-            tao.Variant("False", [], [], tao.ctr("Bool", [], s)),
-          ],
-        ),
+        tao.TypeDefinition([], [
+          tao.Variant("True", [], [], tao.ctr("Bool", [], s)),
+          tao.Variant("False", [], [], tao.ctr("Bool", [], s)),
+        ]),
       ),
       s,
     )
   let expr = desugar.statement([], stmt, unit)
   // A type definition is let-bound under its name with the universe type.
-  assert fmt(expr) == "%let Bool: %Type = type {\n| True -> #Bool|\n  | False -> #Bool\n}\n{}"
+  assert fmt(expr)
+    == "%let Bool: %Type = type {\n| True -> #Bool|\n  | False -> #Bool\n}\n{}"
 }
 
 pub fn desugar_stmt_type_def_option_test() {
@@ -52,26 +50,24 @@ pub fn desugar_stmt_type_def_option_test() {
     tao.Stmt(
       tao.TypeDef(
         "Option",
-        tao.TypeDefinition(
-          [#("a", None)],
-          [
-            tao.Variant(
-              "Some",
-              [],
-              [#("", tao.var("a", s))],
-              tao.ctr("Option", [#("a", tao.var("a", s))], s),
-            ),
-            tao.Variant(
-              "None",
-              [],
-              [],
-              tao.ctr("Option", [#("a", tao.var("a", s))], s),
-            ),
-          ],
-        ),
+        tao.TypeDefinition([#("a", None)], [
+          tao.Variant(
+            "Some",
+            [],
+            [#("", tao.var("a", s))],
+            tao.ctr("Option", [#("a", tao.var("a", s))], s),
+          ),
+          tao.Variant(
+            "None",
+            [],
+            [],
+            tao.ctr("Option", [#("a", tao.var("a", s))], s),
+          ),
+        ]),
       ),
       s,
     )
   let expr = desugar.statement([], stmt, unit)
-  assert fmt(expr) == "%let Option: %Type = type a: ? {\n| Some(a) -> #Option({a})|\n  | None -> #Option({a})\n}\n{}"
+  assert fmt(expr)
+    == "%let Option: %Type = type a: ? {\n| Some(a) -> #Option({a})|\n  | None -> #Option({a})\n}\n{}"
 }

@@ -56,5 +56,4 @@ pub fn is_directory(path: String) -> Result(Bool, String) {
 pub fn find(_dir: String, _match: Regexp) -> List(String) {
   todo
 }
-
 // TODO: implement

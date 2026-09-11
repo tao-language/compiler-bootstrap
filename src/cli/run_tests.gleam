@@ -65,7 +65,8 @@ fn parse(
           let per_file = list.append(per_file, [#(path, test_names(names))])
           parse(rest, list.append(paths, [path]), per_file, filter, skip)
         }
-        Error(Nil) -> parse(rest, list.append(paths, [arg]), per_file, filter, skip)
+        Error(Nil) ->
+          parse(rest, list.append(paths, [arg]), per_file, filter, skip)
       }
     }
   }
@@ -92,7 +93,9 @@ pub fn run_tests(args: TestArgs) -> Nil {
     })
   case bad_file {
     Ok(#(path, _)) -> {
-      io.println_error("error: test names can only be given for a file: " <> path)
+      io.println_error(
+        "error: test names can only be given for a file: " <> path,
+      )
       common.exit(1)
     }
     Error(Nil) -> run_loaded(args)
@@ -136,8 +139,7 @@ fn run_tests_(
   let all_tests = pair_modules(loaded.paths, loaded.mods, test_defs)
   let sel = TestSelection(args.per_file, args.filter, args.skip)
   let filter = filter_fn(sel)
-  let selected =
-    list.filter(all_tests, fn(t) { filter(t.0, t.1) })
+  let selected = list.filter(all_tests, fn(t) { filter(t.0, t.1) })
 
   case list.length(selected) {
     1 -> io.println("Running 1 test")
@@ -187,15 +189,15 @@ fn pair_modules(
 ) -> List(#(String, String, tests.TestDef)) {
   case paths, mods {
     [path, ..paths], [#(_, stmts), ..mods] -> {
-      let n = list.count(stmts, fn(stmt) {
-        case stmt.data {
-          tao.Test(..) -> True
-          _ -> False
-        }
-      })
+      let n =
+        list.count(stmts, fn(stmt) {
+          case stmt.data {
+            tao.Test(..) -> True
+            _ -> False
+          }
+        })
       let #(head, tail) = list.split(test_defs, n)
-      let pairs =
-        list.map(head, fn(def) { #(path, strip_name(def.name), def) })
+      let pairs = list.map(head, fn(def) { #(path, strip_name(def.name), def) })
       list.append(pairs, pair_modules(paths, mods, tail))
     }
     _, [] -> []

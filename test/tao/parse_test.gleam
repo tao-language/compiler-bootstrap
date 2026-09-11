@@ -4,8 +4,8 @@ import gleam/list
 import gleam/option.{None, Some}
 import gleam/result.{try}
 import syntax/span.{type Span, Span}
-import tao/parse as p
 import tao/ast as tao
+import tao/parse as p
 
 const filename = "parse_test"
 
@@ -24,8 +24,7 @@ fn parse_stmts(source: String) -> Result(List(tao.Stmt), Error) {
 
 pub fn lex_type_test() {
   assert lex("type") == Ok([p.KwType])
-  assert lex("type Bool")
-    == Ok([p.KwType, p.Name("Bool")])
+  assert lex("type Bool") == Ok([p.KwType, p.Name("Bool")])
   assert lex("types") == Ok([p.Name("types")])
 }
 
@@ -37,18 +36,8 @@ pub fn parse_type_def_bool_test() {
         tao.TypeDef(
           "Bool",
           tao.TypeDefinition([], [
-            tao.Variant(
-              "True",
-              [],
-              [],
-              tao.ctr("Bool", [], s(1, 11, 1, 12)),
-            ),
-            tao.Variant(
-              "False",
-              [],
-              [],
-              tao.ctr("Bool", [], s(1, 15, 1, 19)),
-            ),
+            tao.Variant("True", [], [], tao.ctr("Bool", [], s(1, 11, 1, 12))),
+            tao.Variant("False", [], [], tao.ctr("Bool", [], s(1, 15, 1, 19))),
           ]),
         ),
         s(1, 1, 1, 29),
@@ -64,31 +53,28 @@ pub fn parse_type_def_option_test() {
       tao.Stmt(
         tao.TypeDef(
           "Option",
-          tao.TypeDefinition(
-            [#("a", None)],
-            [
-              tao.Variant(
-                "Some",
-                [],
-                [#("", tao.var("a", s(1, 24, 1, 26)))],
-                tao.ctr(
-                  "Option",
-                  [#("a", tao.var("a", s(1, 16, 1, 17)))],
-                  s(1, 16, 1, 17),
-                ),
+          tao.TypeDefinition([#("a", None)], [
+            tao.Variant(
+              "Some",
+              [],
+              [#("", tao.var("a", s(1, 24, 1, 26)))],
+              tao.ctr(
+                "Option",
+                [#("a", tao.var("a", s(1, 16, 1, 17)))],
+                s(1, 16, 1, 17),
               ),
-              tao.Variant(
-                "None",
-                [],
-                [],
-                tao.ctr(
-                  "Option",
-                  [#("a", tao.var("a", s(1, 26, 1, 27)))],
-                  s(1, 26, 1, 27),
-                ),
+            ),
+            tao.Variant(
+              "None",
+              [],
+              [],
+              tao.ctr(
+                "Option",
+                [#("a", tao.var("a", s(1, 26, 1, 27)))],
+                s(1, 26, 1, 27),
               ),
-            ],
-          ),
+            ),
+          ]),
         ),
         s(1, 1, 1, 36),
       ),
@@ -146,7 +132,8 @@ pub fn parse_type_def_list_test() {
 }
 
 pub fn parse_type_def_gadt_test() {
-  let src = "type Vec(n: Int, a: Type) { | VCons<m>(x: a, xs: Vec(m, a)) -> Vec(m + 1, a) | VNil -> Vec(0, a) }"
+  let src =
+    "type Vec(n: Int, a: Type) { | VCons<m>(x: a, xs: Vec(m, a)) -> Vec(m + 1, a) | VNil -> Vec(0, a) }"
   let expected =
     Ok([
       tao.Stmt(
@@ -167,7 +154,10 @@ pub fn parse_type_def_gadt_test() {
                     "xs",
                     tao.ctr(
                       "Vec",
-                      [#("", tao.var("m", s(1, 53, 1, 55))), #("", tao.var("a", s(1, 55, 1, 58)))],
+                      [
+                        #("", tao.var("m", s(1, 53, 1, 55))),
+                        #("", tao.var("a", s(1, 55, 1, 58))),
+                      ],
                       s(1, 48, 1, 59),
                     ),
                   ),
@@ -195,7 +185,10 @@ pub fn parse_type_def_gadt_test() {
                 [],
                 tao.ctr(
                   "Vec",
-                  [#("", tao.int(0, s(1, 91, 1, 93))), #("", tao.var("a", s(1, 93, 1, 96)))],
+                  [
+                    #("", tao.int(0, s(1, 91, 1, 93))),
+                    #("", tao.var("a", s(1, 93, 1, 96))),
+                  ],
                   s(1, 85, 1, 97),
                 ),
               ),

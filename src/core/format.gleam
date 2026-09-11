@@ -6,7 +6,7 @@ import core/ffi.{type FFI}
 import core/literals.{type LiteralType} as l
 import core/quote.{quote}
 import core/term.{type Term} as tm
-import core/value.{env_push, type Value}
+import core/value.{type Value, env_push}
 import glam/doc.{type Document}
 import gleam/float
 import gleam/int
@@ -420,7 +420,7 @@ fn doc_variant(tag: String, v: Variant, indent: Int) -> Document {
             doc_term(typ, indent),
           ])
         })
-        |> doc.join(with: doc_text(", ")),
+          |> doc.join(with: doc_text(", ")),
         doc_text(">"),
       ])
   }
@@ -448,7 +448,7 @@ fn doc_variant(tag: String, v: Variant, indent: Int) -> Document {
                   }
               }
             })
-            |> doc.join(with: doc_text(", ")),
+              |> doc.join(with: doc_text(", ")),
             doc_text(")"),
           ])
       }

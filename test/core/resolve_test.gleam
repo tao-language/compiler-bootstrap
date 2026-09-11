@@ -20,7 +20,7 @@ const s2 = span.Span("", 2, 2, 2, 2)
 pub fn resolve_value_cycle_terminates_test() {
   let ffi = ffi.build
   let hole_ = v.hole([], 0)
-  let subst = [#(0, v.rcd([#("a", hole_)]))]
+  let subst = [#(0, #([], v.rcd([#("a", hole_)])))]
   assert resolve.value(ffi, subst, hole_) == v.rcd([#("a", hole_)])
 }
 
@@ -29,7 +29,7 @@ pub fn resolve_value_cycle_terminates_test() {
 /// hole rather than inlining it forever.
 pub fn resolve_term_cycle_terminates_test() {
   let ffi = ffi.build
-  let subst = [#(0, v.Lam([], #("x", v.int_t), tm.Hole(Some(0))))]
+  let subst = [#(0, #([], v.Lam([], #("x", v.int_t), tm.Hole(Some(0)))))]
   assert resolve.term(ffi, subst, [], tm.Hole(Some(0)))
     == tm.Lam(#("x", tm.int_t), tm.Hole(Some(0)))
 }
@@ -48,7 +48,7 @@ pub fn resolve_context_finalizes_env_types_errors_test() {
       env: [v.rcd([#("x", v.hole([], 0))])],
       // ...and its type is another one.
       types: [#("m", v.rcd([#("x", v.hole([], 1))]))],
-      subst: [#(0, v.int(42)), #(1, v.int_t)],
+      subst: [#(0, #([], v.int(42))), #(1, #([], v.int_t))],
       // The error carries one solved hole (0) and one never-solved one (2).
       errors: [
         e.Error(
@@ -63,11 +63,7 @@ pub fn resolve_context_finalizes_env_types_errors_test() {
   assert ctx.types == [#("m", v.rcd([#("x", v.int_t)]))]
   assert ctx.errors
     == [
-      e.Error(
-        e.TypeMismatch(#(v.int(42), s1), #(v.hole([], 2), s2)),
-        s1,
-        [],
-      ),
+      e.Error(e.TypeMismatch(#(v.int(42), s1), #(v.hole([], 2), s2)), s1, []),
     ]
 }
 
@@ -75,30 +71,29 @@ pub fn resolve_context_finalizes_env_types_errors_test() {
 /// quoted solution; unsolved holes (with or without an ID) are untouched.
 pub fn resolve_term_hole_with_concrete_solution_test() {
   let ffi = ffi.build
-  assert resolve.term(ffi, [#(0, v.int_t)], [], tm.Hole(Some(0))) == tm.int_t
+  assert resolve.term(ffi, [#(0, #([], v.int_t))], [], tm.Hole(Some(0)))
+    == tm.int_t
   assert resolve.term(ffi, [], [], tm.Hole(Some(5))) == tm.Hole(Some(5))
   assert resolve.term(ffi, [], [], tm.Hole(None)) == tm.Hole(None)
 }
 
-/// 5. KNOWN FRAGILITY (pinned, not yet fixed): a hole is created in an outer
-/// scope and *solved in an inner scope* whose solution is a neutral (`NVar`)
-/// referencing a binding that is *not in scope* at the hole term's site.
-/// `resolve.term` quotes the solution against the *term's* frame (the outer
-/// frame, which does not contain that binding), so the level-to-index
-/// conversion (`index = env_size - level - 1`) yields a *negative* de Bruijn
-/// index. The dangling `Var` renders as `$-n` and, if the output were
-/// recompiled, would evaluate to `%error`. A sound fix would carry the hole's
-/// captured env with its substitution entry (see the `TODO: save hole env into
-/// ctx.subst` in `unify.solve_hole`).
+/// 5. Frame fragility (fixed): a hole is created in an outer scope and
+/// *solved in an inner scope* whose solution is a neutral (`NVar`) referencing
+/// a binding that is *not in scope* at the hole term's site. The substitution
+/// entry carries the env captured at solve time (`unify.solve_hole`), and
+/// `resolve.term` quotes the solution against *that* env — never against the
+/// term's (shorter) frame — so the level-to-index conversion
+/// (`index = env_size - level - 1`) stays non-negative.
 pub fn resolve_term_hole_solution_frame_fragility_test() {
   let ffi = ffi.build
   // The hole term lives in the module frame (empty env).
   let hole_term = tm.Hole(Some(0))
   // The hole is solved in an inner scope that binds one more entry; the
-  // solution references that inner binding at level 0.
-  let solution = v.var(0)
-  let subst = [#(0, solution)]
-  // Quoting NVar(0) against the 0-length module frame gives
-  // Var(0 - 0 - 1) = Var(-1): a negative de Bruijn index.
-  assert resolve.term(ffi, subst, [], hole_term) == tm.Var(-1)
+  // solution references that inner binding at level 0, and the captured env
+  // is that inner frame (one entry), stored with the substitution entry.
+  let inner_env = [v.var(0)]
+  let subst = [#(0, #(inner_env, v.var(0)))]
+  // Quoting NVar(0) against the stored 1-length inner frame gives
+  // Var(1 - 0 - 1) = Var(0): a valid, non-negative index.
+  assert resolve.term(ffi, subst, [], hole_term) == tm.Var(0)
 }

@@ -102,10 +102,10 @@ pub fn bindings(pattern: Pattern) -> List(String) {
 }
 
 // TODO: use a Set
+
 /// Free variable names of a term (duplicates kept, order = encounter
 /// order). Binders exclude their bound name; case bodies exclude the
 /// names bound by the pattern and guard pattern.
-
 pub fn free_vars(term: Expr) -> List(String) {
   case term.data {
     Typ(_) -> []
@@ -238,20 +238,19 @@ pub fn contains(term: Expr, name: String) -> Bool {
         |> list.any(fn(b) { b })
       let def_contains = !list.contains(bound, name) && contains(arg, name)
       let variant_contains =
-        list.any(
-          variants,
-          fn(variant) {
-            let #(_, Variant(vparams, varg, vret)) = variant
-            let bound =
-              list.append(bound, list.map(vparams, fn(param) { param.0 }))
-            let vparam_contains =
-              list.map(vparams, fn(param) { contains(param.1, name) })
-              |> list.any(fn(b) { b })
-            vparam_contains
-              || {!list.contains(bound, name)
-                && {contains(varg, name) || contains(vret, name)}}
-          },
-        )
+        list.any(variants, fn(variant) {
+          let #(_, Variant(vparams, varg, vret)) = variant
+          let bound =
+            list.append(bound, list.map(vparams, fn(param) { param.0 }))
+          let vparam_contains =
+            list.map(vparams, fn(param) { contains(param.1, name) })
+            |> list.any(fn(b) { b })
+          vparam_contains
+          || {
+            !list.contains(bound, name)
+            && { contains(varg, name) || contains(vret, name) }
+          }
+        })
       param_contains || def_contains || variant_contains
     }
     _ -> False

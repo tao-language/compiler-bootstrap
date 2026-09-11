@@ -8,10 +8,10 @@
 import core/context.{Context, new_ctx}
 import core/error.{display, display_syntax}
 import core/ffi
+import gleam/list
 import tao/ast.{type Module}
 import tao/compile
 import tao/parse as p
-import gleam/list
 
 const nl = "\n"
 
@@ -69,7 +69,8 @@ pub fn adt_list_test() {
 
 /// A GADT: a `LitInt` case against `Expr(Int)` is well typed.
 pub fn gadt_expr_test() {
-  let src = expr_type
+  let src =
+    expr_type
     <> nl
     <> "fn f(e: Expr(Int)) -> Int ="
     <> nl
@@ -87,7 +88,8 @@ pub fn gadt_expr_test() {
 /// variant's return type `Expr(Int)` conflicts with the expected
 /// `Expr(Bool)`.
 pub fn gadt_impossible_case_test() {
-  let src = expr_type
+  let src =
+    expr_type
     <> nl
     <> "fn f(e: Expr(Bool)) -> Int ="
     <> nl
@@ -101,14 +103,14 @@ pub fn gadt_impossible_case_test() {
   assert check(src) != []
 }
 
-const expr_type =
-  "type Expr(a) { | LitInt(Int) -> Expr(Int) | LitBool(Bool) -> Expr(Bool) | IsZero(Expr(Int)) -> Expr(Bool) }"
+const expr_type = "type Expr(a) { | LitInt(Int) -> Expr(Int) | LitBool(Bool) -> Expr(Bool) | IsZero(Expr(Int)) -> Expr(Bool) }"
 
 /// A function whose parameter annotation mentions a sibling parameter
 /// (`expr: Expr(a)`) must not panic in the definition phase, and an
 /// evaluator over the GADT is well typed.
 pub fn gadt_sibling_param_test() {
-  let src = expr_type
+  let src =
+    expr_type
     <> nl
     <> "fn eval(a: Type, e: Expr(a)) -> Int ="
     <> nl

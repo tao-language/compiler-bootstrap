@@ -23,7 +23,7 @@ import syntax/span.{type Span}
 ///
 /// * `env`: Values environment, used for eval
 /// * `types`: Types environment, used for type inference and checking
-/// * `subst`: Hole substitutions (hole_id → value)
+/// * `subst`: Hole substitutions (hole_id → (captured_env, solution value))
 /// * `errors`: Accumulated errors during type checking
 /// * `trace`: Breadcrumb labels for error reporting (innermost first)
 /// * `ffi`: FFI builtin definitions available at runtime
@@ -47,8 +47,12 @@ pub type Context {
   )
 }
 
+/// A hole substitution: `hole_id → (captured_env, solution)`. The
+/// captured environment is the frame current when the hole was solved;
+/// the solution's `NVar` levels are relative to it, so it must be kept
+/// to quote the solution back into a term (see `resolve.term`).
 pub type Subst =
-  List(#(Int, Value))
+  List(#(Int, #(Env, Value)))
 
 /// A deferred unification constraint: a pair that the unifier met while
 /// at least one side was neutral and could not be decided yet.

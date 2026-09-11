@@ -32,7 +32,8 @@ pub fn quote_nvar_index_conversion_test() {
 /// environment with the same levels gives the same value back.
 pub fn quote_level_stable_across_push_pop_test() {
   let ffi = ffi.build
-  let env0 = v.env_push([], 1) // [var(0)] = `a`
+  let env0 = v.env_push([], 1)
+  // [var(0)] = `a`
   // `x` pushed over `a` (x in scope when `a`'s reference is captured)
   let _env1 = v.env_push(env0, 1)
   let v_a = v.var(0)
@@ -54,13 +55,18 @@ pub fn eval_quote_round_trip_test() {
   let ffi = ffi.build
   // Every entry of `env` is a var with its own level, so evaluating a
   // quoted index hands the same value back.
-  let env = v.env_push([], 3) // [var(2), var(1), var(0)]
+  let env = v.env_push([], 3)
+  // [var(2), var(1), var(0)]
   let values = [
     v.var(0),
     v.var(1),
     v.var(2),
-    v.rcd([#("f", v.var(1)),]),
-    v.ctr("C", [#("x", v.var(0)),]),
+    v.rcd([
+      #("f", v.var(1)),
+    ]),
+    v.ctr("C", [
+      #("x", v.var(0)),
+    ]),
     v.hole(env, 7),
     // Neutral application: head not yet a lambda.
     v.Neut(v.NApp(v.NVar(1), v.int(5))),

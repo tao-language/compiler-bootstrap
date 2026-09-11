@@ -17,8 +17,7 @@ import nibble/lexer.{type Lexer}
 import nibble/pratt
 import syntax/span.{type Span, Span, merge}
 import tao/ast.{
-  type BinaryOp, type Case, type Expr, type Parameters,
-  type Pattern, type Stmt,
+  type BinaryOp, type Case, type Expr, type Parameters, type Pattern, type Stmt,
 } as tao
 
 const reserved = [

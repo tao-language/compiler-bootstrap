@@ -162,7 +162,7 @@ pub fn debug_file(
   )
   // Uncomment to view hole solution values.
   // list.map(subst, fn(entry) {
-  //   let #(id, value) = entry
+  //   let #(id, #(_, value)) = entry
   //   io.println("- " <> int.to_string(id) <> ": " <> fmt_value(value))
   // })
   io.println("")

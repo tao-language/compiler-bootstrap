@@ -186,21 +186,32 @@ pub fn unify_ctr_gadt_option_test() {
       Some(v.TypeDef([], tdef)),
       Some(v.Typ(0)),
     ))
-  // Check: None constructor
+  // Check: None constructor. The stored env is the frame current when the
+  // hole was solved — the type-parameter scope is still on the stack at that
+  // point (`unify_gadt` pops it only after the arg/return unifications). The
+  // fresh parameter value (hole 0, the very hole being solved) is innermost,
+  // ahead of `ctx0`'s module record entry.
+  let option_env = case ctx0.env {
+    [module_entry, ..] -> [
+      v.Neut(v.NHole([v.TypeDef([], tdef)], Some(0))),
+      module_entry,
+    ]
+    _ -> panic as "unexpected ctx0.env"
+  }
   let ctx = unify(ctx0, #(option(v.int_t), s1), #(none, s2))
   assert ctx.env == ctx0.env
   assert ctx.types == ctx0.types
-  assert ctx.subst == [#(0, v.int_t)]
+  assert ctx.subst == [#(0, #(option_env, v.int_t))]
   assert ctx.hole_counter == 1
   let ctx = unify(ctx0, #(none, s2), #(option(v.int_t), s1))
-  assert ctx.subst == [#(0, v.int_t)]
+  assert ctx.subst == [#(0, #(option_env, v.int_t))]
   assert ctx.hole_counter == 1
   // Check: Some constructor
   let ctx = unify(ctx0, #(option(v.int_t), s1), #(some(v.int_t), s2))
-  assert ctx.subst == [#(0, v.int_t)]
+  assert ctx.subst == [#(0, #(option_env, v.int_t))]
   assert ctx.hole_counter == 1
   let ctx = unify(ctx0, #(some(v.int_t), s2), #(option(v.int_t), s1))
-  assert ctx.subst == [#(0, v.int_t)]
+  assert ctx.subst == [#(0, #(option_env, v.int_t))]
   assert ctx.hole_counter == 1
   // Error: type mismatch
   // TODO: save spans in ctx.types for better error reporting
@@ -337,8 +348,19 @@ pub fn unify_gadt_hole_refinement_test() {
   let expr = v.ctr("Expr", [#("a", v.hole([], id_a))])
   let ctx = unify(ctx2, #(litint, s1), #(expr, s2))
   assert ctx.errors == []
-  assert list.key_find(ctx.subst, id_n) == Ok(v.int_t)
-  assert list.key_find(ctx.subst, id_a) == Ok(v.int_t)
+  // The stored env is the frame current when the hole was solved: the
+  // refinement is recorded by the return-type unification, which runs with
+  // the type parameter still on the stack (hole 2, the neutral `Expr(?a)` —
+  // the hole being refined), innermost ahead of the base `ctx2` frame.
+  let param_env = case ctx2.env {
+    [module_entry, ..] -> [
+      v.Neut(v.NHole([v.TypeDef([], tdef)], Some(2))),
+      module_entry,
+    ]
+    _ -> panic as "unexpected ctx2.env"
+  }
+  assert list.key_find(ctx.subst, id_n) == Ok(#(param_env, v.int_t))
+  assert list.key_find(ctx.subst, id_a) == Ok(#(param_env, v.int_t))
   // Error: forcing the refined parameter to Bool now conflicts.
   let ctx = unify(ctx, #(v.hole([], id_a), s1), #(v.ctr("Bool", []), s2))
   assert list.length(ctx.errors) == 1
@@ -435,7 +457,7 @@ pub fn unify_neut_nhole_solve_test() {
   // Hole is solved with a substitution; hole_counter is unchanged
   // since no new_hole was called during this unify.
   assert unify(ctx0, #(a, s1), #(b, s2))
-    == Context(..ctx0, subst: [#(0, v.int_t)])
+    == Context(..ctx0, subst: [#(0, #([], v.int_t))])
 }
 
 pub fn unify_neut_nhole_infinite_type_test() {
@@ -505,11 +527,12 @@ pub fn unify_neut_nmatch_same_test() {
 pub fn unify_neut_nmatch_case_count_mismatch_test() {
   let a = v.Neut(v.NMatch([], v.NVar(0), [tm.Case(tm.PAny, None, tm.int(1))]))
   let b =
-    v.Neut(v.NMatch(
-      [],
-      v.NVar(0),
-      [tm.Case(tm.PAny, None, tm.int(1)), tm.Case(tm.PAny, None, tm.int(2))],
-    ))
+    v.Neut(
+      v.NMatch([], v.NVar(0), [
+        tm.Case(tm.PAny, None, tm.int(1)),
+        tm.Case(tm.PAny, None, tm.int(2)),
+      ]),
+    )
   let ctx = unify(new_ctx, #(a, s1), #(b, s2))
   let is_mismatch = case ctx.errors {
     [err, ..] -> err.data == e.TypeMismatch(#(a, s1), #(b, s2))
@@ -523,17 +546,19 @@ pub fn unify_neut_nmatch_case_count_mismatch_test() {
 /// so the matches cannot be the same value.
 pub fn unify_neut_nmatch_guard_mismatch_test() {
   let a = v.Neut(v.NMatch([], v.NVar(0), [tm.Case(tm.PAny, None, tm.int(1))]))
-  let b = v.Neut(v.NMatch(
-    [],
-    v.NVar(0),
-    [tm.Case(tm.PAny, Some(#(tm.int(1), tm.PAny)), tm.int(1))],
-  ))
+  let b =
+    v.Neut(
+      v.NMatch([], v.NVar(0), [
+        tm.Case(tm.PAny, Some(#(tm.int(1), tm.PAny)), tm.int(1)),
+      ]),
+    )
   let ctx = unify(new_ctx, #(a, s1), #(b, s2))
   let is_guard_mismatch = case ctx.errors {
-    [err, ..] -> case err.data {
-      e.MatchGuardMismatch(guard, _span) -> guard == tm.int(1)
-      _ -> False
-    }
+    [err, ..] ->
+      case err.data {
+        e.MatchGuardMismatch(guard, _span) -> guard == tm.int(1)
+        _ -> False
+      }
     _ -> False
   }
   assert is_guard_mismatch

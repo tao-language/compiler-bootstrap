@@ -253,7 +253,8 @@ pub fn infer_app_error_not_a_function_test() {
   let ast = ast.app(ast.float(3.14, s1), ast.int(1, s), s)
   let ctx0 = new_ctx
   let #(term, type_, ctx) = infer(ctx0, ast)
-  assert ctx.errors == [e.Error(e.NotAFunction(tm.float(3.14), v.float_t), s1, [])]
+  assert ctx.errors
+    == [e.Error(e.NotAFunction(tm.float(3.14), v.float_t), s1, [])]
   assert term == tm.Err
   assert type_ == v.Err
 }
@@ -321,17 +322,16 @@ pub fn infer_app_implicit_solve_hole_test() {
 
 pub fn infer_type_def_bool_test() {
   let tdef =
-    ast.TypeDefinition(
-      params: [],
-      arg: ast.rcd_values([], None, s),
-      variants: [
-        #("True", ast.Variant([], ast.rcd_values([], None, s), ast.ctr0("Bool", s))),
-        #(
-          "False",
-          ast.Variant([], ast.rcd_values([], None, s), ast.ctr0("Bool", s)),
-        ),
-      ],
-    )
+    ast.TypeDefinition(params: [], arg: ast.rcd_values([], None, s), variants: [
+      #(
+        "True",
+        ast.Variant([], ast.rcd_values([], None, s), ast.ctr0("Bool", s)),
+      ),
+      #(
+        "False",
+        ast.Variant([], ast.rcd_values([], None, s), ast.ctr0("Bool", s)),
+      ),
+    ])
   let ast = ast.Expr(ast.TypeDef(tdef), s, None)
   let ctx0 = new_ctx
   let #(term, type_, ctx) = infer(ctx0, ast)
@@ -340,14 +340,10 @@ pub fn infer_type_def_bool_test() {
   assert type_ == v.Typ(0)
   assert term
     == tm.TypeDef(
-      tm.TypeDefinition(
-        params: [],
-        arg: tm.rcd([]),
-        variants: [
-          #("True", tm.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
-          #("False", tm.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
-        ],
-      ),
+      tm.TypeDefinition(params: [], arg: tm.rcd([]), variants: [
+        #("True", tm.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
+        #("False", tm.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
+      ]),
     )
 }
 
@@ -362,7 +358,11 @@ pub fn infer_type_def_option_test() {
           ast.Variant(
             [],
             ast.rcd_values([], None, s),
-            ast.ctr("Option", ast.rcd_values([#("a", ast.var("a", s))], None, s), s),
+            ast.ctr(
+              "Option",
+              ast.rcd_values([#("a", ast.var("a", s))], None, s),
+              s,
+            ),
           ),
         ),
         #(
@@ -370,7 +370,11 @@ pub fn infer_type_def_option_test() {
           ast.Variant(
             [],
             ast.rcd_values([#("", ast.var("a", s))], None, s),
-            ast.ctr("Option", ast.rcd_values([#("a", ast.var("a", s))], None, s), s),
+            ast.ctr(
+              "Option",
+              ast.rcd_values([#("a", ast.var("a", s))], None, s),
+              s,
+            ),
           ),
         ),
       ],
@@ -413,14 +417,26 @@ pub fn infer_type_def_gadt_test() {
   let tdef =
     ast.TypeDefinition(
       params: [#("n", ast.int_t(s)), #("a", ast.typ(0, s))],
-      arg: ast.rcd_values([#("n", ast.var("n", s)), #("a", ast.var("a", s))], None, s),
+      arg: ast.rcd_values(
+        [#("n", ast.var("n", s)), #("a", ast.var("a", s))],
+        None,
+        s,
+      ),
       variants: [
         #(
           "VNil",
           ast.Variant(
             [],
             ast.rcd_values([], None, s),
-            ast.ctr("Vec", ast.rcd_values([#("", ast.int(0, s)), #("", ast.var("a", s))], None, s), s),
+            ast.ctr(
+              "Vec",
+              ast.rcd_values(
+                [#("", ast.int(0, s)), #("", ast.var("a", s))],
+                None,
+                s,
+              ),
+              s,
+            ),
           ),
         ),
         #(
@@ -432,13 +448,29 @@ pub fn infer_type_def_gadt_test() {
                 #("x", ast.var("a", s)),
                 #(
                   "xs",
-                  ast.ctr("Vec", ast.rcd_values([#("", ast.var("m", s)), #("", ast.var("a", s))], None, s), s),
+                  ast.ctr(
+                    "Vec",
+                    ast.rcd_values(
+                      [#("", ast.var("m", s)), #("", ast.var("a", s))],
+                      None,
+                      s,
+                    ),
+                    s,
+                  ),
                 ),
               ],
               None,
               s,
             ),
-            ast.ctr("Vec", ast.rcd_values([#("", ast.var("m", s)), #("", ast.var("a", s))], None, s), s),
+            ast.ctr(
+              "Vec",
+              ast.rcd_values(
+                [#("", ast.var("m", s)), #("", ast.var("a", s))],
+                None,
+                s,
+              ),
+              s,
+            ),
           ),
         ),
       ],
@@ -496,7 +528,11 @@ pub fn infer_type_def_gadt_ctor_test() {
           ast.Variant(
             [],
             ast.rcd_values([#("", ast.var("a", s))], None, s),
-            ast.ctr("Option", ast.rcd_values([#("a", ast.var("a", s))], None, s), s),
+            ast.ctr(
+              "Option",
+              ast.rcd_values([#("a", ast.var("a", s))], None, s),
+              s,
+            ),
           ),
         ),
         #(
@@ -504,7 +540,11 @@ pub fn infer_type_def_gadt_ctor_test() {
           ast.Variant(
             [],
             ast.rcd_values([], None, s),
-            ast.ctr("Option", ast.rcd_values([#("a", ast.var("a", s))], None, s), s),
+            ast.ctr(
+              "Option",
+              ast.rcd_values([#("a", ast.var("a", s))], None, s),
+              s,
+            ),
           ),
         ),
       ],
@@ -517,8 +557,10 @@ pub fn infer_type_def_gadt_ctor_test() {
   let ctx = push_var(ctx, #("Option", option_val, v.Typ(0)))
   // The constructor's inferred type (arguments as types) against the
   // expected type's value (the constructor applied to its argument).
-  let some_ast = ast.ctr("Some", ast.rcd_values([#("", ast.int(1, s))], None, s), s)
-  let option_ast = ast.ctr("Option", ast.rcd_values([#("", ast.int_t(s))], None, s), s)
+  let some_ast =
+    ast.ctr("Some", ast.rcd_values([#("", ast.int(1, s))], None, s), s)
+  let option_ast =
+    ast.ctr("Option", ast.rcd_values([#("", ast.int_t(s))], None, s), s)
   let #(_, some_type, ctx) = infer(ctx, some_ast)
   let #(option_term, _option_type, ctx) = infer(ctx, option_ast)
   let option_val = eval(ctx.ffi, ctx.env, option_term)
@@ -526,10 +568,7 @@ pub fn infer_type_def_gadt_ctor_test() {
   assert ctx.errors == []
   assert some_type == v.Ctr("Some", v.rcd([#("", v.int_t)]))
   // The type's parameter is solved to `IntT` by the unification
-  assert list.contains(
-    list.map(ctx.subst, fn(sub) { sub.1 }),
-    v.int_t,
-  )
+  assert list.contains(list.map(ctx.subst, fn(sub) { sub.1.1 }), v.int_t)
 }
 
 // ============================================================================
@@ -630,8 +669,16 @@ pub fn infer_match_dependent_motive_test() {
       tm.Case(tm.pint(2), None, tm.float_t),
       tm.Case(tm.pvar("x"), None, tm.Hole(Some(2))),
     ])
-  // With deferred substitution, holes 1 and 2 are solved to IntT
-  assert ctx.subst == [#(2, v.int_t), #(1, v.int_t)]
+  // With deferred substitution, holes 1 and 2 are solved to IntT. The
+  // stored env is the frame current when the hole was solved (hole 1 was
+  // solved inside the match's guard scope, so its frame holds the pattern
+  // binding); quoting is always against the stored frame, so the exact
+  // contents matter only via its length — assert the solutions and that
+  // each env has the frame length of the solve site.
+  let solutions = list.map(ctx.subst, fn(sub) { sub.1.1 })
+  let env_sizes = list.map(ctx.subst, fn(sub) { list.length(sub.1.0) })
+  assert solutions == [v.int_t, v.int_t]
+  assert env_sizes == [1, 0]
 }
 
 // ============================================================================

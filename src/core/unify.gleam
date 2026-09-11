@@ -348,7 +348,6 @@ fn unify_match_case_list(
   }
 }
 
-// TODO: save hole env into ctx.subst
 fn solve_hole(
   ctx: Context,
   opt_id: Option(Int),
@@ -363,10 +362,16 @@ fn solve_hole(
         False ->
           case list.key_find(ctx.subst, id) {
             Error(Nil) -> {
-              let ctx = Context(..ctx, subst: [#(id, value), ..ctx.subst])
+              // Store the frame the solution was produced in with the
+              // entry: the solution's `NVar` levels address this frame,
+              // so quoting must re-anchor against it, never against an
+              // arbitrary caller's frame (which may be shorter and would
+              // yield negative de Bruijn indices).
+              let ctx =
+                Context(..ctx, subst: [#(id, #(ctx.env, value)), ..ctx.subst])
               retry_deferred(ctx)
             }
-            Ok(existing) -> {
+            Ok(#(_, existing)) -> {
               // Defensive: a hole is solved exactly once, but if we ever
               // meet it twice, merge the solutions instead of overwriting
               // (any substitution the merge adds retries the queue itself).

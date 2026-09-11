@@ -72,7 +72,8 @@ pub fn file_line_test_names_test() {
 // Per-file restrictions (from `path:test1,test2` positional arguments)
 // only apply to the listed file.
 pub fn per_file_restriction_test() {
-  let sel = TestSelection([#("path/to/file1.tao", ["my_test", "other_*"])], [], [])
+  let sel =
+    TestSelection([#("path/to/file1.tao", ["my_test", "other_*"])], [], [])
   assert is_selected(sel, "path/to/file1.tao", "my_test")
   assert is_selected(sel, "path/to/file1.tao", "other_1")
   assert !is_selected(sel, "path/to/file1.tao", "something_else")

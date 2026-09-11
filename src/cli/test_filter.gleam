@@ -39,28 +39,25 @@ pub fn is_selected(
   test_name: String,
 ) -> Bool {
   let name = name_part(mod_name, test_name)
-  case list.any(
-    sel.skip,
-    fn(p) { pattern_matches(p, mod_name, test_name, name) },
-  ) {
+  case
+    list.any(sel.skip, fn(p) { pattern_matches(p, mod_name, test_name, name) })
+  {
     True -> False
     False -> {
-      let filtered =
-        case sel.filter {
-          [] -> True
-          _ -> list.any(
-            sel.filter,
-            fn(p) { pattern_matches(p, mod_name, test_name, name) },
-          )
-        }
-      let per_file_ok =
-        case list.key_find(sel.per_file, mod_name) {
-          Error(Nil) -> True
-          Ok(names) -> list.any(
-            names,
-            fn(p) { anchored_glob(p, name) || anchored_glob(p, test_name) },
-          )
-        }
+      let filtered = case sel.filter {
+        [] -> True
+        _ ->
+          list.any(sel.filter, fn(p) {
+            pattern_matches(p, mod_name, test_name, name)
+          })
+      }
+      let per_file_ok = case list.key_find(sel.per_file, mod_name) {
+        Error(Nil) -> True
+        Ok(names) ->
+          list.any(names, fn(p) {
+            anchored_glob(p, name) || anchored_glob(p, test_name)
+          })
+      }
       filtered && per_file_ok
     }
   }
@@ -84,8 +81,9 @@ fn pattern_matches(
   case string.split_once(pattern, ":") {
     Ok(#(mod, name_pat)) ->
       mod_glob(mod, mod_name)
-        && { anchored_glob(name_pat, test_name) || anchored_glob(name_pat, name) }
-    Error(Nil) -> anchored_glob(pattern, test_name) || anchored_glob(pattern, name)
+      && { anchored_glob(name_pat, test_name) || anchored_glob(name_pat, name) }
+    Error(Nil) ->
+      anchored_glob(pattern, test_name) || anchored_glob(pattern, name)
   }
 }
 
@@ -104,7 +102,8 @@ fn name_part(mod_name: String, test_name: String) -> String {
 /// path-segment boundary (`file1.tao` matches `path/to/file1.tao` but
 /// not `path/to/otherfile1.tao`).
 fn mod_glob(pattern: String, path: String) -> Bool {
-  let assert Ok(re) = regexp.from_string("(^|/)" <> glob_to_regex(pattern) <> "$")
+  let assert Ok(re) =
+    regexp.from_string("(^|/)" <> glob_to_regex(pattern) <> "$")
   regexp.check(re, path)
 }
 

@@ -49,7 +49,10 @@ pub fn expand_paths(paths: List(String)) -> Result(List(String), String) {
   expand(paths, [])
 }
 
-fn expand(paths: List(String), acc: List(String)) -> Result(List(String), String) {
+fn expand(
+  paths: List(String),
+  acc: List(String),
+) -> Result(List(String), String) {
   case paths {
     [] -> Ok(list.unique(acc))
     [path, ..rest] ->
@@ -66,9 +69,15 @@ fn expand_path(path: String) -> Result(List(String), String) {
     _ ->
       case fs.is_directory(path) {
         Ok(True) ->
-          case fs.list_recursive(path, fn(file) { string.ends_with(file, ".tao") }) {
+          case
+            fs.list_recursive(path, fn(file) { string.ends_with(file, ".tao") })
+          {
             Ok(files) ->
-              Ok(list.map(files, fn(file) { normalize(filepath.join(path, file)) }))
+              Ok(
+                list.map(files, fn(file) {
+                  normalize(filepath.join(path, file))
+                }),
+              )
             Error(msg) -> Error(msg)
           }
         _ -> Error("no such file or directory: " <> path)
