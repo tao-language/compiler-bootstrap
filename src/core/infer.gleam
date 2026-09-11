@@ -5,7 +5,6 @@
 /// thin wrapper that synthesizes the term then unifies its type with
 /// the expected type.
 import core/ast.{type Expr}
-import core/coerce.{coerce}
 import core/context.{type Context}
 import core/error as e
 import core/eval.{eval}
@@ -14,7 +13,7 @@ import core/quote.{quote}
 import core/term.{type Term} as tm
 import core/unify.{unify}
 import core/unwrap.{unwrap}
-import core/value.{type Type, type Value} as v
+import core/value.{type Env, type Type, type Value} as v
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -61,14 +60,13 @@ pub fn infer(ctx: Context, term_ast: ast.Expr) -> #(Term, Type, Context) {
 
 /// Check that a term has the expected type (verification).
 ///
-/// This is a thin wrapper: infer the term, fill in any record fields the
-/// term omits but the expected type gives a default for (`coerce`), then
-/// unify the inferred type with the expected one.
+/// A thin wrapper: infer the term, then unify the inferred type with the
+/// expected one.
 ///
-/// Literal literals are a deliberate subtyping convenience: an int
-/// literal type-checks against *any* numeric literal type (it is
-/// silently converted to a float for float types, with no range check
-/// for fixed-width ints), and a hole type-checks against anything.
+/// Int literals are a deliberate subtyping convenience: an int literal
+/// type-checks against any int literal type, and is silently converted
+/// to a float for float types (no range check for fixed-width ints). A
+/// hole type-checks against anything.
 pub fn check(
   ctx: Context,
   ast: Expr,
@@ -76,30 +74,40 @@ pub fn check(
 ) -> #(Term, Type, Context) {
   let #(expected_type, type_span) = expected
   let #(term, inferred_type, ctx) = infer(ctx, ast)
-  let term = coerce(term, expected_type)
   case term, expected_type {
     tm.Hole(_), _ -> #(term, expected_type, ctx)
-    tm.Lit(lit.Int(_)), v.LitT(ty)
-      if ty == lit.I8
-      || ty == lit.I16
-      || ty == lit.I32
-      || ty == lit.I64
-      || ty == lit.U8
-      || ty == lit.U16
-      || ty == lit.U32
-      || ty == lit.U64
-    -> #(term, expected_type, ctx)
-    tm.Lit(lit.Int(k)), v.LitT(ty)
-      if ty == lit.FloatT || ty == lit.F16 || ty == lit.F32 || ty == lit.F64
-    -> #(tm.float(int.to_float(k)), expected_type, ctx)
-    tm.Lit(lit.Float(_)), v.LitT(ty)
-      if ty == lit.FloatT || ty == lit.F16 || ty == lit.F32 || ty == lit.F64
-    -> #(term, expected_type, ctx)
-    _, _ -> {
-      let ctx =
-        unify(ctx, #(inferred_type, ast.span), #(expected_type, type_span))
-      #(term, expected_type, ctx)
-    }
+    _, _ ->
+      case check_lit(term, expected_type) {
+        Some(term) -> #(term, expected_type, ctx)
+        None -> {
+          let ctx =
+            unify(ctx, #(inferred_type, ast.span), #(expected_type, type_span))
+          #(term, expected_type, ctx)
+        }
+      }
+  }
+}
+
+/// Adjust a literal term to its expected literal type (the subtyping
+/// convenience in `check`'s docs): an int literal is kept as-is for int
+/// types and converted to a float for float types; a float literal is
+/// accepted for float types. None means the pair is not covered and must
+/// fall through to unification (which rejects a float literal against an
+/// int type).
+fn check_lit(term: Term, expected_type: Value) -> Option(Term) {
+  case term, expected_type {
+    tm.Lit(lit.Int(k)), v.LitT(ty) ->
+      case ty {
+        lit.FloatT | lit.F16 | lit.F32 | lit.F64 ->
+          Some(tm.float(int.to_float(k)))
+        _ -> Some(term)
+      }
+    tm.Lit(lit.Float(_)), v.LitT(ty) ->
+      case ty {
+        lit.FloatT | lit.F16 | lit.F32 | lit.F64 -> Some(term)
+        _ -> None
+      }
+    _, _ -> None
   }
 }
 
@@ -119,18 +127,14 @@ fn infer_typ(ctx: Context, level: Int) -> #(Term, Type, Context) {
 }
 
 fn infer_hole(ctx: Context, opt_id: Option(Int)) -> #(Term, Type, Context) {
-  case opt_id {
-    Some(id) -> {
-      // Concrete hole, create a new hole for its type.
-      let #(type_id, ctx) = context.new_hole(ctx)
-      #(tm.Hole(Some(id)), v.hole(ctx.env, type_id), ctx)
-    }
-    None -> {
-      // Unknown hole, create a fresh new hole.
-      let #(id, ctx) = context.new_hole(ctx)
-      infer_hole(ctx, Some(id))
-    }
+  // An unknown hole (None) is allocated a fresh ID; either way the hole's
+  // own type is a fresh unsolved hole.
+  let #(id, ctx) = case opt_id {
+    Some(id) -> #(id, ctx)
+    None -> context.new_hole(ctx)
   }
+  let #(type_id, ctx) = context.new_hole(ctx)
+  #(tm.Hole(Some(id)), v.hole(ctx.env, type_id), ctx)
 }
 
 fn infer_lit(ctx: Context, value: Literal) -> #(Term, Type, Context) {
@@ -266,9 +270,9 @@ fn infer_lam(
   let param_val = eval(ctx.ffi, ctx.env, type_)
   // The parameter's value is a neutral for its binding, at the level of
   // the env size *before* the push (levels don't change when the binding
-  // itself is pushed). The body type is quoted at level+1 (with the
-  // parameter in scope) *before* popping, so the quoted Pi body may
-  // mention the parameter.
+  // itself is pushed). The body type is quoted *before* popping, while
+  // the parameter is still in scope, so the quoted Pi body may mention
+  // the parameter.
   let level = list.length(ctx.env)
   let ctx = context.push_var(ctx, #(name, v.var(level), param_val))
   let #(body, body_type_val, ctx) = infer(ctx, body)
@@ -430,37 +434,44 @@ fn infer_app(
       let ret_type = eval(ctx.ffi, [arg_type, ..env], codomain)
       #(tm.App(fun, arg), ret_type, ctx)
     }
-    // The function type is an unsolved hole: unify it against a fresh
-    // `Pi` whose codomain is the return-type hole, recording the argument
-    // as a constraint and deferring the rest.
-    v.Neut(v.NHole(env, _)) -> {
-      let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
-      let #(id, ctx) = context.new_hole(ctx)
-      let expected_pi =
-        v.Pi(env, #("__" <> int.to_string(id), arg_type), tm.Hole(Some(id)))
-      let ctx = unify(ctx, #(fun_type, span), #(expected_pi, span))
-      let arg_val = eval(ctx.ffi, ctx.env, arg)
-      let ret_type = v.hole([arg_val, ..ctx.env], id)
-      #(tm.App(fun, arg), ret_type, ctx)
-    }
-    // As above, but the function type is a neutral match: its codomain
-    // depends on the scrutinee and may become a `Pi` once solved.
-    v.Neut(v.NMatch(env, _, _)) -> {
-      let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
-      let #(id, ctx) = context.new_hole(ctx)
-      let expected_pi =
-        v.Pi(env, #("__" <> int.to_string(id), arg_type), tm.Hole(Some(id)))
-      let ctx = unify(ctx, #(fun_type, span), #(expected_pi, span))
-      let arg_val = eval(ctx.ffi, ctx.env, arg)
-      let ret_type = v.hole([arg_val, ..ctx.env], id)
-      #(tm.App(fun, arg), ret_type, ctx)
-    }
+    // The function type is an unsolved hole, or a neutral match whose
+    // codomain depends on the scrutinee and may become a `Pi` once
+    // solved: both are handled by `infer_app_neut`.
+    // TODO: any neutral should use infer_app_neut, not just hole/match
+    v.Neut(v.NHole(env, _)) ->
+      infer_app_neut(ctx, fun, fun_type, env, arg_ast, span)
+    v.Neut(v.NMatch(env, _, _)) ->
+      infer_app_neut(ctx, fun, fun_type, env, arg_ast, span)
     _ -> {
       let ctx =
         context.with_err(ctx, e.NotAFunction(fun, fun_type), fun_ast.span)
       #(tm.Err, v.Err, ctx)
     }
   }
+}
+
+/// Apply an argument to a function whose type is not yet a known `Pi`
+/// (an unsolved hole or a neutral match): unify the type against a fresh
+/// `Pi` whose domain is the argument and whose codomain is a fresh
+/// return-type hole. The type may still change once the neutral is
+/// solved, so the return type is that hole and the rest is deferred to
+/// unification.
+fn infer_app_neut(
+  ctx: Context,
+  fun: Term,
+  fun_type: Type,
+  env: Env,
+  arg_ast: Expr,
+  span: Span,
+) -> #(Term, Type, Context) {
+  let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
+  let #(id, ctx) = context.new_hole(ctx)
+  let expected_pi =
+    v.Pi(env, #("__" <> int.to_string(id), arg_type), tm.Hole(Some(id)))
+  let ctx = unify(ctx, #(fun_type, span), #(expected_pi, span))
+  let arg_val = eval(ctx.ffi, ctx.env, arg)
+  let ret_type = v.hole([arg_val, ..ctx.env], id)
+  #(tm.App(fun, arg), ret_type, ctx)
 }
 
 /// Apply implicit arguments to a polymorphic function: each `For`

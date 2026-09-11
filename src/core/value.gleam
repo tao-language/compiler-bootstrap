@@ -67,12 +67,8 @@ pub type Env =
 /// binding several variables). The new entries take the next levels
 /// (`length(env)` upwards); existing entries' levels are untouched.
 pub fn env_push(env: Env, num_vars: Int) -> Env {
-  int.range(
-    from: list.length(env),
-    to: list.length(env) + num_vars,
-    with: [],
-    run: list.prepend,
-  )
+  let len = list.length(env)
+  int.range(from: len, to: len + num_vars, with: [], run: list.prepend)
   |> list.map(var)
   |> list.append(env)
 }
@@ -101,8 +97,8 @@ fn is_concrete_opt(opt_value: Option(Value)) -> Bool {
 
 // Syntax sugar
 
-/// A neutral variable for the entry at the given de Bruijn level (counted
-/// from the outermost end; see the `Value` docs).
+/// A neutral variable for the entry at the given de Bruijn level (see the
+/// `Value` docs).
 pub fn var(level: Int) -> Value {
   Neut(NVar(level))
 }

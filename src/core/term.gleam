@@ -4,22 +4,12 @@
 /// terms and values that make up the compiler's internal representation.
 ///
 /// Terms use De Bruijn **indices** for variables, values use De Bruijn
-/// **levels**.
+/// **levels** (see the `core/value` module docs for levels).
 ///
 /// De Bruijn **indices** (Term `Var(n)`): count binders *inwards* from the
 /// use site. `Var(0)` is the innermost binder, `Var(1)` the next out.
 /// Indices shift whenever binders are added or removed between a use and
 /// its binder, so they are only meaningful inside a fixed term.
-///
-/// De Bruijn **levels** (Value `NVar(n)`): count binders *outwards* —
-/// level `n` is the `n`th binder from the outermost end of the
-/// environment (equivalently, the number of entries the environment had
-/// when the entry was pushed). Pushing or popping innermost binders
-/// leaves existing levels unchanged, so values that capture an
-/// environment keep their variable references valid across inference.
-/// Quoting converts a level to an index with `index = env_size - level - 1`
-/// (see `quote`); the conversion is *not* the identity — a level only
-/// equals an index when the environment has not been extended.
 import core/ast
 import core/literals.{type Literal, type LiteralType} as lit
 import gleam/int
@@ -32,10 +22,8 @@ import utils/list_utils.{at}
 // TERMS (Syntax level - De Bruijn indices)
 // ============================================================================
 
-/// Core terms. The ast.Term for type checking and evaluation.
-///
-/// Terms use De Bruijn indices: Var(0) refers to the innermost
-/// enclosing binder, Var(1) to the one before that, etc.
+/// Core terms — the AST for type checking and evaluation. Variables are
+/// De Bruijn indices (see the module docs).
 pub type Term {
   Typ(universe: Int)
   Hole(id: Option(Int))
@@ -352,18 +340,6 @@ pub fn ctr(tag: String, args: List(#(String, Term))) -> Term {
 pub fn let_var(def: #(String, Type, Term), body: Term) -> Term {
   let #(name, type_, value) = def
   App(Lam(#(name, type_), body), value)
-}
-
-pub fn let_var_list(defs: List(#(String, Type, Term)), body: Term) -> Term {
-  case defs {
-    [] -> body
-    [def, ..defs] -> let_var(def, let_var_list(defs, body))
-  }
-}
-
-pub fn let_pat(def: #(Pattern, Term), body: Term) -> Term {
-  let #(pattern, value) = def
-  Match(value, [Case(pattern, None, body)])
 }
 
 /// Field access as a single-case match with an open (row-polymorphic) tail.

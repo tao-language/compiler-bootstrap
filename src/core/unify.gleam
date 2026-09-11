@@ -43,8 +43,7 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       let ctx = unify(ctx, #(v.Neut(arg1), s1), #(v.Neut(arg2), s2))
       let ctx = case list.length(cases1) == list.length(cases2) {
         True -> ctx
-        False ->
-          with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)
+        False -> with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)
       }
       unify_match_case_list(ctx, #(env1, cases1, s1), #(env2, cases2, s2))
     }
@@ -241,11 +240,12 @@ fn unify_with_term(
 ///
 /// The algorithm:
 ///   1. Instantiate the type definition's parameters (create holes)
-///   2. Unify the type's argument with its parameter term (binds params)
+///   2. Unify the type's argument with the definition's argument term
 ///   3. Look up the constructor's tag in the type's variants
 ///   4. Instantiate the matching variant's parameters
 ///   5. Unify the constructor's arg with the variant's arg (binds more)
-///   6. Evaluate the variant's return type and unify with the type arg
+///   6. Unify the variant's return type with the expected constructor
+///      value `#tag(type_arg)`
 ///   7. Pop the bound variables from the environment
 fn unify_gadt(
   ctx: Context,
@@ -316,10 +316,16 @@ fn unify_match_case(
     }
     // Exactly one case has a guard: the cases cannot both hold, so the
     // matches cannot be the same.
-    Some(#(guard, _)), None ->
-      #(env1, env2, with_err(ctx, e.MatchGuardMismatch(guard, s1), s1))
-    None, Some(#(guard, _)) ->
-      #(env1, env2, with_err(ctx, e.MatchGuardMismatch(guard, s2), s2))
+    Some(#(guard, _)), None -> #(
+      env1,
+      env2,
+      with_err(ctx, e.MatchGuardMismatch(guard, s1), s1),
+    )
+    None, Some(#(guard, _)) -> #(
+      env1,
+      env2,
+      with_err(ctx, e.MatchGuardMismatch(guard, s2), s2),
+    )
   }
   let v1 = eval(ctx.ffi, env1, body1)
   let v2 = eval(ctx.ffi, env2, body2)

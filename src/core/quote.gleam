@@ -1,12 +1,10 @@
 /// Quote — Convert Values back to Terms
-import core/ast
 import core/eval.{eval}
 import core/ffi.{type FFI}
 import core/term.{type Case, type Term} as tm
 import core/value.{type Env, type Neut, type Value} as v
 import gleam/list
 import gleam/option.{None, Some}
-import syntax/span.{type Span}
 
 /// eval → quote: reduce a term and turn it back into a term whose
 /// variables are de Bruijn indices into `env`.
@@ -21,18 +19,6 @@ pub fn normalize_term(ffi: FFI, env: Env, term: Term) -> Term {
 pub fn normalize_value(ffi: FFI, env: Env, value: Value) -> Value {
   quote(ffi, env, value)
   |> eval(ffi, env, _)
-}
-
-/// quote → lift: a value as a named AST expression (for display).
-pub fn lift(
-  ffi: FFI,
-  env: Env,
-  names: List(String),
-  value: Value,
-  span: Span,
-) -> ast.Expr {
-  quote(ffi, env, value)
-  |> tm.lift(names, span)
 }
 
 /// Turn a Value back into a Term. `env` is the environment the value's

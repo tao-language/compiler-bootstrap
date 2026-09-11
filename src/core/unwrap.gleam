@@ -1,11 +1,10 @@
 import core/context.{type Subst}
-import core/eval.{eval}
+import core/eval
 import core/ffi.{type FFI}
-import core/quote.{quote}
-import core/term.{type Term}
-import core/value.{type Env, type Neut, type Value} as v
+import core/quote
+import core/value.{type Neut, type Value} as v
 import gleam/list
-import gleam/option.{type Option, None, Some}
+import gleam/option.{None, Some}
 
 /// Looks up a hole in the substitution table,
 /// recursively stripping away solved wrappers.
@@ -25,25 +24,6 @@ pub fn unwrap_seen(
     v.Neut(neut) -> unwrap_neut(ffi, subst, neut, seen)
     _ -> value
   }
-}
-
-pub fn opt_unwrap_seen(
-  ffi: FFI,
-  subst: Subst,
-  opt_value: Option(Value),
-  seen: List(Int),
-) -> Option(Value) {
-  case opt_value {
-    Some(value) -> Some(unwrap_seen(ffi, subst, value, seen))
-    None -> None
-  }
-}
-
-/// eval → unwrap → quote: fully resolve a term to a hole-free Term.
-pub fn unwrap_term(ffi: FFI, subst: Subst, env: Env, term: Term) -> Term {
-  eval(ffi, env, term)
-  |> unwrap(ffi, subst, _)
-  |> quote(ffi, env, _)
 }
 
 pub fn unwrap_neut(

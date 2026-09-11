@@ -12,7 +12,6 @@ import core/value.{type Env, type Type, type TypeDefinition, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
-import utils/list_utils.{at}
 
 // ============================================================================
 // CONTEXT
@@ -116,8 +115,8 @@ fn lookup_in_modules(
 }
 
 fn lookup_in_env(ctx: Context, name: String) -> Option(Value) {
-  case lookup(ctx, name) {
-    Some(#(index, _)) -> at(ctx.env, index)
+  case lookup_var(ctx, name) {
+    Some(#(val, _)) -> Some(val)
     None -> None
   }
 }
@@ -134,9 +133,10 @@ pub fn lookup_var(ctx: Context, name: String) -> Option(#(Value, Type)) {
   }
 }
 
-/// Bind `name` to a new value/type, replacing an existing binding *in
-/// place* (preserving its position, so de Bruijn levels of other
-/// variables stay valid) or prepending if the name is new.
+/// Bind `name` to a new value/type, replacing the first (innermost)
+/// matching binding *in place* (preserving its position, so de Bruijn
+/// levels of other variables stay valid), or appending at the outermost
+/// end if the name is new.
 pub fn set_var(ctx: Context, name: String, value: Value, typ: Type) -> Context {
   case ctx.types, ctx.env {
     [#(x, _), ..types], [_, ..env] if x == name ->
@@ -167,35 +167,10 @@ pub fn new_hole(ctx: Context) -> #(Int, Context) {
   #(id, Context(..ctx, hole_counter: id + 1))
 }
 
-/// Allocate `num_holes` fresh hole IDs at once.
-pub fn new_hole_list(ctx: Context, num_holes: Int) -> #(List(Int), Context) {
-  case num_holes > 0 {
-    True -> {
-      let #(hole_id, ctx) = new_hole(ctx)
-      let #(holes, ctx) = new_hole_list(ctx, num_holes - 1)
-      #([hole_id, ..holes], ctx)
-    }
-    False -> #([], ctx)
-  }
-}
-
 /// Push a (name, value, type) binding as the new innermost scope.
 pub fn push_var(ctx: Context, var: #(String, Value, Value)) -> Context {
   let #(name, val, typ) = var
   Context(..ctx, env: [val, ..ctx.env], types: [#(name, typ), ..ctx.types])
-}
-
-pub fn push_var_list(
-  ctx: Context,
-  vars: List(#(String, Value, Value)),
-) -> Context {
-  case vars {
-    [] -> ctx
-    [var, ..vars] -> {
-      let ctx = push_var(ctx, var)
-      push_var_list(ctx, vars)
-    }
-  }
 }
 
 /// Push a binding where the value and/or type may be unknown, in which

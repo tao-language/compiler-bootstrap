@@ -48,8 +48,6 @@ fn term_seen(
 ) -> Term {
   let self = fn(env, t) { term_seen(ffi, subst, env, t, seen) }
   case t {
-    tm.Typ(_) -> t
-    tm.Hole(None) -> t
     tm.Hole(Some(id)) ->
       // Cycle detection: if this hole is already being resolved,
       // return it as-is to break the infinite loop.
@@ -66,9 +64,6 @@ fn term_seen(
             }
           }
       }
-    tm.Lit(_) -> t
-    tm.LitT(_) -> t
-    tm.Var(_) -> t
     tm.Ctr(tag, arg) -> tm.Ctr(tag, self(env, arg))
     tm.Rcd(fields, tail) -> {
       let fields =
@@ -145,7 +140,8 @@ fn term_seen(
       let cases = list.map(cases, resolve_case(ffi, subst, env, seen, _))
       tm.Match(arg, cases)
     }
-    tm.Err -> t
+    // Typ, Hole(None), Lit, LitT, Var and Err carry no holes to resolve.
+    _ -> t
   }
 }
 
@@ -162,7 +158,7 @@ pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
 fn value_seen(ffi: FFI, subst: Subst, val: Value, seen: List(Int)) -> Value {
   let self = fn(v) { value_seen(ffi, subst, v, seen) }
   case val {
-    // A hole is resolved with its ID pushed on the seen stack: its solution
+    // A named hole is resolved with its ID pushed on the seen stack: its solution
     // and every captured environment it carries (NHole env, NMatch env, ...
     // through its unwrapped solution) are walked with the ID on the stack, so
     // any re-encounter of the hole is caught by the cycle guard.
@@ -190,9 +186,6 @@ fn value_seen(ffi: FFI, subst: Subst, val: Value, seen: List(Int)) -> Value {
         solved -> value_seen(ffi, subst, solved, seen)
       }
     }
-    v.Typ(u) -> v.Typ(u)
-    v.Lit(k) -> v.Lit(k)
-    v.LitT(k) -> v.LitT(k)
     v.Ctr(tag, arg) -> v.Ctr(tag, self(arg))
     v.Rcd(fields, tail) -> {
       let fields =
@@ -205,7 +198,7 @@ fn value_seen(ffi: FFI, subst: Subst, val: Value, seen: List(Int)) -> Value {
       let tail = option.map(tail, self)
       v.Rcd(fields, tail)
     }
-    // If unwrap still returns a Neut, just reolve its parts.
+    // If unwrap still returns a Neut, just resolve its parts.
     // No need to try to re-evaluate it into a concrete value.
     v.Neut(neut) -> v.Neut(neutral_seen(ffi, subst, neut, seen))
     v.For(env, #(name, typ), body) -> {
@@ -255,7 +248,8 @@ fn value_seen(ffi: FFI, subst: Subst, val: Value, seen: List(Int)) -> Value {
         })
       v.TypeDef(env, v.TypeDefinition(params, arg, variants))
     }
-    v.Err -> v.Err
+    // Typ, Lit, LitT and Err carry no holes to resolve.
+    _ -> val
   }
 }
 
@@ -270,20 +264,9 @@ fn neutral_seen(ffi: FFI, subst: Subst, neut: Neut, seen: List(Int)) -> Neut {
     }
     v.NMatch(captured_env, arg_neut, cases) -> {
       let arg_neut = neutral_seen(ffi, subst, arg_neut, seen)
-      let cases =
-        list.map(cases, fn(c) {
-          let env = v.env_push(captured_env, list.length(tm.bindings(c.pattern)))
-          let #(guard, env) = case c.guard {
-            Some(#(cond, pattern)) -> {
-              let env = v.env_push(env, list.length(tm.bindings(pattern)))
-              let cond = term(ffi, subst, env, cond)
-              #(Some(#(cond, pattern)), env)
-            }
-            None -> #(None, env)
-          }
-          let body = term(ffi, subst, env, c.body)
-          tm.Case(c.pattern, guard, body)
-        })
+      let cases = list.map(cases, fn(c) {
+        resolve_case(ffi, subst, captured_env, seen, c)
+      })
       v.NMatch(captured_env, arg_neut, cases)
     }
     v.NCall(name, ret, arg) -> {
@@ -298,13 +281,7 @@ fn neutral_seen(ffi: FFI, subst: Subst, neut: Neut, seen: List(Int)) -> Neut {
 /// displayed types show their solutions rather than `?n`.
 pub fn error(ffi: FFI, subst: Subst, env: Env, err: e.Error) -> e.Error {
   let data = case err.data {
-    // Syntax errors carry no values or terms to resolve.
-    e.UnexpectedToken(x) -> e.UnexpectedToken(x)
-    e.ExpectedToken(x, y) -> e.ExpectedToken(x, y)
-    e.UnexpectedEndOfInput -> e.UnexpectedEndOfInput
-    e.SyntaxError(message) -> e.SyntaxError(message)
-    // Type-checking errors
-    e.VarUndefined(x) -> e.VarUndefined(x)
+    // Only the errors carrying values or terms need resolving.
     e.TypeMismatch(#(a, s1), #(b, s2)) -> {
       let a = value(ffi, subst, a)
       let b = value(ffi, subst, b)
@@ -314,7 +291,6 @@ pub fn error(ffi: FFI, subst: Subst, env: Env, err: e.Error) -> e.Error {
       let a = value(ffi, subst, a)
       e.InfiniteType(id, a)
     }
-    e.RcdFieldNotFound(field) -> e.RcdFieldNotFound(field)
     e.NotAFunction(fun, fun_type) -> {
       let fun = term(ffi, subst, env, fun)
       let fun_type = value(ffi, subst, fun_type)
@@ -327,9 +303,10 @@ pub fn error(ffi: FFI, subst: Subst, env: Env, err: e.Error) -> e.Error {
     e.MatchGuardMismatch(guard, span) -> {
       e.MatchGuardMismatch(term(ffi, subst, env, guard), span)
     }
-    // The variant terms are left unresolved for now.
-    e.TypeVariantUndefined(tag, variants) ->
-      e.TypeVariantUndefined(tag, variants)
+    // Syntax errors, VarUndefined, RcdFieldNotFound and
+    // TypeVariantUndefined (whose variant terms are left unresolved for
+    // now) carry nothing to resolve.
+    _ -> err.data
   }
   e.Error(..err, data: data)
 }
