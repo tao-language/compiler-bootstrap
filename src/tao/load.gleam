@@ -28,18 +28,15 @@ pub fn implicit_prelude_imports(
       True -> mod
       False -> {
         let existing = imported_paths(stmts)
-        let implicit =
-          list.map(prelude, fn(m) {
+        let imports =
+          list.filter_map(prelude, fn(m) {
             let path = m.0
             case list.contains(existing, path) {
-              True -> []
-              False -> [
-                import_all(path, "", Span(name, 0, 0, 0, 0)),
-              ]
+              True -> Error(Nil)
+              False -> Ok(import_all(path, "", Span(name, 0, 0, 0, 0)))
             }
           })
-          |> list.flatten
-        #(name, list.append(implicit, stmts))
+        #(name, list.append(imports, stmts))
       }
     }
   })
