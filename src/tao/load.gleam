@@ -34,16 +34,12 @@ pub fn implicit_prelude_imports(
             case list.contains(existing, path) {
               True -> []
               False -> [
-                import_all(
-                  path,
-                  filepath.base_name(path),
-                  Span(name, 0, 0, 0, 0),
-                ),
+                import_all(path, "", Span(name, 0, 0, 0, 0)),
               ]
             }
           })
           |> list.flatten
-        #(name, list.append(stmts, implicit))
+        #(name, list.append(implicit, stmts))
       }
     }
   })
