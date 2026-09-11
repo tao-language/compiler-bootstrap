@@ -29,6 +29,7 @@ pub type ExprData {
   Var(name: String)
   Ctr(tag: String, arg: Expr)
   Rcd(
+    // (name, (opt_value, opt_default)) -- opt_default value for Rcd types
     fields: List(#(String, #(Option(Expr), Option(Expr)))),
     tail: Option(Expr),
   )

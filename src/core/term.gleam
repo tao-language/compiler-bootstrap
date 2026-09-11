@@ -31,7 +31,11 @@ pub type Term {
   LitT(typ: LiteralType)
   Var(index: Int)
   Ctr(tag: String, arg: Term)
-  Rcd(fields: List(#(String, #(Term, Option(Term)))), tail: Option(Term))
+  Rcd(
+    // (name, (value, opt_default)) -- opt_default value for Rcd types
+    fields: List(#(String, #(Term, Option(Term)))),
+    tail: Option(Term),
+  )
   Call(name: String, ret: Type, arg: Term)
   Ann(term: Term, type_: Type)
   For(param: #(String, Type), body: Term)

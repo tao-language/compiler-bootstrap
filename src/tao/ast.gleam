@@ -28,8 +28,13 @@ pub type ExprData {
   Lit(value: Literal)
   Var(name: String)
   Ctr(tag: String, args: List(#(String, Expr)), tail: Option(Expr))
-  Rcd(fields: List(#(String, Option(Expr))), tail: Option(Expr))
+  Rcd(
+    // (name, opt_value)
+    fields: List(#(String, Option(Expr))),
+    tail: Option(Expr),
+  )
   RcdT(
+    // (name, (opt_type, opt_default))
     fields: List(#(String, #(Option(Type), Option(Expr)))),
     tail: Option(Expr),
   )

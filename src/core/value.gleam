@@ -24,7 +24,11 @@ pub type Value {
   Lit(literal: Literal)
   LitT(literal: LiteralType)
   Ctr(tag: String, arg: Value)
-  Rcd(fields: List(#(String, #(Value, Option(Value)))), tail: Option(Value))
+  Rcd(
+    // (name, (value, opt_default)) -- opt_default value for Rcd types
+    fields: List(#(String, #(Value, Option(Value)))),
+    tail: Option(Value),
+  )
   Neut(neutral: Neut)
   For(env: Env, param: #(String, Type), body: Term)
   Lam(env: Env, param: #(String, Type), body: Term)
