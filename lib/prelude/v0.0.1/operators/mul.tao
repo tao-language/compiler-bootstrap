@@ -1,0 +1,10 @@
+extern int_mul(Int, Int) -> Int
+extern float_mul(Float, Float) -> Float
+
+fn (*) {
+| int_mul(Int, Int)
+| float_mul(Float, Float)
+}
+
+>>> 3 * 2       6
+>>> 3.0 * 2.0   6.0

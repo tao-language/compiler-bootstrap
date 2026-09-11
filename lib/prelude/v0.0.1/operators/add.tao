@@ -1,0 +1,10 @@
+extern int_add(Int, Int) -> Int
+extern float_add(Float, Float) -> Float
+
+fn (+) {
+| int_add(Int, Int)
+| float_add(Float, Float)
+}
+
+>>> 3 + 2       5
+>>> 3.0 + 2.0   5.0
