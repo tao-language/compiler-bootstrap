@@ -79,3 +79,26 @@ pub fn resolve_term_hole_with_concrete_solution_test() {
   assert resolve.term(ffi, [], [], tm.Hole(Some(5))) == tm.Hole(Some(5))
   assert resolve.term(ffi, [], [], tm.Hole(None)) == tm.Hole(None)
 }
+
+/// 5. KNOWN FRAGILITY (pinned, not yet fixed): a hole is created in an outer
+/// scope and *solved in an inner scope* whose solution is a neutral (`NVar`)
+/// referencing a binding that is *not in scope* at the hole term's site.
+/// `resolve.term` quotes the solution against the *term's* frame (the outer
+/// frame, which does not contain that binding), so the level-to-index
+/// conversion (`index = env_size - level - 1`) yields a *negative* de Bruijn
+/// index. The dangling `Var` renders as `$-n` and, if the output were
+/// recompiled, would evaluate to `%error`. A sound fix would carry the hole's
+/// captured env with its substitution entry (see the `TODO: save hole env into
+/// ctx.subst` in `unify.solve_hole`).
+pub fn resolve_term_hole_solution_frame_fragility_test() {
+  let ffi = ffi.build
+  // The hole term lives in the module frame (empty env).
+  let hole_term = tm.Hole(Some(0))
+  // The hole is solved in an inner scope that binds one more entry; the
+  // solution references that inner binding at level 0.
+  let solution = v.var(0)
+  let subst = [#(0, solution)]
+  // Quoting NVar(0) against the 0-length module frame gives
+  // Var(0 - 0 - 1) = Var(-1): a negative de Bruijn index.
+  assert resolve.term(ffi, subst, [], hole_term) == tm.Var(-1)
+}

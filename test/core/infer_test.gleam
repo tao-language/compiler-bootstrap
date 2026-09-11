@@ -646,3 +646,42 @@ pub fn infer_err_test() {
   assert term == tm.Err
   assert type_ == v.Err
 }
+
+// ============================================================================
+//  Known-soundness-reproduction: a non-exhaustive match on a concrete
+//  scrutinee (no case matches) silently yields %error with *no*
+//  diagnostics (do_match_case_list falls off the end to v.Err).
+//  Exhaustiveness checking (planned, Tao level) should close this.
+// ============================================================================
+pub fn infer_match_nonexhaustive_concrete_silent_error_test() {
+  let cases = [ast.Case(ast.pint(0, s), None, ast.int(1, s))]
+  let ast = ast.match(ast.int(1, s), cases, s)
+  let ctx0 = new_ctx
+  let #(term, type_, ctx) = infer(ctx0, ast)
+  // BUG: no error is reported
+  assert ctx.errors == []
+  // The match collapses to the %error bottom
+  assert term == tm.Err
+  assert type_ == v.Err
+}
+
+// Same issue via a failing guard on a concrete scrutinee: the guard
+// rejects the only case, and do_match falls through to v.Err silently.
+pub fn infer_match_guard_fails_concrete_silent_error_test() {
+  let cases = [
+    ast.Case(
+      ast.pvar("n", s),
+      Some(#(ast.int(0, s), ast.pint(1, s))),
+      ast.int(1, s),
+    ),
+  ]
+  let ast = ast.match(ast.int(1, s), cases, s)
+  let ctx0 = new_ctx
+  let #(term, type_, ctx) = infer(ctx0, ast)
+  // BUG: no error is reported
+  assert ctx.errors == []
+  // The guard (0 == 1) fails at value level, so the match collapses
+  // to the %error bottom
+  assert term == tm.Err
+  assert type_ == v.Err
+}

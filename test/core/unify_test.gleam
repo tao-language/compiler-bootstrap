@@ -2,6 +2,7 @@
 import core/context.{Context, new_ctx}
 import core/error as e
 import core/literals as lit
+import core/occurs
 import core/term as tm
 import core/unify.{unify}
 import core/value as v
@@ -451,6 +452,20 @@ pub fn unify_neut_nhole_infinite_type_test() {
       [],
     )
   assert ctx.errors == [error]
+}
+
+/// KNOWN GAP (pinned, not yet fixed): the occurs check walks the solution
+/// *value* but not a neutral hole's *captured env*. A hole whose captured env
+/// contains the hole id (while the solution value does not) is NOT flagged as
+/// an infinite type. Such a cycle is only broken later, at unwrap/resolve
+/// time, by the `seen` stacks (left as an unsolved hole), not rejected up
+/// front.
+pub fn occurs_check_misses_captured_env_test() {
+  let ctx = new_ctx
+  // The solution value is a plain neutral var (no hole inside); the hole id
+  // would appear only in a captured env, which `occurs` does not walk.
+  let solution = v.var(0)
+  assert occurs.occurs(ctx, 0, solution) == False
 }
 
 pub fn unify_neut_nhole_solve_twice_test() {
