@@ -112,11 +112,11 @@ fn quote_neut(ffi: FFI, env: Env, neut: Neut) -> Term {
       let arg = quote(ffi, env, arg_val)
       tm.App(fun, arg)
     }
-    v.NMatch(captured_env, arg_neut, cases) -> {
+    v.NMatch(captured_env, arg, cases) -> {
       // Body terms are indexed into `captured_env`; the values' neutral
       // levels are only addressable in `env`, the placement frame.
       // `quote_case` keeps both conventions valid at once.
-      let arg = quote_neut(ffi, env, arg_neut)
+      let arg = quote(ffi, env, arg)
       let cases =
         list.map(cases, fn(c) { quote_case(ffi, env, captured_env, c) })
       tm.Match(arg, cases)

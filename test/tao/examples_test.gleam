@@ -14,7 +14,7 @@ import gleam/int
 import gleam/list
 import gleam/option.{None, Some, type Option}
 import gleam/string
-import tao/ast.{Pattern, PAny, PCtr, PLit, PRcd, PVar, type Pattern}
+import tao/ast.{Pattern, PAny, PCtr, PLit, PRcd, PTuple, PVar, type Pattern}
 import tao/compile
 import tao/load
 import tao/tests.{
@@ -108,6 +108,8 @@ fn fmt_pattern(p: Pattern) -> String {
         lit.Int(n) -> int.to_string(n)
         lit.Float(f) -> float.to_string(f)
       }
+    PTuple(args) ->
+      "(" <> string.join(list.map(args, fmt_pattern), ", ") <> ")"
     PRcd(fields, tail) -> {
       let fields = list.map(fields, fn(field) {
         let #(name, pat) = field

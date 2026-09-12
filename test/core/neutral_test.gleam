@@ -51,7 +51,7 @@ pub fn neutral_match_reduces_after_solve_test() {
     tm.Case(tm.pvar("x"), None, tm.Var(0)),
   ]
   let n = eval(ffi, [], tm.Match(tm.Hole(Some(0)), cases))
-  assert n == v.Neut(v.NMatch([], v.NHole([], Some(0)), cases))
+  assert n == v.Neut(v.NMatch([], v.Neut(v.NHole([], Some(0))), cases))
   // Scrutinee 2: the catch-all case is picked post-solve, with the
   // binding — the match does not reduce eagerly.
   assert unwrap(ffi, [#(0, #([], v.int(2)))], n) == v.int(2)
@@ -101,4 +101,67 @@ pub fn neutral_ffi_call_reduces_after_solve_test() {
   assert reduce(ffi, [], [], n) == n
   // ...solved: the builtin reduces.
   assert reduce(ffi, [#(0, #([], v.int(1)))], [], n) == v.int(2)
+}
+
+/// 5. A match deferred on a *partially concrete* scrutinee (a record
+/// whose fields are still holes) re-reduces once the holes are solved.
+/// `unwrap` alone keeps it neutral — it is not recursive into value
+/// constructors — and the quote → resolve → re-evaluate pipeline
+/// completes the reduction.
+pub fn neutral_match_partial_rcd_reduces_test() {
+  let ffi = ffi.build
+  let env = []
+  let cases = [
+    tm.Case(
+      tm.prcd_strict([
+        #("1", tm.PCtr("True", tm.prcd_strict([]))),
+        #("2", tm.PCtr("True", tm.prcd_strict([]))),
+      ]),
+      None,
+      tm.int(1),
+    ),
+    tm.Case(
+      tm.prcd_strict([#("1", tm.PAny), #("2", tm.PAny)]),
+      None,
+      tm.int(2),
+    ),
+  ]
+  let scrutinee =
+    v.Rcd(
+      [#("1", #(v.hole(env, 0), None)), #("2", #(v.hole(env, 1), None))],
+      None,
+    )
+  let n = v.match(env, scrutinee, cases)
+  // `unwrap` alone keeps it neutral: it does not reach into the
+  // record's fields, so nothing is lost and nothing loops.
+  assert unwrap(ffi, [], n) == n
+  let t = v.ctr("True", [])
+  let f = v.ctr("False", [])
+  // Once the holes are solved, the pipeline reduces the match: the
+  // catch-all picks True/False...
+  assert reduce(ffi, [#(0, #([], t)), #(1, #([], f))], env, n) == v.int(2)
+  // ...and the first case picks True/True.
+  assert reduce(ffi, [#(0, #([], t)), #(1, #([], t))], env, n) == v.int(1)
+}
+
+/// 6. A neutral match whose blocker is a variable (never solved by
+/// `unwrap`) stays neutral and stable: re-unwrapping it must terminate
+/// and return it unchanged, not loop or force a decision.
+pub fn neutral_match_undecided_stays_neutral_test() {
+  let ffi = ffi.build
+  let env = [v.var(0)]
+  let arg_val = v.Rcd([#("1", #(v.Neut(v.NVar(0)), None))], None)
+  let cases = [
+    tm.Case(
+      tm.prcd_strict([#("1", tm.PCtr("True", tm.prcd_strict([])))]),
+      None,
+      tm.int(1),
+    ),
+    tm.Case(tm.PAny, None, tm.int(2)),
+  ]
+  let n = v.Neut(v.NMatch(env, arg_val, cases))
+  // No solution for the blocker: the match is kept, unchanged.
+  assert unwrap(ffi, [], n) == n
+  // An unrelated solved hole does not change the outcome either.
+  assert unwrap(ffi, [#(0, #([], v.int(7)))], n) == n
 }

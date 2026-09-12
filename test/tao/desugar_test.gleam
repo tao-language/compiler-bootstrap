@@ -1,5 +1,6 @@
 import core/ast as core
 import core/format
+import core/literals as lit
 import gleam/option.{None, Some}
 import syntax/span.{Span}
 import tao/ast as tao
@@ -70,4 +71,50 @@ pub fn desugar_stmt_type_def_option_test() {
   let expr = desugar.statement([], stmt, unit)
   assert fmt(expr)
     == "%let Option: %Type = type a: ? {\n| Some(a) -> #Option({a})|\n  | None -> #Option({a})\n}\n{}"
+}
+
+// ============================================================================
+// Tuples: strict numbered records (no tail)
+// ============================================================================
+
+pub fn desugar_tuple_expr_test() {
+  // () => {} ; (x) => {1: x} ; (x, y, z) => {1: x, 2: y, 3: z}
+  let e = tao.tuple([tao.int(1, s), tao.int(2, s)], s)
+  let expected =
+    core.rcd_values(
+      [#("1", core.lit(lit.Int(1), s)), #("2", core.lit(lit.Int(2), s))],
+      None,
+      s,
+    )
+  assert desugar.expr([], e) == expected
+  assert desugar.expr([], tao.tuple([], s)) == core.rcd_values([], None, s)
+}
+
+pub fn desugar_tuple_pattern_test() {
+  // Tuple patterns desugar to strict (no-tail) numbered record patterns,
+  // mirroring the tuple expression.
+  let p = tao.ptuple([tao.pvar("x", s), tao.pvar("y", s)], s)
+  let expected =
+    core.prcd([#("1", core.pvar("x", s)), #("2", core.pvar("y", s))], None, s)
+  assert desugar.pattern(p) == expected
+  assert desugar.pattern(tao.ptuple([], s)) == core.prcd([], None, s)
+}
+
+pub fn desugar_op2_and_test() {
+  // A named operator desugars to an application of its function:
+  // `a and b` => and(#{1: a, 2: b})
+  let e = tao.op2(tao.And, tao.var("a", s), tao.var("b", s), s)
+  // Positional call arguments keep their empty names (`pop_field`
+  // consumes them in order when the callee unpacks numbered parameters).
+  let expected =
+    core.app(
+      core.var("and", s),
+      core.rcd_values(
+        [#("", core.var("a", s)), #("", core.var("b", s))],
+        None,
+        s,
+      ),
+      s,
+    )
+  assert desugar.expr([], e) == expected
 }

@@ -12,8 +12,8 @@
 /// Trivial data-pass-through tests (Typ, Hole, Lit, LitT, Ctr, Rcd,
 /// RcdT, Fix, Ann) have been removed — they only verify data flows
 /// through, not logic.
-import core/eval.{eval, match_pattern}
-import core/ffi.{type FFI}
+import core/eval.{do_match, eval, match_pattern, MatchAccept, MatchNeutral, MatchReject}
+import core/ffi.{build, type FFI}
 import core/literals as lit
 import core/term as tm
 import core/value as v
@@ -109,6 +109,168 @@ pub fn eval_match_no_cases_test() {
   let term = tm.Match(tm.Lit(lit.Int(42)), [])
   let result = eval([], [], term)
   assert result == v.Err
+}
+
+pub fn eval_match_partial_rcd_scrutinee_deferred_test() {
+  // A match on a constructed record whose fields are still neutral must
+  // not bake in the wrong case: a structural pattern cannot rule out a
+  // neutral field, so the match is kept neutral (`NMatch`) and is
+  // re-reduced once the scrutinee becomes fully concrete. This is what
+  // makes Tao tuple matches (`match a, b { | ... }` → a record match
+  // over `{1: a, 2: b}`) reduce correctly for both True/True inputs.
+  let env = [v.var(0), v.var(1)]
+  let arg = tm.rcd_open([#("1", tm.Var(0)), #("2", tm.Var(1))], None)
+  let cases = [
+    tm.Case(
+      tm.prcd_strict([
+        #("1", tm.PCtr("True", tm.prcd_strict([]))),
+        #("2", tm.PCtr("True", tm.prcd_strict([]))),
+      ]),
+      None,
+      tm.Lit(lit.Int(1)),
+    ),
+    tm.Case(
+      tm.prcd_strict([#("1", tm.PAny), #("2", tm.PAny)]),
+      None,
+      tm.Lit(lit.Int(2)),
+    ),
+  ]
+  let result = eval([], env, tm.Match(arg, cases))
+  let expected_scrutinee =
+    v.Rcd(
+      [#("1", #(v.Neut(v.NVar(0)), None)), #("2", #(v.Neut(v.NVar(1)), None))],
+      None,
+    )
+  assert result == v.Neut(v.NMatch(env, expected_scrutinee, cases))
+  // Fully concrete scrutinees select their case as before.
+  let t = v.Ctr("True", v.Rcd([], None))
+  let f = v.Ctr("False", v.Rcd([], None))
+  let both_true = v.Rcd([#("1", #(t, None)), #("2", #(t, None))], None)
+  assert do_match(build, env, both_true, cases) == v.Lit(lit.Int(1))
+  let true_false = v.Rcd([#("1", #(t, None)), #("2", #(f, None))], None)
+  assert do_match(build, env, true_false, cases) == v.Lit(lit.Int(2))
+}
+
+pub fn eval_match_partial_rcd_binding_patterns_eager_test() {
+  // Patterns that only bind (variables, open tails) are decidable even
+  // against a partially concrete scrutinee — the value's shape is known
+  // — so the match reduces eagerly. This is how `.` field access
+  // (a single-case open-tail record pattern) works on module records
+  // whose entries are still declaration holes.
+  let env = [v.var(0), v.var(1)]
+  let arg_val = v.Rcd([#("fun", #(v.Neut(v.NVar(0)), None))], None)
+  let cases = [
+    tm.Case(
+      tm.PRcd([#("fun", tm.pvar("fun"))], Some(tm.PAny)),
+      None,
+      tm.Var(0),
+    ),
+  ]
+  let result = do_match(build, env, arg_val, cases)
+  assert result == v.Neut(v.NVar(0))
+}
+
+pub fn eval_match_neutral_tail_deferred_test() {
+  // A record whose *tail* is neutral: a field not found in the head is
+  // searched for in the tail, and the outcome depends on what the tail
+  // resolves to — so the match stays neutral instead of falling through
+  // to a later case (which would bake in the wrong branch).
+  let env = [v.var(0)]
+  let arg_val = v.Rcd([], Some(v.Neut(v.NVar(0)))) // `{..r}`
+  let cases = [
+    tm.Case(
+      tm.PRcd([#("y", tm.pvar("yy"))], Some(tm.PAny)),
+      None,
+      tm.Var(0),
+    ),
+    tm.Case(tm.PAny, None, tm.Lit(lit.Int(0))),
+  ]
+  let result = do_match(build, env, arg_val, cases)
+  assert result == v.Neut(v.NMatch(env, arg_val, cases))
+}
+
+pub fn eval_match_neutral_tail_field_in_head_eager_test() {
+  // A field found in the head is decidable even when the tail is
+  // neutral: the lookup never reaches the tail, so the match reduces
+  // eagerly.
+  let env = [v.var(0)]
+  let arg_val =
+    v.Rcd([#("x", #(v.int(1), None))], Some(v.Neut(v.NVar(0))))
+  let cases = [
+    tm.Case(
+      tm.PRcd([#("x", tm.pvar("x"))], Some(tm.PAny)),
+      None,
+      tm.Var(0),
+    ),
+  ]
+  let result = do_match(build, env, arg_val, cases)
+  assert result == v.int(1)
+}
+
+pub fn eval_match_neutral_scrutinee_lit_deferred_test() {
+  // A literal pattern cannot be decided against a neutral scrutinee:
+  // the catch-all below it must not win yet.
+  let env = []
+  let scrut = v.hole(env, 0)
+  let cases = [
+    tm.Case(tm.pint(1), None, tm.int(10)),
+    tm.Case(tm.PAny, None, tm.int(20)),
+  ]
+  let result = do_match(build, env, scrut, cases)
+  assert result == v.match(env, scrut, cases)
+}
+
+pub fn eval_match_neutral_scrutinee_pany_eager_test() {
+  // A case that only binds is decidable against any value, neutral
+  // included: it cannot fail, so the match reduces immediately.
+  let env = [v.var(0)]
+  let scrut = v.Neut(v.NVar(0))
+  let cases = [tm.Case(tm.PAny, None, tm.Var(0))]
+  let result = do_match(build, env, scrut, cases)
+  assert result == scrut
+}
+
+pub fn eval_match_ctr_tag_neutral_arg_eager_test() {
+  // A constructor's tag is decidable even when its argument record is
+  // still neutral: the matching tag accepts (binding the neutral),
+  // and a mismatched tag rejects down to the next case.
+  let env = [v.var(0)]
+  let arg = v.Rcd([#("1", #(v.Neut(v.NVar(0)), None))], None)
+  let some_neut = v.Ctr("Some", arg)
+  let accept_tag = [
+    tm.Case(tm.PCtr("Some", tm.pvar("x")), None, tm.Var(0)),
+    tm.Case(tm.PAny, None, tm.int(0)),
+  ]
+  // The binding is the whole argument record (neutral and all).
+  assert do_match(build, env, some_neut, accept_tag) == arg
+  let reject_tag = [
+    tm.Case(tm.PCtr("None", tm.pvar("x")), None, tm.Var(0)),
+    tm.Case(tm.PAny, None, tm.int(0)),
+  ]
+  assert do_match(build, env, some_neut, reject_tag) == v.int(0)
+}
+
+pub fn eval_match_guard_neutral_deferred_test() {
+  // A guard whose value is still neutral keeps the case undecided — it
+  // must not be treated as a failed case falling through to the next.
+  let env = [v.var(0)]
+  let arg_val = v.Rcd([#("x", #(v.int(1), None))], None)
+  let cases = [
+    tm.Case(
+      tm.PRcd([#("x", tm.pint(1))], Some(tm.PAny)),
+      Some(#(tm.Var(0), tm.PCtr("True", tm.prcd_strict([])))),
+      tm.int(10),
+    ),
+    tm.Case(tm.PAny, None, tm.int(20)),
+  ]
+  let result = do_match(build, env, arg_val, cases)
+  assert result == v.Neut(v.NMatch(env, arg_val, cases))
+  // A concrete guard is decided: True keeps the guarded case, False
+  // falls through.
+  let true_ = v.Ctr("True", v.Rcd([], None))
+  let false_ = v.Ctr("False", v.Rcd([], None))
+  assert do_match(build, [true_], arg_val, cases) == v.int(10)
+  assert do_match(build, [false_], arg_val, cases) == v.int(20)
 }
 
 // ============================================================================
@@ -247,65 +409,65 @@ pub fn eval_match_err_test() {
 // ============================================================================
 
 pub fn match_pattern_any_matches_test() {
-  assert match_pattern(tm.PAny, v.int(42)) == Some([])
+  assert match_pattern(tm.PAny, v.int(42)) == MatchAccept([])
 }
 
 pub fn match_pattern_any_matches_float_test() {
   // PAny matches any value type
-  assert match_pattern(tm.PAny, v.float(3.14)) == Some([])
+  assert match_pattern(tm.PAny, v.float(3.14)) == MatchAccept([])
 }
 
 pub fn match_pattern_typ_match_test() {
-  assert match_pattern(tm.PTyp(0), v.Typ(0)) == Some([])
+  assert match_pattern(tm.PTyp(0), v.Typ(0)) == MatchAccept([])
 }
 
 pub fn match_pattern_typ_mismatch_test() {
-  assert match_pattern(tm.PTyp(1), v.Typ(0)) == None
+  assert match_pattern(tm.PTyp(1), v.Typ(0)) == MatchReject
 }
 
 pub fn match_pattern_typ_wrong_value_test() {
-  assert match_pattern(tm.PTyp(0), v.int(42)) == None
+  assert match_pattern(tm.PTyp(0), v.int(42)) == MatchReject
 }
 
 pub fn match_pattern_lit_int_match_test() {
-  assert match_pattern(tm.PLit(lit.Int(42)), v.int(42)) == Some([])
+  assert match_pattern(tm.PLit(lit.Int(42)), v.int(42)) == MatchAccept([])
 }
 
 pub fn match_pattern_lit_int_mismatch_test() {
-  assert match_pattern(tm.PLit(lit.Int(1)), v.int(42)) == None
+  assert match_pattern(tm.PLit(lit.Int(1)), v.int(42)) == MatchReject
 }
 
 pub fn match_pattern_lit_float_match_test() {
-  assert match_pattern(tm.PLit(lit.Float(3.14)), v.float(3.14)) == Some([])
+  assert match_pattern(tm.PLit(lit.Float(3.14)), v.float(3.14)) == MatchAccept([])
 }
 
 pub fn match_pattern_litt_int_match_test() {
-  assert match_pattern(tm.PLitT(lit.IntT), v.int_t) == Some([])
+  assert match_pattern(tm.PLitT(lit.IntT), v.int_t) == MatchAccept([])
 }
 
 pub fn match_pattern_litt_int_mismatch_test() {
-  assert match_pattern(tm.PLitT(lit.IntT), v.float_t) == None
+  assert match_pattern(tm.PLitT(lit.IntT), v.float_t) == MatchReject
 }
 
 pub fn match_pattern_litt_wrong_value_test() {
-  assert match_pattern(tm.PLitT(lit.IntT), v.int(42)) == None
+  assert match_pattern(tm.PLitT(lit.IntT), v.int(42)) == MatchReject
 }
 
 pub fn match_pattern_alias_bind_test() {
   let result = match_pattern(tm.PAlias("x", tm.PAny), v.int(42))
-  assert result == Some([v.int(42)])
+  assert result == MatchAccept([v.int(42)])
 }
 
 pub fn match_pattern_alias_nested_test() {
   // Each PAlias prepends the value: inner binds it, then outer binds it again
   let result =
     match_pattern(tm.PAlias("outer", tm.PAlias("inner", tm.PAny)), v.int(42))
-  assert result == Some([v.int(42), v.int(42)])
+  assert result == MatchAccept([v.int(42), v.int(42)])
 }
 
 pub fn match_pattern_alias_fail_test() {
   let result = match_pattern(tm.PAlias("x", tm.PLit(lit.Int(0))), v.int(42))
-  assert result == None
+  assert result == MatchReject
 }
 
 pub fn match_pattern_ctr_match_test() {
@@ -314,17 +476,17 @@ pub fn match_pattern_ctr_match_test() {
       tm.PCtr("Some", tm.PAlias("x", tm.PAny)),
       v.Ctr("Some", v.int(42)),
     )
-  assert result == Some([v.int(42)])
+  assert result == MatchAccept([v.int(42)])
 }
 
 pub fn match_pattern_ctr_tag_mismatch_test() {
   let result = match_pattern(tm.PCtr("None", tm.PAny), v.Ctr("Some", v.int(42)))
-  assert result == None
+  assert result == MatchReject
 }
 
 pub fn match_pattern_ctr_wrong_value_test() {
   let result = match_pattern(tm.PCtr("Some", tm.PAny), v.int(42))
-  assert result == None
+  assert result == MatchReject
 }
 
 pub fn match_pattern_ctr_nested_test() {
@@ -334,7 +496,7 @@ pub fn match_pattern_ctr_nested_test() {
       tm.PCtr("Some", inner),
       v.Ctr("Some", v.Ctr("Int", v.Lit(lit.Int(42)))),
     )
-  assert result == Some([])
+  assert result == MatchAccept([])
 }
 
 pub fn match_pattern_ctr_nested_fail_test() {
@@ -344,7 +506,7 @@ pub fn match_pattern_ctr_nested_fail_test() {
       tm.PCtr("Some", inner),
       v.Ctr("Some", v.Ctr("Int", v.Lit(lit.Int(42)))),
     )
-  assert result == None
+  assert result == MatchReject
 }
 
 pub fn match_pattern_rcd_match_test() {
@@ -359,7 +521,7 @@ pub fn match_pattern_rcd_match_test() {
         #("y", v.int(2)),
       ]),
     )
-  assert result == Some([])
+  assert result == MatchAccept([])
 }
 
 pub fn match_pattern_rcd_match_strict_test() {
@@ -374,7 +536,7 @@ pub fn match_pattern_rcd_match_strict_test() {
         #("y", v.int(2)),
       ]),
     )
-  assert result == Some([])
+  assert result == MatchAccept([])
 }
 
 pub fn match_pattern_rcd_extra_field_test() {
@@ -391,7 +553,7 @@ pub fn match_pattern_rcd_extra_field_test() {
         #("y", v.int(2)),
       ]),
     )
-  assert result == None
+  assert result == MatchReject
 }
 
 pub fn match_pattern_rcd_fewer_fields_test() {
@@ -404,7 +566,7 @@ pub fn match_pattern_rcd_fewer_fields_test() {
         #("y", v.int(2)),
       ]),
     )
-  assert result == Some([])
+  assert result == MatchAccept([])
 }
 
 pub fn match_pattern_rcd_fewer_fields_strict_test() {
@@ -417,7 +579,7 @@ pub fn match_pattern_rcd_fewer_fields_strict_test() {
         #("y", v.int(2)),
       ]),
     )
-  assert result == None
+  assert result == MatchReject
 }
 
 pub fn match_pattern_rcd_bindings_test() {
@@ -435,13 +597,13 @@ pub fn match_pattern_rcd_bindings_test() {
         #("z", v.int(3)),
       ]),
     )
-  assert result == Some([v.int(3), v.int(2), v.int(1)])
+  assert result == MatchAccept([v.int(3), v.int(2), v.int(1)])
 }
 
 pub fn match_pattern_rcd_wrong_field_name_test() {
   let result =
     match_pattern(tm.prcd([#("x", tm.PAny)]), v.rcd([#("y", v.int(1))]))
-  assert result == None
+  assert result == MatchReject
 }
 
 pub fn match_pattern_rcd_value_mismatch_test() {
@@ -450,13 +612,66 @@ pub fn match_pattern_rcd_value_mismatch_test() {
       tm.prcd([#("x", tm.PLit(lit.Int(99)))]),
       v.rcd([#("x", v.int(42))]),
     )
-  assert result == None
+  assert result == MatchReject
 }
 
 pub fn match_pattern_error_match_test() {
-  assert match_pattern(tm.PErr, v.Err) == Some([])
+  assert match_pattern(tm.PErr, v.Err) == MatchAccept([])
 }
 
 pub fn match_pattern_error_wrong_value_test() {
-  assert match_pattern(tm.PErr, v.int(42)) == None
+  assert match_pattern(tm.PErr, v.int(42)) == MatchReject
+}
+
+// ---- Three-valued matching against neutrals ----
+
+pub fn match_pattern_neutral_value_test() {
+  // Structural patterns cannot be decided against a neutral value: it
+  // may resolve to a matching value.
+  let neut = v.Neut(v.NVar(0))
+  assert match_pattern(tm.PLit(lit.Int(1)), neut) == MatchNeutral
+  assert match_pattern(tm.PLitT(lit.IntT), neut) == MatchNeutral
+  assert match_pattern(tm.PTyp(0), neut) == MatchNeutral
+  assert match_pattern(tm.PCtr("Some", tm.PAny), neut) == MatchNeutral
+  assert match_pattern(tm.prcd([#("x", tm.PAny)]), neut) == MatchNeutral
+  assert match_pattern(tm.PErr, neut) == MatchNeutral
+  // Binding patterns match anything, neutral included.
+  assert match_pattern(tm.PAny, neut) == MatchAccept([])
+  assert match_pattern(tm.pvar("x"), neut) == MatchAccept([neut])
+}
+
+pub fn match_pattern_ctr_tag_decidable_test() {
+  // The tag is decidable: equal tags recurse into the (neutral)
+  // argument and accept, mismatched tags reject.
+  let neut = v.Neut(v.NVar(0))
+  let arg = v.Rcd([#("1", #(neut, None))], None)
+  let some = v.Ctr("Some", arg)
+  // The tag decides; the binding is the whole argument record.
+  assert match_pattern(tm.PCtr("Some", tm.pvar("x")), some) == MatchAccept([arg])
+  assert match_pattern(tm.PCtr("None", tm.PAny), some) == MatchReject
+}
+
+pub fn match_pattern_rcd_neutral_tail_test() {
+  // A field not in the head is searched for in the tail: a neutral
+  // tail keeps the lookup undecided, a missing tail rejects, and a
+  // field found in the head never reaches the tail.
+  let neut = v.Neut(v.NVar(0))
+  assert match_pattern(tm.prcd([#("y", tm.PAny)]), v.Rcd([], Some(neut)))
+    == MatchNeutral
+  assert match_pattern(tm.prcd([#("y", tm.PAny)]), v.Rcd([], None))
+    == MatchReject
+  let head_and_tail = v.Rcd([#("x", #(v.int(1), None))], Some(neut))
+  assert match_pattern(tm.prcd([#("x", tm.PAny)]), head_and_tail)
+    == MatchAccept([])
+}
+
+pub fn match_pattern_rcd_neutral_field_test() {
+  // A field found in the head is matched with its pattern: a literal
+  // cannot be decided against a neutral field, a binding accepts it.
+  let neut = v.Neut(v.NVar(0))
+  let value = v.Rcd([#("x", #(neut, None))], None)
+  assert match_pattern(tm.prcd([#("x", tm.PLit(lit.Int(1)))]), value)
+    == MatchNeutral
+  assert match_pattern(tm.prcd([#("x", tm.pvar("x"))]), value)
+    == MatchAccept([neut])
 }

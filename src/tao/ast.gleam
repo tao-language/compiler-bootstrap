@@ -28,6 +28,7 @@ pub type ExprData {
   Lit(value: Literal)
   Var(name: String)
   Ctr(tag: String, args: List(#(String, Expr)), tail: Option(Expr))
+  Tuple(args: List(Expr))
   Rcd(
     // (name, opt_value)
     fields: List(#(String, Option(Expr))),
@@ -72,17 +73,25 @@ pub type BinaryOp {
   Sub
   Mul
   Div
+  And
+  Or
+  Is
+  In
 }
 
-/// The name a binary operator is looked up as (e.g. `"+"`), used both
-/// when calling the corresponding function and when parsing operator
-/// variables like `fn (+)`.
+/// The name a binary operator is looked up as (e.g. `"+"`, `"and"`),
+/// used both when calling the corresponding function and when parsing
+/// operator variables like `fn (+)` or `fn (and)`.
 pub fn binop_name(op: BinaryOp) -> String {
   case op {
     Add -> "+"
     Sub -> "-"
     Mul -> "*"
     Div -> "/"
+    And -> "and"
+    Or -> "or"
+    Is -> "is"
+    In -> "in"
   }
 }
 
@@ -161,6 +170,7 @@ pub type PatternData {
   PAny
   PVar(name: String)
   PLit(lit: Literal)
+  PTuple(args: List(Pattern))
   PRcd(fields: List(#(String, Pattern)), tail: Option(Pattern))
   PCtr(tag: String, args: List(#(String, Pattern)), tail: Option(Pattern))
 }
@@ -219,6 +229,10 @@ pub fn float_t(span: Span) {
 
 pub fn var(name: String, span: Span) {
   Expr(Var(name), span)
+}
+
+pub fn tuple(args: List(Expr), span: Span) {
+  Expr(Tuple(args), span)
 }
 
 pub fn rcd(
@@ -333,6 +347,10 @@ pub fn pany(span: Span) {
 
 pub fn pvar(name: String, span: Span) {
   Pattern(PVar(name), span)
+}
+
+pub fn ptuple(args: List(Pattern), span: Span) {
+  Pattern(PTuple(args), span)
 }
 
 pub fn pint(value: Int, span: Span) {

@@ -22,6 +22,10 @@ fn parse_stmts(source: String) -> Result(List(tao.Stmt), Error) {
   p.statements(filename, source)
 }
 
+fn parse_expr(source: String) -> Result(tao.Expr, Error) {
+  p.expression(filename, source)
+}
+
 pub fn lex_type_test() {
   assert lex("type") == Ok([p.KwType])
   assert lex("type Bool") == Ok([p.KwType, p.Name("Bool")])
@@ -129,6 +133,132 @@ pub fn parse_type_def_list_test() {
       ),
     ])
   assert parse_stmts(src) == expected
+}
+
+// ============================================================================
+// Named operators (and/or/is/in)
+// ============================================================================
+
+pub fn lex_named_operators_test() {
+  assert lex("and") == Ok([p.And])
+  assert lex("or") == Ok([p.Or])
+  assert lex("is") == Ok([p.Is])
+  assert lex("in") == Ok([p.In])
+  // Longer identifiers are unaffected: the keyword rules require a
+  // non-word boundary, and reserved names are exact matches only.
+  assert lex("andy") == Ok([p.Name("andy")])
+  assert lex("inline") == Ok([p.Name("inline")])
+}
+
+pub fn parse_infix_operator_precedence_test() {
+  // `or` < `and` < `is`/`in` < `+`/`-` < `*`/`/`
+  let src = "1 + 2 * 3 and 4 - 1 is Int or True"
+  let expected = Ok(
+    tao.op2(
+      tao.Or,
+      tao.op2(
+        tao.And,
+        tao.op2(
+          tao.Add,
+          tao.int(1, s(1, 1, 1, 2)),
+          tao.op2(
+            tao.Mul,
+            tao.int(2, s(1, 3, 1, 6)),
+            tao.int(3, s(1, 7, 1, 10)),
+            s(1, 3, 1, 10),
+          ),
+          s(1, 1, 1, 10),
+        ),
+        tao.op2(
+          tao.Is,
+          tao.op2(
+            tao.Sub,
+            tao.int(4, s(1, 11, 1, 16)),
+            tao.int(1, s(1, 17, 1, 20)),
+            s(1, 11, 1, 20),
+          ),
+          tao.ctr("Int", [], s(1, 21, 1, 27)),
+          s(1, 11, 1, 27),
+        ),
+        s(1, 1, 1, 27),
+      ),
+      tao.ctr("True", [], s(1, 28, 1, 35)),
+      s(1, 1, 1, 35),
+    ),
+  )
+  assert parse_expr(src) == expected
+}
+
+pub fn parse_fn_named_operator_test() {
+  let src = "fn (and)(a, b) = a"
+  let expected = Ok([
+    tao.Stmt(
+      tao.FnDef(
+        "and",
+        #([], None),
+        #(
+          [
+            #(
+              tao.pvar("a", s(1, 9, 1, 11)),
+              #(None, None),
+            ),
+            #(
+              tao.pvar("b", s(1, 11, 1, 14)),
+              #(None, None),
+            ),
+          ],
+          None,
+        ),
+        None,
+        tao.var("a", s(1, 16, 1, 19)),
+      ),
+      s(1, 1, 1, 19),
+    ),
+  ])
+  assert parse_stmts(src) == expected
+}
+
+// ============================================================================
+// Match tuple sugar: `match a, b { | p, q => ... }`
+// ============================================================================
+
+pub fn parse_match_single_arg_test() {
+  // A single argument is not wrapped in a Tuple.
+  let src = "match a { | x => x }"
+  let expected = Ok(
+    tao.match(
+      tao.var("a", s(1, 1, 1, 8)),
+      [tao.Case(tao.pvar("x", s(1, 11, 1, 14)), None, tao.var("x", s(1, 15, 1, 19)))],
+      s(1, 1, 1, 21),
+    ),
+  )
+  assert parse_expr(src) == expected
+}
+
+pub fn parse_match_tuple_args_test() {
+  // A comma-separated argument list is one Tuple expression, and a
+  // comma-separated pattern list is one PTuple pattern.
+  let src = "match a, b { | x, y => x }"
+  let expected = Ok(
+    tao.match(
+      tao.tuple(
+        [tao.var("a", s(1, 1, 1, 8)), tao.var("b", s(1, 8, 1, 11))],
+        s(1, 1, 1, 11),
+      ),
+      [
+        tao.Case(
+          tao.ptuple(
+            [tao.pvar("x", s(1, 14, 1, 17)), tao.pvar("y", s(1, 17, 1, 20))],
+            s(1, 14, 1, 20),
+          ),
+          None,
+          tao.var("x", s(1, 21, 1, 25)),
+        ),
+      ],
+      s(1, 1, 1, 27),
+    ),
+  )
+  assert parse_expr(src) == expected
 }
 
 pub fn parse_type_def_gadt_test() {

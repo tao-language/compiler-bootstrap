@@ -26,8 +26,8 @@ pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
     v.Neut(v.NHole(_, Some(id))) -> id == hole_id
     v.Neut(v.NApp(fun_neut, arg_val)) ->
       occurs(ctx, hole_id, v.Neut(fun_neut)) || occurs(ctx, hole_id, arg_val)
-    v.Neut(v.NMatch(env, arg_neut, cases)) ->
-      occurs(ctx, hole_id, v.Neut(arg_neut))
+    v.Neut(v.NMatch(env, arg, cases)) ->
+      occurs(ctx, hole_id, arg)
       || list.any(cases, occurs_case(ctx, env, hole_id, _))
     v.Neut(v.NCall(_, ret, arg)) ->
       occurs(ctx, hole_id, ret) || occurs(ctx, hole_id, arg)

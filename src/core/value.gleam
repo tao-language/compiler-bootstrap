@@ -57,7 +57,7 @@ pub type Neut {
   NVar(level: Int)
   NHole(env: Env, id: Option(Int))
   NApp(fun: Neut, arg: Value)
-  NMatch(env: Env, arg: Neut, cases: List(Case))
+  NMatch(env: Env, arg: Value, cases: List(Case))
   NCall(name: String, ret: Type, arg: Value)
 }
 
@@ -75,28 +75,6 @@ pub fn env_push(env: Env, num_vars: Int) -> Env {
   int.range(from: len, to: len + num_vars, with: [], run: list.prepend)
   |> list.map(var)
   |> list.append(env)
-}
-
-pub fn is_concrete(value: Value) -> Bool {
-  case value {
-    Neut(_) -> False
-    Ctr(_, arg) -> is_concrete(arg)
-    Rcd(fields, tail) ->
-      list.all(fields, is_concrete_field) && is_concrete_opt(tail)
-    _ -> True
-  }
-}
-
-fn is_concrete_field(field: #(String, #(Value, Option(Value)))) -> Bool {
-  let #(_, #(value, opt_default)) = field
-  is_concrete(value) && is_concrete_opt(opt_default)
-}
-
-fn is_concrete_opt(opt_value: Option(Value)) -> Bool {
-  case opt_value {
-    Some(value) -> is_concrete(value)
-    None -> True
-  }
 }
 
 // Syntax sugar
@@ -122,8 +100,11 @@ pub fn app(fun: Neut, arg: Value) -> Value {
   Neut(NApp(fun, arg))
 }
 
-/// A neutral match: the scrutinee is not (yet) a concrete value.
-pub fn match(env: Env, arg: Neut, cases: List(Case)) -> Value {
+/// A neutral match: the cases cannot be decided against the scrutinee
+/// yet (it may be neutral, or a concrete record/ctor with neutral parts
+/// the patterns depend on). See `eval.match_pattern`'s three-valued
+/// result: this is the `MatchNeutral` case of matching.
+pub fn match(env: Env, arg: Value, cases: List(Case)) -> Value {
   Neut(NMatch(env, arg, cases))
 }
 

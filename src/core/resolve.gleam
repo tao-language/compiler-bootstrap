@@ -268,13 +268,13 @@ fn neutral_seen(ffi: FFI, subst: Subst, neut: Neut, seen: List(Int)) -> Neut {
       let arg = value_seen(ffi, subst, arg, seen)
       v.NApp(fun_neut, arg)
     }
-    v.NMatch(captured_env, arg_neut, cases) -> {
-      let arg_neut = neutral_seen(ffi, subst, arg_neut, seen)
+    v.NMatch(captured_env, arg, cases) -> {
+      let arg = value_seen(ffi, subst, arg, seen)
       let cases =
         list.map(cases, fn(c) {
           resolve_case(ffi, subst, captured_env, seen, c)
         })
-      v.NMatch(captured_env, arg_neut, cases)
+      v.NMatch(captured_env, arg, cases)
     }
     v.NCall(name, ret, arg) -> {
       let ret = value_seen(ffi, subst, ret, seen)

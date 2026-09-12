@@ -31,6 +31,11 @@ const reserved = [
   "if",
   "else",
   "type",
+  // Named binary operators: lexed as operator tokens, not variable names.
+  "and",
+  "or",
+  "is",
+  "in",
 ]
 
 pub type Token {
@@ -80,6 +85,10 @@ pub type Token {
   Sub
   Mul
   Div
+  And
+  Or
+  Is
+  In
 }
 
 // ============================================================================
@@ -113,6 +122,12 @@ fn lexer_() -> Lexer(Token, Nil) {
     lexer.keyword("if", "\\W", KwIf),
     lexer.keyword("else", "\\W", KwElse),
     lexer.keyword("type", "\\W", KwType),
+
+    // Named binary operators (reserved, so `andy` still lexes as a name)
+    lexer.keyword("and", "\\W", And),
+    lexer.keyword("or", "\\W", Or),
+    lexer.keyword("is", "\\W", Is),
+    lexer.keyword("in", "\\W", In),
 
     // Names
     lexer.identifier("[_a-zA-Z]", "[_\\w]", set.from_list(reserved), Name),
@@ -298,6 +313,10 @@ fn token_to_string(tok: Token) -> String {
     Sub -> "-"
     Mul -> "*"
     Div -> "/"
+    And -> "and"
+    Or -> "or"
+    Is -> "is"
+    In -> "in"
   }
 }
 
@@ -730,10 +749,15 @@ fn expr(file: String) -> Parser(Expr, Token, String) {
       fn(_config) { if_expr(file) },
     ],
     and_then: [
-      pratt.infix_left(1, nibble.token(Add), op2(tao.Add)),
-      pratt.infix_left(1, nibble.token(Sub), op2(tao.Sub)),
-      pratt.infix_left(2, nibble.token(Mul), op2(tao.Mul)),
-      pratt.infix_left(2, nibble.token(Div), op2(tao.Div)),
+      // Precedence (low to high): or < and < is/in < +,- < *,/
+      pratt.infix_left(1, nibble.token(Or), op2(tao.Or)),
+      pratt.infix_left(2, nibble.token(And), op2(tao.And)),
+      pratt.infix_left(3, nibble.token(Is), op2(tao.Is)),
+      pratt.infix_left(3, nibble.token(In), op2(tao.In)),
+      pratt.infix_left(4, nibble.token(Add), op2(tao.Add)),
+      pratt.infix_left(4, nibble.token(Sub), op2(tao.Sub)),
+      pratt.infix_left(5, nibble.token(Mul), op2(tao.Mul)),
+      pratt.infix_left(5, nibble.token(Div), op2(tao.Div)),
     ],
     dropping: return(Nil),
   )
@@ -781,7 +805,8 @@ fn var_name() -> Parser(String, Token, String) {
   nibble.one_of([
     take_var(),
     {
-      let ops = [Add, Sub, Mul, Div]
+      // Operators can be named with parentheses: `fn (+)`, `fn (and)`
+      let ops = [Add, Sub, Mul, Div, And, Or, Is, In]
       let ops_names = list.map(ops, token_text)
       use _ <- do(nibble.token(LParen))
       use name <- do(nibble.one_of(ops_names))
@@ -829,15 +854,29 @@ fn app(file: String, fun: Expr) -> Parser(Expr, Token, String) {
   return(tao.app(fun, args, merge(start, end)))
 }
 
+/// `match a { ... }` — a comma-separated argument list is tuple sugar:
+/// `match a, b { ... }` parses as `match (a, b) { ... }`, where
+/// `(a, b)` is a single `Tuple` expression.
 fn match(file: String) -> Parser(Expr, Token, String) {
   {
     use start <- do(get_span(file))
     use _ <- do(nibble.token(KwMatch))
-    use arg <- do(expr(file))
+    use args <- do(nibble.sequence(expr(file), nibble.token(Comma)))
     use _ <- do(nibble.token(LBrace))
     use cases <- do(nibble.many(match_case(file)))
     use _ <- do(nibble.token(RBrace))
     use end <- do(get_span(file))
+    let arg = case args {
+      [] -> tao.err(start) // Unreachable: `sequence` requires one or more
+      [arg] -> arg
+      [first, ..rest] -> {
+        let last = case rest {
+          [] -> first
+          [second, ..] -> list.last(rest) |> result.unwrap(second)
+        }
+        tao.tuple(args, merge(first.span, last.span))
+      }
+    }
     return(tao.match(arg, cases, merge(start, end)))
   }
   |> nibble.in("match expression")
@@ -883,13 +922,28 @@ fn if_expr(file: String) -> Parser(Expr, Token, String) {
   |> nibble.in("if expression")
 }
 
+/// `| p => ...` — a comma-separated pattern list is tuple sugar:
+/// `| p1, p2 => ...` parses as `| (p1, p2) => ...`, where `(p1, p2)`
+/// is a single `PTuple` pattern.
 fn match_case(file: String) -> Parser(Case, Token, String) {
   {
+    use start <- do(get_span(file))
     use _ <- do(nibble.token(Pipe))
-    use pat <- do(pattern(file))
+    use pats <- do(nibble.sequence(pattern(file), nibble.token(Comma)))
     use opt_guard <- do(nibble.optional(guard(file)))
     use _ <- do(nibble.token(FatArrow))
     use body <- do(expr(file))
+    let pat = case pats {
+      [] -> tao.pany(start) // Unreachable: `sequence` requires one or more
+      [pat] -> pat
+      [first, ..rest] -> {
+        let last = case rest {
+          [] -> first
+          [second, ..] -> list.last(rest) |> result.unwrap(second)
+        }
+        tao.ptuple(pats, merge(first.span, last.span))
+      }
+    }
     return(tao.Case(pat, opt_guard, body))
   }
   |> nibble.in("match case")

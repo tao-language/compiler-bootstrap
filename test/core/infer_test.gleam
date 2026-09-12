@@ -664,7 +664,7 @@ pub fn infer_match_dependent_motive_test() {
       tm.Case(tm.pvar("x"), None, tm.Var(0)),
     ])
   assert type_
-    == v.match([], v.NHole([], Some(0)), [
+    == v.match([], v.Neut(v.NHole([], Some(0))), [
       tm.Case(tm.pint(1), None, tm.int_t),
       tm.Case(tm.pint(2), None, tm.float_t),
       tm.Case(tm.pvar("x"), None, tm.Hole(Some(2))),

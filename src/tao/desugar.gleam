@@ -55,6 +55,21 @@ pub fn expr(exports: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
       let core_args = arguments(exports, args, tail, e.span)
       core.ctr(tag, core_args, e.span)
     }
+    tao.Tuple(args) ->
+      // Tuples desugar to strict (no-tail) "numbered records", where the
+      // field name is a 1-indexed string:
+      // () => {}
+      // (x) => {1: x}
+      // (x, y, z) => {1: x, 2: y, 3: z}
+      // The `None` tail makes the tuple strict: no row continuation or
+      // row polymorphism, exactly its items.
+      {
+        let core_fields =
+          list.index_map(args, fn(arg, index) {
+            #(int.to_string(index + 1), expr(exports, arg))
+          })
+        core.rcd_values(core_fields, None, e.span)
+      }
     tao.Rcd(fields, tail) -> {
       let core_fields = rcd_fields(exports, fields)
       let core_tail = opt_expr(exports, tail)
@@ -344,6 +359,17 @@ pub fn pattern(p: Pattern) -> core.Pattern {
     tao.PCtr("Float", [], None) -> core.pfloat_t(p.span)
     tao.PCtr("I8", [], None) -> core.pi8(p.span)
     // TODO: cover all LiteralType and Typ
+    tao.PTuple(args) ->
+      // Tuple patterns desugar to strict (no-tail) numbered record
+      // patterns, mirroring the tuple expression:
+      // (x, y, z) => {1: x, 2: y, 3: z}
+      {
+        let core_fields =
+          list.index_map(args, fn(arg, index) {
+            #(int.to_string(index + 1), pattern(arg))
+          })
+        core.prcd(core_fields, None, p.span)
+      }
     tao.PRcd(fields, tail) -> {
       let core_fields =
         list.map(fields, fn(field) {

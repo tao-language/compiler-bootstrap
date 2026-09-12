@@ -40,7 +40,7 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     }
     v.Neut(v.NMatch(env1, arg1, cases1)), v.Neut(v.NMatch(env2, arg2, cases2))
     -> {
-      let ctx = unify(ctx, #(v.Neut(arg1), s1), #(v.Neut(arg2), s2))
+      let ctx = unify(ctx, #(arg1, s1), #(arg2, s2))
       let ctx = case list.length(cases1) == list.length(cases2) {
         True -> ctx
         False -> with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)

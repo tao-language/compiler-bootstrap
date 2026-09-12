@@ -516,8 +516,10 @@ pub fn unify_neut_napp_test() {
 // ============================================================================
 
 pub fn unify_neut_nmatch_same_test() {
-  let a = v.Neut(v.NMatch([], v.NVar(0), [tm.Case(tm.PAny, None, tm.int(1))]))
-  let b = v.Neut(v.NMatch([], v.NVar(0), [tm.Case(tm.PAny, None, tm.int(1))]))
+  // Literal patterns keep the matches stuck (a neutral scrutinee may
+  // still resolve to the literal); `PAny` cases would reduce eagerly.
+  let a = v.Neut(v.NMatch([], v.Neut(v.NVar(0)), [tm.Case(tm.pint(1), None, tm.int(1))]))
+  let b = v.Neut(v.NMatch([], v.Neut(v.NVar(0)), [tm.Case(tm.pint(1), None, tm.int(1))]))
   let ctx0 = new_ctx
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
@@ -525,12 +527,13 @@ pub fn unify_neut_nmatch_same_test() {
 /// Matches with different numbers of cases cannot be the same value:
 /// a `TypeMismatch` is reported (this used to be a `todo` panic).
 pub fn unify_neut_nmatch_case_count_mismatch_test() {
-  let a = v.Neut(v.NMatch([], v.NVar(0), [tm.Case(tm.PAny, None, tm.int(1))]))
+  // Literal patterns keep both matches stuck.
+  let a = v.Neut(v.NMatch([], v.Neut(v.NVar(0)), [tm.Case(tm.pint(1), None, tm.int(1))]))
   let b =
     v.Neut(
-      v.NMatch([], v.NVar(0), [
-        tm.Case(tm.PAny, None, tm.int(1)),
-        tm.Case(tm.PAny, None, tm.int(2)),
+      v.NMatch([], v.Neut(v.NVar(0)), [
+        tm.Case(tm.pint(1), None, tm.int(1)),
+        tm.Case(tm.pint(2), None, tm.int(2)),
       ]),
     )
   let ctx = unify(new_ctx, #(a, s1), #(b, s2))
@@ -545,11 +548,12 @@ pub fn unify_neut_nmatch_case_count_mismatch_test() {
 /// Exactly one case carrying a guard means the cases cannot both hold,
 /// so the matches cannot be the same value.
 pub fn unify_neut_nmatch_guard_mismatch_test() {
-  let a = v.Neut(v.NMatch([], v.NVar(0), [tm.Case(tm.PAny, None, tm.int(1))]))
+  // Literal patterns keep both matches stuck.
+  let a = v.Neut(v.NMatch([], v.Neut(v.NVar(0)), [tm.Case(tm.pint(1), None, tm.int(1))]))
   let b =
     v.Neut(
-      v.NMatch([], v.NVar(0), [
-        tm.Case(tm.PAny, Some(#(tm.int(1), tm.PAny)), tm.int(1)),
+      v.NMatch([], v.Neut(v.NVar(0)), [
+        tm.Case(tm.pint(1), Some(#(tm.int(1), tm.PAny)), tm.int(1)),
       ]),
     )
   let ctx = unify(new_ctx, #(a, s1), #(b, s2))
@@ -569,7 +573,9 @@ pub fn unify_neut_nmatch_guard_mismatch_test() {
 /// is unknown: no error now, the pair is queued in `ctx.deferred` and
 /// re-decided as holes get solved (see `deferred_constraint_test`).
 pub fn unify_neut_nmatch_vs_concrete_is_deferred_test() {
-  let a = v.Neut(v.NMatch([], v.NVar(0), [tm.Case(tm.PAny, None, tm.int(1))]))
+  // A literal pattern keeps the match stuck (a `PAny` case would
+  // reduce eagerly to its body and unify would decide immediately).
+  let a = v.Neut(v.NMatch([], v.Neut(v.NVar(0)), [tm.Case(tm.pint(1), None, tm.int(1))]))
   let b = v.int_t
   let ctx = unify(new_ctx, #(a, s1), #(b, s2))
   assert ctx.errors == []

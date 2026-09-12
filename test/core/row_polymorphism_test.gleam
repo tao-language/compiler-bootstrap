@@ -9,7 +9,7 @@
 /// are searched for in the tail recursively.
 import core/ast
 import core/context.{new_ctx}
-import core/eval.{eval, match_pattern}
+import core/eval.{eval, match_pattern, MatchAccept, MatchReject}
 import core/infer.{check, infer}
 import core/literals as lit
 import core/occurs.{occurs}
@@ -419,7 +419,7 @@ pub fn match_pattern_rcd_field_projection_test() {
   // Basic field access: match {x: 1, y: 2} with {x: a, ..}
   let value = v.rcd([#("x", v.int(1)), #("y", v.int(2))])
   let pattern = tm.PRcd([#("x", tm.PAlias("a", tm.PAny))], Some(tm.PAny))
-  assert match_pattern(pattern, value) == Some([v.int(1)])
+  assert match_pattern(pattern, value) == MatchAccept([v.int(1)])
 }
 
 pub fn match_pattern_rcd_field_in_tail_test() {
@@ -435,14 +435,14 @@ pub fn match_pattern_rcd_field_in_tail_test() {
       Some(tm.PAny),
     )
   let result = match_pattern(pattern, value)
-  assert result == Some([v.int(2), v.int(1)])
+  assert result == MatchAccept([v.int(2), v.int(1)])
 }
 
 pub fn match_pattern_rcd_pattern_fewer_fields_test() {
   // Pattern matches fewer fields than value has (row polymorphism)
   let value = v.rcd([#("x", v.int(1)), #("y", v.int(2)), #("z", v.int(3))])
   let pattern = tm.PRcd([#("x", tm.PAlias("a", tm.PAny))], Some(tm.PAny))
-  assert match_pattern(pattern, value) == Some([v.int(1)])
+  assert match_pattern(pattern, value) == MatchAccept([v.int(1)])
 }
 
 pub fn match_pattern_rcd_pattern_more_fields_test() {
@@ -450,7 +450,7 @@ pub fn match_pattern_rcd_pattern_more_fields_test() {
   let value = v.rcd([#("x", v.int(1))])
   let pattern =
     tm.PRcd([#("x", tm.PAny), #("y", tm.PAny), #("z", tm.PAny)], Some(tm.PAny))
-  assert match_pattern(pattern, value) == None
+  assert match_pattern(pattern, value) == MatchReject
 }
 
 pub fn match_pattern_rcd_pattern_order_independent_test() {
@@ -463,21 +463,21 @@ pub fn match_pattern_rcd_pattern_order_independent_test() {
     )
   let result = match_pattern(pattern, value)
   // Bindings: c=#1, a=#0
-  assert result == Some([v.int(1), v.int(3)])
+  assert result == MatchAccept([v.int(1), v.int(3)])
 }
 
 pub fn match_pattern_rcd_strict_no_extra_fields_test() {
   // Strict pattern (no tail) rejects extra fields
   let value = v.rcd([#("x", v.int(1)), #("y", v.int(2))])
   let pattern = tm.PRcd([#("x", tm.PAny)], None)
-  assert match_pattern(pattern, value) == None
+  assert match_pattern(pattern, value) == MatchReject
 }
 
 pub fn match_pattern_rcd_strict_exact_match_test() {
   // Strict pattern matches exactly
   let value = v.rcd([#("x", v.int(1)), #("y", v.int(2))])
   let pattern = tm.PRcd([#("x", tm.PAny), #("y", tm.PAny)], None)
-  assert match_pattern(pattern, value) == Some([])
+  assert match_pattern(pattern, value) == MatchAccept([])
 }
 
 pub fn match_pattern_rcd_tail_anything_test() {
@@ -488,14 +488,14 @@ pub fn match_pattern_rcd_tail_anything_test() {
       Some(v.Rcd([#("y", #(v.int(2), None)), #("z", #(v.int(3), None))], None)),
     )
   let pattern = tm.PRcd([#("x", tm.PAny)], Some(tm.PAny))
-  assert match_pattern(pattern, value) == Some([])
+  assert match_pattern(pattern, value) == MatchAccept([])
 }
 
 pub fn match_pattern_rcd_empty_pattern_matches_anything_test() {
   // Empty pattern with tail matches any record
   let value = v.rcd([#("x", v.int(1)), #("y", v.int(2))])
   let pattern = tm.PRcd([], Some(tm.PAny))
-  assert match_pattern(pattern, value) == Some([])
+  assert match_pattern(pattern, value) == MatchAccept([])
 }
 
 // ============================================================================
@@ -886,5 +886,5 @@ pub fn match_pattern_rcd_deep_tail_test() {
     )
   let result = match_pattern(pattern, value)
   // Should find a=1 in head, c=3 in tail, PAny absorbs rest
-  assert result == Some([v.int(3), v.int(1)])
+  assert result == MatchAccept([v.int(3), v.int(1)])
 }

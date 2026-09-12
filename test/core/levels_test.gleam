@@ -72,8 +72,9 @@ pub fn eval_quote_round_trip_test() {
     v.Neut(v.NApp(v.NVar(1), v.int(5))),
     // Deferred call to an undefined name (no FFI entry).
     v.call("ext", v.int_t, v.int(1)),
-    // Neutral match: scrutinee not yet concrete.
-    v.match(env, v.NVar(0), [tm.Case(tm.PAny, None, tm.Var(0))]),
+    // Neutral match: the literal pattern is undecided against the
+    // neutral scrutinee, so the match is genuinely stuck.
+    v.match(env, v.Neut(v.NVar(0)), [tm.Case(tm.pint(1), None, tm.int(1))]),
     // Captured bodies: the parameter slot is level `size`, the body's
     // Var(0) names it.
     v.Lam(env, #("x", v.int_t), tm.Var(0)),

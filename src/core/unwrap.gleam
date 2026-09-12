@@ -60,13 +60,18 @@ pub fn unwrap_neut(
           |> unwrap_seen(ffi, subst, _, seen)
       }
     }
-    v.NMatch(env, arg_neut, cases) -> {
-      let arg = unwrap_neut(ffi, subst, arg_neut, seen)
-      case v.is_concrete(arg) {
-        True ->
-          eval.do_match(ffi, env, arg, cases)
-          |> unwrap_seen(ffi, subst, _, seen)
-        False -> v.match(env, arg_neut, cases)
+    // Re-reduce the match with the re-unwrapped scrutinee: cases that
+    // were undecided may now be decided (the same three-valued
+    // criterion as `do_match` itself, so there is no eager/defer
+    // asymmetry). If it is still stuck, keep the neutral match with the
+    // re-unwrapped arg *without* re-unwrapping it: `do_match` produced
+    // it from the already-unwrapped arg, so unwrapping it again would
+    // just re-run the same match forever.
+    v.NMatch(env, arg, cases) -> {
+      let arg = unwrap_seen(ffi, subst, arg, seen)
+      case eval.do_match(ffi, env, arg, cases) {
+        v.Neut(v.NMatch(_, _, _)) -> v.match(env, arg, cases)
+        value -> unwrap_seen(ffi, subst, value, seen)
       }
     }
     v.NCall(name, ret, arg) -> {

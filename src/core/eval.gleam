@@ -2,7 +2,7 @@ import core/ffi.{type FFI}
 import core/term.{type Case, type Pattern, type Term} as tm
 import core/value.{type Env, type Type, type Value} as v
 import gleam/list
-import gleam/option.{type Option, None, Some}
+import gleam/option.{None, Some}
 import utils/list_utils.{at}
 
 /// Normalize a Term to a Value by walking it and β-reducing where
@@ -115,118 +115,180 @@ pub fn do_call(ffi: FFI, name: String, ret_val: Type, arg_val: Value) -> Value {
   }
 }
 
-/// Reduce a match: evaluate cases against a concrete scrutinee, or keep
-/// a neutral `NMatch` (capturing `env`) when the scrutinee is not yet known.
+/// The outcome of matching one pattern against one value.
+///
+/// Pattern matching is *three-valued* so that a match whose outcome
+/// depends on an unresolved neutral can be told apart from a match that
+/// is decided not to match: a neutral field or tail may still turn out
+/// to match, so the match is kept neutral (`NMatch`) and re-reduced once
+/// the neutrals resolve, instead of baking in the wrong case or an `Err`.
+pub type MatchResult(a) {
+  /// The pattern matches; `a` carries the result (bindings or the
+  /// accepted case).
+  MatchAccept(a)
+  /// The pattern is decided not to match: a shape or value mismatch that
+  /// no resolution of the neutrals can change.
+  MatchReject
+  /// The outcome depends on a neutral that is not (yet) resolved.
+  MatchNeutral
+}
+
+/// Reduce a match: try each case in order — the first accepted case
+/// (with a satisfied guard) wins, rejected cases fall through, and a
+/// neutral pattern or guard keeps the whole match neutral (`NMatch`,
+/// capturing `env`) until the blocking neutrals resolve. `Err` is
+/// returned only when every case is decided not to match.
 pub fn do_match(
   ffi: FFI,
   env: Env,
   arg_val: Value,
   cases: List(Case),
 ) -> Value {
-  case arg_val {
-    v.Neut(arg_neut) -> v.match(env, arg_neut, cases)
-    _ -> do_match_case_list(ffi, env, arg_val, cases)
+  case do_match_case_list(ffi, env, arg_val, cases) {
+    MatchAccept(#(case_, env)) -> eval(ffi, env, case_.body)
+    MatchReject -> v.Err
+    MatchNeutral -> v.match(env, arg_val, cases)
   }
 }
 
+/// Try each case in order, returning the first accepted case with its
+/// environment, `MatchReject` when no case matches, or `MatchNeutral`
+/// when some case cannot be decided yet.
 fn do_match_case_list(
   ffi: FFI,
   env: Env,
   arg_val: Value,
   cases: List(Case),
-) -> Value {
+) -> MatchResult(#(Case, Env)) {
   case cases {
-    [] -> v.Err
+    [] -> MatchReject
     [case_, ..cases] ->
       case do_match_case(ffi, env, arg_val, case_) {
-        Some(env) -> eval(ffi, env, case_.body)
-        None -> do_match_case_list(ffi, env, arg_val, cases)
+        MatchAccept(env) -> MatchAccept(#(case_, env))
+        MatchReject -> do_match_case_list(ffi, env, arg_val, cases)
+        MatchNeutral -> MatchNeutral
       }
   }
 }
 
+/// Match one case's pattern (and guard, if any) against the scrutinee,
+/// returning the environment with the pattern's bindings prepended.
 fn do_match_case(
   ffi: FFI,
   env: Env,
   arg_val: Value,
   case_: Case,
-) -> Option(Env) {
+) -> MatchResult(Env) {
   case match_pattern(case_.pattern, arg_val) {
-    Some(bindings) -> {
+    MatchAccept(bindings) -> {
       let env = list.append(bindings, env)
       case case_.guard {
         Some(guard) -> do_match_guard(ffi, env, guard)
-        None -> Some(env)
+        None -> MatchAccept(env)
       }
     }
-    None -> None
+    MatchReject -> MatchReject
+    MatchNeutral -> MatchNeutral
   }
 }
 
-fn do_match_guard(ffi: FFI, env: Env, guard: #(Term, Pattern)) -> Option(Env) {
+/// Evaluate a case guard in the case environment and match its pattern
+/// against the result. A neutral guard value keeps the case undecided.
+fn do_match_guard(
+  ffi: FFI,
+  env: Env,
+  guard: #(Term, Pattern),
+) -> MatchResult(Env) {
   let #(guard_term, guard_pattern) = guard
   let guard_value = eval(ffi, env, guard_term)
   case match_pattern(guard_pattern, guard_value) {
-    Some(bindings) -> Some(list.append(bindings, env))
-    None -> None
+    MatchAccept(bindings) -> MatchAccept(list.append(bindings, env))
+    MatchReject -> MatchReject
+    MatchNeutral -> MatchNeutral
   }
 }
 
-/// Match a pattern against a concrete value, returning the bindings in
-/// innermost-first order. Record fields are matched in pattern order;
-/// a field absent from the value's head is searched for in its tail,
-/// which must be a record.
-pub fn match_pattern(pattern: Pattern, value: Value) -> Option(List(Value)) {
+/// Match a pattern against a value, returning `MatchAccept` (with the
+/// bindings in innermost-first order), `MatchReject`, or `MatchNeutral`
+/// when the outcome depends on an unresolved neutral. Record fields are
+/// matched in pattern order; a field absent from the value's head is
+/// searched for in its tail, which must be a record.
+pub fn match_pattern(
+  pattern: Pattern,
+  value: Value,
+) -> MatchResult(List(Value)) {
   case pattern, value {
-    tm.PAny, _ -> Some([])
-    tm.PTyp(u1), v.Typ(u2) if u1 == u2 -> Some([])
-    tm.PLit(k1), v.Lit(k2) if k1 == k2 -> Some([])
-    tm.PLitT(k1), v.LitT(k2) if k1 == k2 -> Some([])
+    // Decidable acceptances...
+    tm.PAny, _ -> MatchAccept([])
+    tm.PTyp(u1), v.Typ(u2) if u1 == u2 -> MatchAccept([])
+    tm.PLit(k1), v.Lit(k2) if k1 == k2 -> MatchAccept([])
+    tm.PLitT(k1), v.LitT(k2) if k1 == k2 -> MatchAccept([])
     tm.PAlias(_, pattern), _ ->
       case match_pattern(pattern, value) {
-        Some(bindings) -> Some([value, ..bindings])
-        None -> None
+        MatchAccept(bindings) -> MatchAccept([value, ..bindings])
+        MatchReject -> MatchReject
+        MatchNeutral -> MatchNeutral
       }
+    // A constructor tag is always decidable; only its argument may not
+    // be, so a tag mismatch rejects even against a neutral argument.
     tm.PCtr(tag1, pattern), v.Ctr(tag2, arg) if tag1 == tag2 ->
       match_pattern(pattern, arg)
-    tm.PRcd([], None), v.Rcd([], None) -> Some([])
+    tm.PRcd([], None), v.Rcd([], None) -> MatchAccept([])
     tm.PRcd([], Some(ptail)), value -> match_pattern(ptail, value)
     tm.PRcd([#(name, pat), ..pfields], ptail), value ->
-      match_pattern_rcd_field(name, pat, value)
-      |> option.then(fn(xs_value) {
-        let #(xs, value) = xs_value
-        case match_pattern(tm.PRcd(pfields, ptail), value) {
-          Some(ys) -> Some(list.append(ys, xs))
-          None -> None
-        }
-      })
-    tm.PErr, v.Err -> Some([])
-    _, _ -> None
+      case match_pattern_rcd_field(name, pat, value) {
+        MatchAccept(#(bindings, value)) ->
+          case match_pattern(tm.PRcd(pfields, ptail), value) {
+            MatchAccept(ys) -> MatchAccept(list.append(ys, bindings))
+            MatchReject -> MatchReject
+            MatchNeutral -> MatchNeutral
+          }
+        MatchReject -> MatchReject
+        MatchNeutral -> MatchNeutral
+      }
+    tm.PErr, v.Err -> MatchAccept([])
+    // ...anything not decided above depends on a neutral value that may
+    // still turn out to match (a neutral can resolve to any value).
+    _, v.Neut(_) -> MatchNeutral
+    // ...or is a decided mismatch.
+    _, _ -> MatchReject
   }
 }
 
 /// Find one record field and match it, returning the bindings and the
 /// *remaining* record (field removed; tail left intact or peeled into a
-/// record tail), so subsequent fields keep matching positionally.
+/// record tail), so subsequent fields keep matching positionally. A
+/// neutral tail is `MatchNeutral`: the field may be in there once the
+/// tail resolves.
 fn match_pattern_rcd_field(
   name: String,
   pattern: Pattern,
   value: Value,
-) -> Option(#(List(Value), Value)) {
+) -> MatchResult(#(List(Value), Value)) {
   case value {
     v.Rcd(vfields, opt_vtail) ->
       case tm.pop_field(vfields, name) {
         Some(#(#(value, _default), vfields)) ->
-          match_pattern(pattern, value)
-          |> option.map(fn(xs) { #(xs, v.Rcd(vfields, opt_vtail)) })
+          case match_pattern(pattern, value) {
+            MatchAccept(bindings) ->
+              MatchAccept(#(bindings, v.Rcd(vfields, opt_vtail)))
+            MatchReject -> MatchReject
+            MatchNeutral -> MatchNeutral
+          }
         None ->
-          opt_vtail
-          |> option.then(match_pattern_rcd_field(name, pattern, _))
-          |> option.map(fn(xs_vtail) {
-            let #(xs, vtail) = xs_vtail
-            #(xs, v.Rcd(vfields, Some(vtail)))
-          })
+          case opt_vtail {
+            None -> MatchReject
+            Some(vtail) ->
+              case match_pattern_rcd_field(name, pattern, vtail) {
+                MatchAccept(#(bindings, vrest)) ->
+                  MatchAccept(#(bindings, v.Rcd(vfields, Some(vrest))))
+                MatchReject -> MatchReject
+                MatchNeutral -> MatchNeutral
+              }
+          }
       }
-    _ -> None
+    // A neutral scrutinee: the field may be there once it resolves.
+    v.Neut(_) -> MatchNeutral
+    _ -> MatchReject
   }
 }
