@@ -30,7 +30,6 @@ const reserved = [
   "match",
   "if",
   "else",
-  "error",
   "type",
 ]
 
@@ -45,7 +44,6 @@ pub type Token {
   KwMatch
   KwIf
   KwElse
-  KwError
   KwType
 
   // Values
@@ -114,7 +112,6 @@ fn lexer_() -> Lexer(Token, Nil) {
     lexer.keyword("match", "\\W", KwMatch),
     lexer.keyword("if", "\\W", KwIf),
     lexer.keyword("else", "\\W", KwElse),
-    lexer.keyword("error", "\\W", KwError),
     lexer.keyword("type", "\\W", KwType),
 
     // Names
@@ -271,7 +268,6 @@ fn token_to_string(tok: Token) -> String {
     KwMatch -> "match"
     KwIf -> "if"
     KwElse -> "else"
-    KwError -> "error"
     KwType -> "type"
     Name(n) -> n
     IntLit(n) -> int.to_string(n)
