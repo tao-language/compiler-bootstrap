@@ -1,0 +1,4 @@
+type Result(value, error) {
+| Ok(value)
+| Err(error)
+}
