@@ -464,7 +464,7 @@ fn import_alias() -> Parser(String, Token, String) {
 }
 
 fn import_name() -> Parser(#(String, String), Token, String) {
-  use name <- do(var_name())
+  use name <- do(take_name())
   use alias <- do(nibble.one_of([import_alias(), return(name)]))
   return(#(name, alias))
 }
@@ -917,6 +917,16 @@ fn guard(file: String) -> Parser(#(Expr, Option(Pattern)), Token, String) {
 fn token_text(tok: Token) -> Parser(String, Token, String) {
   use _ <- do(nibble.token(tok))
   return(token_to_string(tok))
+}
+
+fn take_name() -> Parser(String, Token, String) {
+  nibble.take_map("a name", fn(tok) {
+    case tok {
+      Name("_") -> Some("_")
+      Name(name) -> Some(name)
+      _ -> None
+    }
+  })
 }
 
 fn take_var() -> Parser(String, Token, String) {
