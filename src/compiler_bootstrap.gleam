@@ -14,7 +14,7 @@ import gleam/string
 
 const format_width = 40
 
-const help = "Tao compiler bootstrap\n\nUsage:\n  tao check [paths...]                  Type-check .tao files (default: .)\n  tao run <file>                        Compile and run a .tao file\n  tao test [paths...]                   Run tests in .tao files (default: .)\n                                        --filter <pattern>  only run matching tests (repeatable)\n                                        --skip <pattern>    skip matching tests (repeatable)\n  tao debug-expr 'expression'           Debug a Tao expression\n  tao debug-file <filename>             Debug a Tao module\n  tao debug-core 'core-term'            Debug a Core term\n  tao --help                            Show this help\n\ncheck and test accept file and directory paths; directories are searched\nrecursively for .tao files. If no paths are given, the current directory\nis used. test also accepts <path>:<test1,test2> to restrict the tests run\nin that file, and the --filter/--skip patterns match a test name or a\nmodule path with a test name (module/path.tao:test_name), with * and **\nglob wildcards.\n"
+const help = "Tao compiler bootstrap\n\nUsage:\n  tao check [paths...]                  Type-check .tao files (default: .)\n  tao run <file>                        Compile and run a .tao file\n  tao test [paths...]                   Run tests in .tao files (default: .)\n                                        --filter <pattern>  only run matching tests (repeatable)\n                                        --skip <pattern>    skip matching tests (repeatable)\n  tao debug-expr 'expression'           Debug a Tao expression (prelude auto-imported)\n                                        --path <dir>    extra package path (repeatable, default: lib)\n                                        --add <name>    extra package to load (repeatable)\n  tao debug-file <filename>             Debug a Tao module\n  tao debug-core 'core-term'            Debug a Core term\n  tao --help                            Show this help\n\ncheck and test accept file and directory paths; directories are searched\nrecursively for .tao files. If no paths are given, the current directory\nis used. test also accepts <path>:<test1,test2> to restrict the tests run\nin that file, and the --filter/--skip patterns match a test name or a\nmodule path with a test name (module/path.tao:test_name), with * and **\nglob wildcards.\n"
 
 /// The CLI entry point. Commands: `check`, `run`, `test`, `debug-expr`,
 /// `debug-file`, `debug-core`, `--help`. The REPL is TODO.
@@ -47,7 +47,29 @@ pub fn main() -> Nil {
     //     [] -> Ok(Run(Inline(expr), False, False))
     //     _ -> Error("Too many arguments after -c expression")
     //   }
-    ["debug-expr", source, ..] -> debug_expr(source, format_width)
+    ["debug-expr", source, ..args] -> {
+      let paths =
+        list.filter_map(args, fn(arg) {
+          case arg {
+            "--path=" <> path -> Ok(path)
+            _ -> Error(Nil)
+          }
+        })
+        |> list.append(["lib"])
+        |> list.unique
+      let dependencies =
+        list.filter_map(args, fn(arg) {
+          case arg {
+            "--add=" <> name ->
+              case string.split_once(name, ":") {
+                Ok(#(name, version)) -> Ok(#(name, Some(version)))
+                Error(Nil) -> Ok(#(name, None))
+              }
+            _ -> Error(Nil)
+          }
+        })
+      debug_expr(paths, dependencies, source, format_width)
+    }
     ["debug-file", ..args] -> {
       let root =
         list.find_map(args, fn(arg) {
