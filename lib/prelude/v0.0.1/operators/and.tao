@@ -1,19 +1,7 @@
 import prelude/bool {Bool}
 
-fn (and)(a: Bool, b: Bool) -> Bool
-= match a, b {
-| True, True => True
-| _, _ => False
-}
+// fn (and) {
+// | bool._and(Bool, Bool)
+// }
 
->>> True and True
-True
-
->>> True and False
-False
-
->>> False and True
-False
-
->>> False and False
-False
+// >>> True and False  False

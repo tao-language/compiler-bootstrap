@@ -2,3 +2,36 @@ type Bool {
 | True
 | False
 }
+
+fn (and)(a: Bool, b: Bool) -> Bool
+= match a, b {
+| True, True => True
+| _, _ => False
+}
+
+>>> True and True     True
+>>> True and False    False
+>>> False and True    False
+>>> False and False   False
+
+// fn _and(a: Bool, b: Bool) -> Bool
+// = match a, b {
+// | True, True => True
+// | _, _ => False
+// }
+
+// >>> _and(True,  True)   True
+// >>> _and(True,  False)  False
+// >>> _and(False, True)   False
+// >>> _and(False, False)  False
+
+// fn _or(a: Bool, b: Bool) -> Bool
+// = match a, b {
+// | False, False => False
+// | _, _ => True
+// }
+
+// >>> _or(True,  True)  True
+// >>> _or(True,  False) True
+// >>> _or(False, True)  True
+// >>> _or(False, False) False
