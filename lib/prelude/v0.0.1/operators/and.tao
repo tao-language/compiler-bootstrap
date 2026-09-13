@@ -1,7 +1,11 @@
 import prelude/bool {Bool}
 
-// fn (and) {
-// | bool._and(Bool, Bool)
-// }
+// Function overload on module name
+fn (and) {
+| bool._and(Bool, Bool)
+}
 
-// >>> True and False  False
+// Let definition (currently syntax error)
+// let (and) = bool._and
+
+>>> True and False  False
