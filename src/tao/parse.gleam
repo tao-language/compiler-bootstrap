@@ -1071,8 +1071,8 @@ fn get_span(file: String) -> Parser(Span, Token, String) {
 /// Tags are identifiers whose first non-`_` grapheme is uppercase.
 fn is_tag_name(name: String) -> Bool {
   case string.pop_grapheme(name) {
-    Ok(#("_", _)) -> is_tag_name(name)
-    Ok(#(first, _)) -> first == string.uppercase(first)
+    Ok(#("_", rest)) -> is_tag_name(rest)
+    Ok(#(first, _)) -> first != "" && first == string.uppercase(first)
     _ -> False
   }
 }

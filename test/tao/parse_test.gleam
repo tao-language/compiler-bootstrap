@@ -32,6 +32,63 @@ pub fn lex_type_test() {
   assert lex("types") == Ok([p.Name("types")])
 }
 
+// ============================================================================
+// Regression: leading-underscore names
+//
+// `is_tag_name` used to recurse on its *unchanged* input whenever the name
+// started with `_`, so any source containing a name like `_and` (a function
+// definition, a variable reference, a test expression) made the parser loop
+// forever instead of returning.
+// ============================================================================
+
+pub fn lex_underscore_name_test() {
+  assert lex("_and") == Ok([p.Name("_and")])
+}
+
+pub fn parse_underscore_var_test() {
+  let src = "_and"
+  assert case parse_expr(src) {
+    Ok(tao.Expr(tao.Var(name), _)) -> name == "_and"
+    _ -> False
+  }
+}
+
+pub fn parse_underscore_app_test() {
+  let src = "_and(True, True)"
+  assert case parse_expr(src) {
+    Ok(tao.Expr(tao.App(tao.Expr(tao.Var(name), _), args, _), _)) ->
+      name == "_and" && list.length(args) == 2
+    _ -> False
+  }
+}
+
+pub fn parse_underscore_fn_def_test() {
+  let src =
+    "fn _and(a, b) -> Bool = match a, b { | True, True => True | _, _ => False }"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.FnDef(name, _, _, _, _), _)]) -> name == "_and"
+    _ -> False
+  }
+}
+
+pub fn parse_underscore_test_stmt_test() {
+  let src = ">>> _and(True, True) True"
+  assert case parse_stmts(src) {
+    Ok([
+      tao.Stmt(
+        tao.Test(
+          _,
+          tao.Expr(tao.App(tao.Expr(tao.Var(name), _), _, _), _),
+          _,
+        ),
+        _,
+      ),
+    ])
+    -> name == "_and"
+    _ -> False
+  }
+}
+
 pub fn parse_type_def_bool_test() {
   let src = "type Bool { | True | False }"
   let expected =
