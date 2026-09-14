@@ -96,6 +96,20 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     }
     v.Typ(_) as value1, v.Rcd(..) as value2 ->
       unify(ctx, #(value2, s2), #(value1, s1))
+    // A constructor application can be a type (universe 0) only if its
+    // tag names a type definition (`Bool`) or a variant's constructor of
+    // one (`True` — a value of type `Bool` carries the variant's
+    // constructor application as its type). The argument record is not
+    // checked field by field, unlike `Rcd` vs `Typ` (dependent types may
+    // carry value arguments, e.g. `Vector(5, Int)`); anything else is a
+    // type mismatch.
+    v.Ctr(tag, _) as value1, v.Typ(0) as value2 ->
+      case is_type_ctor(ctx, tag) {
+        True -> ctx
+        False -> with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)
+      }
+    v.Typ(0) as value1, v.Ctr(..) as value2 ->
+      unify(ctx, #(value2, s2), #(value1, s1))
     // Record row polymorphism: fields may be split between head and tail
     v.Rcd(fields1, tail1), v.Rcd(fields2, tail2) ->
       unify_rcd(ctx, #(#(fields1, tail1), s1), #(#(fields2, tail2), s2))
@@ -181,6 +195,35 @@ pub fn unify_rcd(
         }
       }
     }
+  }
+}
+
+/// Whether `tag` names a value of the universe `Type`: either a type
+/// definition (`Bool`) or a variant's constructor of one (`True`,
+/// `False`). A value's type is its constructor application, and for
+/// GADT values that is the *variant's* constructor, so both forms are
+/// legitimate type values. Type definitions are looked up in the
+/// environment's local bindings and module records (see
+/// `context.lookup_type_def`); variants are searched among the
+/// definitions' variants in the module records.
+fn is_type_ctor(ctx: Context, tag: String) -> Bool {
+  case context.lookup_type_def(ctx, tag) {
+    Some(..) -> True
+    None ->
+      list.any(ctx.env, fn(val) {
+        case val {
+          v.Rcd(fields, _) ->
+            list.any(fields, fn(field) {
+              let #(_, #(field_val, _)) = field
+              case field_val {
+                v.TypeDef(_, tdef) ->
+                  list.any(tdef.variants, fn(variant) { variant.0 == tag })
+                _ -> False
+              }
+            })
+          _ -> False
+        }
+      })
   }
 }
 

@@ -1,3 +1,21 @@
+/// Normalization by Evaluation (NbE) — Term → Value
+///
+/// Design philosophy: `eval` should be as *simple* as possible. It walks
+/// the term and reduces what is mechanically reducible; it never
+/// *checks* anything. All error detection belongs to `infer`/`check` (and
+/// unification), so evaluating an expression that contains type errors is
+/// basically *undefined behavior*: whatever `eval` produces in that case
+/// is fine, and no guarantee is made about it. The correctness guarantee
+/// is one-way — *if* infer/check report no errors, evaluation is
+/// correct. Keeping `eval` free of semantic machinery (no type
+/// definitions, no environment lookups beyond the term's own variables,
+/// no error reporting) is what makes the rest of the compiler provable
+/// in that sense: a value depends only on its term, never on the module
+/// records or type definitions that happened to be in scope. For a
+/// concrete example of this division of labor, see docs/overloads.md:
+/// overload dispatch looks up type definitions at *compile* and *check*
+/// time (`define.expand_overload_choices`, `unify`'s Ctr-vs-Typ rule) so
+/// that the runtime match here stays a blind tag comparison.
 import core/ffi.{type FFI}
 import core/term.{type Case, type Pattern, type Term} as tm
 import core/value.{type Env, type Type, type Value} as v

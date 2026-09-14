@@ -765,7 +765,7 @@ fn expr(file: String) -> Parser(Expr, Token, String) {
 }
 
 fn atom(file: String) -> Parser(Expr, Token, String) {
-  use expr <- do(
+  use base <- do(
     nibble.one_of([
       hole(file),
       float(file),
@@ -774,8 +774,26 @@ fn atom(file: String) -> Parser(Expr, Token, String) {
       ctr(file),
     ]),
   )
+  postfix(file, base)
+}
+
+/// Postfix operators on an atom: field access `expr.field` (e.g.
+/// `bool._and` on a module record — a module is a record of its
+/// definitions, so access desugars to a field match) and application
+/// `expr(...)`. They chain left-associatively (`a.b.c`, `f(x).field`).
+fn postfix(file: String, expr: Expr) -> Parser(Expr, Token, String) {
   nibble.one_of([
-    app(file, expr),
+    {
+      use start <- do(get_span(file))
+      use _ <- do(nibble.token(Dot))
+      use field <- do(take_name())
+      use end <- do(get_span(file))
+      postfix(file, tao.dot(expr, field, merge(start, end)))
+    },
+    {
+      use e <- do(app(file, expr))
+      postfix(file, e)
+    },
     return(expr),
   ])
 }

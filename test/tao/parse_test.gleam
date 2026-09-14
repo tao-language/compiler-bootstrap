@@ -276,6 +276,71 @@ pub fn parse_fn_named_operator_test() {
 }
 
 // ============================================================================
+// Field access (dot) and module-qualified names
+// ============================================================================
+
+pub fn parse_dot_access_test() {
+  // `bool._and` is a Dot expression: the base is a variable, the field a
+  // name (including leading-underscore names).
+  let src = "bool._and"
+  assert case parse_expr(src) {
+    Ok(tao.Expr(tao.Dot(base, field), _)) ->
+      field == "_and"
+      && case base {
+        tao.Expr(tao.Var(name), _) -> name == "bool"
+        _ -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn parse_dot_chained_test() {
+  // Dots chain left-associatively: `a.b.c` is `Dot(Dot(a, b), c)`.
+  let src = "a.b.c"
+  assert case parse_expr(src) {
+    Ok(tao.Expr(tao.Dot(inner, "c"), _)) ->
+      case inner {
+        tao.Expr(tao.Dot(base, "b"), _) ->
+          case base {
+            tao.Expr(tao.Var(name), _) -> name == "a"
+            _ -> False
+          }
+        _ -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn parse_dot_after_app_test() {
+  // Application and field access interleave: `f(x).field`.
+  let src = "f(x).field"
+  assert case parse_expr(src) {
+    Ok(tao.Expr(tao.Dot(inner, "field"), _)) ->
+      case inner {
+        tao.Expr(tao.App(tao.Expr(tao.Var(name), _), args, _), _) ->
+          name == "f" && list.length(args) == 1
+        _ -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn parse_let_operator_module_access_test() {
+  // `let (and) = bool._and`: an operator name (parenthesized, since
+  // `and` is a keyword) bound to a module-qualified definition.
+  let src = "let (and) = bool._and"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.LetVar(name, _, value), _)]) ->
+      name == "and"
+      && case value {
+        tao.Expr(tao.Dot(_, "_and"), _) -> True
+        _ -> False
+      }
+    _ -> False
+  }
+}
+
+// ============================================================================
 // Match tuple sugar: `match a, b { | p, q => ... }`
 // ============================================================================
 

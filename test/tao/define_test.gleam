@@ -1,6 +1,7 @@
-import core/context
+import core/context.{type Context} as context
 import core/term as tm
 import core/value as v
+import gleam/list
 import gleam/option.{None, Some}
 import syntax/span.{Span}
 import tao/ast as tao
@@ -236,4 +237,105 @@ pub fn define_type_name_imported_name_reverse_test() {
   assert ctx.env
     == [v.rcd([#("int", typ)]), v.rcd([#("m1_int", typ), #("x", val)])]
   assert ctx.hole_counter == 2
+}
+
+// ============================================================================
+// Overload choice expansion
+// ============================================================================
+
+/// A context whose environment has one module record defining `Bool`
+/// (variants `True`, `False`).
+fn bool_ctx() -> Context {
+  let tdef =
+    v.TypeDefinition(params: [], arg: tm.rcd([]), variants: [
+      #("True", v.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
+      #("False", v.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
+    ])
+  let mod_record = v.Rcd([#("Bool", #(v.TypeDef([], tdef), None))], None)
+  context.push_var(context.new_ctx, #("$mod", mod_record, v.Typ(1)))
+}
+
+fn choice_(args: List(tao.Pattern)) -> tao.OverloadChoice {
+  tao.OverloadChoice(None, "f", list.map(args, fn(pat) { #("", pat) }), None, s)
+}
+
+fn pctr(name: String) -> tao.Pattern {
+  tao.pctr(name, [], s)
+}
+
+/// The argument patterns of the expanded choices, as tag lists.
+fn expanded_tags(ctx: Context, args: List(tao.Pattern)) -> List(List(String)) {
+  let #(choices, _ctx) = define.expand_overload_choices(ctx, [choice_(args)])
+  list.map(choices, fn(choice) {
+    list.map(choice.args, fn(arg) {
+      case arg.1.data {
+        tao.PCtr(tag, _, _) -> tag
+        _ -> "?"
+      }
+    })
+  })
+}
+
+/// A type name expands to itself (the type constructor application)
+/// plus one tag-only pattern per variant.
+pub fn expand_type_name_test() {
+  assert expanded_tags(bool_ctx(), [pctr("Bool")]) == [
+    ["Bool"],
+    ["True"],
+    ["False"],
+  ]
+}
+
+/// Variant patterns are constructor tags with an open (any) argument
+/// record: they must match `#True{..}` regardless of the variant's
+/// arguments.
+pub fn expand_variant_pattern_is_open_test() {
+  let ctx = bool_ctx()
+  let #(choices, _ctx) = define.expand_overload_choices(ctx, [choice_([pctr("Bool")])])
+  case choices {
+    [_, variant, _, ..] -> {
+      case variant.args {
+        [#(_, tao.Pattern(tao.PCtr(_, args, tail), _)), ..] ->
+          args == [] && case tail {
+            Some(tao.Pattern(tao.PAny, _)) -> True
+            _ -> False
+          }
+        _ -> False
+      }
+    }
+    _ -> False
+  }
+}
+
+/// Non-type-name arguments do not multiply: literal types, variables
+/// and wildcards are their own single alternatives.
+pub fn expand_non_type_names_untouched_test() {
+  let ctx = bool_ctx()
+  assert expanded_tags(ctx, [pctr("Int"), tao.pany(s)]) == [["Int", "?"]]
+  let #(choices, _ctx) = define.expand_overload_choices(ctx, [choice_([pctr("Int")])])
+  assert list.length(choices) == 1
+}
+
+/// An unknown name is left unchanged (the checker reports the error via
+/// its Ctr-vs-Typ rule); with no type definitions in scope nothing
+/// expands.
+pub fn expand_unknown_name_untouched_test() {
+  assert expanded_tags(context.new_ctx, [pctr("Nope")]) == [["Nope"]]
+}
+
+/// Multiple type-name arguments expand to the product of their
+/// alternatives: `f(Bool, Bool)` becomes 3x3 = 9 choices.
+pub fn expand_product_test() {
+  let combos = expanded_tags(bool_ctx(), [pctr("Bool"), pctr("Bool")])
+  assert list.length(combos) == 9
+  assert list.contains(combos, ["True", "False"])
+  assert list.contains(combos, ["Bool", "Bool"])
+}
+
+/// Non-type-name arguments mix with type names: only the type names
+/// multiply.
+pub fn expand_mixed_test() {
+  let combos = expanded_tags(bool_ctx(), [pctr("Int"), pctr("Bool")])
+  assert list.length(combos) == 3
+  assert list.contains(combos, ["Int", "True"])
 }

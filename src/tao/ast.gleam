@@ -49,6 +49,7 @@ pub type ExprData {
   )
   FnT(implicits: Parameters, params: Parameters, returns: Type)
   App(fun: Expr, args: List(#(String, Expr)), tail: Option(Expr))
+  Dot(base: Expr, field: String)
   Match(arg: Expr, cases: List(Case))
   Op1(op: UnaryOp, expr: Expr)
   Op2(op: BinaryOp, lhs: Expr, rhs: Expr)
@@ -290,6 +291,10 @@ pub fn fn_t(
 
 pub fn app(fun: Expr, args: List(#(String, Expr)), span: Span) {
   app_open(fun, args, None, span)
+}
+
+pub fn dot(base: Expr, field: String, span: Span) {
+  Expr(Dot(base, field), span)
 }
 
 pub fn app_open(

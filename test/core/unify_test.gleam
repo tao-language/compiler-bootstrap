@@ -1,5 +1,5 @@
 /// Tests for the `unify` module — higher-order unification for Core values.
-import core/context.{Context, new_ctx}
+import core/context.{Context, new_ctx, push_var}
 import core/error as e
 import core/literals as lit
 import core/occurs
@@ -165,6 +165,77 @@ pub fn unify_ctr_gadt_bool_test() {
   // Check: False constructor
   assert unify(ctx0, #(bool, s1), #(false_, s2)) == ctx0
   assert unify(ctx0, #(false_, s2), #(bool, s1)) == ctx0
+}
+
+// ============================================================================
+// A constructor application as a type (Ctr vs Typ(0))
+// ============================================================================
+
+/// A type constructor applied to type arguments (e.g. `Bool`) is a value
+/// of `%Type`: unifying it against `Typ(0)` succeeds when the tag names a
+/// type definition. Dependent types may carry value arguments, so no
+/// field-wise check is performed (unlike `Rcd` vs `Typ`).
+pub fn unify_ctr_as_type_test() {
+  let bool = v.ctr("Bool", [])
+  let tdef =
+    v.TypeDefinition(params: [], arg: tm.rcd([]), variants: [
+      #("True", v.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
+      #("False", v.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
+    ])
+  let ctx0 =
+    context.push_var_opt(new_ctx, #(
+      "Bool",
+      Some(v.TypeDef([], tdef)),
+      Some(v.Typ(0)),
+    ))
+  assert unify(ctx0, #(bool, s1), #(v.Typ(0), s2)) == ctx0
+  assert unify(ctx0, #(v.Typ(0), s2), #(bool, s1)) == ctx0
+  // The argument record may hold values, not just types: a dependent type
+  // like `Vector(5, Int)` is still a type.
+  let dependent = v.Ctr("Vec", v.rcd([#("n", v.int(5)), #("a", v.int_t)]))
+  let vec_tdef = v.TypeDefinition(params: [], arg: tm.rcd([]), variants: [])
+  let ctx =
+    context.push_var_opt(ctx0, #(
+      "Vec",
+      Some(v.TypeDef([], vec_tdef)),
+      Some(v.Typ(0)),
+    ))
+  assert unify(ctx, #(dependent, s1), #(v.Typ(0), s2)) == ctx
+}
+
+/// A constructor tag that does not name a type definition is not a type:
+/// unifying it against `%Type` is a mismatch.
+pub fn unify_ctr_as_type_unknown_tag_test() {
+  let nope = v.ctr("Nope", [])
+  let ctx0 = new_ctx
+  let ctx = unify(ctx0, #(nope, s1), #(v.Typ(0), s2))
+  assert ctx.errors
+    == [e.Error(e.TypeMismatch(#(nope, s1), #(v.Typ(0), s2)), s1, [])]
+  let ctx = unify(ctx0, #(v.Typ(0), s2), #(nope, s1))
+  assert ctx.errors
+    == [e.Error(e.TypeMismatch(#(nope, s1), #(v.Typ(0), s2)), s1, [])]
+}
+
+/// A variant's constructor of a type definition is also a type: a value
+/// of type `Bool` carries the variant's constructor application as its
+/// type (`#True{}`), so unifying it against `%Type` succeeds when a type
+/// definition in the environment has the tag as a variant.
+pub fn unify_ctr_variant_as_type_test() {
+  let tdef =
+    v.TypeDefinition(params: [], arg: tm.rcd([]), variants: [
+      #("True", v.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
+      #("False", v.Variant([], tm.rcd([]), tm.ctr("Bool", []))),
+    ])
+  let mod_record = v.Rcd([#("Bool", #(v.TypeDef([], tdef), None))], None)
+  let ctx0 = push_var(new_ctx, #("$mod", mod_record, v.Typ(1)))
+  let true_ = v.ctr("True", [])
+  assert unify(ctx0, #(true_, s1), #(v.Typ(0), s2)) == ctx0
+  assert unify(ctx0, #(v.Typ(0), s2), #(true_, s1)) == ctx0
+  // A constructor of no known type definition is still a mismatch
+  let nope = v.ctr("Nope", [])
+  let ctx = unify(ctx0, #(nope, s1), #(v.Typ(0), s2))
+  assert ctx.errors
+    == [e.Error(e.TypeMismatch(#(nope, s1), #(v.Typ(0), s2)), s1, [])]
 }
 
 pub fn unify_ctr_gadt_option_test() {

@@ -55,21 +55,13 @@ pub fn expr(exports: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
       let core_args = arguments(exports, args, tail, e.span)
       core.ctr(tag, core_args, e.span)
     }
-    tao.Tuple(args) ->
-      // Tuples desugar to strict (no-tail) "numbered records", where the
-      // field name is a 1-indexed string:
-      // () => {}
-      // (x) => {1: x}
-      // (x, y, z) => {1: x, 2: y, 3: z}
-      // The `None` tail makes the tuple strict: no row continuation or
-      // row polymorphism, exactly its items.
-      {
-        let core_fields =
-          list.index_map(args, fn(arg, index) {
-            #(int.to_string(index + 1), expr(exports, arg))
-          })
-        core.rcd_values(core_fields, None, e.span)
-      }
+    tao.Tuple(args) -> {
+      let core_fields =
+        list.index_map(args, fn(arg, index) {
+          #(int.to_string(index + 1), expr(exports, arg))
+        })
+      core.rcd_values(core_fields, None, e.span)
+    }
     tao.Rcd(fields, tail) -> {
       let core_fields = rcd_fields(exports, fields)
       let core_tail = opt_expr(exports, tail)
@@ -99,6 +91,7 @@ pub fn expr(exports: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
     tao.FnT(implicits, params, body) ->
       function_type(exports, implicits, params, body, e.span)
     tao.App(fun, args, tail) -> application(exports, fun, args, tail, e.span)
+    tao.Dot(base, field) -> core.dot(expr(exports, base), field, e.span)
     tao.Match(arg, cases) -> {
       let core_arg = expr(exports, arg)
       let core_cases = case_list(exports, cases)
@@ -353,23 +346,28 @@ pub fn pattern(p: Pattern) -> core.Pattern {
     tao.PAny -> core.pany(p.span)
     tao.PVar(name) -> core.pvar(name, p.span)
     tao.PLit(l) -> core.Pattern(core.PLit(l), p.span)
+    tao.PCtr("Type", [], None) -> core.ptyp(0, p.span)
     tao.PCtr("Type", [#(_, tao.Pattern(tao.PLit(lit.Int(u)), _))], None) ->
       core.ptyp(u, p.span)
     tao.PCtr("Int", [], None) -> core.pint_t(p.span)
     tao.PCtr("Float", [], None) -> core.pfloat_t(p.span)
     tao.PCtr("I8", [], None) -> core.pi8(p.span)
-    // TODO: cover all LiteralType and Typ
-    tao.PTuple(args) ->
-      // Tuple patterns desugar to strict (no-tail) numbered record
-      // patterns, mirroring the tuple expression:
-      // (x, y, z) => {1: x, 2: y, 3: z}
-      {
-        let core_fields =
-          list.index_map(args, fn(arg, index) {
-            #(int.to_string(index + 1), pattern(arg))
-          })
-        core.prcd(core_fields, None, p.span)
-      }
+    tao.PCtr("I16", [], None) -> core.pi16(p.span)
+    tao.PCtr("I32", [], None) -> core.pi32(p.span)
+    tao.PCtr("I64", [], None) -> core.pi64(p.span)
+    tao.PCtr("U8", [], None) -> core.pu8(p.span)
+    tao.PCtr("U16", [], None) -> core.pu16(p.span)
+    tao.PCtr("U32", [], None) -> core.pu32(p.span)
+    tao.PCtr("U64", [], None) -> core.pu64(p.span)
+    tao.PCtr("F32", [], None) -> core.pf32(p.span)
+    tao.PCtr("F64", [], None) -> core.pf64(p.span)
+    tao.PTuple(args) -> {
+      let core_fields =
+        list.index_map(args, fn(arg, index) {
+          #(int.to_string(index + 1), pattern(arg))
+        })
+      core.prcd(core_fields, None, p.span)
+    }
     tao.PRcd(fields, tail) -> {
       let core_fields =
         list.map(fields, fn(field) {
@@ -498,7 +496,10 @@ pub fn statement(
       core.let_var(#(name, None, core_fn), next, s)
     }
     // Overloaded functions are polymorphic: for each implicit `__type`
-    // the function matches the argument record against the choices.
+    // the function matches the argument record against the choices. The
+    // choices' type names have already been expanded into concrete
+    // constructor patterns by `define.expand_overload_choices` (the
+    // runtime match is blind). See docs/overloads.md.
     tao.FnOverload(name, choices) -> {
       let param1 = #("__type", Some(core.typ(0, s)))
       let match_body =

@@ -8,7 +8,7 @@
 /// exists before any body is checked, definitions may reference each
 /// other — including across modules — in any order.
 import core/ast as core
-import core/context.{type Context}
+import core/context.{type Context, lookup_type_def}
 import core/error as e
 import core/eval.{eval}
 import core/infer.{check, infer}
@@ -30,10 +30,16 @@ pub fn types(
 ) -> Context {
   list.fold(defs, ctx, fn(ctx, def) {
     let #(mod_name, mod_defs) = def
+    let shadowed = shadowed_imports(mod_defs)
     list.fold(mod_defs, ctx, fn(ctx, mod_def) {
       let #(name, stmt) = mod_def
-      let #(_, _, ctx) = type_stmt(ctx, defs, mod_name, name, stmt)
-      ctx
+      case shadowed_import(name, stmt, shadowed) {
+        True -> ctx
+        False -> {
+          let #(_, _, ctx) = type_stmt(ctx, defs, mod_name, name, stmt)
+          ctx
+        }
+      }
     })
   })
 }
@@ -49,19 +55,50 @@ pub fn values(
 ) -> Context {
   list.fold(defs, ctx, fn(ctx, def) {
     let #(mod_name, mod_defs) = def
+    let shadowed = shadowed_imports(mod_defs)
     list.fold(mod_defs, ctx, fn(ctx, mod_def) {
       let #(name, stmt) = mod_def
-      case get_var(ctx, mod_name, name) {
-        Some(#(v.Neut(v.NHole(..)) as hole, typ)) -> {
-          let s = stmt.span
-          let #(val, _, ctx) =
-            stmt_value(ctx, defs, mod_name, name, stmt, Some(typ))
-          unify(ctx, #(val, s), #(hole, s))
-        }
-        _ -> ctx
+      case shadowed_import(name, stmt, shadowed) {
+        True -> ctx
+        False ->
+          case get_var(ctx, mod_name, name) {
+            Some(#(v.Neut(v.NHole(..)) as hole, typ)) -> {
+              let s = stmt.span
+              let #(val, _, ctx) =
+                stmt_value(ctx, defs, mod_name, name, stmt, Some(typ))
+              unify(ctx, #(val, s), #(hole, s))
+            }
+            _ -> ctx
+          }
       }
     })
   })
+}
+
+/// The names of a module's *local* definitions (everything but imports
+/// and tests). A local definition shadows an imported name of the same
+/// module, so the import entry must not be registered or inferred on its
+/// own: it would share the module record's single entry for the name and
+/// the import's value (the imported module's record) would be unified
+/// with the local definition's hole.
+fn shadowed_imports(mod_defs: List(#(Name, Stmt))) -> List(Name) {
+  list.flat_map(mod_defs, fn(entry) {
+    let #(name, stmt) = entry
+    case stmt.data {
+      tao.Test(..) -> []
+      tao.Import(..) -> []
+      _ -> [name]
+    }
+  })
+}
+
+/// Whether an entry is an `import` statement whose name is shadowed by a
+/// local definition of the same module (see `shadowed_imports`).
+fn shadowed_import(name: Name, stmt: Stmt, shadowed: List(Name)) -> Bool {
+  case stmt.data {
+    tao.Import(..) -> list.contains(shadowed, name)
+    _ -> False
+  }
 }
 
 /// Look up a definition by (module, name), lazily running phase 1 for
@@ -354,7 +391,115 @@ pub fn stmt_value(
   stmt: tao.Stmt,
   opt_type: Option(v.Type),
 ) -> #(v.Value, v.Type, Context) {
+  // Overload dispatch is a blind runtime match on the arguments'
+  // constructor types (the evaluator does no type lookups), so the
+  // type names in an overloaded function's choices are expanded into
+  // concrete constructor patterns first (see docs/overloads.md).
+  case stmt.data {
+    tao.FnOverload(fn_name, choices) -> {
+      let #(choices, ctx) = expand_overload_choices(ctx, choices)
+      let stmt = tao.Stmt(tao.FnOverload(fn_name, choices), stmt.span)
+      stmt_value_inner(ctx, defs, mod_name, name, stmt, opt_type)
+    }
+    _ -> stmt_value_inner(ctx, defs, mod_name, name, stmt, opt_type)
+  }
+}
+
+fn stmt_value_inner(
+  ctx: Context,
+  defs: List(#(ModName, List(#(Name, Stmt)))),
+  mod_name: ModName,
+  name: Name,
+  stmt: tao.Stmt,
+  opt_type: Option(v.Type),
+) -> #(v.Value, v.Type, Context) {
   let s = stmt.span
   let tao_expr = tao.do([stmt, tao.return(tao.var(name, s), s)], s)
   expr_value(ctx, defs, mod_name, tao_expr, opt_type)
+}
+
+/// Expand the type names in an overloaded function's choice patterns
+/// into concrete constructor patterns, so the dispatch match — a blind
+/// runtime match on the arguments' types — selects the right choice
+/// (see docs/overloads.md).
+///
+/// A value's type is its constructor application: a value of type `Bool`
+/// has the *variant's* constructor application as its type (`#True{}` or
+/// `#False{}`), or the type constructor itself (`#Bool{}`) when only the
+/// declared type is known. Core patterns have no disjunction, so each
+/// choice is replicated for the product of its argument patterns'
+/// alternatives. Arguments that do not name a type definition are left
+/// unchanged: `unify`'s Ctr-vs-Typ rule reports them as type errors.
+pub fn expand_overload_choices(
+  ctx: Context,
+  choices: List(tao.OverloadChoice),
+) -> #(List(tao.OverloadChoice), Context) {
+  list.fold(choices, #([], ctx), fn(acc, choice) {
+    let #(expanded, ctx) = expand_choice(ctx, choice)
+    #(list.append(acc.0, expanded), ctx)
+  })
+}
+
+/// One choice with its argument patterns expanded: the product of the
+/// alternatives of each argument pattern, one choice per combination
+/// (same module, name, guard and span as the original).
+fn expand_choice(
+  ctx: Context,
+  choice: tao.OverloadChoice,
+) -> #(List(tao.OverloadChoice), Context) {
+  let names = list.map(choice.args, fn(arg) { arg.0 })
+  let #(alternatives, ctx) =
+    list.fold(choice.args, #([], ctx), fn(acc, arg) {
+      let #(_, pat) = arg
+      let #(alts, ctx) = pattern_alternatives(ctx, pat)
+      #([alts, ..acc.0], ctx)
+    })
+  let combos = product(list.reverse(alternatives))
+  let expanded =
+    list.map(combos, fn(pats) {
+      let args = list.zip(names, pats)
+      tao.OverloadChoice(choice.mod_name, choice.name, args, choice.guard, choice.span)
+    })
+  #(expanded, ctx)
+}
+
+/// The concrete constructor patterns one choice argument pattern
+/// matches: a type name (`Bool`, `Option(Int)`) expands to itself (the
+/// type constructor application, as written) plus one pattern per
+/// variant (constructor tag with any arguments, since a value of type
+/// `Bool` has type `#True{}` or `#False{}`); any other pattern (literal
+/// types, variables, wildcards) is its own single alternative.
+fn pattern_alternatives(
+  ctx: Context,
+  pat: tao.Pattern,
+) -> #(List(tao.Pattern), Context) {
+  case pat.data {
+    tao.PCtr(tag, _, _) ->
+      case lookup_type_def(ctx, tag) {
+        Some(#(_, tdef)) -> {
+          let variants =
+            list.map(tdef.variants, fn(variant) {
+              let #(variant_tag, _) = variant
+              tao.pctr_open(variant_tag, [], Some(tao.pany(pat.span)), pat.span)
+            })
+          #([pat, ..variants], ctx)
+        }
+        None -> #([pat], ctx)
+      }
+    _ -> #([pat], ctx)
+  }
+}
+
+/// The product of a list of alternative lists: one list per combination
+/// (in the order of the alternatives).
+fn product(alternatives: List(List(a))) -> List(List(a)) {
+  case alternatives {
+    [] -> [[]]
+    [first, ..rest] -> {
+      let rest_combos = product(rest)
+      list.flat_map(first, fn(item) {
+        list.map(rest_combos, fn(combo) { [item, ..combo] })
+      })
+    }
+  }
 }
