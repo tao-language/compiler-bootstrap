@@ -5,8 +5,4 @@ fn (and) {
 | bool._and(Bool, Bool)
 }
 
-// Let definition (equivalent form; not used because the `fn (and)`
-// overload above already defines the name `and`):
-// let (and) = bool._and
-
 >>> True and False  False

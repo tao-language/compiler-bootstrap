@@ -1,7 +1,7 @@
 import prelude/bool
 
-// fn (or) {
-// | bool._or(Bool, Bool)
-// }
+fn (or) {
+| bool._or(Bool, Bool)
+}
 
-// >>> True or False   True
+>>> True or False   True
