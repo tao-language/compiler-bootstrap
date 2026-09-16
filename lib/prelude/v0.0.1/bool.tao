@@ -3,8 +3,8 @@ type Bool {
 | False
 }
 
-fn _and(a: Bool, b: Bool) -> Bool
-= match a, b {
+fn _and(x: Bool, y: Bool) -> Bool
+= match x, y {
 | True, True => True
 | _, _ => False
 }
@@ -14,8 +14,8 @@ fn _and(a: Bool, b: Bool) -> Bool
 >>> _and(False, True)   False
 >>> _and(False, False)  False
 
-fn _or(a: Bool, b: Bool) -> Bool
-= match a, b {
+fn _or(x: Bool, y: Bool) -> Bool
+= match x, y {
 | False, False => False
 | _, _ => True
 }

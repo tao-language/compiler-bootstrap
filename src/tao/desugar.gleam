@@ -228,11 +228,26 @@ fn parameters_unpack(
   expr(exports, match_expr)
 }
 
-/// A function as `fix name. lam __args => match __args { | strict(params) => body }`
-/// (the `fix` is elided by Core when the name is unused).
+/// A function as `fix name. <quantifiers>. lam __args => ...` (the `fix` is elided when the name is unused); implicit parameters become nested `for` binders so they are in scope for the parameter annotations.
 fn function(
   exports: List(#(String, List(String))),
   opt_fun_name: Option(String),
+  implicits: tao.Parameters,
+  params: tao.Parameters,
+  opt_returns: Option(tao.Type),
+  body: tao.Expr,
+  span: Span,
+  trace: Option(String),
+) -> core.Expr {
+  let core_fun = function_inner(exports, implicits, params, opt_returns, body, span, trace)
+  case opt_fun_name {
+    Some(fun_name) -> core.fix(fun_name, core_fun, span)
+    None -> core_fun
+  }
+}
+
+fn function_inner(
+  exports: List(#(String, List(String))),
   implicits: tao.Parameters,
   params: tao.Parameters,
   opt_returns: Option(tao.Type),
@@ -255,14 +270,22 @@ fn function(
           core.ann(core_body, core_body_type, returns.span)
         }
       }
-      let core_fun =
-        core.Expr(core.Lam(#(param_name, None), core_body), span, trace)
-      case opt_fun_name {
-        Some(fun_name) -> core.fix(fun_name, core_fun, span)
-        None -> core_fun
+      core.Expr(core.Lam(#(param_name, None), core_body), span, trace)
+    }
+    // One `for` quantifier per implicit type variable; an unannotated
+    // implicit gets a fresh hole in `infer_for`.
+    #([first, ..rest], tail) -> {
+      case first {
+        #(tao.Pattern(tao.PVar(name), _), #(opt_type, _)) -> {
+          let inner =
+            function_inner(exports, #(rest, tail), params, opt_returns, body, span, None)
+          let core_type = opt_expr(exports, opt_type)
+          core.for(#(name, core_type), inner, span)
+        }
+        _ -> todo as "error: implicit parameter must be a plain type variable"
       }
     }
-    _ -> todo
+    _ -> todo as "error: implicit parameter must be a plain type variable"
   }
 }
 

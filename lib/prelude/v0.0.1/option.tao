@@ -2,3 +2,12 @@ type Option(a) {
 | Some(a)
 | None
 }
+
+fn _or<a>(opt: Option(a), default: a) -> a
+= match opt {
+| Some(x) => x
+| None => default
+}
+
+>>> _or(Some(10), 20)   10
+>>> _or(None, 20)       20

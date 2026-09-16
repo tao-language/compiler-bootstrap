@@ -27,6 +27,24 @@ import utils/list_utils.{at}
 /// possible. Anything depending on a hole or a variable is preserved as
 /// a *neutral* value so it re-evaluates correctly once holes are solved.
 pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
+  eval_rec(ffi, env, term, 0)
+}
+
+// Bounds the eval↔quote cycle that never terminates on self-referential
+// types (see docs/implicit-args.md, Limitations).
+const max_depth = 10000
+
+const depth_exceeded =
+  "error: the compiler hit a deeply recursive type while simplifying (recursive implicit function types are not supported yet; see docs/implicit-args.md)"
+
+fn eval_rec(ffi: FFI, env: Env, term: Term, depth: Int) -> Value {
+  case depth > max_depth {
+    True -> panic as depth_exceeded
+    False -> eval_step(ffi, env, term, depth)
+  }
+}
+
+fn eval_step(ffi: FFI, env: Env, term: Term, depth: Int) -> Value {
   case term {
     tm.Typ(universe) -> v.Typ(universe)
     tm.Hole(id) -> v.hole_open(env, id)
@@ -37,47 +55,47 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
         Some(value) -> value
         None -> v.Err
       }
-    tm.Ctr(tag, arg) -> v.Ctr(tag, eval(ffi, env, arg))
+    tm.Ctr(tag, arg) -> v.Ctr(tag, eval_rec(ffi, env, arg, depth + 1))
     tm.Rcd(fields, tail) -> {
       let fields_val =
         list.map(fields, fn(field) {
           let #(name, #(term, default)) = field
-          let value = eval(ffi, env, term)
-          let default_val = option.map(default, eval(ffi, env, _))
+          let value = eval_rec(ffi, env, term, depth + 1)
+          let default_val = option.map(default, fn(d) { eval_rec(ffi, env, d, depth + 1) })
           #(name, #(value, default_val))
         })
-      let tail_val = option.map(tail, eval(ffi, env, _))
+      let tail_val = option.map(tail, fn(t) { eval_rec(ffi, env, t, depth + 1) })
       v.Rcd(fields_val, tail_val)
     }
     tm.Call(name, ret, arg) -> {
-      let ret_val = eval(ffi, env, ret)
-      let arg_val = eval(ffi, env, arg)
+      let ret_val = eval_rec(ffi, env, ret, depth + 1)
+      let arg_val = eval_rec(ffi, env, arg, depth + 1)
       do_call(ffi, name, ret_val, arg_val)
     }
-    tm.Ann(term, _) -> eval(ffi, env, term)
+    tm.Ann(term, _) -> eval_rec(ffi, env, term, depth + 1)
     tm.For(#(name, param), body) -> {
-      let param_val = eval(ffi, env, param)
+      let param_val = eval_rec(ffi, env, param, depth + 1)
       v.For(env, #(name, param_val), body)
     }
     tm.Lam(#(name, param), body) -> {
-      let param_val = eval(ffi, env, param)
+      let param_val = eval_rec(ffi, env, param, depth + 1)
       v.Lam(env, #(name, param_val), body)
     }
     tm.Pi(#(name, domain), codomain) -> {
-      let domain_val = eval(ffi, env, domain)
+      let domain_val = eval_rec(ffi, env, domain, depth + 1)
       v.Pi(env, #(name, domain_val), codomain)
     }
     tm.Fix(name, body) -> v.Fix(env, name, body)
     tm.App(fun, arg) -> {
-      let fun_val = eval(ffi, env, fun)
-      let arg_val = eval(ffi, env, arg)
-      do_app(ffi, fun_val, arg_val)
+      let fun_val = eval_rec(ffi, env, fun, depth + 1)
+      let arg_val = eval_rec(ffi, env, arg, depth + 1)
+      do_app_rec(ffi, fun_val, arg_val, depth + 1)
     }
     tm.TypeDef(tm.TypeDefinition(params, arg, variants)) -> {
       let param_vals =
         list.map(params, fn(param) {
           let #(name, typ) = param
-          #(name, eval(ffi, env, typ))
+          #(name, eval_rec(ffi, env, typ, depth + 1))
         })
       let p_env = v.env_push(env, list.length(params))
       let variant_vals =
@@ -86,15 +104,15 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
           let vparam_vals =
             list.map(vparams, fn(param) {
               let #(name, typ) = param
-              #(name, eval(ffi, p_env, typ))
+              #(name, eval_rec(ffi, p_env, typ, depth + 1))
             })
           #(tag, v.Variant(vparam_vals, varg, vret))
         })
       v.TypeDef(env, v.TypeDefinition(param_vals, arg, variant_vals))
     }
     tm.Match(arg, cases) -> {
-      let arg_val = eval(ffi, env, arg)
-      do_match(ffi, env, arg_val, cases)
+      let arg_val = eval_rec(ffi, env, arg, depth + 1)
+      do_match_rec(ffi, env, arg_val, cases, depth + 1)
     }
     tm.Err -> v.Err
   }
@@ -103,17 +121,21 @@ pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
 /// Apply a value to an argument. Neutral function heads stay neutral
 /// (`NApp`); `For`/`Lam` β-reduce; `Fix` feeds itself as the argument.
 pub fn do_app(ffi: FFI, fun_val: Value, arg_val: Value) -> Value {
+  do_app_rec(ffi, fun_val, arg_val, 0)
+}
+
+fn do_app_rec(ffi: FFI, fun_val: Value, arg_val: Value, depth: Int) -> Value {
   case fun_val {
     // Neutral application
     v.Neut(neut_fun) -> v.app(neut_fun, arg_val)
     // Instantiation
-    v.For(env, _, body) -> eval(ffi, [arg_val, ..env], body)
+    v.For(env, _, body) -> eval_rec(ffi, [arg_val, ..env], body, depth + 1)
     // Lambda application: β-reduction
-    v.Lam(env, _, body) -> eval(ffi, [arg_val, ..env], body)
+    v.Lam(env, _, body) -> eval_rec(ffi, [arg_val, ..env], body, depth + 1)
     // Recursive function application
     v.Fix(env, _, body) -> {
-      let body_val = eval(ffi, [fun_val, ..env], body)
-      do_app(ffi, body_val, arg_val)
+      let body_val = eval_rec(ffi, [fun_val, ..env], body, depth + 1)
+      do_app_rec(ffi, body_val, arg_val, depth + 1)
     }
     // Not a function
     _ -> v.Err
@@ -162,8 +184,18 @@ pub fn do_match(
   arg_val: Value,
   cases: List(Case),
 ) -> Value {
-  case do_match_case_list(ffi, env, arg_val, cases) {
-    MatchAccept(#(case_, env)) -> eval(ffi, env, case_.body)
+  do_match_rec(ffi, env, arg_val, cases, 0)
+}
+
+fn do_match_rec(
+  ffi: FFI,
+  env: Env,
+  arg_val: Value,
+  cases: List(Case),
+  depth: Int,
+) -> Value {
+  case do_match_case_list(ffi, env, arg_val, cases, depth) {
+    MatchAccept(#(case_, env)) -> eval_rec(ffi, env, case_.body, depth + 1)
     MatchReject -> v.Err
     MatchNeutral -> v.match(env, arg_val, cases)
   }
@@ -177,13 +209,14 @@ fn do_match_case_list(
   env: Env,
   arg_val: Value,
   cases: List(Case),
+  depth: Int,
 ) -> MatchResult(#(Case, Env)) {
   case cases {
     [] -> MatchReject
     [case_, ..cases] ->
-      case do_match_case(ffi, env, arg_val, case_) {
+      case do_match_case(ffi, env, arg_val, case_, depth) {
         MatchAccept(env) -> MatchAccept(#(case_, env))
-        MatchReject -> do_match_case_list(ffi, env, arg_val, cases)
+        MatchReject -> do_match_case_list(ffi, env, arg_val, cases, depth)
         MatchNeutral -> MatchNeutral
       }
   }
@@ -196,12 +229,13 @@ fn do_match_case(
   env: Env,
   arg_val: Value,
   case_: Case,
+  depth: Int,
 ) -> MatchResult(Env) {
   case match_pattern(case_.pattern, arg_val) {
     MatchAccept(bindings) -> {
       let env = list.append(bindings, env)
       case case_.guard {
-        Some(guard) -> do_match_guard(ffi, env, guard)
+        Some(guard) -> do_match_guard(ffi, env, guard, depth)
         None -> MatchAccept(env)
       }
     }
@@ -216,9 +250,10 @@ fn do_match_guard(
   ffi: FFI,
   env: Env,
   guard: #(Term, Pattern),
+  depth: Int,
 ) -> MatchResult(Env) {
   let #(guard_term, guard_pattern) = guard
-  let guard_value = eval(ffi, env, guard_term)
+  let guard_value = eval_rec(ffi, env, guard_term, depth + 1)
   case match_pattern(guard_pattern, guard_value) {
     MatchAccept(bindings) -> MatchAccept(list.append(bindings, env))
     MatchReject -> MatchReject
