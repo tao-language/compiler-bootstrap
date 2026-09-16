@@ -80,7 +80,6 @@ pub fn tao_factorial_test() {
       s,
     )
   }
-  io.println("\n")
   let ctx =
     Context(..new_ctx, ffi: ffi.build)
     |> context.push_var(op("-", "sub"))
