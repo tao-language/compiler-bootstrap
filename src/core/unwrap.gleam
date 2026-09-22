@@ -2,8 +2,6 @@ import core/context.{type Subst}
 import core/eval
 import core/ffi.{type FFI}
 import core/quote
-import core/step.{step}
-import core/trace
 import core/value.{type Neut, type Value} as v
 import gleam/int
 import gleam/list
@@ -12,7 +10,6 @@ import gleam/option.{None, Some}
 /// Looks up a hole in the substitution table,
 /// recursively stripping away solved wrappers.
 pub fn unwrap(ffi: FFI, subst: Subst, value: Value) -> Value {
-  step("unwrap:unwrap")
   unwrap_seen(ffi, subst, value, [])
 }
 
@@ -24,7 +21,6 @@ pub fn unwrap_seen(
   value: Value,
   seen: List(Int),
 ) -> Value {
-  step("unwrap:unwrap_seen")
   case value {
     v.Neut(neut) -> unwrap_neut(ffi, subst, neut, seen)
     _ -> value
@@ -37,7 +33,6 @@ pub fn unwrap_neut(
   neut: Neut,
   seen: List(Int),
 ) -> Value {
-  step("unwrap:unwrap_neut")
   case neut {
     v.NVar(level) -> v.var(level)
     v.NHole(env, None) -> v.hole_open(env, None)
@@ -51,7 +46,6 @@ pub fn unwrap_neut(
             // may contain bindings (pattern variables, quantifier
             // parameters) absent from the hole's shorter captured env.
             Ok(#(solve_env, solution)) -> {
-              trace.anchor(id, env, solve_env)
               unwrap_seen(ffi, subst, solution, [id, ..seen])
               |> quote.normalize_value(ffi, solve_env, _)
             }
@@ -92,7 +86,6 @@ pub fn unwrap_neut(
 /// The largest `NVar` level occurring in a value (quantifier bodies are
 /// terms and carry indices, not levels). `-1` when the value is closed.
 pub fn max_neut_level(value: Value, max: Int) -> Int {
-  step("unwrap:max_neut_level")
   case value {
     v.Neut(v.NVar(level)) -> int.max(max, level)
     v.Neut(v.NApp(fun, arg)) ->

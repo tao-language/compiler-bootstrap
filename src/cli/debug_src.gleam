@@ -20,8 +20,12 @@ import tao/load
 import tao/parse as p
 import tao/tests
 
-@external(erlang, "tao_trace", "now")
-fn now() -> Int
+@external(erlang, "erlang", "system_time")
+fn now_ns() -> Int
+
+fn now() -> Int {
+  now_ns() / 1_000_000
+}
 
 pub fn debug_src(
   paths: List(String),
