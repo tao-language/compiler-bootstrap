@@ -6,6 +6,7 @@
 import cli/common
 import cli/test_filter.{TestSelection, filter_fn}
 import core/context
+import core/format
 import gleam/int
 import gleam/io
 import gleam/list
@@ -13,6 +14,7 @@ import gleam/string
 import simplifile
 import tao/ast.{type Module} as tao
 import tao/compile
+import tao/desugar
 import tao/tests
 
 /// The parsed arguments of `tao test`: the files to run tests for, any
@@ -152,13 +154,17 @@ fn run_tests_(
   list.map(summary.results, fn(res) {
     case res {
       tests.TestPass(name) -> io.println("✓ " <> strip_name(name))
-      tests.TestFail(name, got, _, _) -> {
+      tests.TestFail(name, got, _, tao_expect) -> {
+        let expect = desugar.pattern(tao_expect)
         io.println("✗ " <> strip_name(name))
-        io.println("  got: " <> common.fmt_value(ctx, got))
+        io.println("  expected: " <> format.pattern(expect, 80, 2))
+        io.println("  got:      " <> common.fmt_value(ctx, got))
       }
-      tests.TestNeutral(name, got, _, _) -> {
+      tests.TestNeutral(name, got, _, tao_expect) -> {
+        let expect = desugar.pattern(tao_expect)
         io.println("? " <> strip_name(name))
-        io.println("  got: " <> common.fmt_value(ctx, got))
+        io.println("  expected: " <> format.pattern(expect, 80, 2))
+        io.println("  got:      " <> common.fmt_value(ctx, got))
       }
     }
   })
