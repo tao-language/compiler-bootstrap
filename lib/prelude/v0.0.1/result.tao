@@ -2,3 +2,12 @@ type Result(value, error) {
 | Ok(value)
 | Err(error)
 }
+
+fn _or<a, e>(result: Result(a, e), default: a) -> a
+= match result {
+| Ok(value) => value
+| Err(_) => default
+}
+
+// >>> _or(Ok(10), 20)   10
+// >>> _or(Err(10), 20)  20

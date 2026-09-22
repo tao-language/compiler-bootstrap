@@ -3,8 +3,8 @@ type Option(a) {
 | None
 }
 
-fn _or<a>(opt: Option(a), default: a) -> a
-= match opt {
+fn _or<a>(option: Option(a), default: a) -> a
+= match option {
 | Some(x) => x
 | None => default
 }
