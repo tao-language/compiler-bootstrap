@@ -3,6 +3,9 @@
 build/
 erl_crash.dump
 
+# profiler
+profiler/
+
 # qwen-code
 .qwen/
 
