@@ -1,7 +1,11 @@
 import prelude/bool
+import prelude/option
 
 fn (or) {
 | bool._or(Bool, Bool)
+| option._or(Option(_), _)
 }
 
 >>> True or False   True
+>>> Some(1) or 2    1
+>>> None    or 2    2
