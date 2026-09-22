@@ -105,11 +105,14 @@ pub fn exports(
   })
 }
 
-/// A name is public if it can be imported from a module. Externs (`@…`),
-/// private names (`_…`) and tests (`>>> …`) are not importable.
+/// A name is importable from a module. Externs (`@…`) and tests
+/// (`>>> …`) are not importable. Underscore names (`_…`, e.g. the
+/// prelude's `_or`) *are* importable: the prelude exposes them to every
+/// module via the implicit prelude import, and user modules may expose
+/// them the same way. (Cross-package restriction is a planned
+/// post-process, not enforced yet.)
 pub fn is_public_name(name: String) -> Bool {
   case name {
-    "_" <> _ -> False
     "@" <> _ -> False
     ">>> " <> _ -> False
     _ -> True

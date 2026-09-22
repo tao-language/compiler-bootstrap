@@ -120,6 +120,7 @@ pub fn debug_src(
       let #(test_defs, ctx) = compile.tests(ctx, [#("scratch", stmts)])
       let results =
         list.map(test_defs, fn(t) {
+          io.println("term: " <> format.term(names, t.term, width, 2))
           let res = tests.run(ctx, t)
           case res {
             tests.TestPass(name) -> io.println("✓ " <> name)

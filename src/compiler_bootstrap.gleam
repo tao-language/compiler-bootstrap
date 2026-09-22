@@ -1,5 +1,4 @@
 /// Compiler Bootstrap CLI — entry point
-import apitest
 import argv.{Argv}
 import cli/check.{check}
 import cli/debug_core.{debug_core}
@@ -21,7 +20,6 @@ const help = "Tao compiler bootstrap\n\nUsage:\n  tao check [paths...]          
 /// The CLI entry point. Commands: `check`, `run`, `test`, `debug-expr`,
 /// `debug-file`, `debug-core`, `--help`. The REPL is TODO.
 pub fn main() -> Nil {
-  apitest.maybe()
   let Argv(arguments: args, ..) = argv.load()
   case args {
     [] -> todo as "TODO: CLI repl"

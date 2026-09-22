@@ -46,14 +46,14 @@ pub fn unwrap_neut(
         True -> v.hole(env, id)
         False ->
           case list.key_find(subst, id) {
-            // The solution was computed in (possibly) a different
-            // environment, so quote it against *this* hole's captured
-            // env before re-evaluating: that turns the solution's
-            // variable levels into indices valid here.
+            // The solution's variable levels address the frame the
+            // solution was produced in (the stored solve env), which
+            // may contain bindings (pattern variables, quantifier
+            // parameters) absent from the hole's shorter captured env.
             Ok(#(solve_env, solution)) -> {
               trace.anchor(id, env, solve_env)
               unwrap_seen(ffi, subst, solution, [id, ..seen])
-              |> quote.normalize_value(ffi, env, _)
+              |> quote.normalize_value(ffi, solve_env, _)
             }
             Error(Nil) -> v.hole(env, id)
           }

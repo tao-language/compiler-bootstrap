@@ -154,7 +154,7 @@ fn arguments_pat(
   core.prcd(core_fields, core_tail, span)
 }
 
-fn parameters_type(
+pub fn parameters_type(
   exports: List(#(String, List(String))),
   params: tao.Parameters,
   span: Span,

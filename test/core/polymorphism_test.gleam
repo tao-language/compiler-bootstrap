@@ -72,7 +72,6 @@ pub fn polymorphism_monomorphic_declaration_test() {
   let ctx = new_ctx
   let env = []
   let fn_expr = monomorphic_expr()
-  let fn_val = monomorphic_val(env)
   // Declarations (module skeletons)
   let #(value_id, ctx) = context.new_hole(ctx)
   let #(type_id, ctx) = context.new_hole(ctx)
@@ -95,10 +94,19 @@ pub fn polymorphism_monomorphic_declaration_test() {
   // TODO: The Pi-parameter name should be "x", not "$4"
   // This comes from infer_app on neutral function type
   // Since we use DeBruijn indices, it's not incorrect, but name "x" is more readable
+  // The resolution re-anchors against the *solve* frame (see `unwrap`):
+  // the module type hole is solved during the `mod.fun` pattern check,
+  // while the pattern alias binding is still in scope, so the resolved
+  // Pi keeps the solve frame `[alias, mod]` (the `mod` entry is the
+  // record that still carries the unsolved value hole).
+  let mod_env = [v.var(1), mod_decl]
   let expected_mod_type =
-    v.rcd([#("fun", v.Pi(env, #("__4", v.int_t), tm.int_t))])
+    v.rcd([#("fun", v.Pi(mod_env, #("__4", v.int_t), tm.int_t))])
   assert resolve.value(ctx.ffi, ctx.subst, mod_type) == expected_mod_type
   assert ctx.types == [#("mod", expected_mod_type)]
+  // The module *value* record is resolved through the value hole, whose
+  // solve frame is `[mod]` (the record that still carries the hole).
+  let fn_val = monomorphic_val([mod_decl])
   assert ctx.env == [v.rcd([#("fun", fn_val)])]
 }
 
@@ -133,7 +141,6 @@ pub fn polymorphism_polymorphic_declaration_test() {
   let env = []
   let fn_expr = polymorphic_expr()
   let fn_term = polymorphic_term()
-  let fn_val = polymorphic_val(env)
   // Declarations (module skeletons)
   let #(value_id, ctx) = context.new_hole(ctx)
   let mod_decl = v.rcd([#("fun", v.hole(env, value_id))])
@@ -156,8 +163,14 @@ pub fn polymorphism_polymorphic_declaration_test() {
   let ctx = unify(ctx, #(mod_decl, s), #(mod_val, s))
   let ctx = resolve.context(ctx)
   // Note that here we do get the "x" instead of some "$n" for the name.
+  // `mod_types` carries no holes, so resolution leaves it unchanged.
   assert resolve.value(ctx.ffi, ctx.subst, mod_type) == mod_types
   assert ctx.types == [#("mod", mod_types)]
+  // The module *value* record is resolved through the value hole: the
+  // resolution re-anchors against the *solve* frame (see `unwrap`), so
+  // the resolved For keeps the frame `[mod]` of the moment the hole was
+  // solved (the entry is the record that still carries the unsolved hole).
+  let fn_val = polymorphic_val([mod_decl])
   assert ctx.env == [v.rcd([#("fun", fn_val)])]
   // After definitions, the application term should be solved.
   let app_term = resolve.term(ctx.ffi, ctx.subst, ctx.env, term)
