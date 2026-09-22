@@ -97,3 +97,206 @@ pub fn resolve_term_hole_solution_frame_fragility_test() {
   // Var(1 - 0 - 1) = Var(0): a valid, non-negative index.
   assert resolve.term(ffi, subst, [], hole_term) == tm.Var(0)
 }
+
+// ============================================================================
+// Holes inside binder bodies (frame handling)
+// ============================================================================
+
+/// A hole inside a `For` body resolves against the substitution's
+/// captured env, and the body's de Bruijn frame is preserved: the
+/// sibling binder slot (Var(0)) is untouched.
+pub fn resolve_term_hole_in_for_body_test() {
+  let ffi = ffi.build
+  let subst = [#(0, #([], v.int_t))]
+  let term = tm.For(#("a", tm.Typ(0)), tm.App(tm.Hole(Some(0)), tm.Var(0)))
+  assert resolve.term(ffi, subst, [], term)
+    == tm.For(#("a", tm.Typ(0)), tm.App(tm.int_t, tm.Var(0)))
+}
+
+/// A hole inside a `Lam` body resolves the same way, with the lambda's
+/// parameter slot (Var(0)) untouched.
+pub fn resolve_term_hole_in_lam_body_test() {
+  let ffi = ffi.build
+  let subst = [#(0, #([], v.int_t))]
+  let term = tm.Lam(#("x", tm.Typ(0)), tm.Hole(Some(0)))
+  assert resolve.term(ffi, subst, [], term)
+    == tm.Lam(#("x", tm.Typ(0)), tm.int_t)
+}
+
+/// A hole inside a match case body resolves with the case's pattern
+/// bindings accounted for in the frame.
+pub fn resolve_term_hole_in_match_case_test() {
+  let ffi = ffi.build
+  let subst = [#(0, #([], v.int_t))]
+  let term =
+    tm.Match(tm.Var(0), [tm.Case(tm.pvar("n"), None, tm.Hole(Some(0)))])
+  assert resolve.term(ffi, subst, [v.int(1)], term)
+    == tm.Match(tm.Var(0), [tm.Case(tm.pvar("n"), None, tm.int_t)])
+}
+
+/// A hole inside a quantifier body of a *value* resolves when the value
+/// is resolved: the For keeps its captured env and parameter, the body
+/// term gets the hole replaced.
+pub fn resolve_value_hole_in_for_body_test() {
+  let ffi = ffi.build
+  let subst = [#(0, #([], v.int_t))]
+  let val = v.For([], #("a", v.Typ(0)), tm.Hole(Some(0)))
+  assert resolve.value(ffi, subst, val)
+    == v.For([], #("a", v.Typ(0)), tm.int_t)
+}
+
+// ============================================================================
+// Error resolution
+// ============================================================================
+
+/// `InfiniteType` errors resolve their carried value the same way.
+pub fn resolve_error_infinite_type_test() {
+  let ffi = ffi.build
+  let subst = [#(0, #([], v.int_t))]
+  let err = e.Error(e.InfiniteType(4, v.hole([], 0)), s1, [])
+  let resolved = resolve.error(ffi, subst, [], err)
+  assert resolved.data == e.InfiniteType(4, v.int_t)
+}
+
+/// `TypeMismatch` errors resolve both sides; never-solved holes stay
+/// holes in the displayed value.
+pub fn resolve_error_type_mismatch_test() {
+  let ffi = ffi.build
+  let subst = [#(0, #([], v.int_t))]
+  let err = e.Error(e.TypeMismatch(#(v.hole([], 0), s1), #(v.hole([], 9), s2)), s1, [])
+  let resolved = resolve.error(ffi, subst, [], err)
+  assert resolved.data
+    == e.TypeMismatch(#(v.int_t, s1), #(v.hole([], 9), s2))
+}
+
+// ============================================================================
+// Discharge: leftover deferred constraints at context finalization
+// ============================================================================
+
+/// A leftover `NMatch` vs concrete constraint is discharged with exists
+/// semantics: if *some* case body has the expected type, the constraint
+/// passes without error (a neutral dispatch may select any case).
+pub fn discharge_neutral_match_exists_semantics_test() {
+  let ffi = ffi.build
+  let env = v.env_push([], 1)
+  // A neutral match carries the case body *types* (the motive), not
+  // the bodies: here both cases have type %Int.
+  let nmatch =
+    v.match(
+      env,
+      v.Neut(v.NVar(0)),
+      [
+        tm.Case(tm.pint(1), None, tm.int_t),
+        tm.Case(tm.pvar("n"), None, tm.int_t),
+      ],
+    )
+  let s = span.Span("", 3, 3, 3, 3)
+  let ctx0 =
+    Context(
+      ..new_ctx,
+      ffi: ffi,
+      deferred: [
+        #(#(nmatch, s), #(v.int_t, s)),
+      ],
+    )
+  let ctx = resolve.context(ctx0)
+  // Some case body type is %Int: the constraint is satisfied. (The
+  // deferred queue itself is not cleared by `discharge` — it is
+  // terminal state at context finalization; pinned.)
+  assert ctx.errors == []
+}
+
+/// ...but when *no* case body has the expected type, a `TypeMismatch`
+/// against the first body is reported.
+pub fn discharge_neutral_match_skips_incompatible_case_test() {
+  let ffi = ffi.build
+  let env = v.env_push([], 1)
+  // Case body types %Int and %Float vs expected %Float: the first case
+  // is incompatible (its error is discarded) and the second matches,
+  // so exists semantics reports no error.
+  let nmatch =
+    v.match(
+      env,
+      v.Neut(v.NVar(0)),
+      [
+        tm.Case(tm.pint(1), None, tm.int_t),
+        tm.Case(tm.pvar("n"), None, tm.float_t),
+      ],
+    )
+  let s = span.Span("", 3, 3, 3, 3)
+  let ctx0 =
+    Context(
+      ..new_ctx,
+      ffi: ffi,
+      deferred: [
+        #(#(nmatch, s), #(v.float_t, s)),
+      ],
+    )
+  let ctx = resolve.context(ctx0)
+  assert ctx.errors == []
+}
+
+/// ...and when *no* case body type matches the expected value, a
+/// `TypeMismatch` against the first body type is reported (pinned
+/// behavior: the admitted exists-semantics unsoundness only goes one
+/// way — incompatible bodies are not silently dropped when no case
+/// fits).
+pub fn discharge_neutral_match_no_case_fits_test() {
+  let ffi = ffi.build
+  let env = v.env_push([], 1)
+  let nmatch =
+    v.match(
+      env,
+      v.Neut(v.NVar(0)),
+      [
+        tm.Case(tm.pint(1), None, tm.int_t),
+        tm.Case(tm.pvar("n"), None, tm.int_t),
+      ],
+    )
+  let s = span.Span("", 3, 3, 3, 3)
+  let ctx0 =
+    Context(
+      ..new_ctx,
+      ffi: ffi,
+      deferred: [
+        #(#(nmatch, s), #(v.float_t, s)),
+      ],
+    )
+  let ctx = resolve.context(ctx0)
+  assert case ctx.errors {
+    [e.Error(e.TypeMismatch(_, _), _, _), ..] -> True
+    _ -> False
+  }
+}
+
+/// A leftover `NCall` vs concrete constraint unifies the call's declared
+/// return type with the expected value; a matching return type passes.
+pub fn discharge_neutral_call_return_type_test() {
+  let ffi = ffi.build
+  let s = span.Span("", 3, 3, 3, 3)
+  let ncall = v.call("ext", v.int_t, v.int(1))
+  let ctx0 =
+    Context(
+      ..new_ctx,
+      ffi: ffi,
+      deferred: [#(#(ncall, s), #(v.int_t, s))],
+    )
+  let ctx = resolve.context(ctx0)
+  assert ctx.errors == []
+}
+
+/// A leftover `NVar` vs concrete constraint is accepted silently: a
+/// rigid variable's binding type is a dependent fact the value unifier
+/// cannot decide (pinned admitted unsoundness).
+pub fn discharge_rigid_var_accepted_test() {
+  let ffi = ffi.build
+  let s = span.Span("", 3, 3, 3, 3)
+  let ctx0 =
+    Context(
+      ..new_ctx,
+      ffi: ffi,
+      deferred: [#(#(v.var(0), s), #(v.int_t, s))],
+    )
+  let ctx = resolve.context(ctx0)
+  assert ctx.errors == []
+}

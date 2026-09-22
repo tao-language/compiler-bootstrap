@@ -9,7 +9,7 @@
 /// Trivial data-pass-through tests (Lit, LitT, Typ, Ctr, Rcd, Call)
 /// have been removed — they only verify data flows through, not logic.
 import core/ast
-import core/context.{new_ctx, push_var}
+import core/context.{new_ctx, push_var, push_var_opt}
 import core/error as e
 import core/eval.{eval}
 import core/infer.{check, infer}
@@ -731,4 +731,203 @@ pub fn infer_match_guard_fails_concrete_silent_error_test() {
   // to the %error bottom
   assert term == tm.Err
   assert type_ == v.Err
+}
+
+// ============================================================================
+//  Ann (checked sub-term)
+// ============================================================================
+
+/// An annotation that agrees with the term's type: the term is returned
+/// unchanged and the *annotation's* type is the result.
+pub fn infer_ann_agree_test() {
+  let ctx0 = context.push_var_opt(new_ctx, #("x", Some(v.int(42)), Some(v.int_t)))
+  let ast = ast.ann(ast.var("x", s), ast.int_t(s), s)
+  let #(term, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  assert term == tm.Var(0)
+  assert type_ == v.int_t
+}
+
+/// An annotation that disagrees is a type mismatch, and the annotation
+/// (not the inferred type) is what the error compares against.
+pub fn infer_ann_mismatch_test() {
+  let ctx0 = context.push_var_opt(new_ctx, #("x", Some(v.int(42)), Some(v.int_t)))
+  let ast = ast.ann(ast.var("x", s), ast.float_t(s), s)
+  let #(_term, _type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors
+    == [
+      e.Error(
+        e.TypeMismatch(#(v.int_t, s), #(v.float_t, s)),
+        s,
+        [],
+      ),
+    ]
+}
+
+// ============================================================================
+//  Call
+// ============================================================================
+
+/// A call infers its declared return type evaluated in the current
+/// context; the argument is passed through unchanged.
+pub fn infer_call_test() {
+  let ctx0 = new_ctx
+  let ast =
+    ast.call(
+      "int_add",
+      ast.int_t(s),
+      ast.rcd_values([#("", ast.int(1, s)), #("", ast.int(2, s))], None, s),
+      s,
+    )
+  let #(term, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  assert term
+    == tm.Call("int_add", tm.int_t, tm.rcd([#("", tm.int(1)), #("", tm.int(2))]))
+  assert type_ == v.int_t
+}
+
+// ============================================================================
+//  Hole (explicit id)
+// ============================================================================
+
+/// A hole with an explicit id keeps that id (no fresh allocation) and
+/// gets a fresh type hole.
+pub fn infer_hole_explicit_id_test() {
+  let #(term, type_, ctx) = infer(new_ctx, ast.hole(42, s))
+  assert ctx.errors == []
+  assert term == tm.Hole(Some(42))
+  assert case type_ {
+    v.Neut(v.NHole(_, Some(0))) -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+//  Let (desugared App of Lam)
+// ============================================================================
+
+/// A let with a type annotation checks the value against it; the term
+/// is `(lam x: type => body) value` and the binding's type is carried
+/// in the lambda parameter.
+pub fn infer_let_typed_test() {
+  let ctx0 = context.push_var_opt(new_ctx, #("y", Some(v.int(1)), Some(v.int_t)))
+  let ast = ast.let_var(#("x", Some(ast.int_t(s)), ast.var("y", s)), ast.var("x", s), s)
+  let #(term, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  assert term == tm.App(tm.Lam(#("x", tm.int_t), tm.Var(0)), tm.Var(0))
+  assert type_ == v.int_t
+}
+
+/// A let without annotation infers the value's type, and the binding is
+/// carried in the lambda parameter with that inferred (quoted) type.
+pub fn infer_let_untyped_test() {
+  let pi = v.Pi([], #("x", v.int_t), tm.int_t)
+  let ctx0 = context.push_var_opt(new_ctx, #("y", Some(pi), Some(pi)))
+  let ast = ast.let_var(#("x", None, ast.var("y", s)), ast.var("x", s), s)
+  let #(term, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  assert term
+    == tm.App(
+      tm.Lam(#("x", tm.Pi(#("x", tm.int_t), tm.int_t)), tm.Var(0)),
+      tm.Var(0),
+    )
+  // x is the function: the let has y's type.
+  assert type_ == pi
+}
+
+/// Untyped let with an argument: the inferred function type is carried
+/// in the binding, so the body can apply the binding (and unification
+/// checks the argument against the domain).
+pub fn infer_let_untyped_app_test() {
+  let pi = v.Pi([], #("x", v.int_t), tm.int_t)
+  let ctx0 = context.push_var_opt(new_ctx, #("y", Some(pi), Some(pi)))
+  let ast = ast.let_var(
+    #("x", None, ast.var("y", s)),
+    ast.app(ast.var("x", s), ast.int(1, s), s),
+    s,
+  )
+  let #(term, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  assert term
+    == tm.App(
+      tm.Lam(#("x", tm.Pi(#("x", tm.int_t), tm.int_t)), tm.App(tm.Var(0), tm.int(1))),
+      tm.Var(0),
+    )
+  assert type_ == v.int_t
+}
+
+// ============================================================================
+//  Rcd with default / missing fields
+// ============================================================================
+
+/// A record with a missing field value gets a fresh hole for that field
+/// (both in the term and in the field's type).
+pub fn infer_rcd_missing_field_hole_test() {
+  let ctx0 = context.push_var_opt(new_ctx, #("x", Some(v.int(9)), Some(v.int_t)))
+  let fields = [#("a", #(Some(ast.var("x", s)), None)), #("b", #(None, None))]
+  let ast = ast.rcd(fields, None, s)
+  let #(term, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  assert term
+    == tm.rcd_open([#("a", tm.Var(0)), #("b", tm.Hole(Some(0)))], None)
+  assert case type_ {
+    v.Rcd([#("a", #(a, None)), #("b", #(b, _))], None) ->
+      a == v.int_t && case b {
+        v.Neut(v.NHole(_, Some(1))) -> True
+        _ -> False
+      }
+    _ -> False
+  }
+}
+
+// ============================================================================
+//  App with nested implicit arguments
+// ============================================================================
+
+/// Applying a function with two nested `For` quantifiers instantiates
+/// *both* with fresh holes (left to right, innermost last): the term is
+/// `f(h0)(h1)(arg)` and unification solves the holes the argument
+/// constrains.
+pub fn infer_app_two_implicit_test() {
+  // f : for<a>. for<b>. pi(x: b) -> b, value = for<a>. for<b>. lam(x). x
+  let f_val =
+    v.For(
+      [],
+      #("a", v.Typ(0)),
+      tm.For(#("b", tm.Typ(0)), tm.Lam(#("x", tm.Var(0)), tm.Var(0))),
+    )
+  let f_type =
+    v.For(
+      [],
+      #("a", v.Typ(0)),
+      tm.For(#("b", tm.Typ(0)), tm.Pi(#("x", tm.Var(0)), tm.Var(0))),
+    )
+  let ctx0 = context.push_var_opt(new_ctx, #("f", Some(f_val), Some(f_type)))
+  let ast = ast.app(ast.var("f", s), ast.int(1, s), s)
+  let #(term, type_, ctx) = infer(ctx0, ast)
+  assert ctx.errors == []
+  // b is constrained by the argument (solved to %Int); a is not
+  // constrained (stays a hole). The term keeps the unsolved holes. The
+  // return type is the argument's type hole (the codomain names the
+  // argument slot): solved, so it unwraps to %Int.
+  assert term
+    == tm.App(tm.App(tm.App(tm.Var(0), tm.Hole(Some(0))), tm.Hole(Some(1))), tm.int(1))
+  assert unwrap(ctx.ffi, ctx.subst, type_) == v.int_t
+}
+
+// ============================================================================
+//  Match on a concrete scrutinee (eager reduction)
+// ============================================================================
+
+/// A match on a concrete scrutinee reduces eagerly during inference:
+/// the result term is the selected case's body, not a match.
+pub fn infer_match_concrete_reduces_test() {
+  let cases = [
+    ast.Case(ast.pint(0, s), None, ast.int(10, s)),
+    ast.Case(ast.pvar("n", s), None, ast.int(20, s)),
+  ]
+  let #(term, type_, ctx) = infer(new_ctx, ast.match(ast.int(1, s), cases, s))
+  assert ctx.errors == []
+  assert term == tm.int(20)
+  assert type_ == v.int_t
 }

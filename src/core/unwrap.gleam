@@ -2,13 +2,17 @@ import core/context.{type Subst}
 import core/eval
 import core/ffi.{type FFI}
 import core/quote
+import core/step.{step}
+import core/trace
 import core/value.{type Neut, type Value} as v
+import gleam/int
 import gleam/list
 import gleam/option.{None, Some}
 
 /// Looks up a hole in the substitution table,
 /// recursively stripping away solved wrappers.
 pub fn unwrap(ffi: FFI, subst: Subst, value: Value) -> Value {
+  step("unwrap:unwrap")
   unwrap_seen(ffi, subst, value, [])
 }
 
@@ -20,6 +24,7 @@ pub fn unwrap_seen(
   value: Value,
   seen: List(Int),
 ) -> Value {
+  step("unwrap:unwrap_seen")
   case value {
     v.Neut(neut) -> unwrap_neut(ffi, subst, neut, seen)
     _ -> value
@@ -32,6 +37,7 @@ pub fn unwrap_neut(
   neut: Neut,
   seen: List(Int),
 ) -> Value {
+  step("unwrap:unwrap_neut")
   case neut {
     v.NVar(level) -> v.var(level)
     v.NHole(env, None) -> v.hole_open(env, None)
@@ -44,9 +50,11 @@ pub fn unwrap_neut(
             // environment, so quote it against *this* hole's captured
             // env before re-evaluating: that turns the solution's
             // variable levels into indices valid here.
-            Ok(#(_, solution)) ->
+            Ok(#(solve_env, solution)) -> {
+              trace.anchor(id, env, solve_env)
               unwrap_seen(ffi, subst, solution, [id, ..seen])
               |> quote.normalize_value(ffi, env, _)
+            }
             Error(Nil) -> v.hole(env, id)
           }
       }
@@ -78,5 +86,54 @@ pub fn unwrap_neut(
       let arg = unwrap_seen(ffi, subst, arg, seen)
       eval.do_call(ffi, name, ret, arg)
     }
+  }
+}
+
+/// The largest `NVar` level occurring in a value (quantifier bodies are
+/// terms and carry indices, not levels). `-1` when the value is closed.
+pub fn max_neut_level(value: Value, max: Int) -> Int {
+  step("unwrap:max_neut_level")
+  case value {
+    v.Neut(v.NVar(level)) -> int.max(max, level)
+    v.Neut(v.NApp(fun, arg)) ->
+      int.max(max_neut_level(v.Neut(fun), max), max_neut_level(arg, max))
+    v.Neut(v.NMatch(_, arg, _cases)) -> max_neut_level(arg, max)
+    v.Neut(v.NCall(_, ret, arg)) ->
+      int.max(max_neut_level(ret, max), max_neut_level(arg, max))
+    v.Neut(_other) -> max
+    v.Ctr(_tag, arg) -> max_neut_level(arg, max)
+    v.Rcd(fields, tail) -> {
+      let m =
+        list.fold(fields, max, fn(acc, field) {
+          let #(_, #(val, default)) = field
+          let acc = max_neut_level(val, acc)
+          case default {
+            Some(d) -> max_neut_level(d, acc)
+            None -> acc
+          }
+        })
+      case tail {
+        Some(t) -> max_neut_level(t, m)
+        None -> m
+      }
+    }
+    v.For(_, #(_, param), _body) -> max_neut_level(param, max)
+    v.Lam(_, #(_, param), _body) -> max_neut_level(param, max)
+    v.Pi(_, #(_, param), _body) -> max_neut_level(param, max)
+    v.TypeDef(_, v.TypeDefinition(params, _arg, variants)) -> {
+      let m =
+        list.fold(params, max, fn(acc, param) {
+          let #(_, typ) = param
+          max_neut_level(typ, acc)
+        })
+      list.fold(variants, m, fn(acc, variant) {
+        let #(_, v.Variant(vparams, _varg, _vret)) = variant
+        list.fold(vparams, acc, fn(acc2, param) {
+          let #(_, typ) = param
+          max_neut_level(typ, acc2)
+        })
+      })
+    }
+    _ -> max
   }
 }

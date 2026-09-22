@@ -188,6 +188,53 @@ pub fn parse_rcd_test() {
     ))
 }
 
+pub fn parse_rcd_two_fields_test() {
+  assert parse("{a: x, b: y}")
+    == Ok(ast.rcd_values(
+      [#("a", ast.var("x", s(1, 3, 1, 6))), #("b", ast.var("y", s(1, 9, 1, 12)))],
+      None,
+      s(1, 1, 1, 13),
+    ))
+}
+
+/// A field may carry only a default (the value is missing: inferred
+/// from a hole later).
+pub fn parse_rcd_default_only_test() {
+  assert parse("{a = 42}")
+    == Ok(ast.rcd(
+      [#("a", #(None, Some(ast.int(42, s(1, 4, 1, 8)))))],
+      None,
+      s(1, 1, 1, 9),
+    ))
+}
+
+/// Row tails: `..expr` names the tail, a bare `..` is the anonymous
+/// tail (an empty-name variable). Grammar limitation (pinned): a
+/// spread is only accepted as the *sole* record content — a tail
+/// following fields (or fields following a tail) is a syntax error,
+/// so record rows are built programmatically, not parsed.
+pub fn parse_rcd_tail_test() {
+  assert parse("{..t}")
+    == Ok(ast.rcd([], Some(ast.var("t", s(1, 2, 1, 5))), s(1, 1, 1, 6)))
+  assert parse("{..}")
+    == Ok(ast.rcd([], Some(ast.var("", s(1, 1, 1, 1))), s(1, 1, 1, 5)))
+}
+
+pub fn parse_rcd_tail_with_fields_rejected_test() {
+  assert case parse("{a: x, ..t}") {
+    Error(_) -> True
+    Ok(_) -> False
+  }
+  assert case parse("{a: x, ..}") {
+    Error(_) -> True
+    Ok(_) -> False
+  }
+  assert case parse("{..t, a: x}") {
+    Error(_) -> True
+    Ok(_) -> False
+  }
+}
+
 // ============================================================================
 // Ann
 // ============================================================================
@@ -292,6 +339,73 @@ pub fn parse_app_test() {
     ))
 }
 
+/// Arguments are full expressions: `f(g(x))` nests the application in
+/// the argument. Chained application `f(x)(y)` is *not* parsed (it is
+/// one application of `f` to the single expression `g(x)`).
+pub fn parse_app_nested_arg_test() {
+  assert parse("f(g(x))")
+    == Ok(ast.app(
+      ast.var("f", s(1, 1, 1, 2)),
+      ast.app(
+        ast.var("g", s(1, 2, 1, 4)),
+        ast.var("x", s(1, 4, 1, 6)),
+        s(1, 2, 1, 6),
+      ),
+      s(1, 1, 1, 6),
+    ))
+}
+
+/// Lambdas nest to the right: the body is a full expression.
+pub fn parse_lam_nested_test() {
+  assert parse("%lam(x) => %lam(y) => x")
+    == Ok(ast.lam(
+      #("x", None),
+      ast.lam(
+        #("y", None),
+        ast.var("x", s(1, 20, 1, 24)),
+        s(1, 9, 1, 24),
+      ),
+      s(1, 1, 1, 24),
+    ))
+}
+
+// ============================================================================
+// Unsupported sources (pinned: the Core parser rejects them today)
+//
+// `Match`, `Call` (builtins), `Err` and type definitions have no parser
+// rules in `core/parse` (see the commented-out alternatives in its
+// `expr` combinator): these sources are rejected with a syntax error.
+// If the elaborate/infer refactor extends the parser, these pins must
+// be updated to the new accepted shapes.
+// ============================================================================
+
+fn parse_rejects(source: String) -> Bool {
+  case parse(source) {
+    Error(_) -> True
+    Ok(_) -> False
+  }
+}
+
+pub fn parse_rejects_match_test() {
+  assert parse_rejects("%match x { | _ => y }")
+}
+
+pub fn parse_rejects_call_test() {
+  assert parse_rejects("@int_add(x)")
+}
+
+pub fn parse_rejects_err_test() {
+  assert parse_rejects("%error")
+}
+
+pub fn parse_rejects_empty_input_test() {
+  assert parse_rejects("")
+}
+
+pub fn parse_rejects_truncated_app_test() {
+  assert parse_rejects("f(x")
+}
+
 // ============================================================================
 // TypeDef
 // ============================================================================
@@ -310,6 +424,17 @@ pub fn parse_let_test() {
       ast.var("z", s(1, 14, 1, 17)),
       s(1, 1, 1, 17),
     ))
+}
+
+/// The type annotation in `let` is optional in the AST but the parser
+/// requires the colon token (`%let x: = y; z` form), so a let without
+/// a colon is rejected: pinned, since the elaborate step may rely on
+/// the parser's grammar.
+pub fn parse_let_requires_colon_test() {
+  assert case parse("%let x = y; z") {
+    Error(_) -> True
+    Ok(_) -> False
+  }
 }
 // ============================================================================
 // Match

@@ -814,3 +814,139 @@ pub fn unify_err_test() {
 //   assert unify(ctx0, #(a, s1), #(b, s2))
 //     == with_err(ctx0, e.TypeMismatch(#(a, s1), #(b, s2)))
 // }
+
+// ============================================================================
+// For (implicit argument) unification
+// ============================================================================
+
+/// Two identical `For` quantifiers unify without error: the parameter
+/// types are unified and the bodies are evaluated (with the parameter
+/// bound) and unified.
+pub fn unify_for_for_same_test() {
+  let a = v.For([], #("a", v.Typ(0)), tm.Pi(#("x", tm.Var(0)), tm.Var(0)))
+  let b = v.For([], #("a", v.Typ(0)), tm.Pi(#("x", tm.Var(0)), tm.Var(0)))
+  let ctx0 = Context(..new_ctx, ffi: [])
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx.errors == []
+}
+
+/// A `For` unified against a concrete (non-For) value instantiates the
+/// quantifier with a fresh hole, which the body's unification solves:
+/// `for<a: Type>. pi(x: a) -> a` vs `pi(x: Int) -> Int` leaves no error
+/// and solves the implicit hole to `%Int`.
+pub fn unify_for_instantiates_and_solves_test() {
+  let for_ = v.For([], #("a", v.Typ(0)), tm.Pi(#("x", tm.Var(0)), tm.Var(0)))
+  let pi = v.Pi([], #("x", v.int_t), tm.int_t)
+  let ctx0 = Context(..new_ctx, ffi: [])
+  let ctx = unify(ctx0, #(for_, s1), #(pi, s2))
+  assert ctx.errors == []
+  // The fresh instantiation hole (id 0) is solved to %Int.
+  let solved_to_int =
+    case list.key_find(ctx.subst, 0) {
+      Ok(#(_, solution)) -> solution == v.int_t
+      Error(_) -> False
+    }
+  assert solved_to_int
+}
+
+/// A `For` unified against an incompatible concrete value instantiates
+/// (fresh hole) and then fails on the body: the error is a mismatch
+/// between the instantiated body and the concrete value, with no
+/// leftover unsolved constraint hiding the failure.
+pub fn unify_for_incompatible_concrete_test() {
+  let for_ = v.For([], #("a", v.Typ(0)), tm.Pi(#("x", tm.Var(0)), tm.Var(0)))
+  let ctx0 = Context(..new_ctx, ffi: [])
+  let ctx = unify(ctx0, #(for_, s1), #(v.int_t, s2))
+  assert case ctx.errors {
+    [e.Error(e.TypeMismatch(_, _), _, _), ..] -> True
+    _ -> False
+  }
+}
+
+/// A `For` unified against a `Lam` instantiates the quantifier with a
+/// fresh hole: when the body's type is the parameter itself, the hole is
+/// solved to the Lam and no error is reported (a `For` unifies with any
+/// value its body can absorb through the instantiation hole).
+pub fn unify_for_vs_lam_instantiates_test() {
+  let a = v.For([], #("a", v.Typ(0)), tm.Var(0))
+  let b = v.Lam([], #("x", v.int_t), tm.Var(0))
+  let ctx0 = Context(..new_ctx, ffi: [])
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx.errors == []
+  let solved =
+    case list.key_find(ctx.subst, 0) {
+      Ok(#(_, solution)) -> solution
+      Error(_) -> v.Err
+    }
+  assert solved == b
+}
+
+/// A `Lam` and a `Pi` are distinct values (a term vs a type arrow) and
+/// do not unify.
+pub fn unify_lam_vs_pi_mismatch_test() {
+  let a = v.Lam([], #("x", v.int_t), tm.Var(0))
+  let b = v.Pi([], #("x", v.int_t), tm.int_t)
+  let ctx0 = Context(..new_ctx, ffi: [])
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert case ctx.errors {
+    [e.Error(e.TypeMismatch(_, _), _, _), ..] -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Fix / TypeDef unification
+// ============================================================================
+
+/// A `Fix` unified against a `Lam` is a mismatch (distinct values).
+pub fn unify_fix_vs_lam_mismatch_test() {
+  let a = v.Fix([], "f", tm.Var(0))
+  let b = v.Lam([], #("x", v.int_t), tm.Var(0))
+  let ctx0 = Context(..new_ctx, ffi: [])
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert case ctx.errors {
+    [e.Error(e.TypeMismatch(_, _), _, _), ..] -> True
+    _ -> False
+  }
+}
+
+/// Two type definitions unify when structurally identical...
+pub fn unify_type_def_same_test() {
+  let param = #("a", v.Typ(0))
+  let variant = #("C", v.Variant([], tm.Var(0), tm.ctr("T", [])))
+  let td = v.TypeDefinition(params: [param], arg: tm.Var(0), variants: [variant])
+  let ctx0 = Context(..new_ctx, ffi: [])
+  let ctx = unify(ctx0, #(v.TypeDef([], td), s1), #(v.TypeDef([], td), s2))
+  assert ctx.errors == []
+}
+
+/// ...and different definitions cannot be the same type.
+pub fn unify_type_def_different_test() {
+  let param = #("a", v.Typ(0))
+  let td1 = v.TypeDefinition(params: [param], arg: tm.Var(0), variants: [])
+  let td2 = v.TypeDefinition(params: [], arg: tm.Var(0), variants: [])
+  let ctx0 = Context(..new_ctx, ffi: [])
+  let ctx = unify(ctx0, #(v.TypeDef([], td1), s1), #(v.TypeDef([], td2), s2))
+  assert case ctx.errors {
+    [e.Error(e.TypeMismatch(_, _), _, _), ..] -> True
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Hole solutions with neutral variables (frame discipline)
+// ============================================================================
+
+/// A hole may be solved by an `NVar` whose level is addressable in the
+/// hole's captured env: the solution is stored as-is.
+pub fn unify_hole_solved_by_in_frame_nvar_test() {
+  let ctx0 = Context(..new_ctx, ffi: [])
+  let ctx = unify(ctx0, #(v.var(0), s1), #(v.hole([v.int(1)], 1), s2))
+  assert ctx.errors == []
+  let solved_to_var0 =
+    case list.key_find(ctx.subst, 1) {
+      Ok(#(_, solution)) -> solution == v.var(0)
+      Error(_) -> False
+    }
+  assert solved_to_var0
+}

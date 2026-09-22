@@ -1,6 +1,7 @@
 /// Quote — Convert Values back to Terms
 import core/eval.{eval}
 import core/ffi.{type FFI}
+import core/step.{step}
 import core/term.{type Case, type Term} as tm
 import core/value.{type Env, type Neut, type Value} as v
 import gleam/list
@@ -9,10 +10,12 @@ import gleam/option.{None, Some}
 /// eval → quote: reduce a term and turn it back into a term whose
 /// variables are de Bruijn indices into `env`.
 pub fn normalize_term(ffi: FFI, env: Env, term: Term) -> Term {
+  step("quote:normalize_term")
   normalize_term_rec(ffi, env, term, 0)
 }
 
 fn normalize_term_rec(ffi: FFI, env: Env, term: Term, depth: Int) -> Term {
+  step("quote:normalize_term_rec")
   eval(ffi, env, term)
   |> quote_rec(ffi, env, _, depth)
 }
@@ -21,6 +24,7 @@ fn normalize_term_rec(ffi: FFI, env: Env, term: Term, depth: Int) -> Term {
 /// then re-evaluate. Used to transplant a hole solution captured in a
 /// different environment into the current one.
 pub fn normalize_value(ffi: FFI, env: Env, value: Value) -> Value {
+  step("quote:normalize_value")
   quote(ffi, env, value)
   |> eval(ffi, env, _)
 }
@@ -31,17 +35,18 @@ pub fn normalize_value(ffi: FFI, env: Env, value: Value) -> Value {
 /// Bodies of `For`/`Lam`/`Pi`/`Fix` are re-normalized in their own 
 /// captured environments plus one fresh parameter slot.
 pub fn quote(ffi: FFI, env: Env, value: Value) -> Term {
+  step("quote:quote")
   quote_rec(ffi, env, value, 0)
 }
 
 // Bounds the eval↔quote cycle that never terminates on self-referential
 // types (see docs/implicit-args.md, Limitations).
-const max_depth = 10000
+const max_depth = 10_000
 
-const depth_exceeded =
-  "error: the compiler hit a deeply recursive type while simplifying (recursive implicit function types are not supported yet; see docs/implicit-args.md)"
+const depth_exceeded = "error: the compiler hit a deeply recursive type while simplifying (recursive implicit function types are not supported yet; see docs/implicit-args.md)"
 
 fn quote_rec(ffi: FFI, env: Env, value: Value, depth: Int) -> Term {
+  step("quote:quote_rec")
   case depth > max_depth {
     True -> panic as depth_exceeded
     False -> quote_step(ffi, env, value, depth)
@@ -49,6 +54,7 @@ fn quote_rec(ffi: FFI, env: Env, value: Value, depth: Int) -> Term {
 }
 
 fn quote_step(ffi: FFI, env: Env, value: Value, depth: Int) -> Term {
+  step("quote:quote_step")
   case value {
     v.Typ(universe) -> tm.Typ(universe)
     v.Lit(lit) -> tm.Lit(lit)
@@ -59,30 +65,36 @@ fn quote_step(ffi: FFI, env: Env, value: Value, depth: Int) -> Term {
         list.map(fields_val, fn(field) {
           let #(name, #(value, default_val)) = field
           let term = quote_rec(ffi, env, value, depth + 1)
-          let default = option.map(default_val, fn(d) { quote_rec(ffi, env, d, depth + 1) })
+          let default =
+            option.map(default_val, fn(d) { quote_rec(ffi, env, d, depth + 1) })
           #(name, #(term, default))
         })
-      let tail = option.map(tail_val, fn(t) { quote_rec(ffi, env, t, depth + 1) })
+      let tail =
+        option.map(tail_val, fn(t) { quote_rec(ffi, env, t, depth + 1) })
       tm.Rcd(fields, tail)
     }
     v.Neut(neut) -> quote_neut_rec(ffi, env, neut, depth)
     v.For(captured, #(name, param_val), body) -> {
       let param = quote_rec(ffi, captured, param_val, depth + 1)
-      let body = normalize_term_rec(ffi, v.env_push(captured, 1), body, depth + 1)
+      let body =
+        normalize_term_rec(ffi, v.env_push(captured, 1), body, depth + 1)
       tm.For(#(name, param), body)
     }
     v.Lam(captured, #(name, param_val), body) -> {
       let param = quote_rec(ffi, captured, param_val, depth + 1)
-      let body = normalize_term_rec(ffi, v.env_push(captured, 1), body, depth + 1)
+      let body =
+        normalize_term_rec(ffi, v.env_push(captured, 1), body, depth + 1)
       tm.Lam(#(name, param), body)
     }
     v.Pi(captured, #(name, param_val), body) -> {
       let param = quote_rec(ffi, captured, param_val, depth + 1)
-      let body = normalize_term_rec(ffi, v.env_push(captured, 1), body, depth + 1)
+      let body =
+        normalize_term_rec(ffi, v.env_push(captured, 1), body, depth + 1)
       tm.Pi(#(name, param), body)
     }
     v.Fix(captured, name, body) -> {
-      let body = normalize_term_rec(ffi, v.env_push(captured, 1), body, depth + 1)
+      let body =
+        normalize_term_rec(ffi, v.env_push(captured, 1), body, depth + 1)
       tm.Fix(name, body)
     }
     // Type definitions: quote the parameter types in the captured
@@ -122,9 +134,16 @@ fn quote_step(ffi: FFI, env: Env, value: Value, depth: Int) -> Term {
 }
 
 fn quote_neut_rec(ffi: FFI, env: Env, neut: Neut, depth: Int) -> Term {
+  step("quote:quote_neut_rec")
   case neut {
     // Level → de Bruijn index: index = env_size - level - 1 (see `Value`).
-    v.NVar(level) -> tm.Var(list.length(env) - level - 1)
+    v.NVar(level) -> {
+      let index = list.length(env) - level - 1
+      // If an index is negative, it was quoted on the wrong env.
+      // This is a compiler bug that needs to be investigated.
+      assert index >= 0
+      tm.Var(index)
+    }
     // A hole quotes as itself; only exact structural equality with a
     // placeholder of the same size would ever match, so this is a stable
     // `tm.Hole(id)` (re-resolved later by `resolve`).
@@ -140,7 +159,9 @@ fn quote_neut_rec(ffi: FFI, env: Env, neut: Neut, depth: Int) -> Term {
       // `quote_case` keeps both conventions valid at once.
       let arg = quote_rec(ffi, env, arg, depth + 1)
       let cases =
-        list.map(cases, fn(c) { quote_case(ffi, env, captured_env, c, depth + 1) })
+        list.map(cases, fn(c) {
+          quote_case(ffi, env, captured_env, c, depth + 1)
+        })
       tm.Match(arg, cases)
     }
     v.NCall(name, ret_val, arg_val) -> {
@@ -166,7 +187,14 @@ fn quote_neut_rec(ffi: FFI, env: Env, neut: Neut, depth: Int) -> Term {
 /// so it re-quotes to the pattern binding's own `Var(i)`; when
 /// `captured_env == env` the two frames coincide and this reduces to a
 /// plain `normalize_term`.
-fn quote_case(ffi: FFI, env: Env, captured_env: Env, c: Case, depth: Int) -> Case {
+fn quote_case(
+  ffi: FFI,
+  env: Env,
+  captured_env: Env,
+  c: Case,
+  depth: Int,
+) -> Case {
+  step("quote:quote_case")
   let num_bindings = list.length(tm.bindings(c.pattern))
   let eval_env = placeholder_env(env, num_bindings, captured_env)
   let quote_env = v.env_push(env, num_bindings)
@@ -181,7 +209,8 @@ fn quote_case(ffi: FFI, env: Env, captured_env: Env, c: Case, depth: Int) -> Cas
     }
     None -> #(None, eval_env, quote_env)
   }
-  let body = eval(ffi, eval_env, c.body) |> quote_rec(ffi, quote_env, _, depth + 1)
+  let body =
+    eval(ffi, eval_env, c.body) |> quote_rec(ffi, quote_env, _, depth + 1)
   tm.Case(c.pattern, guard, body)
 }
 
@@ -190,5 +219,6 @@ fn quote_case(ffi: FFI, env: Env, captured_env: Env, c: Case, depth: Int) -> Cas
 /// term frame, so a body's `Var(0..num-1)` fetches them and they re-quote
 /// to themselves in `env_push(levels_env, num)`.
 fn placeholder_env(levels_env: Env, num: Int, frame: Env) -> Env {
+  step("quote:placeholder_env")
   list.append(list.take(v.env_push(levels_env, num), num), frame)
 }

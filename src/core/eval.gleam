@@ -18,6 +18,7 @@
 /// that the runtime match here stays a blind tag comparison.
 import core/ffi.{type FFI}
 import core/term.{type Case, type Pattern, type Term} as tm
+import core/step.{step}
 import core/value.{type Env, type Type, type Value} as v
 import gleam/list
 import gleam/option.{None, Some}
@@ -27,6 +28,7 @@ import utils/list_utils.{at}
 /// possible. Anything depending on a hole or a variable is preserved as
 /// a *neutral* value so it re-evaluates correctly once holes are solved.
 pub fn eval(ffi: FFI, env: Env, term: Term) -> Value {
+  step("eval:eval")
   eval_rec(ffi, env, term, 0)
 }
 
@@ -38,6 +40,7 @@ const depth_exceeded =
   "error: the compiler hit a deeply recursive type while simplifying (recursive implicit function types are not supported yet; see docs/implicit-args.md)"
 
 fn eval_rec(ffi: FFI, env: Env, term: Term, depth: Int) -> Value {
+  step("eval:eval_rec")
   case depth > max_depth {
     True -> panic as depth_exceeded
     False -> eval_step(ffi, env, term, depth)
@@ -45,6 +48,7 @@ fn eval_rec(ffi: FFI, env: Env, term: Term, depth: Int) -> Value {
 }
 
 fn eval_step(ffi: FFI, env: Env, term: Term, depth: Int) -> Value {
+  step("eval:eval_step")
   case term {
     tm.Typ(universe) -> v.Typ(universe)
     tm.Hole(id) -> v.hole_open(env, id)
@@ -121,10 +125,12 @@ fn eval_step(ffi: FFI, env: Env, term: Term, depth: Int) -> Value {
 /// Apply a value to an argument. Neutral function heads stay neutral
 /// (`NApp`); `For`/`Lam` β-reduce; `Fix` feeds itself as the argument.
 pub fn do_app(ffi: FFI, fun_val: Value, arg_val: Value) -> Value {
+  step("eval:do_app")
   do_app_rec(ffi, fun_val, arg_val, 0)
 }
 
 fn do_app_rec(ffi: FFI, fun_val: Value, arg_val: Value, depth: Int) -> Value {
+  step("eval:do_app_rec")
   case fun_val {
     // Neutral application
     v.Neut(neut_fun) -> v.app(neut_fun, arg_val)
@@ -145,6 +151,7 @@ fn do_app_rec(ffi: FFI, fun_val: Value, arg_val: Value, depth: Int) -> Value {
 /// Call a builtin by name: reduce via the FFI table if defined, otherwise
 /// keep a neutral `NCall` (an `extern`, unresolvable at type-check time).
 pub fn do_call(ffi: FFI, name: String, ret_val: Type, arg_val: Value) -> Value {
+  step("eval:do_call")
   let result = case list.key_find(ffi, name) {
     Ok(call_def) -> call_def(arg_val)
     Error(Nil) -> None
@@ -184,6 +191,7 @@ pub fn do_match(
   arg_val: Value,
   cases: List(Case),
 ) -> Value {
+  step("eval:do_match")
   do_match_rec(ffi, env, arg_val, cases, 0)
 }
 
@@ -194,6 +202,7 @@ fn do_match_rec(
   cases: List(Case),
   depth: Int,
 ) -> Value {
+  step("eval:do_match_rec")
   case do_match_case_list(ffi, env, arg_val, cases, depth) {
     MatchAccept(#(case_, env)) -> eval_rec(ffi, env, case_.body, depth + 1)
     MatchReject -> v.Err
@@ -211,6 +220,7 @@ fn do_match_case_list(
   cases: List(Case),
   depth: Int,
 ) -> MatchResult(#(Case, Env)) {
+  step("eval:do_match_case_list")
   case cases {
     [] -> MatchReject
     [case_, ..cases] ->
@@ -231,6 +241,7 @@ fn do_match_case(
   case_: Case,
   depth: Int,
 ) -> MatchResult(Env) {
+  step("eval:do_match_case")
   case match_pattern(case_.pattern, arg_val) {
     MatchAccept(bindings) -> {
       let env = list.append(bindings, env)
@@ -252,6 +263,7 @@ fn do_match_guard(
   guard: #(Term, Pattern),
   depth: Int,
 ) -> MatchResult(Env) {
+  step("eval:do_match_guard")
   let #(guard_term, guard_pattern) = guard
   let guard_value = eval_rec(ffi, env, guard_term, depth + 1)
   case match_pattern(guard_pattern, guard_value) {
@@ -270,6 +282,7 @@ pub fn match_pattern(
   pattern: Pattern,
   value: Value,
 ) -> MatchResult(List(Value)) {
+  step("eval:match_pattern")
   case pattern, value {
     // Decidable acceptances...
     tm.PAny, _ -> MatchAccept([])
@@ -318,6 +331,7 @@ fn match_pattern_rcd_field(
   pattern: Pattern,
   value: Value,
 ) -> MatchResult(#(List(Value), Value)) {
+  step("eval:match_pattern_rcd_field")
   case value {
     v.Rcd(vfields, opt_vtail) ->
       case tm.pop_field(vfields, name) {

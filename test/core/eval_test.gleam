@@ -12,7 +12,7 @@
 /// Trivial data-pass-through tests (Typ, Hole, Lit, LitT, Ctr, Rcd,
 /// RcdT, Fix, Ann) have been removed — they only verify data flows
 /// through, not logic.
-import core/eval.{do_match, eval, match_pattern, MatchAccept, MatchNeutral, MatchReject}
+import core/eval.{do_app, do_match, eval, match_pattern, MatchAccept, MatchNeutral, MatchReject}
 import core/ffi.{build, type FFI}
 import core/literals as lit
 import core/term as tm
@@ -674,4 +674,62 @@ pub fn match_pattern_rcd_neutral_field_test() {
     == MatchNeutral
   assert match_pattern(tm.prcd([#("x", tm.pvar("x"))]), value)
     == MatchAccept([neut])
+}
+
+// ============================================================================
+// For / Fix / Ann / TypeDef evaluation
+// ============================================================================
+
+/// `For` beta-reduces exactly like `Lam` at the value level: applying a
+/// value to a For consumes the quantifier's argument slot and returns
+/// the body with that slot bound. (This is why an implicit argument eats
+/// one application when the function is applied directly at the value
+/// level — the type argument is a value-level slot in NbE.)
+pub fn eval_for_beta_reduction_test() {
+  let for_ = v.For([], #("a", v.Typ(0)), tm.Var(0))
+  assert eval([], [], tm.App(tm.For(#("a", tm.Typ(0)), tm.Var(0)), tm.int_t))
+    == v.int_t
+  // The quantified slot is bound to the applied value: the body `a` of
+  // `for<a>. a` reduces to the argument.
+  assert do_app([], for_, v.int(7)) == v.int(7)
+}
+
+/// `Fix` feeds itself as its own binding: `fix f. fn(x) => x` applied to
+/// `5` evaluates the body with `f` (the fixpoint) in the environment and
+/// returns the body's result.
+pub fn eval_fix_self_application_test() {
+  let fix_ = v.Fix([], "f", tm.Lam(#("x", tm.int_t), tm.Var(0)))
+  assert do_app([], fix_, v.int(5)) == v.int(5)
+}
+
+/// `Ann` is transparent to evaluation: the annotation is dropped.
+pub fn eval_ann_test() {
+  assert eval([], [], tm.Ann(tm.int(1), tm.int_t)) == v.int(1)
+}
+
+/// A type definition evaluates to the corresponding `TypeDef` value with
+/// the parameter types evaluated and the variant terms kept as terms.
+pub fn eval_type_def_test() {
+  let param = #("a", tm.Typ(0))
+  let variant = #("C", tm.Variant([], tm.Var(0), tm.ctr("T", [])))
+  let td = tm.TypeDefinition(params: [param], arg: tm.Var(0), variants: [variant])
+  let expected =
+    v.TypeDef(
+      [],
+      v.TypeDefinition(
+        params: [#("a", v.Typ(0))],
+        arg: tm.Var(0),
+        variants: [#("C", v.Variant([], tm.Var(0), tm.ctr("T", [])))],
+      ),
+    )
+  assert eval([], [], tm.TypeDef(td)) == expected
+}
+
+/// Record field defaults are evaluated like field values: both the value
+/// and its default survive evaluation.
+pub fn eval_rcd_field_default_test() {
+  let field = #("a", #(tm.int(1), Some(tm.int(42))))
+  let term = tm.Rcd([field], None)
+  let expected = v.Rcd([#("a", #(v.int(1), Some(v.int(42))))], None)
+  assert eval([], [], term) == expected
 }

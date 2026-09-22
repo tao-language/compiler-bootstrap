@@ -3,6 +3,7 @@ import core/error as e
 import core/eval.{eval}
 import core/ffi.{type FFI}
 import core/quote.{quote}
+import core/step.{step}
 import core/term.{type Case, type Term} as tm
 import core/unify.{unify}
 import core/unwrap.{unwrap, unwrap_seen}
@@ -15,6 +16,7 @@ import syntax/span.{type Span}
 /// deferred constraint, then resolve every hole in the environment, the
 /// type bindings, and the accumulated errors.
 pub fn context(ctx: Context) -> Context {
+  step("resolve:context")
   let ctx = discharge(ctx.deferred, ctx)
   let env = list.map(ctx.env, value(ctx.ffi, ctx.subst, _))
   let types =
@@ -36,6 +38,7 @@ pub fn context(ctx: Context) -> Context {
 /// self-referential cycles. This happens when a term-level hole is unified
 /// with a value (e.g., a Lam) whose body term still contains that same hole.
 pub fn term(ffi: FFI, subst: Subst, env: Env, t: Term) -> Term {
+  step("resolve:term")
   term_seen(ffi, subst, env, t, [])
 }
 
@@ -46,6 +49,7 @@ fn term_seen(
   t: Term,
   seen: List(Int),
 ) -> Term {
+  step("resolve:term_seen")
   let self = fn(env, t) { term_seen(ffi, subst, env, t, seen) }
   case t {
     tm.Hole(Some(id)) ->
@@ -158,10 +162,12 @@ fn term_seen(
 /// module records, which hold the hole as a field), so resolving a hole can
 /// re-encounter the same hole through its environment or its solution.
 pub fn value(ffi: FFI, subst: Subst, val: Value) -> Value {
+  step("resolve:value")
   value_seen(ffi, subst, val, [])
 }
 
 fn value_seen(ffi: FFI, subst: Subst, val: Value, seen: List(Int)) -> Value {
+  step("resolve:value_seen")
   let self = fn(v) { value_seen(ffi, subst, v, seen) }
   case val {
     // A named hole is resolved with its ID pushed on the seen stack: its solution
@@ -260,6 +266,7 @@ fn value_seen(ffi: FFI, subst: Subst, val: Value, seen: List(Int)) -> Value {
 }
 
 fn neutral_seen(ffi: FFI, subst: Subst, neut: Neut, seen: List(Int)) -> Neut {
+  step("resolve:neutral_seen")
   case neut {
     v.NVar(lvl) -> v.NVar(lvl)
     v.NHole(env, id) -> v.NHole(env, id)
@@ -287,6 +294,7 @@ fn neutral_seen(ffi: FFI, subst: Subst, neut: Neut, seen: List(Int)) -> Neut {
 /// Resolve hole references inside the values carried by an error, so
 /// displayed types show their solutions rather than `?n`.
 pub fn error(ffi: FFI, subst: Subst, env: Env, err: e.Error) -> e.Error {
+  step("resolve:error")
   let data = case err.data {
     // Only the errors carrying values or terms need resolving.
     e.TypeMismatch(#(a, s1), #(b, s2)) -> {
@@ -344,6 +352,7 @@ fn discharge(
   deferred: List(#(#(v.Value, Span), #(v.Value, Span))),
   ctx: Context,
 ) -> Context {
+  step("resolve:discharge")
   list.fold(deferred, ctx, fn(acc, pair) { discharge_pair(acc, pair) })
 }
 
@@ -351,6 +360,7 @@ fn discharge_pair(
   ctx: Context,
   pair: #(#(v.Value, Span), #(v.Value, Span)),
 ) -> Context {
+  step("resolve:discharge_pair")
   let #(#(a, sa), #(b, sb)) = pair
   case unwrap(ctx.ffi, ctx.subst, a), unwrap(ctx.ffi, ctx.subst, b) {
     v.Neut(neut), b -> discharge_neut(ctx, neut, sa, b, sb)
@@ -367,6 +377,7 @@ fn discharge_neut(
   val: v.Value,
   val_span: Span,
 ) -> Context {
+  step("resolve:discharge_neut")
   case neut {
     // Binding types are dependent facts this unifier cannot decide
     // (see the `discharge` docs): accept.
@@ -392,6 +403,7 @@ fn discharge_match(
   val: v.Value,
   vs: Span,
 ) -> Context {
+  step("resolve:discharge_match")
   case discharge_match_case(ctx, env, cases, s, val, vs) {
     Some(ctx) -> ctx
     None ->
@@ -414,6 +426,7 @@ fn discharge_match_case(
   val: v.Value,
   vs: Span,
 ) -> Option(Context) {
+  step("resolve:discharge_match_case")
   case cases {
     [] -> None
     [c, ..cases] -> {
@@ -431,6 +444,7 @@ fn discharge_match_case(
 
 /// Number of variables bound by a case's pattern and guard pattern.
 fn case_vars(c: Case) -> Int {
+  step("resolve:case_vars")
   let n = list.length(tm.bindings(c.pattern))
   case c.guard {
     None -> n
@@ -445,6 +459,7 @@ fn resolve_case(
   seen: List(Int),
   c: Case,
 ) -> Case {
+  step("resolve:resolve_case")
   let env = v.env_push(env, list.length(tm.bindings(c.pattern)))
   let #(guard, env) = case c.guard {
     Some(#(g_term, g_pattern)) -> {

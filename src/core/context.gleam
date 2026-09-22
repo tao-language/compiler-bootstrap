@@ -8,6 +8,7 @@
 /// recovery after type errors.
 import core/error.{type Error, type ErrorData, Error}
 import core/ffi.{type FFI}
+import core/step.{step}
 import core/value.{type Env, type Type, type TypeDefinition, type Value} as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -64,6 +65,7 @@ pub const new_ctx = Context([], [], [], [], [], [], 0, [])
 /// Look up a variable by name, returning its index (innermost-first)
 /// and type. Only the first (innermost) binding is found.
 pub fn lookup(ctx: Context, name: String) -> Option(#(Int, Value)) {
+  step("context:lookup")
   lookup_loop(ctx.types, name, 0)
 }
 
@@ -72,6 +74,7 @@ fn lookup_loop(
   name: String,
   index: Int,
 ) -> Option(#(Int, Value)) {
+  step("context:lookup_loop")
   case types {
     [] -> None
     [#(x, value), ..] if x == name -> Some(#(index, value))
@@ -91,6 +94,7 @@ pub fn lookup_type_def(
   ctx: Context,
   name: String,
 ) -> Option(#(Env, TypeDefinition)) {
+  step("context:lookup_type_def")
   case lookup_in_env(ctx, name) {
     Some(v.TypeDef(env, type_def)) -> Some(#(env, type_def))
     Some(_) -> None
@@ -105,6 +109,7 @@ fn lookup_in_modules(
   ctx: Context,
   name: String,
 ) -> Option(#(Env, TypeDefinition)) {
+  step("context:lookup_in_modules")
   list.fold(ctx.env, None, fn(acc, val) {
     case acc, val {
       Some(found), _ -> Some(found)
@@ -119,6 +124,7 @@ fn lookup_in_modules(
 }
 
 fn lookup_in_env(ctx: Context, name: String) -> Option(Value) {
+  step("context:lookup_in_env")
   case lookup_var(ctx, name) {
     Some(#(val, _)) -> Some(val)
     None -> None
@@ -127,6 +133,7 @@ fn lookup_in_env(ctx: Context, name: String) -> Option(Value) {
 
 /// Look up a variable by name, returning both its value and its type.
 pub fn lookup_var(ctx: Context, name: String) -> Option(#(Value, Type)) {
+  step("context:lookup_var")
   case ctx.types, ctx.env {
     [#(x, typ), ..], [val, ..] if x == name -> Some(#(val, typ))
     [_, ..types], [_, ..env] -> {
@@ -142,6 +149,7 @@ pub fn lookup_var(ctx: Context, name: String) -> Option(#(Value, Type)) {
 /// levels of other variables stay valid), or appending at the outermost
 /// end if the name is new.
 pub fn set_var(ctx: Context, name: String, value: Value, typ: Type) -> Context {
+  step("context:set_var")
   case ctx.types, ctx.env {
     [#(x, _), ..types], [_, ..env] if x == name ->
       Context(..ctx, env: [value, ..env], types: [#(name, typ), ..types])
@@ -161,18 +169,21 @@ pub fn set_var(ctx: Context, name: String, value: Value, typ: Type) -> Context {
 /// Record an error, tagged with the current trace. Identical errors
 /// (same data, span and trace) are deduplicated.
 pub fn with_err(ctx: Context, err_data: ErrorData, span: Span) -> Context {
+  step("context:with_err")
   let err = Error(err_data, span, list.reverse(ctx.trace))
   Context(..ctx, errors: list.unique([err, ..ctx.errors]))
 }
 
 /// Allocate a fresh hole ID.
 pub fn new_hole(ctx: Context) -> #(Int, Context) {
+  step("context:new_hole")
   let id = ctx.hole_counter
   #(id, Context(..ctx, hole_counter: id + 1))
 }
 
 /// Push a (name, value, type) binding as the new innermost scope.
 pub fn push_var(ctx: Context, var: #(String, Value, Value)) -> Context {
+  step("context:push_var")
   let #(name, val, typ) = var
   Context(..ctx, env: [val, ..ctx.env], types: [#(name, typ), ..ctx.types])
 }
@@ -184,6 +195,7 @@ pub fn push_var_opt(
   ctx: Context,
   var: #(String, Option(Value), Option(Value)),
 ) -> Context {
+  step("context:push_var_opt")
   let #(name, maybe_value, maybe_type) = var
   let instantiate = fn(ctx, maybe_value) {
     case maybe_value {
@@ -204,6 +216,7 @@ pub fn push_var_opt_list(
   ctx: Context,
   vars: List(#(String, Option(Value), Option(Value))),
 ) -> Context {
+  step("context:push_var_opt_list")
   case vars {
     [] -> ctx
     [var, ..vars] -> {
@@ -215,6 +228,7 @@ pub fn push_var_opt_list(
 
 /// Drop the innermost `num_vars` bindings (value and type together).
 pub fn pop_vars(ctx: Context, num_vars: Int) -> Context {
+  step("context:pop_vars")
   Context(
     ..ctx,
     env: list.drop(ctx.env, num_vars),
@@ -229,10 +243,12 @@ pub fn pop_vars(ctx: Context, num_vars: Int) -> Context {
 /// Push a breadcrumb label, used to report which construct an error
 /// occurred inside.
 pub fn push_trace(ctx: Context, trace: #(String, Span)) -> Context {
+  step("context:push_trace")
   Context(..ctx, trace: [trace, ..ctx.trace])
 }
 
 pub fn pop_trace(ctx: Context) -> Context {
+  step("context:pop_trace")
   case ctx.trace {
     [_, ..trace] -> Context(..ctx, trace: trace)
     [] -> ctx

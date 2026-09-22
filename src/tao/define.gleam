@@ -12,6 +12,7 @@ import core/context.{type Context, lookup_type_def}
 import core/error as e
 import core/eval.{eval}
 import core/infer.{check, infer}
+import core/step.{step}
 import core/unify.{unify}
 import core/value as v
 import gleam/list
@@ -112,6 +113,7 @@ pub fn type_name(
   mod_name: ModName,
   name: Name,
 ) -> #(v.Value, v.Type, Context) {
+  step("type_name")
   case get_var(ctx, mod_name, name) {
     Some(#(val, typ)) -> #(val, typ, ctx)
     None ->
@@ -337,6 +339,7 @@ fn expr_value(
   expr: tao.Expr,
   opt_type: Option(v.Type),
 ) -> #(v.Value, v.Type, Context) {
+  step("expr_value")
   let exports = declare.exports(defs)
   let core_expr = desugar.expr(exports, expr)
   // Free variables that are not module names (names start with "/") are

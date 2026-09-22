@@ -12,6 +12,7 @@
 /// its binder, so they are only meaningful inside a fixed term.
 import core/ast
 import core/literals.{type Literal, type LiteralType} as lit
+import core/step.{step}
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -87,6 +88,7 @@ pub fn pop_field(
   fields: List(#(String, a)),
   name: String,
 ) -> Option(#(a, List(#(String, a)))) {
+  step("term:pop_field")
   case fields {
     [] -> None
     [#("", value), ..fields] -> Some(#(value, fields))
@@ -102,6 +104,7 @@ pub fn pop_field(
 
 /// Names bound by a pattern, last-bound first.
 pub fn bindings(p: Pattern) -> List(String) {
+  step("term:bindings")
   case p {
     PAny -> []
     PTyp(_) -> []
@@ -125,6 +128,7 @@ pub fn bindings(p: Pattern) -> List(String) {
 /// names from `names` (indexed innermost-first). Unknown indices render
 /// as `$n`.
 pub fn lift(term: Term, names: List(String), s: Span) -> ast.Expr {
+  step("term:lift")
   case term {
     Typ(u) -> ast.typ(u, s)
     Hole(id) -> ast.hole_open(id, s)

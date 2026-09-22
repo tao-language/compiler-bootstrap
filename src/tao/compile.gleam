@@ -1,6 +1,7 @@
 import core/context.{type Context}
 import core/quote.{quote}
 import core/resolve
+import core/step.{step}
 import gleam/list
 import gleam/option.{None}
 import tao/ast.{type Module} as tao
@@ -30,6 +31,7 @@ pub fn tests(ctx: Context, mods: List(Module)) -> #(List(TestDef), Context) {
           let #(raw, ctx) = acc
           case stmt.data {
             tao.Test(name, expr, expect) -> {
+              step("compile:tests")
               let #(value, _, ctx) =
                 define.stmt_value(ctx, defs, mod_name, name, stmt, None)
               let term = quote(ctx.ffi, ctx.env, value)

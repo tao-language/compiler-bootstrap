@@ -1,5 +1,6 @@
 import core/context.{type Context}
 import core/eval.{eval}
+import core/step.{step}
 import core/term.{type Case, type Term} as tm
 import core/unwrap.{unwrap}
 import core/value.{type Env, type Value} as v
@@ -10,6 +11,7 @@ import gleam/option.{type Option, None, Some}
 /// Check whether a hole occurs inside its own prospective solution.
 /// Called before solving; a positive result is an infinite type.
 pub fn occurs(ctx: Context, hole_id: Int, value: Value) -> Bool {
+  step("occurs:occurs")
   case unwrap(ctx.ffi, ctx.subst, value) {
     v.Typ(_) -> False
     v.Lit(_) -> False
@@ -78,6 +80,7 @@ pub fn occurs_opt(
   hole_id: Int,
   opt_value: Option(Value),
 ) -> Bool {
+  step("occurs:occurs_opt")
   case opt_value {
     Some(value) -> occurs(ctx, hole_id, value)
     None -> False
@@ -87,11 +90,13 @@ pub fn occurs_opt(
 /// `occurs` inside a value body: the term is evaluated first so that
 /// variables and holes in the body are seen as values.
 pub fn occurs_term(ctx: Context, env: Env, hole_id: Int, term: Term) -> Bool {
+  step("occurs:occurs_term")
   let value = eval(ctx.ffi, env, term)
   occurs(ctx, hole_id, value)
 }
 
 fn occurs_case(ctx: Context, env: Env, hole_id: Int, c: Case) -> Bool {
+  step("occurs:occurs_case")
   let env = v.env_push(env, list.length(tm.bindings(c.pattern)))
   case c.guard {
     None -> occurs_term(ctx, env, hole_id, c.body)

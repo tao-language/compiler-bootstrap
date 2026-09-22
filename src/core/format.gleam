@@ -5,6 +5,7 @@ import core/ast.{
 import core/ffi.{type FFI}
 import core/literals.{type LiteralType} as l
 import core/quote.{quote}
+import core/step.{step}
 import core/term.{type Term} as tm
 import core/value.{type Value, env_push}
 import glam/doc.{type Document}
@@ -55,6 +56,7 @@ fn doc_text(text: String) -> Document {
 /// plain identifier (e.g. the generated `__0` names are fine, but
 /// arbitrary strings are not).
 fn var_name(name: String) -> String {
+  step("format:var_name")
   let assert Ok(var_re) = regexp.from_string("^[_a-zA-Z$][_\\w$]*$")
   case regexp.check(var_re, name) {
     True -> name

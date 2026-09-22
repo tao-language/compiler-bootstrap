@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Run a `gleam run`/`gleam test` command with the conventions that make
+# hangs diagnosable:
+#   - always `timeout -k 9` (a hung BEAM ignores SIGTERM; the -k kill -9
+#     escalates, otherwise plain `timeout` waits forever)
+#   - on exit, make sure no stale beam.smp is left at 100% CPU
+#   - reminders about marker streams
+#
+# Usage:
+#   scripts/hang-debug [TAO_TRACE_UNIFY=1] [TAO_TRACE_UNIFY_STACK=300] <timeout-sec> -- <gleam cmd...>
+#
+# Examples:
+#   scripts/hang-debug 8 -- gleam run debug-file --add=prelude /tmp/repro/BAD2.tao
+#   scripts/hang-debug 120 -- gleam test
+#   TAO_TRACE_UNIFY=1 TAO_TRACE_UNIFY_STACK=200 scripts/hang-debug 15 -- \
+#     gleam run debug-src "fn is_empty<a>(xs: List(a)) -> Bool = ..." --add=prelude
+set -u
+TIMEOUT=""
+if [[ "${1:-}" != "--" ]]; then TIMEOUT="$1"; shift; fi
+shift  # drop --
+DEFAULT=15
+timeout -k 9 "${TIMEOUT:-$DEFAULT}" "$@"
+status=$?
+pkill -9 -f beam.smp 2>/dev/null
+if [[ $status -eq 124 || $status -eq 137 ]]; then
+  echo "TIMED OUT. The BEAM was killed. Rerun with TAO_TRACE_UNIFY=1"
+  echo "(and TAO_TRACE_UNIFY_STACK=N to print the call stack from inside)"
+  echo "to see the retry markers and the stuck call cycle on stderr."
+fi
+exit $status

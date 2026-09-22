@@ -10,6 +10,7 @@ import core/error as e
 import core/eval.{eval}
 import core/literals.{type Literal, type LiteralType} as lit
 import core/quote.{quote}
+import core/step.{step}
 import core/term.{type Term} as tm
 import core/unify.{unify}
 import core/unwrap.{unwrap}
@@ -30,6 +31,7 @@ pub fn infer(ctx: Context, term_ast: ast.Expr) -> #(Term, Type, Context) {
     Some(label) -> context.push_trace(ctx, #(label, term_ast.span))
     None -> ctx
   }
+  step("infer:infer")
   let #(term, type_, ctx) = case term_ast.data {
     ast.Typ(level) -> infer_typ(ctx, level)
     ast.Hole(id) -> infer_hole(ctx, id)
@@ -72,6 +74,7 @@ pub fn check(
   ast: Expr,
   expected: #(Value, Span),
 ) -> #(Term, Type, Context) {
+  step("infer:check")
   let #(expected_type, type_span) = expected
   let #(term, inferred_type, ctx) = infer(ctx, ast)
   case term, expected_type {
@@ -95,6 +98,7 @@ pub fn check(
 /// fall through to unification (which rejects a float literal against an
 /// int type).
 fn check_lit(term: Term, expected_type: Value) -> Option(Term) {
+  step("infer:check_lit")
   case term, expected_type {
     tm.Lit(lit.Int(k)), v.LitT(ty) ->
       case ty {
@@ -116,6 +120,7 @@ fn check_on_ast(
   ast: Expr,
   type_: Expr,
 ) -> #(Term, #(Term, Value), Context) {
+  step("infer:check_on_ast")
   let #(type_term, _, ctx) = infer(ctx, type_)
   let type_val = eval(ctx.ffi, ctx.env, type_term)
   let #(term, type_val, ctx) = check(ctx, ast, #(type_val, type_.span))
@@ -123,10 +128,12 @@ fn check_on_ast(
 }
 
 fn infer_typ(ctx: Context, level: Int) -> #(Term, Type, Context) {
+  step("infer:infer_typ")
   #(tm.Typ(level), v.Typ(level + 1), ctx)
 }
 
 fn infer_hole(ctx: Context, opt_id: Option(Int)) -> #(Term, Type, Context) {
+  step("infer:infer_hole")
   // An unknown hole (None) is allocated a fresh ID; either way the hole's
   // own type is a fresh unsolved hole.
   let #(id, ctx) = case opt_id {
@@ -138,6 +145,7 @@ fn infer_hole(ctx: Context, opt_id: Option(Int)) -> #(Term, Type, Context) {
 }
 
 fn infer_lit(ctx: Context, value: Literal) -> #(Term, Type, Context) {
+  step("infer:infer_lit")
   let type_ = case value {
     lit.Int(_) -> v.int_t
     lit.Float(_) -> v.float_t
@@ -146,10 +154,12 @@ fn infer_lit(ctx: Context, value: Literal) -> #(Term, Type, Context) {
 }
 
 fn infer_litt(ctx: Context, value: LiteralType) -> #(Term, Type, Context) {
+  step("infer:infer_litt")
   #(tm.LitT(value), v.Typ(0), ctx)
 }
 
 fn infer_var(ctx: Context, name: String, span: Span) -> #(Term, Type, Context) {
+  step("infer:infer_var")
   case context.lookup(ctx, name) {
     Some(#(index, type_)) -> #(tm.Var(index), type_, ctx)
     None -> {
@@ -160,6 +170,7 @@ fn infer_var(ctx: Context, name: String, span: Span) -> #(Term, Type, Context) {
 }
 
 fn infer_ctr(ctx: Context, tag: String, arg: Expr) -> #(Term, Type, Context) {
+  step("infer:infer_ctr")
   let #(arg, arg_type, ctx) = infer(ctx, arg)
   #(tm.Ctr(tag, arg), v.Ctr(tag, arg_type), ctx)
 }
@@ -170,6 +181,7 @@ fn infer_rcd(
   tail: Option(Expr),
   span: Span,
 ) -> #(Term, Type, Context) {
+  step("infer:infer_rcd")
   let #(fields, field_types, ctx) = infer_rcd_fields(ctx, fields, span)
   let #(tail, tail_type, ctx) = case tail {
     None -> #(None, None, ctx)
@@ -186,6 +198,7 @@ fn infer_rcd_fields(
   fields: List(#(String, #(Option(Expr), Option(Expr)))),
   span: Span,
 ) -> #(List(#(String, Term)), List(#(String, Type)), Context) {
+  step("infer:infer_rcd_fields")
   case fields {
     [] -> #([], [], ctx)
     [#(name, #(opt_term, _)), ..fields] -> {
@@ -211,6 +224,7 @@ fn infer_call(
   ret_ast: Expr,
   arg_ast: Expr,
 ) -> #(Term, Type, Context) {
+  step("infer:infer_call")
   let #(ret, _, ctx) = infer(ctx, ret_ast)
   let #(arg, _, ctx) = infer(ctx, arg_ast)
   let typ = eval(ctx.ffi, ctx.env, ret)
@@ -218,6 +232,7 @@ fn infer_call(
 }
 
 fn infer_ann(ctx: Context, ast: Expr, type_: Expr) -> #(Term, Type, Context) {
+  step("infer:infer_ann")
   let #(term, #(_, type_val), ctx) = check_on_ast(ctx, ast, type_)
   #(term, type_val, ctx)
 }
@@ -227,6 +242,7 @@ fn infer_for(
   param: #(String, Option(ast.Type)),
   body: Expr,
 ) -> #(Term, Type, Context) {
+  step("infer:infer_for")
   let #(name, opt_type_ast) = param
   let #(param_type_term, ctx) = case opt_type_ast {
     Some(param_type_ast) -> {
@@ -256,6 +272,7 @@ fn infer_lam(
   param: #(String, Option(ast.Type)),
   body: Expr,
 ) -> #(Term, Type, Context) {
+  step("infer:infer_lam")
   let #(name, opt_type_ast) = param
   let #(type_, ctx) = case opt_type_ast {
     Some(type_ast) -> {
@@ -290,6 +307,7 @@ fn infer_pi(
   param: ast.Param,
   body: Expr,
 ) -> #(Term, Type, Context) {
+  step("infer:infer_pi")
   let #(name, opt_type_ast) = param
   let #(type_, ctx) = case opt_type_ast {
     Some(type_ast) -> {
@@ -321,6 +339,7 @@ fn infer_type_def(
   ctx: Context,
   type_def: ast.TypeDefinition,
 ) -> #(Term, Type, Context) {
+  step("infer:infer_type_def")
   let ast.TypeDefinition(params_ast, arg_ast, variants_ast) = type_def
   let #(params, ctx) = infer_type_params(ctx, params_ast)
   let #(arg, _arg_val, ctx) = infer(ctx, arg_ast)
@@ -341,6 +360,7 @@ fn infer_variant(
   ctx: Context,
   variant_ast: ast.Variant,
 ) -> #(tm.Variant, Context) {
+  step("infer:infer_variant")
   let ast.Variant(params_ast, arg_ast, returns_ast) = variant_ast
   let #(params, ctx) = infer_type_params(ctx, params_ast)
   let #(arg, _arg_val, ctx) = infer(ctx, arg_ast)
@@ -357,6 +377,7 @@ fn infer_type_params(
   ctx: Context,
   params_ast: List(#(String, ast.Type)),
 ) -> #(List(#(String, Term)), Context) {
+  step("infer:infer_type_params")
   let #(inferred, ctx) =
     list.fold(params_ast, #([], ctx), fn(acc, param) {
       let #(inferred, ctx) = acc
@@ -385,6 +406,7 @@ fn infer_fix(
   body: Expr,
   span: Span,
 ) -> #(Term, Type, Context) {
+  step("infer:infer_fix")
   // The fixpoint's type is a hole; binding the name to it lets the body
   // refer to its own type. The final unification (with an occurs check
   // in solve_hole) rejects non-well-founded types.
@@ -403,6 +425,7 @@ fn infer_let(
   binding: #(String, Option(ast.Type), Expr),
   body_ast: Expr,
 ) -> #(Term, Type, Context) {
+  step("infer:infer_let")
   let #(name, opt_type, arg_ast) = binding
   let #(arg, arg_type_val, ctx) = case opt_type {
     Some(type_ast) -> {
@@ -426,6 +449,7 @@ fn infer_app(
   arg_ast: Expr,
   span: Span,
 ) -> #(Term, Type, Context) {
+  step("infer:infer_app")
   let #(fun, fun_type, ctx) = infer(ctx, fun_ast)
   let #(fun, fun_type, ctx) = instantiate(ctx, fun, fun_type)
   case fun_type {
@@ -464,6 +488,7 @@ fn infer_app_neut(
   arg_ast: Expr,
   span: Span,
 ) -> #(Term, Type, Context) {
+  step("infer:infer_app_neut")
   let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
   let #(id, ctx) = context.new_hole(ctx)
   let expected_pi =
@@ -483,6 +508,7 @@ fn instantiate(
   fun: Term,
   fun_type: Type,
 ) -> #(Term, Type, Context) {
+  step("infer:instantiate")
   case unwrap(ctx.ffi, ctx.subst, fun_type) {
     // Polymorphic function
     v.For(env, _, fun_type_tm) -> {
@@ -506,6 +532,7 @@ fn infer_match(
   arg_ast: Expr,
   cases_ast: List(ast.Case),
 ) -> #(Term, Type, Context) {
+  step("infer:infer_match")
   let #(arg, arg_type, ctx) = infer(ctx, arg_ast)
   let #(cases, cases_type, ctx) =
     infer_match_case_list(ctx, #(arg_type, arg_ast.span), cases_ast)
@@ -520,6 +547,7 @@ fn infer_match_case_list(
   arg_type: #(Value, Span),
   cases_ast: List(ast.Case),
 ) -> #(List(tm.Case), List(tm.Case), Context) {
+  step("infer:infer_match_case_list")
   case cases_ast {
     [] -> #([], [], ctx)
     [case_ast, ..cases_ast] -> {
@@ -542,6 +570,7 @@ fn infer_match_case(
   arg_type: #(Value, Span),
   case_ast: ast.Case,
 ) -> #(tm.Case, tm.Case, Context) {
+  step("infer:infer_match_case")
   let old_env_size = list.length(ctx.env)
   let #(pattern, ctx) = check_pattern(ctx, case_ast.pattern, arg_type)
   let #(guard, ctx) = bind_guard(ctx, case_ast.guard)
@@ -555,6 +584,7 @@ fn infer_pattern(
   ctx: Context,
   pattern_ast: ast.Pattern,
 ) -> #(tm.Pattern, Value, Context) {
+  step("infer:infer_pattern")
   case pattern_ast.data {
     ast.PAny -> {
       let #(id, ctx) = context.new_hole(ctx)
@@ -602,6 +632,7 @@ fn infer_pattern_fields(
   List(#(String, #(Value, Option(Value)))),
   Context,
 ) {
+  step("infer:infer_pattern_fields")
   case fields_ast {
     [] -> #([], [], ctx)
     [#(name, pattern_ast), ..fields_ast] -> {
@@ -621,6 +652,7 @@ fn check_pattern(
   pattern_ast: ast.Pattern,
   expected: #(Type, Span),
 ) -> #(tm.Pattern, Context) {
+  step("infer:check_pattern")
   let #(pattern, inferred, ctx) = infer_pattern(ctx, pattern_ast)
   let ctx = unify(ctx, #(inferred, pattern_ast.span), expected)
   #(pattern, ctx)
@@ -630,6 +662,7 @@ fn bind_guard(
   ctx: Context,
   guard_ast: Option(#(Expr, ast.Pattern)),
 ) -> #(Option(#(tm.Term, tm.Pattern)), Context) {
+  step("infer:bind_guard")
   case guard_ast {
     None -> #(None, ctx)
     Some(#(ast, pattern_ast)) -> {
@@ -641,5 +674,6 @@ fn bind_guard(
 }
 
 fn infer_err(ctx: Context) -> #(Term, Type, Context) {
+  step("infer:infer_err")
   #(tm.Err, v.Err, ctx)
 }

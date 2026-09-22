@@ -4,8 +4,11 @@ import core/error as e
 import core/eval.{eval}
 import core/occurs.{occurs}
 import core/term.{type Case, type Term} as tm
+import core/step.{step}
+import core/trace
 import core/unwrap.{unwrap}
 import core/value.{type Env, type TypeDefinition, type Value} as v
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
@@ -17,6 +20,7 @@ import syntax/span.{type Span}
 /// when unified against a non-`For` value. Neutral variables (`NVar`) are
 /// rigid but are *not* checked against their environment types.
 pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
+  step("unify:unify")
   let #(value1, s1) = a
   let #(value2, s2) = b
   case unwrap(ctx.ffi, ctx.subst, value1), unwrap(ctx.ffi, ctx.subst, value2) {
@@ -156,6 +160,7 @@ pub fn unify_rcd(
   a: #(#(List(#(String, #(Value, Option(Value)))), Option(Value)), Span),
   b: #(#(List(#(String, #(Value, Option(Value)))), Option(Value)), Span),
 ) -> Context {
+  step("unify:unify_rcd")
   let #(rcd1, s1) = a
   let #(rcd2, s2) = b
   case rcd1, rcd2 {
@@ -207,6 +212,7 @@ pub fn unify_rcd(
 /// `context.lookup_type_def`); variants are searched among the
 /// definitions' variants in the module records.
 fn is_type_ctor(ctx: Context, tag: String) -> Bool {
+  step("unify:is_type_ctor")
   case context.lookup_type_def(ctx, tag) {
     Some(..) -> True
     None ->
@@ -231,6 +237,7 @@ fn is_type_ctor(ctx: Context, tag: String) -> Bool {
 /// neutral). Identical pairs — structural equality, captured environments
 /// included — are not queued twice.
 fn defer(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
+  step("unify:defer")
   case list.contains(ctx.deferred, #(a, b)) {
     True -> ctx
     False -> Context(..ctx, deferred: [#(a, b), ..ctx.deferred])
@@ -246,15 +253,21 @@ fn defer(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
 /// substitution: fine while queues are small, but O(queue) work per solve
 /// (and the fold can nest, since a re-unification may solve more holes).
 fn retry_deferred(ctx: Context) -> Context {
+  step("unify:retry_deferred")
   let pairs = ctx.deferred
   case pairs {
     [] -> ctx
     _ -> {
+      let in = list.length(pairs)
       let ctx = Context(..ctx, deferred: [])
-      list.fold(pairs, ctx, fn(acc, pair) {
+      let before = step.step_count("context:new_hole")
+      let ctx = list.fold(pairs, ctx, fn(acc, pair) {
         let #(#(a, sa), #(b, sb)) = pair
         unify(acc, #(a, sa), #(b, sb))
       })
+      let newholes = step.step_count("context:new_hole") - before
+      trace.retry(ctx, in, list.length(ctx.deferred), newholes)
+      ctx
     }
   }
 }
@@ -264,6 +277,7 @@ fn unify_with_term(
   a: #(Value, Span),
   b: #(Env, Term, Span),
 ) -> Context {
+  step("unify:unify_with_term")
   let #(env, term, s) = b
   let value = eval(ctx.ffi, env, term)
   unify(ctx, a, #(value, s))
@@ -295,6 +309,7 @@ fn unify_gadt(
   a: #(String, Value, Span),
   b: #(Env, TypeDefinition, String, Value, Span),
 ) -> Context {
+  step("unify:unify_gadt")
   let #(ctr_tag, ctr_arg, s1) = a
   let #(env, tdef, type_tag, type_arg, s2) = b
   // Instantiate the type definition's parameters by pushing fresh holes.
@@ -343,6 +358,7 @@ fn unify_match_case(
   a: #(Env, Case, Span),
   b: #(Env, Case, Span),
 ) -> Context {
+  step("unify:unify_match_case")
   let #(env1, tm.Case(pat1, opt_guard1, body1), s1) = a
   let #(env2, tm.Case(pat2, opt_guard2, body2), s2) = b
   let env1 = v.env_push(env1, list.length(tm.bindings(pat1)))
@@ -380,6 +396,7 @@ fn unify_match_case_list(
   a: #(Env, List(Case), Span),
   b: #(Env, List(Case), Span),
 ) -> Context {
+  step("unify:unify_match_case_list")
   let #(env1, cases1, s1) = a
   let #(env2, cases2, s2) = b
   case cases1, cases2 {
@@ -397,6 +414,7 @@ fn solve_hole(
   value: Value,
   span: Span,
 ) -> Context {
+  step("unify:solve_hole")
   case opt_id {
     Some(id) ->
       // Concrete hole, do occurs check and solve with a substitution
@@ -405,6 +423,7 @@ fn solve_hole(
         False ->
           case list.key_find(ctx.subst, id) {
             Error(Nil) -> {
+              trace.solve(ctx, id, value)
               // Store the frame the solution was produced in with the
               // entry: the solution's `NVar` levels address this frame,
               // so quoting must re-anchor against it, never against an
@@ -418,6 +437,9 @@ fn solve_hole(
               // Defensive: a hole is solved exactly once, but if we ever
               // meet it twice, merge the solutions instead of overwriting
               // (any substitution the merge adds retries the queue itself).
+              trace.solve_note(
+                "M: merge h" <> int.to_string(id),
+              )
               unify(ctx, #(value, span), #(existing, span))
             }
           }
@@ -425,6 +447,7 @@ fn solve_hole(
     None -> {
       // Unknown hole, instantiate a fresh new hole.
       let #(id, ctx) = context.new_hole(ctx)
+      trace.solve_note("O: open-hole store -> h" <> int.to_string(id))
       solve_hole(ctx, Some(id), value, span)
     }
   }
@@ -435,6 +458,7 @@ fn instantiate(
   env: Env,
   params: List(#(String, Value)),
 ) -> #(Env, Context) {
+  step("unify:instantiate")
   let ctx =
     list.map(params, fn(param) {
       let #(name, type_) = param

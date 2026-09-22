@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Force-recompile the hand-written Erlang helpers in src/*.erl into the app
+# ebin. Gleam's incremental build does NOT recompile changed .erl files, so
+# after editing src/*.erl run this (after `gleam build`), or `gleam run`
+# will call missing/old functions ("A function was called but it did not
+# exist"). Do NOT `rm -rf build` — it also wipes the dependency build.
+set -e
+cd "$(dirname "$0")/.."
+TMP=$(mktemp -d)
+for erl in src/*.erl; do
+  erlc -o "$TMP" "$erl"
+done
+cp "$TMP"/*.beam build/dev/erlang/compiler_bootstrap/ebin/
+rm -rf "$TMP"
+echo "recompiled: $(ls src/*.erl | xargs -n1 basename | tr '\n' ' ')"
