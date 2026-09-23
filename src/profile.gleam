@@ -1,7 +1,7 @@
 /// Profile entry point — wraps the gleeunit test runner in gflambe.
 ///
 /// Run with:
-///   gleam run --module profile -- [cli-args..] &> /dev/null
+///   gleam run --module profile -- [cli-args..] 2>&1 | egrep -A 100 "^error:|Output filename:"
 /// 
 /// This generates file in the Brendan Gregg flame graph format.
 /// The output file is created in `profiler/*-eflambe-output.bggg`
