@@ -23,5 +23,7 @@ pub fn main() {
   gflambe.apply(fn() { entrypoint(args) }, [
     gflambe.OutputDirectory(output_dir),
     gflambe.OutputFormat(gflambe.BrendanGregg),
+    // gflambe.OutputFormat(gflambe.Svg),
+  // gflambe.Open(gflambe.Speedscope),
   ])
 }
