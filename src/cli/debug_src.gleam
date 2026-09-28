@@ -88,6 +88,14 @@ pub fn debug_src(
           <> " deferred="
           <> int.to_string(list.length(ctx.deferred)),
       )
+      // Solutions carry NVar levels relative to their captured solve env,
+      // so each one is displayed against that env's length, not `names`.
+      let fmt_sol = fn(env, value) {
+        let env_names =
+          int.range(from: 0, to: list.length(env) - 1, with: [], run: list.prepend)
+          |> list.map(fn(i) { "$" <> int.to_string(i) })
+        format.value(ffi.build, env_names, value, width, 2)
+      }
       let _ =
         list.map(subst, fn(entry) {
           let #(id, #(env, value)) = entry
@@ -97,7 +105,7 @@ pub fn debug_src(
               <> " (envlen="
               <> int.to_string(list.length(env))
               <> "): "
-              <> string.slice(fmt_value(value), 0, 200),
+              <> string.slice(fmt_sol(env, value), 0, 200),
           )
         })
 
