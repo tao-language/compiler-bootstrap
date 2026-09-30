@@ -45,6 +45,52 @@
 %%%     sampler. A spin only depends on the scheduler giving this process
 %%%     its timeslices. It does peg one core per sampler for the window,
 %%%     which is expected for this tool.
+%%%
+%%% Burst on transition:
+%%%   When a previously-idle pid becomes busy (a state transition), the
+%%%   sampler temporarily raises its rate ~6x for 200 ms: the busy->stuck
+%%%   window where the stack is still readable is short, and a fixed 30 Hz
+%%%   tick may miss it.
+%%%
+%%% Last seen per pid:
+%%%   Each sampler keeps the last stack seen for every busy pid in its
+%%%   share (pids are never removed: the point is to retain the last known
+%%%   stack of a pid that later goes silent/stuck). At the end of the
+%%%   window the summary prints one line per pid, most recently active
+%%%   first, so the stuck pid's last readable stack stands out at a glance.
+%%%
+%%% Known limitation -- "fast case" (program exits before the window ends):
+%%%   When the target program finishes and exits on its own before the sample
+%%%   window completes, the samplers go dark well before the deadline and NO
+%%%   summary is written. This is expected and NOT a bug, but the mechanism is
+%%%   subtle and was investigated (Sept 2026). Observations from the fast
+%%%   baseline (`-- test lib/prelude/v0.0.1/option.tao`, which passes in ~0.1s):
+%%%
+%%%     * The program's tests finish at ~0.13s; `compiler_bootstrap@@main:run`
+%%%       receives {'EXIT', normal} from the program and calls init:stop().
+%%%     * The VM then spends its remaining ~1s in init SHUTDOWN, not running
+%%%       the program: kernel pids are torn down one by one (slowly), then
+%%%       init's kill_all_pids sends exit(kill) to every non-system process
+%%%       (including our samplers) at ~0.75s, and only then does the VM
+%%%       actually terminate (flushing output) at ~1.2s.
+%%%     * So the samplers are killed at ~0.75s by init's own shutdown, long
+%%%       before a 2s window would end -- hence no summary. (With a short
+%%%       --duration that ends before the program exits, a summary IS written.)
+%%%     * Ruled out as the cause of the early silence: lost schedulers (12
+%%%       spin-based heartbeats all ran the full ~4.7s with max gap 58ms), a
+%%%       sampler crash (the try/catch CRASHED reporter in sampler/5 printed
+%%%       nothing), and the safe_sample receive `after` clause not firing (a
+%%%       pre/post-receive DBG build showed every pre-receive had a matching
+%%%       post-receive up to the last tick).
+%%%     * Most-likely cause (unconfirmed): a process wedged in non-preemptable
+%%%       C code (a JIT-compiled hot loop or a NIF) during init shutdown pins
+%%%       its scheduler thread; a sampler parked in a receive (or spinning) on
+%%%       that scheduler freezes with its timer, and the next tick never runs.
+%%%       A sample(8) of a wedged VM would show `??? (in <unknown binary>)`
+%%%       = unsymbolicated JIT code on the pegged scheduler thread. If this
+%%%       ever needs fixing, instrument busy_wait and the deadline check in
+%%%       loop/11 to see whether the samplers freeze in the wait (scheduler
+%%%       wedge) or in the loop body.
 
 -module(samplestack).
 -export([start/0, sampler/5]).
@@ -52,6 +98,8 @@
 -define(N_SAMPLERS, 3).  % redundant samplers, see module comment
 -define(FRAMES, 4).      % stack frames kept per sample
 -define(HIST, 5).        % histogram entries printed at the end
+-define(BURST_MS, 200).  % burst-on-transition window length
+-define(LAST_SEEN, 10).  % max pids in the "last seen per pid" summary
 
 %% Called at VM boot. Spawns the samplers detached and returns immediately
 %% so that boot is not delayed.
@@ -84,28 +132,60 @@ sampler(Id, Delay, Duration, Interval, Log) ->
       fmt(1000 / Interval) ++ " Hz (delay " ++ fmt(Delay / 1000) ++ " s) " ++
       "[sampler " ++ integer_to_list(Id) ++ " of " ++
       integer_to_list(?N_SAMPLERS) ++ "]\n"),
-  busy_wait(Delay),
-  T0 = ms(),
-  loop(Id, T0, T0 + Duration, Interval, 0, #{}, undefined, 0, Samplers).
+  try
+    busy_wait(Delay),
+    T0 = ms(),
+    %% BurstUntil starts in the past (monotonic_time has an arbitrary
+    %% fixed point, so 0 is not necessarily "the past").
+    loop(Id, T0, T0 + Duration, Interval, 0, #{}, undefined, 0, Samplers,
+         #{}, T0 - 1)
+  catch Class:Reason:Stack ->
+    % A dying sampler is silent by default; log why, so its share going
+    % dark is not mistaken for a lost scheduler.
+    log("sampler[" ++ integer_to_list(Id) ++ "]: CRASHED " ++
+        atom_to_list(Class) ++ ": " ++
+        io_lib:format("~p~n~p~n", [Reason, Stack]))
+  end.
 
 %% Main sampling loop for one sampler.
+%% LastSeen maps Pid -> {Frames, Depth, T}: the last stack seen for each
+%% busy pid in this share. Pids are never removed: the point is to retain
+%% the last known stack of a pid that later goes silent or stuck.
+%% BurstUntil is a monotonic deadline; while now < BurstUntil the interval
+%% is shortened ~6x (burst on transition, see module comment).
 loop(Id, T0, Deadline, Interval, Samples, Hist, PrevStacks, Suppressed,
-     Samplers) ->
+     Samplers, LastSeen, BurstUntil) ->
   case ms() >= Deadline of
     true ->
-      summary(Id, Samples, Suppressed, Hist);
+      summary(Id, Samples, Suppressed, Hist, LastSeen);
     false ->
-      {Hist1, Prev1, Sup1} =
+      {Hist1, Prev1, Sup1, Seen1, Burst1} =
         case safe_sample(Id, Samplers, max(10, Interval div 2)) of
           {ok, Stacks} ->
             put(timeout_line, false),
+            PrevPids = case PrevStacks of
+              undefined -> [];
+              S -> [P || {P, _, _, _} <- S]
+            end,
+            Burst2 =
+              case [P || {P, _, _, _} <- Stacks,
+                        not lists:member(P, PrevPids)] of
+                [] -> BurstUntil;  % no transition
+                _ -> ms() + ?BURST_MS
+              end,
+            T = (ms() - T0) / 1000,
+            Seen2 = lists:foldl(
+              fun({P, _, Frames, Depth}, Acc) ->
+                maps:put(P, {Frames, Depth, T}, Acc)
+              end, LastSeen, Stacks),
             case Stacks =:= PrevStacks of
               true -> % identical tick
-                {update_hist(Hist, Stacks), PrevStacks, Suppressed + 1};
+                {update_hist(Hist, Stacks), PrevStacks, Suppressed + 1,
+                 Seen2, Burst2};
               false ->
                 log(lists:flatten(
                       tick_line(Id, (ms() - T0) / 1000, Stacks))),
-                {update_hist(Hist, Stacks), Stacks, 0}
+                {update_hist(Hist, Stacks), Stacks, 0, Seen2, Burst2}
             end;
           timeout ->
             % Skip this tick, but say so once: this share contains a
@@ -119,11 +199,15 @@ loop(Id, T0, Deadline, Interval, Samples, Hist, PrevStacks, Suppressed,
                     "] (sample timed out: a process in this share "
                     "blocks process_info, probably stuck in native code)\n")
             end,
-            {Hist, PrevStacks, Suppressed}
+            {Hist, PrevStacks, Suppressed, LastSeen, BurstUntil}
         end,
-      busy_wait(Interval),
+      Next = case ms() < Burst1 of
+        true -> max(5, Interval div 6);  % bursting
+        false -> Interval
+      end,
+      busy_wait(Next),
       loop(Id, T0, Deadline, Interval, Samples + 1, Hist1, Prev1, Sup1,
-           Samplers)
+           Samplers, Seen1, Burst1)
   end.
 
 %% Run sample/2 in a helper process so that a process_info call stuck on
@@ -213,6 +297,7 @@ ts(T) ->
   N = round(T * 100),
   [integer_to_list(N div 100), ".", case N rem 100 of
     0 -> "00";
+    R when R < 10 -> "0" ++ integer_to_list(R);
     R -> integer_to_list(R)
   end].
 
@@ -240,7 +325,7 @@ update_hist(H, Stacks) ->
          end
     end, H, Stacks).
 
-summary(Id, Samples, Suppressed, Hist) ->
+summary(Id, Samples, Suppressed, Hist, LastSeen) ->
   S = "sampler[" ++ integer_to_list(Id) ++ "]: ",
   case Samples of
     0 ->
@@ -255,7 +340,20 @@ summary(Id, Samples, Suppressed, Hist) ->
           "top frames across " ++ integer_to_list(Total) ++
           " non-idle stacks\n"),
       [log(io_lib:format("  ~4w  ~s~n", [N, frame_str(F)])) ||
-        {F, N} <- lists:sublist(Top, ?HIST)]
+        {F, N} <- lists:sublist(Top, ?HIST)],
+      % Last stack seen per pid, most recently active first: the stuck
+      % pid (if it was in this share and ever sampled) is the top entry.
+      Last = lists:sort(
+               fun({_, {_, _, T1}}, {_, {_, _, T2}}) -> T1 >= T2 end,
+               maps:to_list(LastSeen)),
+      case Last of
+        [] -> ok;
+        _ ->
+          log(S ++ "last seen per pid (most recent first):\n"),
+          [log(io_lib:format("  ~s  t=~ss  depth=~w  ~s~n",
+                             [pid_to_list(P), ts(T), D, frames_str(F)]))
+            || {P, {F, D, T}} <- lists:sublist(Last, ?LAST_SEEN)]
+      end
   end.
 
 %% Sleep by spinning on the monotonic clock. We deliberately avoid

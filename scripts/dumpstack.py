@@ -87,6 +87,10 @@ def parse_args(argv):
     ap.add_argument("--test", action="store_true",
                     help="run the project's test suite (gleam test) instead "
                          "of `gleam run`")
+    ap.add_argument("--no-native", action="store_true",
+                    help="do not run macOS sample(8) on the VM right before "
+                         "the SIGKILL (on by default when the target hangs; "
+                         "it adds ~2 s but shows the native C-level stacks)")
     ap.add_argument("rest", nargs=argparse.REMAINDER,
                     help="arguments after `--`")
     args = ap.parse_args(argv)
@@ -125,6 +129,86 @@ def stream_stdout(proc, stop):
 def print_line(line):
     sys.stdout.write(line + "\n")
     sys.stdout.flush()
+
+
+def native_sample(pid, secs=2):
+    """Best-effort macOS sample(8) of the hung VM, right before the kill.
+
+    sample(8) reads the process through mach task ports (not
+    process_info), so it works even when the stuck process's process lock
+    blocks process_info, and shows the native (C) stacks: which scheduler
+    thread is pegged and what the stuck loop is doing in C. Any failure is
+    a silent NOOP (e.g. not on macOS, sample unavailable, pid gone).
+    """
+    if sys.platform != "darwin":
+        return
+    try:
+        out = tempfile.NamedTemporaryFile(
+            prefix="dumpstack-native-", suffix=".txt", delete=False)
+        out.close()
+        r = subprocess.run(
+            ["sample", str(pid), str(secs), "--file", out.name],
+            capture_output=True, text=True, timeout=secs + 15)
+    except (OSError, subprocess.SubprocessError):
+        return
+    if r.returncode != 0:
+        return
+    print_line("[dumpstack] native (C-level) sample of pid %d, last %ds "
+               "before kill:" % (pid, secs))
+    print_top_native_frames(out.name)
+    print_line("[dumpstack] full native report: %s" % out.name)
+
+
+def print_top_native_frames(path):
+    """Print, from a sample(8) report, the top native frame of each thread
+    plus the 'Sort by top of stack' summary.
+
+    Defensive: if the report's format does not match expectations, print
+    its first ~30 lines instead. The full report stays on disk for manual
+    reading.
+    """
+    try:
+        with open(path, errors="replace") as f:
+            lines = f.readlines()
+    except OSError:
+        return
+    # In the "Call graph:" section, a thread header line looks like
+    # "    1695 Thread_3401813: erts_ssig_disp" and frame lines start with
+    # "+", indented one level per stack level. The first frame line after
+    # a header is that thread's top (most recent) frame.
+    thread_re = re.compile(r"^\s*\d+\s+Thread_\d+")
+    frame_re = re.compile(r"^\s*\+\s")
+    threads = []  # [name, top frame line or None]
+    in_cg = False
+    for line in lines:
+        if line.startswith("Call graph:"):
+            in_cg = True
+            continue
+        if not in_cg:
+            continue
+        if not line.strip():
+            continue
+        if thread_re.match(line):
+            threads.append([" ".join(line.split()[2:]), None])
+        elif frame_re.match(line) and threads \
+                and threads[-1][1] is None:
+            threads[-1][1] = line.strip()
+        elif not line.startswith(" "):
+            break  # next section ("Sort by ...", "Binary Images:", ...)
+    if not threads:
+        print_line("  (could not parse report; first lines follow)")
+        for line in lines[:30]:
+            print_line("  " + line.rstrip("\n"))
+        return
+    for name, top in threads[:20]:
+        print_line("  %s: %s" % (name, top or "(no frames)"))
+    for i, line in enumerate(lines):
+        if line.startswith("Sort by top of stack"):
+            for l2 in lines[i + 1:]:
+                if not l2.strip():
+                    break
+                print_line("  " + l2.strip())
+            break
 
 
 class LogTailer:
@@ -271,6 +355,10 @@ def main():
         killed = False
         if target.poll() is None:
             killed = True
+            if not args.no_native:
+                # Best-effort, hang path only: the native stacks tell us
+                # what the stuck loop is doing in C. NOOP on any failure.
+                native_sample(target.pid)
             try:
                 os.killpg(target.pid, signal.SIGKILL)
             except (ProcessLookupError, PermissionError):

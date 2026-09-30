@@ -11,7 +11,7 @@ leaks a `beam.smp` process).
 ## Usage
 
 ```sh
-python scripts/dumpstack.py [--delay=S] [--duration=S] [--sampling-rate=N] [--test] -- [cli-args...]
+python scripts/dumpstack.py [--delay=S] [--duration=S] [--sampling-rate=N] [--test] [--no-native] -- [cli-args...]
 ```
 
 | flag | default | meaning |
@@ -20,6 +20,7 @@ python scripts/dumpstack.py [--delay=S] [--duration=S] [--sampling-rate=N] [--te
 | `--duration=S` | `2` | sample for S seconds |
 | `--sampling-rate=N` | `30` | samples per second (higher = finer, slower, more overhead) |
 | `--test` | — | run the test suite (`compiler_bootstrap_test`) instead of `gleam run` |
+| `--no-native` | off | skip the macOS `sample(8)` native stack dump taken right before the SIGKILL. On by default **only when the target hangs** (adds ~2 s); never runs when the target exits on its own.
 
 Everything after `--` is passed to the program exactly as `gleam run -- ...`
 would pass it.
@@ -58,14 +59,35 @@ sampler: sampling for 2.00 s at 30.30 Hz (delay 0.00 s) [sampler 2 of 3]
 t=0.1s [s0] <0.0.0> (main) depth=1  init/boot_loop/2
 t=0.1s [s1] <0.50.0> depth=4  code_server/handle_loader/4 <- code_server/run_loader/4 <- ...
 t=0.11s [s1] <0.50.0> depth=7  prim_file/read_file/1 <- erl_prim_loader/read_file/1 <- ...
-t=0.17s [s1] (sample timed out: a process in this share blocks process_info, probably stuck in native code)
-sampler[0]: 61 samples (60 identical ticks suppressed), top frames across 0 non-idle stacks
+t=0.14s [s1] (sample timed out: a process in this share blocks process_info, probably stuck in native code)
 sampler[2]: 61 samples (60 identical ticks suppressed), top frames across 0 non-idle stacks
-sampler[1]: 41 samples (0 identical ticks suppressed), top frames across 3 non-idle stacks
-     3  code_server/handle_loader/4
+sampler[1]: 62 samples (0 identical ticks suppressed), top frames across 18 non-idle stacks
+    10  prim_file/read_file/1
+     4  code_server/handle_loader/4
+sampler[1]: last seen per pid (most recent first):
+  <0.95.0>  t=0.12s  depth=8  gleam@list/-key_find/2-anonymous-0-/2 <- gleam@list/find_map/2 <- tao@define/type_stmt_data/5 <- tao@define/type_stmt/5
+  <0.50.0>  t=0.12s  depth=7  prim_file/read_file/1 <- erl_prim_loader/read_file/1 <- ...
+sampler[0]: 96 samples (88 identical ticks suppressed), top frames across 2 non-idle stacks
+sampler[0]: last seen per pid (most recent first):
+  <0.0.0>  t=2.00s  depth=1  init/boot_loop/2
+[dumpstack] native (C-level) sample of pid 79259, last 2s before kill:
+  erts_sched_1: + 1700 ???  (in <unknown binary>)  [0x10a072d04]
+  erts_sched_2: + 1700 ???  (in <unknown binary>)  [0x109d029fc]
+  ... (one line per thread; the 12 scheduler threads are all pegged) ...
+  make_internal_hash  (in beam.smp)        1700
+  read  (in libsystem_kernel.dylib)        1700
+[dumpstack] full native report: /var/folders/.../T/dumpstack-native-XXXX.txt
 [dumpstack] target still running, killed with SIGKILL (hang confirmed?)
 [dumpstack] no beam.smp leaks
 ```
+
+The native `sample(8)` section is the C-level view: every `erts_sched_N`
+thread parked in `??? (in <unknown binary>)` is a scheduler stuck in
+JIT-compiled (unsymbolicated) code, and the `make_internal_hash (in
+beam.smp)` line in the "Sort by top of stack" summary names the C function
+the stuck Erlang loop compiled down to. This is what the in-VM sampler
+cannot see (its own `process_info` blocks on the stuck process). Use
+`--no-native` to skip it; the full report is always saved to the named file.
 
 In a `--test` run the transition can be caught on a program stack instead:
 
@@ -99,6 +121,21 @@ t=1.66s [s1] (sample timed out: a process in this share blocks process_info, pro
   across the window. If a sampler's summary is missing, print at the end
   flags it: that sampler's scheduler was probably lost to a non-preemptable
   native loop, and the pids in its share are invisible.
+- **`sampler[N]: last seen per pid (most recent first):`** — one line per
+  busy pid the sampler ever saw, in the form
+  `<pid>  t=<lastT>s  depth=D  MFA <- MFA <- MFA <- MFA`, sorted so the most
+  recently active pid is first. Pids are never removed, so a pid that goes
+  silent or stuck keeps its *last known* stack here. This is the fastest way
+  to the answer: **the top entry of the share that printed the timeout line
+  is the stuck pid's last readable stack.** (Each sampler only covers its own
+  pid share, so the three sections together cover all pids.)
+- **`[dumpstack] native (C-level) sample of pid ...`** — the `sample(8)`
+  report taken in the ~2 s before the SIGKILL (hang path only, on by
+  default). One line per OS thread: the top native frame. A scheduler thread
+  parked in `??? (in <unknown binary>)` is stuck in JIT-compiled code;
+  the `Sort by top of stack` lines that follow name the C function the stuck
+  loop compiled down to (e.g. `make_internal_hash (in beam.smp)`). Skip with
+  `--no-native`. The full report is saved to the printed path.
 - **`no beam.smp leaks`** / `WARNING: killed leaked ...` — the post-run
   sweep. If you ever see a leaked `beam.smp` consuming memory, kill it:
   `pkill -9 -f beam.smp`.
@@ -123,11 +160,16 @@ Use `--delay` to skip startup and the phases you already understand, and
 ### Catch the transition into the stuck state
 
 The busy→stuck transition can happen within ~50 ms, and once the process is
-stuck its stack is unreadable (see timeout line). A higher
-`--sampling-rate` (e.g. `--sampling-rate=100`) increases the odds of landing
-a tick inside the short window where the stack is still readable. The cost
-is more CPU (the overhead of sampling is expected and documented, but 100 Hz
-is noticeably heavier than 30 Hz).
+stuck its stack is unreadable (see timeout line). Two mechanisms sharpen it:
+
+- **Burst on transition (built in, no flag).** When a previously-idle pid
+  suddenly appears busy, that sampler automatically raises its rate ~6× for
+  200 ms (e.g. 30 Hz → ~180 Hz) to maximize the chance of landing a tick
+  while the stack is still readable. You'll see a short run of closely-spaced
+  `t=` values after a transition. No action needed.
+- **Higher base rate.** `--sampling-rate=100` raises the steady-state rate
+  too. The cost is more CPU (the overhead of sampling is expected and
+documented, but 100 Hz is noticeably heavier than 30 Hz).
 
 ### Profile a slow (but terminating) run
 
@@ -147,9 +189,13 @@ histograms to see where the time went.
 3. Samplers write to a log file (one flushed line at a time, so everything
    survives the final SIGKILL); the script tails it to stdout alongside the
    program's own stdout.
-4. After `delay + duration` (plus a 2 s margin for the summaries), the
-   process group is killed with **SIGKILL**, and any `beam.smp` that
-   appeared during the run is killed and reported.
+4. After `delay + duration` (plus a 2 s margin for the summaries), if the
+   target is *still running* (the hang path) the script runs macOS
+   `sample(8)` on the VM for ~2 s to capture the native C-level stacks (this
+   reads through mach task ports, so it works even though `process_info`
+   blocks on the stuck process), then kills the process group with
+   **SIGKILL**. If the target exited on its own, no `sample(8)` is run. Any
+   `beam.smp` that appeared during the run is killed and reported.
 
 Design constraints worth knowing:
 
@@ -170,6 +216,16 @@ Design constraints worth knowing:
 - **Waiting processes are invisible** (except main), since a hung *loop* is
   a busy process. A process blocked in a NIF shows up via its share's
   timeout line rather than a stack.
+- **Fast runs (program exits before the window ends) produce no summary.**
+  When the program finishes and exits on its own before `--duration` elapses,
+  `init:stop()` begins tearing the VM down and `init`'s `kill_all_pids`
+  reaps the samplers (observed at ~0.75 s) well before the window deadline,
+  so the end-of-window summaries (histogram + last-seen) are never written.
+  This is expected, not a bug — the tick lines up to the program's exit are
+  still valid. To get summaries from a fast run, use a `--duration` that ends
+  *before* the program exits. (See the "Known limitation — fast case" block
+  in `scripts/samplestack.erl` for the full investigation notes, including
+  the suspected JIT/C-wedge cause of the early sampler silence.)
 
 ## Housekeeping
 
