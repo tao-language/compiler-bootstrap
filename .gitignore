@@ -1,7 +1,11 @@
+# Gleam
 *.beam
 *.ez
 build/
 erl_crash.dump
+
+# Python
+__pycache__/
 
 # profiler
 profiler/
