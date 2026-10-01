@@ -200,9 +200,7 @@ pub fn discharge_neutral_match_exists_semantics_test() {
       ],
     )
   let ctx = resolve.context(ctx0)
-  // Some case body type is %Int: the constraint is satisfied. (The
-  // deferred queue itself is not cleared by `discharge` — it is
-  // terminal state at context finalization; pinned.)
+  // Some case body type is %Int: the constraint is satisfied.
   assert ctx.errors == []
 }
 
@@ -299,4 +297,32 @@ pub fn discharge_rigid_var_accepted_test() {
     )
   let ctx = resolve.context(ctx0)
   assert ctx.errors == []
+}
+
+// ============================================================================
+// Phase boundary: the deferred queue must not survive resolve.context
+// ============================================================================
+
+/// `resolve.context` discharges the leftover deferred constraints and
+/// *clears* the queue: the constraints are phase-scoped bookkeeping, and
+/// a queue that survives into the next phase (e.g. `compile.tests`) would
+/// re-activate stale pairs — with stale `NVar` levels and stale module
+/// records — on every hole solve (`unify.retry_deferred`), which is how
+/// the result.tao non-terminating-unification hang was seeded (see
+/// docs/plan.md §4.3).
+pub fn resolve_context_clears_deferred_queue_test() {
+  let ffi = ffi.build
+  let s = span.Span("", 3, 3, 3, 3)
+  let ctx0 =
+    Context(
+      ..new_ctx,
+      ffi: ffi,
+      deferred:
+        [
+          #(#(v.var(0), s), #(v.int_t, s)),
+          #(#(v.int_t, s), #(v.float_t, s)),
+        ],
+    )
+  let ctx = resolve.context(ctx0)
+  assert ctx.deferred == []
 }

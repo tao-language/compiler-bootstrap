@@ -12,8 +12,10 @@ import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
 /// Finalize a context after type checking: discharge every leftover
-/// deferred constraint, then resolve every hole in the environment, the
-/// type bindings, and the accumulated errors.
+/// deferred constraint, clear the queue (it is phase-scoped bookkeeping —
+/// a queue that survived into the next phase would re-activate stale
+/// constraints on every hole solve), then resolve every hole in the
+/// environment, the type bindings, and the accumulated errors.
 pub fn context(ctx: Context) -> Context {
   let ctx = discharge(ctx.deferred, ctx)
   let env = list.map(ctx.env, value(ctx.ffi, ctx.subst, _))
@@ -26,6 +28,7 @@ pub fn context(ctx: Context) -> Context {
     ..ctx,
     env: env,
     types: types,
+    deferred: [],
     errors: list.map(ctx.errors, error(ctx.ffi, ctx.subst, ctx.env, _)),
   )
 }
@@ -344,6 +347,8 @@ fn discharge(
   deferred: List(#(#(v.Value, Span), #(v.Value, Span))),
   ctx: Context,
 ) -> Context {
+  // TODO: The resulting context should be popping/removing deferred 
+  // pairs as they're processed instead of resolve.context to clear them.
   list.fold(deferred, ctx, fn(acc, pair) { discharge_pair(acc, pair) })
 }
 
