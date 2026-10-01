@@ -8,6 +8,8 @@ traces of all busy processes to stdout as it samples. After the sample window
 the VM is terminated with SIGKILL (mandatory for Erlang — anything else
 leaks a `beam.smp` process).
 
+**IMPORTANT**: Do not truncate the dumpstack output the first time you run it, it can be long but it's all important. You can truncate it in later runs once you know what you're looking for.
+
 ## Usage
 
 ```sh
