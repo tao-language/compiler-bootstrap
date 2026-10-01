@@ -18,9 +18,9 @@ import core/context.{type Context, Context, new_ctx}
 import core/error.{display, display_syntax}
 import core/ffi
 import core/format.{value as fmt_value}
-import core/value.{type Value}
+import core/value as v
 import gleam/list
-import gleam/option.{None}
+import gleam/option.{None, Some, type Option}
 import tao/ast.{type Module}
 import tao/compile
 import tao/load
@@ -217,6 +217,55 @@ pub fn multi_implicit_two_tests_terminate_test() {
 }
 
 // ============================================================================
+// Hole-solution probes (compiler invariants, no evaluation)
+// ============================================================================
+
+/// The minimal hang shape (B): 2 type params, 2 tests (see
+/// /tmp/taoscratch/B_two_params_two_tests.tao).
+const b_shape =
+  "type Rst(value, error) {"
+  <> nl
+  <> "| OkX(value)"
+  <> nl
+  <> "| ErrX(error)"
+  <> nl
+  <> "}"
+  <> nl
+  <> "fn _orx<a, e>(r: Rst(a, e), d: a) -> a"
+  <> nl
+  <> "= match r {"
+  <> nl
+  <> "| OkX(value) => value"
+  <> nl
+  <> "| ErrX(_) => d"
+  <> nl
+  <> "}"
+  <> nl
+  <> ">>> _orx(OkX(10), 20) 10"
+  <> nl
+  <> ">>> _orx(ErrX(10), 20) 20"
+
+/// Rigid variables (`NVar`) must never end up as hole solutions: a hole
+/// "solved" with a rigid neutral is still undecidable, and retrying such a
+/// substitution re-unifies stale pairs that corrupt later solutions (the
+/// module-record corruption behind the result.tao hang).
+pub fn b_shape_no_nevar_hole_solutions_test() {
+  case compile_ctx(b_shape) {
+    Some(ctx) -> {
+      let has_nevar = list.any(ctx.subst, fn(entry) {
+        let #(_, #(_, solution)) = entry
+        case solution {
+          v.Neut(v.NVar(_)) -> True
+          _ -> False
+        }
+      })
+      assert has_nevar == False
+    }
+    None -> panic as "parse error"
+  }
+}
+
+// ============================================================================
 // Harness (modeled on test/tao/overload_test.gleam)
 // ============================================================================
 
@@ -236,6 +285,24 @@ fn check(source: String) -> List(String) {
       list.map(ctx.errors, fn(err) { display(ffi.build, ctx.types, err) })
     }
     Error(err) -> ["PARSE: " <> display_syntax(err)]
+  }
+}
+
+/// Like `check`, but returns the post-`compile.modules` context (for
+/// probing compiler invariants such as hole solutions).
+fn compile_ctx(source: String) -> Option(Context) {
+  case p.statements("scratch", source) {
+    Error(_) -> None
+    Ok(stmts) -> {
+      let #(prelude, _load_errors) =
+        load.package_list(["lib"], [#("prelude", None)])
+      let mods: List(Module) =
+        list.append([#("scratch", stmts)], prelude)
+        |> load.implicit_prelude_imports(prelude)
+      Some(
+        Context(..new_ctx, ffi: ffi.build) |> compile.modules(mods),
+      )
+    }
   }
 }
 
@@ -274,7 +341,7 @@ fn run(source: String) -> #(List(String), List(String)) {
   }
 }
 
-fn display_value(ctx: Context, value: Value) -> String {
+fn display_value(ctx: Context, value: v.Value) -> String {
   let names = list.map(ctx.types, fn(entry) { entry.0 })
   fmt_value(ffi.build, names, value, 80, 2)
 }

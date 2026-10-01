@@ -531,6 +531,20 @@ pub fn unify_neut_nhole_solve_test() {
     == Context(..ctx0, subst: [#(0, #([], v.int_t))])
 }
 
+/// A rigid variable must not solve a hole: the pair is undecidable until
+/// one side becomes concrete, so it is deferred, not substituted.
+pub fn unify_neut_nhole_nevar_defers_test() {
+  let a = v.Neut(v.NHole([], Some(0)))
+  let b = v.Neut(v.NVar(0))
+  let ctx0 = new_ctx
+  let ctx = unify(ctx0, #(a, s1), #(b, s2))
+  assert ctx.subst == []
+  assert ctx.deferred == [#(#(a, s1), #(b, s2))]
+  let ctx = unify(ctx0, #(b, s2), #(a, s1))
+  assert ctx.subst == []
+  assert ctx.deferred == [#(#(b, s2), #(a, s1))]
+}
+
 pub fn unify_neut_nhole_infinite_type_test() {
   // Unifying a neutral hole with a value containing the same hole
   // triggers the occurs check, producing an InfiniteType error.
@@ -934,19 +948,17 @@ pub fn unify_type_def_different_test() {
 }
 
 // ============================================================================
-// Hole solutions with neutral variables (frame discipline)
+// Hole solutions with neutral variables
 // ============================================================================
 
-/// A hole may be solved by an `NVar` whose level is addressable in the
-/// hole's captured env: the solution is stored as-is.
-pub fn unify_hole_solved_by_in_frame_nvar_test() {
+/// A rigid `NVar` must not solve a hole: the pair is undecidable until the
+/// hole meets a concrete value, so it is deferred (solving holes with rigid
+/// neutrals seeded the result.tao hang).
+pub fn unify_hole_not_solved_by_nvar_test() {
   let ctx0 = Context(..new_ctx, ffi: [])
-  let ctx = unify(ctx0, #(v.var(0), s1), #(v.hole([v.int(1)], 1), s2))
+  let hole = v.hole([v.int(1)], 1)
+  let ctx = unify(ctx0, #(v.var(0), s1), #(hole, s2))
   assert ctx.errors == []
-  let solved_to_var0 =
-    case list.key_find(ctx.subst, 1) {
-      Ok(#(_, solution)) -> solution == v.var(0)
-      Error(_) -> False
-    }
-  assert solved_to_var0
+  assert ctx.subst == []
+  assert ctx.deferred == [#(#(v.var(0), s1), #(hole, s2))]
 }

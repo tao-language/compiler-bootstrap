@@ -32,6 +32,7 @@ pub fn debug_src(
   dependencies: List(#(String, Option(String))),
   source: String,
   width: Int,
+  trace_solves: Bool,
 ) -> Nil {
   case p.statements("scratch", source) {
     Error(err) -> {
@@ -57,7 +58,7 @@ pub fn debug_src(
           exit(1)
         }
       }
-      let ctx = Context(..new_ctx, ffi: ffi.build)
+      let ctx = Context(..new_ctx, ffi: ffi.build, trace_solves: trace_solves)
       let names = list.map(ctx.types, fn(x) { x.0 })
       let fmt_value = fn(val) { format.value(ffi.build, names, val, width, 2) }
 

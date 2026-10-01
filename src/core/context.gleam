@@ -31,6 +31,8 @@ import syntax/span.{type Span}
 /// * `deferred`: Constraints that could not be decided while a side was
 ///   still neutral; retried as holes get solved and discharged when the
 ///   context is resolved (`resolve.context`).
+/// * `trace_solves`: When true, `unify` prints every hole solve/merge
+///   (debug only; `debug-src --trace-solves`).
 ///
 /// Invariant: `env` and `types` always have the same length and the same
 /// order (innermost first); `lookup` returns an index valid for *both*.
@@ -44,6 +46,7 @@ pub type Context {
     ffi: FFI,
     hole_counter: Int,
     deferred: Deferred,
+    trace_solves: Bool,
   )
 }
 
@@ -59,7 +62,7 @@ pub type Subst =
 pub type Deferred =
   List(#(#(Value, Span), #(Value, Span)))
 
-pub const new_ctx = Context([], [], [], [], [], [], 0, [])
+pub const new_ctx = Context([], [], [], [], [], [], 0, [], False)
 
 /// Look up a variable by name, returning its index (innermost-first)
 /// and type. Only the first (innermost) binding is found.

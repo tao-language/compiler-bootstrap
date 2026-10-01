@@ -6,6 +6,7 @@ import core/occurs.{occurs}
 import core/term.{type Case, type Term} as tm
 import core/unwrap.{unwrap}
 import core/value.{type Env, type TypeDefinition, type Value} as v
+import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
@@ -25,6 +26,14 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     // placeholder instantiated with a *fresh* hole at each use site (see
     // `unify_gadt`'s `instantiate`), so no substitution is recorded.
     v.Neut(v.NHole(_, id1)), v.Neut(v.NHole(_, id2)) if id1 == id2 -> ctx
+    // A rigid variable cannot decide a hole: solving the hole with an
+    // `NVar` produces a "solved" neutral that re-defers forever and poisons
+    // later unifications. Defer the pair instead; it becomes decidable when
+    // the hole meets a concrete value (retried on every solve).
+    v.Neut(v.NVar(_)) as value1, v.Neut(v.NHole(_env, _)) ->
+      defer(ctx, #(value1, s1), #(value2, s2))
+    v.Neut(v.NHole(_env, _)), v.Neut(v.NVar(_)) as value2 ->
+      defer(ctx, #(value1, s1), #(value2, s2))
     value1, v.Neut(v.NHole(_env, id)) -> solve_hole(ctx, id, value1, s1)
     v.Neut(v.NHole(_env, id)), value2 -> solve_hole(ctx, id, value2, s2)
     v.Neut(v.NVar(lv1)), v.Neut(v.NVar(lv2)) if lv1 == lv2 -> ctx
@@ -391,6 +400,40 @@ fn unify_match_case_list(
   }
 }
 
+/// One-level sketch of a value for the solve trace (never descends, so it
+/// is safe on cyclic values). Record fields are listed by name; the empty
+/// import-alias name is printed as `*`.
+fn solve_sketch(value: Value) -> String {
+  case value {
+    v.Neut(v.NVar(_)) -> "NVar"
+    v.Neut(v.NHole(_, _)) -> "NHole"
+    v.Neut(v.NApp(..)) -> "NApp"
+    v.Neut(v.NCall(..)) -> "NCall"
+    v.Neut(v.NMatch(..)) -> "NMatch"
+    v.Rcd(fields, _) -> {
+      let names =
+        list.map(fields, fn(field) { field.0 })
+          |> list.fold("", fn(acc, name) {
+            acc <> case name {
+              "" -> "*"
+              _ -> name
+            }
+          })
+      "Rcd[" <> names <> "]"
+    }
+    v.Typ(_) -> "Typ"
+    v.Lit(_) -> "Lit"
+    v.LitT(_) -> "LitT"
+    v.Ctr(..) -> "Ctr"
+    v.For(..) -> "For"
+    v.Lam(..) -> "Lam"
+    v.Pi(..) -> "Pi"
+    v.Fix(..) -> "Fix"
+    v.TypeDef(..) -> "TypeDef"
+    v.Err -> "Err"
+  }
+}
+
 fn solve_hole(
   ctx: Context,
   opt_id: Option(Int),
@@ -405,6 +448,16 @@ fn solve_hole(
         False ->
           case list.key_find(ctx.subst, id) {
             Error(Nil) -> {
+              let _ =
+                case ctx.trace_solves {
+                  True -> {
+                    let _ =
+                      echo "SOLVE h" <> int.to_string(id) <> " <- "
+                      <> solve_sketch(value)
+                    Nil
+                  }
+                  False -> Nil
+                }
               // Store the frame the solution was produced in with the
               // entry: the solution's `NVar` levels address this frame,
               // so quoting must re-anchor against it, never against an
@@ -415,6 +468,19 @@ fn solve_hole(
               retry_deferred(ctx)
             }
             Ok(#(_, existing)) -> {
+              let _ =
+                case ctx.trace_solves {
+                  True -> {
+                    let _ =
+                      echo "MERGE h" <> int.to_string(id)
+                      <> " value="
+                      <> solve_sketch(value)
+                      <> " existing="
+                      <> solve_sketch(existing)
+                    Nil
+                  }
+                  False -> Nil
+                }
               // Defensive: a hole is solved exactly once, but if we ever
               // meet it twice, merge the solutions instead of overwriting
               // (any substitution the merge adds retries the queue itself).
