@@ -47,6 +47,15 @@ pub type Context {
     hole_counter: Int,
     deferred: Deferred,
     trace_solves: Bool,
+    // Work budget for the unification currently in progress (see
+    // `unify.unify_budget_limit`): decremented on every unification step so
+    // a cyclic/recursive type that re-expands forever drains it into an
+    // error instead of hanging. Granted on a top-level `unify`/`unify_rcd`
+    // entry (budget 0) and restored on exit only in that case; nested calls
+    // continue the enclosing budget and leave their consumption in place, so
+    // the whole subtree drains it monotonically. A context never carries a
+    // leftover budget and no-op unifications compare equal.
+    budget: Int,
   )
 }
 
@@ -62,7 +71,7 @@ pub type Subst =
 pub type Deferred =
   List(#(#(Value, Span), #(Value, Span)))
 
-pub const new_ctx = Context([], [], [], [], [], [], 0, [], False)
+pub const new_ctx = Context([], [], [], [], [], [], 0, [], False, 0)
 
 /// Look up a variable by name, returning its index (innermost-first)
 /// and type. Only the first (innermost) binding is found.

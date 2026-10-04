@@ -11,13 +11,73 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
+/// Unification is a recursive descent over values (`unify` ↔ `unify_rcd`
+/// ↔ `unify_gadt`). On a cyclic/recursive type — a module record whose
+/// captured environment references the record itself — the descent re-expands
+/// the same record forever. The nesting depth stays bounded (it oscillates)
+/// and the work is spread over sibling re-unifications and deferred retries,
+/// so neither a depth cap nor a per-call budget can catch it. Instead a
+/// single top-level unification carries a *total work budget* in the context:
+/// it is decremented on every step and shared by the whole subtree (siblings
+/// and deferred retries continue with whatever is left, never re-granted),
+/// so an unbounded descent drains it into a fast `UnificationNotTerminating`
+/// error. The budget is local to the top-level call: granted on entry when the
+/// budget is 0, and restored to 0 on exit *only in that case* — a nested call
+/// (budget already > 0) continues the enclosing budget and leaves its
+/// consumption in place, so the whole subtree drains it monotonically. This
+/// keeps a returned context free of a leftover budget (no-op unifications
+/// compare equal). The limit is just above the largest legitimate unification
+/// (measured ~76 steps for the prelude plus a two-test module), and low enough
+/// that a cyclic descent errors before its re-expanded module records grow
+/// large enough to make each step's structural hashing expensive.
+const unify_budget_limit = 250
+
 /// Unify two values, updating hole substitutions in `ctx`.
 ///
 /// Holes are flexible: they are solved (with an occurs check) as soon as
 /// they meet a value. `For` quantifiers are instantiated with a fresh hole
 /// when unified against a non-`For` value. Neutral variables (`NVar`) are
 /// rigid but are *not* checked against their environment types.
+///
+/// A top-level unification: a fresh work budget is granted for the whole
+/// descent (the recursive `unify_b` steps continue with whatever is left)
+/// and the caller's budget is restored on exit (only if this call granted
+/// it — a nested call continues the enclosing budget and leaves its
+/// consumption in place, so the whole subtree drains it monotonically).
 pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
+  let granted = ctx.budget == 0
+  let ctx = case granted {
+    True -> Context(..ctx, budget: unify_budget_limit)
+    False -> ctx
+  }
+  let ctx = unify_b(ctx, a, b)
+  let ctx = case ctx.trace_solves {
+    True -> {
+      let _ =
+        echo "BUDGET used="
+        <> int.to_string(unify_budget_limit - ctx.budget)
+        <> "/" <> int.to_string(unify_budget_limit)
+      ctx
+    }
+    False -> ctx
+  }
+  case granted {
+    True -> Context(..ctx, budget: 0)
+    False -> ctx
+  }
+}
+
+/// One unification step: consumes one budget unit and, once the budget is
+/// exhausted, errors instead of recursing further.
+fn unify_b(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
+  let ctx = Context(..ctx, budget: ctx.budget - 1)
+  case ctx.budget <= 0 {
+    True -> with_err(ctx, e.UnificationNotTerminating, a.1)
+    False -> unify_core(ctx, a, b)
+  }
+}
+
+fn unify_core(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   let #(value1, s1) = a
   let #(value2, s2) = b
   case unwrap(ctx.ffi, ctx.subst, value1), unwrap(ctx.ffi, ctx.subst, value2) {
@@ -40,16 +100,16 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     v.Neut(v.NVar(_)) as value1, v.Neut(v.NVar(_)) as value2 ->
       with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)
     v.Neut(v.NApp(fun1, arg1)), v.Neut(v.NApp(fun2, arg2)) -> {
-      let ctx = unify(ctx, #(v.Neut(fun1), s1), #(v.Neut(fun2), s2))
-      unify(ctx, #(arg1, s1), #(arg2, s2))
+      let ctx = unify_b(ctx, #(v.Neut(fun1), s1), #(v.Neut(fun2), s2))
+      unify_b(ctx, #(arg1, s1), #(arg2, s2))
     }
     v.Neut(v.NCall(x, ret1, arg1)), v.Neut(v.NCall(y, ret2, arg2)) if x == y -> {
-      let ctx = unify(ctx, #(ret1, s1), #(ret2, s2))
-      unify(ctx, #(arg1, s1), #(arg2, s2))
+      let ctx = unify_b(ctx, #(ret1, s1), #(ret2, s2))
+      unify_b(ctx, #(arg1, s1), #(arg2, s2))
     }
     v.Neut(v.NMatch(env1, arg1, cases1)), v.Neut(v.NMatch(env2, arg2, cases2))
     -> {
-      let ctx = unify(ctx, #(arg1, s1), #(arg2, s2))
+      let ctx = unify_b(ctx, #(arg1, s1), #(arg2, s2))
       let ctx = case list.length(cases1) == list.length(cases2) {
         True -> ctx
         False -> with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)
@@ -65,28 +125,28 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     v.Neut(_), _ -> defer(ctx, #(value1, s1), #(value2, s2))
     // Quantifier instantiation
     v.For(env1, #(_, t1), body1), v.For(env2, #(_, t2), body2) -> {
-      let ctx = unify(ctx, #(t1, s1), #(t2, s2))
+      let ctx = unify_b(ctx, #(t1, s1), #(t2, s2))
       let v1 = eval(ctx.ffi, v.env_push(env1, 1), body1)
       let v2 = eval(ctx.ffi, v.env_push(env2, 1), body2)
-      unify(ctx, #(v1, s1), #(v2, s2))
+      unify_b(ctx, #(v1, s1), #(v2, s2))
     }
     v.For(env, _, body), value2 -> {
       let #(id, ctx) = context.new_hole(ctx)
       let env = [v.hole(env, id), ..env]
       let value1 = eval(ctx.ffi, env, body)
-      unify(ctx, #(value1, s1), #(value2, s2))
+      unify_b(ctx, #(value1, s1), #(value2, s2))
     }
     value1, v.For(env, _, body) -> {
       let #(id, ctx) = context.new_hole(ctx)
       let env = [v.hole(env, id), ..env]
       let value2 = eval(ctx.ffi, env, body)
-      unify(ctx, #(value1, s1), #(value2, s2))
+      unify_b(ctx, #(value1, s1), #(value2, s2))
     }
     // Unify concrete values (order-independent rows and tags handled below)
     v.Typ(u1), v.Typ(u2) if u1 == u2 -> ctx
     v.Lit(v1), v.Lit(v2) if v1 == v2 -> ctx
     v.LitT(v1), v.LitT(v2) if v1 == v2 -> ctx
-    v.Ctr(t1, a1), v.Ctr(t2, a2) if t1 == t2 -> unify(ctx, #(a1, s1), #(a2, s2))
+    v.Ctr(t1, a1), v.Ctr(t2, a2) if t1 == t2 -> unify_b(ctx, #(a1, s1), #(a2, s2))
     v.Ctr(t1, a1) as value1, v.Ctr(t2, a2) as value2 ->
       case context.lookup_type_def(ctx, t1), context.lookup_type_def(ctx, t2) {
         _, Some(#(env, tdef)) ->
@@ -98,13 +158,13 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
       }
     // Record types
     v.Rcd([], None), v.Typ(_) -> ctx
-    v.Rcd([], Some(tail)), v.Typ(_) -> unify(ctx, #(tail, s1), #(value2, s2))
+    v.Rcd([], Some(tail)), v.Typ(_) -> unify_b(ctx, #(tail, s1), #(value2, s2))
     v.Rcd([#(_, #(value1, _)), ..fields], opt_tail), v.Typ(_) as value2 -> {
-      let ctx = unify(ctx, #(value1, s1), #(value2, s2))
-      unify(ctx, #(v.Rcd(fields, opt_tail), s1), #(value2, s2))
+      let ctx = unify_b(ctx, #(value1, s1), #(value2, s2))
+      unify_b(ctx, #(v.Rcd(fields, opt_tail), s1), #(value2, s2))
     }
     v.Typ(_) as value1, v.Rcd(..) as value2 ->
-      unify(ctx, #(value2, s2), #(value1, s1))
+      unify_b(ctx, #(value2, s2), #(value1, s1))
     // A constructor application can be a type (universe 0) only if its
     // tag names a type definition (`Bool`) or a variant's constructor of
     // one (`True` — a value of type `Bool` carries the variant's
@@ -118,29 +178,29 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
         False -> with_err(ctx, e.TypeMismatch(#(value1, s1), #(value2, s2)), s1)
       }
     v.Typ(0) as value1, v.Ctr(..) as value2 ->
-      unify(ctx, #(value2, s2), #(value1, s1))
+      unify_b(ctx, #(value2, s2), #(value1, s1))
     // Record row polymorphism: fields may be split between head and tail
     v.Rcd(fields1, tail1), v.Rcd(fields2, tail2) ->
       unify_rcd(ctx, #(#(fields1, tail1), s1), #(#(fields2, tail2), s2))
     // Lambdas
     v.Lam(env1, #(_, a1), b1), v.Lam(env2, #(_, a2), b2) -> {
-      let ctx = unify(ctx, #(a1, s1), #(a2, s2))
+      let ctx = unify_b(ctx, #(a1, s1), #(a2, s2))
       let v1 = eval(ctx.ffi, v.env_push(env1, 1), b1)
       let v2 = eval(ctx.ffi, v.env_push(env2, 1), b2)
-      unify(ctx, #(v1, s1), #(v2, s2))
+      unify_b(ctx, #(v1, s1), #(v2, s2))
     }
     // Pi types
     v.Pi(env1, #(_, a1), b1), v.Pi(env2, #(_, a2), b2) -> {
-      let ctx = unify(ctx, #(a1, s1), #(a2, s2))
+      let ctx = unify_b(ctx, #(a1, s1), #(a2, s2))
       let v1 = eval(ctx.ffi, v.env_push(env1, 1), b1)
       let v2 = eval(ctx.ffi, v.env_push(env2, 1), b2)
-      unify(ctx, #(v1, s1), #(v2, s2))
+      unify_b(ctx, #(v1, s1), #(v2, s2))
     }
     // Recursive terms
     v.Fix(env1, _, b1), v.Fix(env2, _, b2) -> {
       let v1 = eval(ctx.ffi, v.env_push(env1, 1), b1)
       let v2 = eval(ctx.ffi, v.env_push(env2, 1), b2)
-      unify(ctx, #(v1, s1), #(v2, s2))
+      unify_b(ctx, #(v1, s1), #(v2, s2))
     }
     // Type definitions: two definitions unify when structurally
     // identical (the same definition seen twice); different definitions
@@ -159,8 +219,40 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
 
 /// Unify two record rows, allowing fields to appear in either head or
 /// tail. An open tail (or `Rcd([], None)`) acts as a row variable and can
-/// absorb the other side's remaining fields.
+/// absorb the other side's remaining fields. A top-level call (no enclosing
+/// unification budget) grants a fresh one; nested calls continue the
+/// enclosing unification's budget (row polymorphism can re-expand records
+/// forever on a cyclic type).
 pub fn unify_rcd(
+  ctx: Context,
+  a: #(#(List(#(String, #(Value, Option(Value)))), Option(Value)), Span),
+  b: #(#(List(#(String, #(Value, Option(Value)))), Option(Value)), Span),
+) -> Context {
+  let granted = ctx.budget == 0
+  let ctx = case granted {
+    True -> Context(..ctx, budget: unify_budget_limit)
+    False -> ctx
+  }
+  let ctx = unify_rcd_b(ctx, a, b)
+  case granted {
+    True -> Context(..ctx, budget: 0)
+    False -> ctx
+  }
+}
+
+fn unify_rcd_b(
+  ctx: Context,
+  a: #(#(List(#(String, #(Value, Option(Value)))), Option(Value)), Span),
+  b: #(#(List(#(String, #(Value, Option(Value)))), Option(Value)), Span),
+) -> Context {
+  let ctx = Context(..ctx, budget: ctx.budget - 1)
+  case ctx.budget <= 0 {
+    True -> with_err(ctx, e.UnificationNotTerminating, a.1)
+    False -> unify_rcd_core(ctx, a, b)
+  }
+}
+
+fn unify_rcd_core(
   ctx: Context,
   a: #(#(List(#(String, #(Value, Option(Value)))), Option(Value)), Span),
   b: #(#(List(#(String, #(Value, Option(Value)))), Option(Value)), Span),
@@ -170,20 +262,20 @@ pub fn unify_rcd(
   case rcd1, rcd2 {
     #([], None), #([], None) -> ctx
     #([], None), #([], Some(tail2)) ->
-      unify(ctx, #(v.Rcd([], None), s1), #(tail2, s2))
+      unify_b(ctx, #(v.Rcd([], None), s1), #(tail2, s2))
     #([], None), #([#(name, _), ..fields2], tail2) -> {
       let ctx = with_err(ctx, e.RcdFieldNotFound(#(name, s2)), s1)
-      unify_rcd(ctx, #(#([], None), s1), #(#(fields2, tail2), s2))
+      unify_rcd_b(ctx, #(#([], None), s1), #(#(fields2, tail2), s2))
     }
     #([], Some(tail1)), #(fields2, tail2) ->
-      unify(ctx, #(tail1, s1), #(v.Rcd(fields2, tail2), s2))
+      unify_b(ctx, #(tail1, s1), #(v.Rcd(fields2, tail2), s2))
     #([field1, ..rest1], tail1), #(fields2, tail2) -> {
       let #(name, #(val1, default1)) = field1
       case tm.pop_field(fields2, name), tail2 {
         Some(#(#(val2, default2), rest2)), _ -> {
-          let ctx = unify(ctx, #(val1, s1), #(val2, s2))
+          let ctx = unify_b(ctx, #(val1, s1), #(val2, s2))
           let ctx = case default1, default2 {
-            Some(v1), Some(v2) -> unify(ctx, #(v1, s1), #(v2, s2))
+            Some(v1), Some(v2) -> unify_b(ctx, #(v1, s1), #(v2, s2))
             _, _ -> ctx
           }
           unify_rcd(ctx, #(#(rest1, tail1), s1), #(#(rest2, tail2), s2))
@@ -195,12 +287,12 @@ pub fn unify_rcd(
           let #(id, ctx1) = context.new_hole(ctx)
           let hole = Some(v.hole([], id))
           let rcd2 = v.Rcd([#(name, #(val1, default1))], hole)
-          let ctx = unify(ctx1, #(tail2, s2), #(rcd2, s1))
-          unify_rcd(ctx, #(#(rest1, tail1), s1), #(#(fields2, hole), s2))
+          let ctx = unify_b(ctx1, #(tail2, s2), #(rcd2, s1))
+          unify_rcd_b(ctx, #(#(rest1, tail1), s1), #(#(fields2, hole), s2))
         }
         None, None -> {
           let ctx = with_err(ctx, e.RcdFieldNotFound(#(name, s1)), s2)
-          unify_rcd(ctx, #(#(rest1, tail1), s1), #(#(fields2, tail2), s2))
+          unify_rcd_b(ctx, #(#(rest1, tail1), s1), #(#(fields2, tail2), s2))
         }
       }
     }
@@ -236,12 +328,19 @@ fn is_type_ctor(ctx: Context, tag: String) -> Bool {
   }
 }
 
+/// Hard cap on the deferred queue. A legitimate compile defers at most a
+/// few dozen constraints; a cyclic type re-defers forever, so a size cap
+/// turns that into an error instead of an unbounded allocation. The check
+/// is a cheap `list.length` — the previous structural-equality dedup
+/// (`list.contains`) hashed each queued `Value` (a module record) on every
+/// call, which is what hung the compiler on the repro shape.
+const deferred_queue_limit = 512
+
 /// Queue a constraint that could not be decided yet (a side is still
-/// neutral). Identical pairs — structural equality, captured environments
-/// included — are not queued twice.
+/// neutral).
 fn defer(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
-  case list.contains(ctx.deferred, #(a, b)) {
-    True -> ctx
+  case list.length(ctx.deferred) > deferred_queue_limit {
+    True -> with_err(ctx, e.UnificationNotTerminating, a.1)
     False -> Context(..ctx, deferred: [#(a, b), ..ctx.deferred])
   }
 }
@@ -254,6 +353,9 @@ fn defer(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
 /// Called on *every* hole solve, so the queue is re-folded once per
 /// substitution: fine while queues are small, but O(queue) work per solve
 /// (and the fold can nest, since a re-unification may solve more holes).
+/// Retries continue the enclosing unification's work budget — re-granting
+/// it per pair would let a cyclic type re-enter the queue with a fresh
+/// budget forever.
 fn retry_deferred(ctx: Context) -> Context {
   let pairs = ctx.deferred
   case pairs {
@@ -262,7 +364,7 @@ fn retry_deferred(ctx: Context) -> Context {
       let ctx = Context(..ctx, deferred: [])
       list.fold(pairs, ctx, fn(acc, pair) {
         let #(#(a, sa), #(b, sb)) = pair
-        unify(acc, #(a, sa), #(b, sb))
+        unify_b(acc, #(a, sa), #(b, sb))
       })
     }
   }
@@ -275,7 +377,7 @@ fn unify_with_term(
 ) -> Context {
   let #(env, term, s) = b
   let value = eval(ctx.ffi, env, term)
-  unify(ctx, a, #(value, s))
+  unify_b(ctx, a, #(value, s))
 }
 
 /// GADT constructor unification.
@@ -361,7 +463,7 @@ fn unify_match_case(
     Some(#(guard1, expect1)), Some(#(guard2, expect2)) -> {
       let v1 = eval(ctx.ffi, env1, guard1)
       let v2 = eval(ctx.ffi, env2, guard2)
-      let ctx = unify(ctx, #(v1, s1), #(v2, s2))
+      let ctx = unify_b(ctx, #(v1, s1), #(v2, s2))
       let env1 = v.env_push(env1, list.length(tm.bindings(expect1)))
       let env2 = v.env_push(env2, list.length(tm.bindings(expect2)))
       #(env1, env2, ctx)
@@ -381,7 +483,7 @@ fn unify_match_case(
   }
   let v1 = eval(ctx.ffi, env1, body1)
   let v2 = eval(ctx.ffi, env2, body2)
-  unify(ctx, #(v1, s1), #(v2, s2))
+  unify_b(ctx, #(v1, s1), #(v2, s2))
 }
 
 fn unify_match_case_list(
@@ -484,7 +586,7 @@ fn solve_hole(
               // Defensive: a hole is solved exactly once, but if we ever
               // meet it twice, merge the solutions instead of overwriting
               // (any substitution the merge adds retries the queue itself).
-              unify(ctx, #(value, span), #(existing, span))
+              unify_b(ctx, #(value, span), #(existing, span))
             }
           }
       }

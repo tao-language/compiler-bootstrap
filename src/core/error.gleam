@@ -47,6 +47,11 @@ pub type ErrorData {
     tag: #(String, Span),
     variants: #(List(#(String, Variant)), Span),
   )
+
+  /// Unification exceeded its rewrite budget (a recursive or cyclic type,
+  /// e.g. a module record that re-introduces itself through its captured
+  /// environment). Reported instead of hanging.
+  UnificationNotTerminating
 }
 
 // ============================================================================
@@ -154,6 +159,16 @@ pub fn display(ffi: FFI, types: List(#(String, Value)), err: Error) -> String {
         <> " at "
         <> span_location(guard_span)
         <> ") but the corresponding case does not.",
+      )
+    }
+
+    UnificationNotTerminating -> {
+      summary(err.span, "unification did not terminate")
+      <> display_trace(err.trace)
+      <> detail(
+        "The type checker hit a recursive or cyclic type while unifying; "
+        <> "this is a bug in the program or a known limitation (see "
+        <> "docs/implicit-args.md).",
       )
     }
 

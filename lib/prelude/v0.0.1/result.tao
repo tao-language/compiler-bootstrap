@@ -9,5 +9,5 @@ fn _or<a, e>(result: Result(a, e), default: a) -> a
 | Err(_) => default
 }
 
-// >>> _or(Ok(10), 20)   10
-// >>> _or(Err(10), 20)  20
+>>> _or(Ok(10), 20)   10
+>>> _or(Err(10), 20)  20

@@ -286,7 +286,10 @@ def main():
                   "-s", "dumpstack_main", "start",
                   "-noshell"])
         if rest:
-            cmd += ["--"] + rest
+            # `-extra` (not `--`) is what erl forwards to init:get_arguments()
+            # (read by the `argv` package the app entrypoint uses); `--` is
+            # swallowed and the program sees no arguments.
+            cmd += ["-extra"] + rest
 
         # Sampler output goes to this file (flushed line by line) so it
         # survives the SIGKILL; the program's own output goes to stdout.

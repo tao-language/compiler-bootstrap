@@ -45,10 +45,9 @@ pub fn unwrap_neut(
             // solution was produced in (the stored solve env), which
             // may contain bindings (pattern variables, quantifier
             // parameters) absent from the hole's shorter captured env.
-            Ok(#(solve_env, solution)) -> {
+            Ok(#(solve_env, solution)) ->
               unwrap_seen(ffi, subst, solution, [id, ..seen])
               |> quote.normalize_value(ffi, solve_env, _)
-            }
             Error(Nil) -> v.hole(env, id)
           }
       }

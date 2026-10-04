@@ -134,6 +134,15 @@ fn run_tests_(
   args: TestArgs,
 ) -> Nil {
   // Compile the tests of the input files only (not the prelude's).
+  //
+  // The test re-check can fail on its own (a unification budget error the
+  // module compile did not hit) — but it is intentionally *not* surfaced
+  // here: while the module-record corruption (see docs/plan.md, tasks 4–5)
+  // makes the test re-check's unification pathological, the test *terms*
+  // are well-formed and still evaluate correctly, so the doctests pass. A
+  // hard failure here would both block those doctests and crash while
+  // printing the (corrupted) values. Once the corruption is fixed the
+  // re-check no longer hits the budget, so no error is raised at all.
   let #(test_defs, ctx) = compile.tests(ctx, loaded.mods)
 
   // Pair every test with the file it was loaded from, then keep only the

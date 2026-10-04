@@ -6,6 +6,7 @@ import core/occurs
 import core/term as tm
 import core/unify.{unify}
 import core/value as v
+import gleam/int
 import gleam/list
 import gleam/option.{None, Some}
 import syntax/span
@@ -961,4 +962,53 @@ pub fn unify_hole_not_solved_by_nvar_test() {
   assert ctx.errors == []
   assert ctx.subst == []
   assert ctx.deferred == [#(#(v.var(0), s1), #(hole, s2))]
+}
+
+// ============================================================================
+// Rewrite budget (cycle/depth guard)
+// ============================================================================
+
+/// A record nested `n` levels deep (each level is `#(f: <inner>)`).
+fn deep_rcd(n: Int) -> v.Value {
+  case n {
+    0 -> v.rcd([#("base", v.int(0))])
+    _ -> v.rcd([#("f", deep_rcd(n - 1))])
+  }
+}
+
+/// A record nested *under* the unification work budget unifies cleanly: the
+/// budget must not reject legitimately nested (finite) types. The depth is
+/// well below the limit (`unify_budget_limit` = 250, ~3 steps/level) and
+/// above any real type's nesting (the prelude + a two-test module unifies in
+/// ~155 steps for its largest single unification).
+pub fn unify_shallow_nesting_under_budget_test() {
+  let a = deep_rcd(30)
+  let ctx0 = new_ctx
+  let ctx = unify(ctx0, #(a, s1), #(a, s2))
+  assert ctx.errors == []
+}
+
+/// A record nested *past* the unification work budget errors instead of
+/// unifying forever. This pins the rewrite budget that stops the cyclic
+/// module-record unification (the result.tao hang) from non-terminating: any
+/// residual unbounded descent becomes a fast `UnificationNotTerminating`
+/// error.
+pub fn unify_depth_budget_errors_test() {
+  let a = deep_rcd(200)
+  let ctx0 = new_ctx
+  let ctx = unify(ctx0, #(a, s1), #(a, s2))
+  case ctx.errors {
+    [e.Error(e.UnificationNotTerminating, _, _), ..] -> Nil
+    _ -> panic as inspect_errors(ctx.errors)
+  }
+}
+
+fn inspect_errors(errors: List(e.Error)) -> String {
+  case errors {
+    [] -> "expected UnificationNotTerminating, got no errors"
+    _ ->
+      "expected UnificationNotTerminating, got <"
+      <> int.to_string(list.length(errors))
+      <> " errors>"
+  }
 }
