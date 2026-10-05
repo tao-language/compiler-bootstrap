@@ -94,12 +94,16 @@ pub fn polymorphism_monomorphic_declaration_test() {
   // TODO: The Pi-parameter name should be "x", not "$4"
   // This comes from infer_app on neutral function type
   // Since we use DeBruijn indices, it's not incorrect, but name "x" is more readable
-  // The resolution re-anchors against the *solve* frame (see `unwrap`):
+  // The resolved Pi keeps the frame it was produced in (see `unwrap`):
   // the module type hole is solved during the `mod.fun` pattern check,
-  // while the pattern alias binding is still in scope, so the resolved
-  // Pi keeps the solve frame `[alias, mod]` (the `mod` entry is the
-  // record that still carries the unsolved value hole).
-  let mod_env = [v.var(1), mod_decl]
+  // while the pattern alias binding is still in scope, so the Pi's
+  // captured env is the check frame `[alias, mod]` (the alias entry is
+  // the module record's still-unsolved `fun` value hole, the `mod`
+  // entry the record itself). The body is a constant, so the frame is
+  // inert here; what is pinned is that `unwrap` does *not* re-capture
+  // the Pi under the solve frame (which would re-bind its body's
+  // `Var`s to the solve frame's slots — see T4 / docs/plan.md).
+  let mod_env = [v.hole([], 0), mod_decl]
   let expected_mod_type =
     v.rcd([#("fun", v.Pi(mod_env, #("__4", v.int_t), tm.int_t))])
   assert resolve.value(ctx.ffi, ctx.subst, mod_type) == expected_mod_type

@@ -80,6 +80,16 @@ fn unify_b(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
 fn unify_core(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   let #(value1, s1) = a
   let #(value2, s2) = b
+  // One-line sketch of every step (trace_solves): the standard way to see
+  // which values the descent pairs together (see debug-src).
+  let _ =
+    case ctx.trace_solves {
+      True -> {
+        let _ = echo "USTEP " <> solve_sketch(value1) <> " v " <> solve_sketch(value2)
+        Nil
+      }
+      False -> Nil
+    }
   case unwrap(ctx.ffi, ctx.subst, value1), unwrap(ctx.ffi, ctx.subst, value2) {
     // The same hole on both sides needs no work. Two *open* holes
     // (`id` = None) in particular unify to nothing: an open hole is a
@@ -502,26 +512,35 @@ fn unify_match_case_list(
   }
 }
 
-/// One-level sketch of a value for the solve trace (never descends, so it
-/// is safe on cyclic values). Record fields are listed by name; the empty
-/// import-alias name is printed as `*`.
+/// One-level sketch of a value for the solve trace (never descends deep,
+/// so it is safe on cyclic values). Record fields are listed as
+/// `name:sketch` (the empty import-alias name is printed as `*`); the tail
+/// is printed after `/` (`/_` when closed).
 fn solve_sketch(value: Value) -> String {
   case value {
     v.Neut(v.NVar(_)) -> "NVar"
-    v.Neut(v.NHole(_, _)) -> "NHole"
+    v.Neut(v.NHole(_, id)) -> case id {
+      Some(n) -> "NHole(h" <> int.to_string(n) <> ")"
+      None -> "NHole"
+    }
     v.Neut(v.NApp(..)) -> "NApp"
     v.Neut(v.NCall(..)) -> "NCall"
     v.Neut(v.NMatch(..)) -> "NMatch"
-    v.Rcd(fields, _) -> {
+    v.Rcd(fields, tail) -> {
       let names =
-        list.map(fields, fn(field) { field.0 })
-          |> list.fold("", fn(acc, name) {
-            acc <> case name {
-              "" -> "*"
-              _ -> name
-            }
-          })
-      "Rcd[" <> names <> "]"
+        list.map(fields, fn(field) {
+          let #(_, #(field_val, _)) = field
+          let name = case field.0 {
+            "" -> "*"
+            _ -> field.0
+          }
+          name <> ":" <> solve_sketch(field_val)
+        })
+          |> list.fold("", fn(acc, name) { acc <> "|" <> name })
+      "Rcd[" <> names <> "]" <> case tail {
+        Some(t) -> "/" <> solve_sketch(t)
+        None -> "/_"
+      }
     }
     v.Typ(_) -> "Typ"
     v.Lit(_) -> "Lit"

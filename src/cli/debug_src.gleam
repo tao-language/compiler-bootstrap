@@ -7,10 +7,11 @@ import core/error
 import core/ffi
 import core/format
 import core/resolve
+import core/value as v
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/option.{type Option}
+import gleam/option.{type Option, None, Some}
 import gleam/string
 import tao/ast.{type Module}
 import tao/compile
@@ -33,6 +34,7 @@ pub fn debug_src(
   source: String,
   width: Int,
   trace_solves: Bool,
+  dump_def: Option(String),
 ) -> Nil {
   case p.statements("scratch", source) {
     Error(err) -> {
@@ -110,6 +112,29 @@ pub fn debug_src(
           )
         })
 
+      // `--dump-def NAME`: print the named definition's type value with its
+      // de Bruijn structure (quantifier bodies via format.term). The canonical
+      // way to inspect a function's inferred type for a de Bruijn frame
+      // mismatch (see docs/plan.md §15): the `for`/`pi` bodies are lifted
+      // with a flat names list, so each `Var` shows the index it addresses.
+      case dump_def {
+        Some(name) -> {
+          case define.get_var(ctx, "scratch", name) {
+            Some(#(_, typ)) -> {
+              let names =
+                list.map(int.range(from: 0, to: 15, with: [], run: list.prepend), fn(i) {
+                  "n" <> int.to_string(i)
+                })
+              io.println("// type of " <> name <> " (names n0..n15 are de Bruijn indices)")
+              dump_type_value(typ, 0, names, width)
+            }
+            None -> io.println_error("definition not found: " <> name)
+          }
+          exit(0)
+        }
+        None -> Nil
+      }
+
       let t2 = now()
       let ctx = resolve.context(ctx)
       io.println(
@@ -175,6 +200,76 @@ pub fn debug_src(
         _ -> exit(1)
       }
     }
+  }
+}
+
+/// Print a type value's de Bruijn structure: `For`/`Pi` bodies are lifted
+/// via `format.term` (a flat names list, so each `Var` shows the index it
+/// addresses); other values are sketched one level deep. Cycles through
+/// captured envs are never followed, so it terminates on any value.
+fn dump_type_value(value: v.Value, depth: Int, names: List(String), width: Int) -> Nil {
+  let pad = string.join(list.repeat("  ", depth), "")
+  case value {
+    v.For(env, #(name, _), body) -> {
+      let header = pad <> "FOR " <> name <> " (envlen=" <> int.to_string(list.length(env)) <> ")"
+      let _ = io.println(header)
+      let _ = io.println(pad <> "  body:\n" <> format.term(names, body, width, 2))
+    }
+    v.Pi(env, #(_, domain), codomain) -> {
+      let _ =
+        io.println(
+          pad <> "PI (envlen=" <> int.to_string(list.length(env)) <> ") domain=" <> dump_sketch(domain),
+        )
+      let _ = io.println(pad <> "  codomain:\n" <> format.term(names, codomain, width, 2))
+    }
+    other -> {
+      let _ = io.println(pad <> dump_sketch(other))
+    }
+  }
+}
+
+/// One-level sketch (safe on cyclic values; never follows captured envs).
+fn dump_sketch(value: v.Value) -> String {
+  case value {
+    v.Neut(v.NVar(l)) -> "NVar("
+      <> int.to_string(l)
+      <> ")"
+    v.Neut(v.NHole(_, Some(i))) -> "NHole(h" <> int.to_string(i) <> ")"
+    v.Neut(v.NHole(_, None)) -> "NHole"
+    v.Neut(v.NApp(..)) -> "NApp"
+    v.Neut(v.NCall(..)) -> "NCall"
+    v.Neut(v.NMatch(..)) -> "NMatch"
+    v.Rcd(fields, tail) -> {
+      let inner =
+        list.map(fields, fn(field) {
+          let #(_, #(fv, _)) = field
+          field.0 <> ":" <> dump_sketch(fv)
+        })
+        |> list.fold("", fn(acc, s) { acc <> "|" <> s })
+      "Rcd["
+        <> inner
+        <> "]"
+        <> case tail {
+          Some(t) -> "/" <> dump_sketch(t)
+          None -> "/_"
+        }
+    }
+    v.Typ(u) -> "Typ("
+      <> int.to_string(u)
+      <> ")"
+    v.Lit(_) -> "Lit"
+    v.LitT(_) -> "LitT"
+    v.Ctr(tag, arg) -> "Ctr("
+      <> tag
+      <> ", "
+      <> dump_sketch(arg)
+      <> ")"
+    v.For(..) -> "For"
+    v.Lam(..) -> "Lam"
+    v.Pi(..) -> "Pi"
+    v.Fix(..) -> "Fix"
+    v.TypeDef(..) -> "TypeDef"
+    v.Err -> "Err"
   }
 }
 

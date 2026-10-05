@@ -1,22 +1,26 @@
-/// Core-level tests pinning sound hole re-anchoring behavior (see
+/// Core-level tests pinning sound hole-unwrap behavior (see
 /// docs/implicit-args.md).
 ///
-/// A hole solution's `NVar` levels are relative to the frame the solution
-/// was produced in. When the hole's captured env is that same frame,
-/// re-anchoring must yield the entry the level named.
-import core/ffi
+/// A hole solution is used in the frame it was produced in: its `NVar`
+/// levels and its captured `For`/`Lam`/`Pi`/`Fix` bodies address the
+/// global frame, so `unwrap` returns the solution as-is (sub-holes
+/// re-unwrapped, nothing re-anchored).
 import core/unwrap.{unwrap}
 import core/value as v
 
 // ============================================================================
-// Re-anchoring across frames (unwrap)
+// Unwrap keeps the solution's own frame
 // ============================================================================
 
-/// When the hole's captured env is the same frame the solution's levels
-/// address, re-anchoring proceeds and yields the entry the level named
-/// (var(0) = outermost = int(1)).
-pub fn reanchor_aligned_frame_resolves_test() {
+/// `unwrap` returns the solution as-is: the solution's `NVar` levels
+/// already address the global frame (the same frame every other value in
+/// the context addresses), so no re-anchoring is needed. (The old
+/// `normalize_value` round-trip re-expressed the solution against the
+/// solve env, which re-captured its `For`/`Lam`/`Pi`/`Fix` bodies under
+/// that env and silently re-bound their `Var`s to the solve env's slots —
+/// module records — the corruption behind the result.tao hang, T4.)
+pub fn unwrap_keeps_solution_frame_test() {
   let subst = [#(1, #([v.int(2), v.int(1)], v.var(0)))]
   let hole = v.hole([v.int(2), v.int(1)], 1)
-  assert unwrap([], subst, hole) == v.int(1)
+  assert unwrap([], subst, hole) == v.var(0)
 }

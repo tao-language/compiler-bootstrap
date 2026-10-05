@@ -17,14 +17,6 @@ fn normalize_term_rec(ffi: FFI, env: Env, term: Term, depth: Int) -> Term {
   |> quote_rec(ffi, env, _, depth)
 }
 
-/// quote → eval: re-express a value's holes as terms relative to `env`,
-/// then re-evaluate. Used to transplant a hole solution captured in a
-/// different environment into the current one.
-pub fn normalize_value(ffi: FFI, env: Env, value: Value) -> Value {
-  quote(ffi, env, value)
-  |> eval(ffi, env, _)
-}
-
 /// Turn a Value back into a Term. `env` is the environment the value's
 /// neutral variables are relative to, so a neutral `NVar(level)` becomes
 /// `Var(len(env) - level - 1)` — the de Bruijn index of that level in `env`.

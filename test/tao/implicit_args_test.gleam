@@ -19,8 +19,10 @@ import core/error.{display, display_syntax}
 import core/ffi
 import core/format.{value as fmt_value}
 import core/value as v
+import gleam/int
 import gleam/list
 import gleam/option.{None, Some, type Option}
+import gleam/string
 import tao/ast.{type Module}
 import tao/compile
 import tao/load
@@ -262,6 +264,76 @@ pub fn b_shape_no_nevar_hole_solutions_test() {
       assert has_nevar == False
     }
     None -> panic as "parse error"
+  }
+}
+
+/// A hole "solved with a module record": its solution is a record with a
+/// `TypeDef` field value. Type-level records (tdef records, annotation
+/// records, type records) never contain `TypeDef` values — only module
+/// records do (their type-name fields). Such a solution puts a cyclic,
+/// environment-capturing value into the substitution table and makes
+/// later unification descend into the module record forever (the
+/// result.tao hang).
+fn is_module_record(value: v.Value) -> Bool {
+  case value {
+    v.Rcd(fields, _) ->
+      list.any(fields, fn(field) {
+        let #(_, #(field_val, _)) = field
+        case field_val {
+          v.TypeDef(..) -> True
+          _ -> False
+        }
+      })
+    _ -> False
+  }
+}
+
+/// The test re-check (compile.tests) must not solve any of its own holes
+/// with module records. Before the T4 fix, the B shape's tdef value holes
+/// were solved with the prelude Bool module record and the user module
+/// record (the frame-swap in `unwrap`'s `normalize_value` re-bound the
+/// function type's stale `Var`s to module-record env slots), which made
+/// the descent non-terminating (budget cutoff). The probe is scoped to
+/// holes created after `compile.modules` (the main compile legitimately
+/// solves dot-access row holes with module-record *fragments*; those are
+/// bounded and pre-date the test phase).
+///
+/// The failure is a `panic`, not an `assert`: assert would display the
+/// offending `Value`s, and a module record is cyclic through its captured
+/// envs, so the display recurses forever and hangs the suite.
+pub fn b_shape_no_module_record_test_phase_solutions_test() {
+  case p.statements("scratch", b_shape) {
+    Error(_) -> panic as "parse error"
+    Ok(stmts) -> {
+      let #(prelude, _load_errors) =
+        load.package_list(["lib"], [#("prelude", None)])
+      let mods: List(Module) =
+        list.append([#("scratch", stmts)], prelude)
+        |> load.implicit_prelude_imports(prelude)
+      let ctx =
+        Context(..new_ctx, ffi: ffi.build)
+        |> compile.modules(mods)
+      let test_phase_start = ctx.hole_counter
+      let #(_, ctx) = compile.tests(ctx, [#("scratch", stmts)])
+      let bad = list.filter(ctx.subst, fn(entry) {
+        let #(id, #(_, solution)) = entry
+        id >= test_phase_start && is_module_record(solution)
+      })
+      case bad {
+        [] -> Nil
+        // Print only the hole IDs: a `Value` is cyclic through its
+        // captured envs, so displaying it (e.g. via an `assert` failure)
+        // recurses forever on a module record.
+        _ -> {
+          let ids =
+            list.map(bad, fn(entry) { entry.0 })
+            |> list.map(int.to_string)
+            |> string.join(", ")
+          let msg = "module-record solutions in test phase: " <> ids
+          panic as msg
+        }
+      }
+    }
   }
 }
 

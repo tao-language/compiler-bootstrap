@@ -1,7 +1,6 @@
 import core/context.{type Subst}
 import core/eval
 import core/ffi.{type FFI}
-import core/quote
 import core/value.{type Neut, type Value} as v
 import gleam/int
 import gleam/list
@@ -41,13 +40,17 @@ pub fn unwrap_neut(
         True -> v.hole(env, id)
         False ->
           case list.key_find(subst, id) {
-            // The solution's variable levels address the frame the
-            // solution was produced in (the stored solve env), which
-            // may contain bindings (pattern variables, quantifier
-            // parameters) absent from the hole's shorter captured env.
-            Ok(#(solve_env, solution)) ->
+            // Keep the solution in its own frame. Its neutral levels and
+            // its captured `For`/`Lam`/`Pi`/`Fix` bodies address the
+            // global frame (the same one every other value in the context
+            // addresses), so no re-expression is needed. Re-expressing it
+            // against the solve env (`normalize_value` = quote + eval)
+            // re-captured those bodies under the solve env, silently
+            // re-binding their `Var`s to whatever the solve env's slots
+            // hold (module records) — the module-record corruption behind
+            // the result.tao hang.
+            Ok(#(_, solution)) ->
               unwrap_seen(ffi, subst, solution, [id, ..seen])
-              |> quote.normalize_value(ffi, solve_env, _)
             Error(Nil) -> v.hole(env, id)
           }
       }

@@ -187,6 +187,7 @@ fn parameters_unpack(
   params: tao.Parameters,
   body: tao.Expr,
   span: Span,
+  skip_checks: Bool,
 ) -> core.Expr {
   let #(args, _tail) = params
   let bindings =
@@ -194,24 +195,27 @@ fn parameters_unpack(
       let #(p, _) = param
       #(int.to_string(index + 1), p)
     })
-  let checks =
-    list.index_map(args, fn(param, index) {
-      let #(p, #(opt_type, _)) = param
-      case p {
-        tao.Pattern(tao.PVar(name), _span) ->
-          case opt_type {
-            Some(type_) ->
-              Some(tao.let_var(
-                "__check" <> int.to_string(index + 1),
-                Some(type_),
-                tao.var(name, span),
-                span,
-              ))
-            None -> None
-          }
-        _ -> None
-      }
-    })
+  let checks = case skip_checks {
+    True -> []
+    False ->
+      list.index_map(args, fn(param, index) {
+        let #(p, #(opt_type, _)) = param
+        case p {
+          tao.Pattern(tao.PVar(name), _span) ->
+            case opt_type {
+              Some(type_) ->
+                Some(tao.let_var(
+                  "__check" <> int.to_string(index + 1),
+                  Some(type_),
+                  tao.var(name, span),
+                  span,
+                ))
+              None -> None
+            }
+          _ -> None
+        }
+      })
+  }
   let check_stmts =
     list.fold(checks, [], fn(acc, opt_stmt) {
       case opt_stmt {
@@ -239,7 +243,9 @@ fn function(
   span: Span,
   trace: Option(String),
 ) -> core.Expr {
-  let core_fun = function_inner(exports, implicits, params, opt_returns, body, span, trace)
+  let has_implicits = list.length(implicits.0) > 0
+  let core_fun =
+    function_inner(exports, has_implicits, implicits, params, opt_returns, body, span, trace)
   case opt_fun_name {
     Some(fun_name) -> core.fix(fun_name, core_fun, span)
     None -> core_fun
@@ -248,6 +254,7 @@ fn function(
 
 fn function_inner(
   exports: List(#(String, List(String))),
+  has_implicits: Bool,
   implicits: tao.Parameters,
   params: tao.Parameters,
   opt_returns: Option(tao.Type),
@@ -258,11 +265,17 @@ fn function_inner(
   case implicits {
     #([], None) -> {
       let param_name = "__args"
-      // The lambda's parameter is untyped: the parameter annotations are
-      // checked inside the unpacking match (see `parameters_unpack`), so
-      // an annotation may mention a sibling parameter. A fresh hole for
-      // the whole argument record is inferred in `infer_lam`.
-      let core_body = parameters_unpack(exports, param_name, params, body, span)
+      // With implicit parameters the argument-record type is built here,
+      // in the `for`-param frame, so its annotations (which reference the
+      // implicit parameters) carry the parameters' own de Bruijn indices.
+      // Leaving it a hole instead lets the annotations be solved deep in
+      // the unpacking match, where the implicit parameters sit below the
+      // argument record and pattern bindings; re-evaluating such a record
+      // in the `for` frame then binds those parameters to unrelated
+      // environment slots (module records). Without implicits the record
+      // stays a hole and annotations are checked inside the match (an
+      // annotation may mention a sibling parameter, not in scope here).
+      let core_body = parameters_unpack(exports, param_name, params, body, span, has_implicits)
       let core_body = case opt_returns {
         None -> core_body
         Some(returns) -> {
@@ -270,7 +283,11 @@ fn function_inner(
           core.ann(core_body, core_body_type, returns.span)
         }
       }
-      core.Expr(core.Lam(#(param_name, None), core_body), span, trace)
+      let opt_param_type = case has_implicits {
+        True -> Some(parameters_type(exports, params, span))
+        False -> None
+      }
+      core.Expr(core.Lam(#(param_name, opt_param_type), core_body), span, trace)
     }
     // One `for` quantifier per implicit type variable; an unannotated
     // implicit gets a fresh hole in `infer_for`.
@@ -278,7 +295,7 @@ fn function_inner(
       case first {
         #(tao.Pattern(tao.PVar(name), _), #(opt_type, _)) -> {
           let inner =
-            function_inner(exports, #(rest, tail), params, opt_returns, body, span, None)
+            function_inner(exports, has_implicits, #(rest, tail), params, opt_returns, body, span, None)
           let core_type = opt_expr(exports, opt_type)
           core.for(#(name, core_type), inner, span)
         }
@@ -300,14 +317,14 @@ fn function_type(
     #([], None) -> {
       let name = "__args"
       let core_param_type = parameters_type(exports, params, span)
-      let core_returns = parameters_unpack(exports, name, params, returns, span)
+      let core_returns = parameters_unpack(exports, name, params, returns, span, False)
       core.pi(#(name, Some(core_param_type)), core_returns, span)
     }
     _ -> {
       let name = "__impl"
       let core_implicits_type = parameters_type(exports, implicits, span)
       let body = tao.fn_t(#([], None), params, returns, span)
-      let core_body = parameters_unpack(exports, name, implicits, body, span)
+      let core_body = parameters_unpack(exports, name, implicits, body, span, False)
       core.for(#(name, Some(core_implicits_type)), core_body, span)
     }
   }
