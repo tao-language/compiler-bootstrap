@@ -17,6 +17,7 @@ import core/value as v
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
+import syntax/span.{type Span}
 import tao/ast.{type Stmt} as tao
 import tao/declare.{type ModName, type Name}
 import tao/desugar
@@ -62,12 +63,20 @@ pub fn values(
         True -> ctx
         False ->
           case get_var(ctx, mod_name, name) {
-            Some(#(v.Neut(v.NHole(..)) as hole, typ)) -> {
-              let s = stmt.span
-              let #(val, _, ctx) =
-                stmt_value(ctx, defs, mod_name, name, stmt, Some(typ))
-              unify(ctx, #(val, s), #(hole, s))
-            }
+            Some(#(v.Neut(v.NHole(_, Some(id))) as hole, typ)) ->
+              // A hole already solved by an earlier entry of the same
+              // name (duplicate import entries) is skipped: re-unifying
+              // the value with its own solution re-descends the whole
+              // value for nothing.
+              case list.key_find(ctx.subst, id) {
+                Ok(_) -> ctx
+                Error(Nil) -> {
+                  let s = stmt.span
+                  let #(val, _, ctx) =
+                    stmt_value(ctx, defs, mod_name, name, stmt, Some(typ))
+                  unify(ctx, #(val, s), #(hole, s))
+                }
+              }
             _ -> ctx
           }
       }
@@ -81,11 +90,16 @@ pub fn values(
 /// own: it would share the module record's single entry for the name and
 /// the import's value (the imported module's record) would be unified
 /// with the local definition's hole.
+///
+/// Invariant: `tao.Test` statements never reach `define` — `declare`
+/// introduces no names for them (tests are inferred exactly once, in
+/// `compile.tests`).
 fn shadowed_imports(mod_defs: List(#(Name, Stmt))) -> List(Name) {
   list.flat_map(mod_defs, fn(entry) {
     let #(name, stmt) = entry
     case stmt.data {
-      tao.Test(..) -> []
+      tao.Test(..) ->
+        panic as "test statement reached define (declare must not introduce names for tests)"
       tao.Import(..) -> []
       _ -> [name]
     }
@@ -206,6 +220,76 @@ fn type_stmt_data(
   stmt: Stmt,
 ) -> #(v.Value, v.Type, Context) {
   let #(val, typ, ctx) = case stmt.data {
+    tao.Import(..) -> {
+      let sources = import_sources(defs, mod_name, name)
+      case list.length(sources) {
+        n if n > 1 -> {
+          // The same name is exposed by several imports (e.g. the
+          // prelude's bool._or, option._or, result._or): the import
+          // resolves to an overload that dispatches on the arguments'
+          // types, like an explicit `fn name { | ... }`. The value is
+          // a hole here and the overload is inferred in phase 2
+          // (`define.values` → `stmt_value`), where every module
+          // record and type definition exists.
+          let #(val, ctx) = hole_value(ctx)
+          let #(typ, ctx) = hole_value(ctx)
+          #(val, typ, ctx)
+        }
+        _ -> import_entry(ctx, defs, mod_name, name, stmt)
+      }
+    }
+    tao.Extern(name, ..) -> stmt_value(ctx, defs, mod_name, name, stmt, None)
+    tao.LetVar(_, opt_type, _) -> {
+      let #(val, ctx) = hole_value(ctx)
+      let #(typ, ctx) = case opt_type {
+        Some(tao_type) -> type_value(ctx, defs, mod_name, tao_type)
+        None -> hole_value(ctx)
+      }
+      #(val, typ, ctx)
+    }
+    tao.LetPat(_pattern, _types, _value) -> todo
+    tao.LetMut(_name, _opt_type, _value) -> todo
+    tao.Mut(_name, _value) -> todo
+    // Invariant: tests are inferred exactly once, in `compile.tests`
+    // (`declare` introduces no names for them), so a test statement
+    // never reaches `define`.
+    tao.Test(..) ->
+      panic as "test statement reached define (tests are only inferred in compile.tests)"
+    tao.FnDef(name, ..) ->
+      // TODO: Only derive the type annotation? Would this work for cyclic definitions?
+      // If cyclic definitions still work like this, maybe separate define.types and define.values are not needed (could be simplified).
+      stmt_value(ctx, defs, mod_name, name, stmt, None)
+    tao.FnOverload(name, _) -> stmt_value(ctx, defs, mod_name, name, stmt, None)
+    tao.TypeDef(..) -> {
+      // A type definition is a value of the universe `Type`, and its
+      // value can be computed directly in phase 1: the parameter types
+      // are evaluated without inference, and constructor applications
+      // inside the variants are tags (not references), so the
+      // definition cannot refer to itself through the environment.
+      // Storing the concrete value (instead of a hole) lets
+      // `lookup_type_def` find the definition while the other bodies
+      // are checked in phase 2.
+      stmt_value(ctx, defs, mod_name, name, stmt, None)
+    }
+    tao.For(_iterator, _range, _body) -> todo
+    tao.While(_condition, _body) -> todo
+    tao.Return(_expr) -> todo
+    tao.Break -> todo
+    tao.Continue -> todo
+  }
+  #(val, typ, ctx)
+}
+
+/// A single import entry (no name collision: one import exposes the
+/// name).
+fn import_entry(
+  ctx: Context,
+  defs: List(#(ModName, List(#(Name, Stmt)))),
+  mod_name: ModName,
+  name: Name,
+  stmt: Stmt,
+) -> #(v.Value, v.Type, Context) {
+  case stmt.data {
     tao.Import(path, alias, tao.ImportAll) -> {
       let names = case list.key_find(defs, path) {
         Ok(mod_defs) -> list.map(mod_defs, fn(entry) { #(entry.0, entry.0) })
@@ -239,46 +323,139 @@ fn type_stmt_data(
           type_stmt(ctx, defs, mod_name, name, stmt)
         }
       }
-    tao.Extern(name, ..) -> stmt_value(ctx, defs, mod_name, name, stmt, None)
-    tao.LetVar(_, opt_type, _) -> {
-      let #(val, ctx) = hole_value(ctx)
-      let #(typ, ctx) = case opt_type {
-        Some(tao_type) -> type_value(ctx, defs, mod_name, tao_type)
-        None -> hole_value(ctx)
-      }
-      #(val, typ, ctx)
-    }
-    tao.LetPat(_pattern, _types, _value) -> todo
-    tao.LetMut(_name, _opt_type, _value) -> todo
-    tao.Mut(_name, _value) -> todo
-    tao.Test(_name, _expr, _expect) -> {
-      let #(val, ctx) = hole_value(ctx)
-      let #(typ, ctx) = hole_value(ctx)
-      #(val, typ, ctx)
-    }
-    tao.FnDef(name, ..) ->
-      // TODO: Only derive the type annotation? Would this work for cyclic definitions?
-      // If cyclic definitions still work like this, maybe separate define.types and define.values are not needed (could be simplified).
-      stmt_value(ctx, defs, mod_name, name, stmt, None)
-    tao.FnOverload(name, _) -> stmt_value(ctx, defs, mod_name, name, stmt, None)
-    tao.TypeDef(..) -> {
-      // A type definition is a value of the universe `Type`, and its
-      // value can be computed directly in phase 1: the parameter types
-      // are evaluated without inference, and constructor applications
-      // inside the variants are tags (not references), so the
-      // definition cannot refer to itself through the environment.
-      // Storing the concrete value (instead of a hole) lets
-      // `lookup_type_def` find the definition while the other bodies
-      // are checked in phase 2.
-      stmt_value(ctx, defs, mod_name, name, stmt, None)
-    }
-    tao.For(_iterator, _range, _body) -> todo
-    tao.While(_condition, _body) -> todo
-    tao.Return(_expr) -> todo
-    tao.Break -> todo
-    tao.Continue -> todo
+    _ -> panic as "import_entry: not an import"
   }
-  #(val, typ, ctx)
+}
+
+/// The (path, span) of every distinct import of `mod_name` that
+/// exposes `name` as a *function definition*, in import order (the
+/// overload dispatch order, so the first import's function is tried
+/// first). Imports are transitive (an import also exposes the imported
+/// module's own imports), so type names and aliases can appear under
+/// several imports; only function definitions can be overload choices,
+/// anything else keeps the first-import-wins rule.
+fn import_sources(
+  defs: List(#(ModName, List(#(Name, Stmt)))),
+  mod_name: ModName,
+  name: Name,
+) -> List(#(String, Span)) {
+  case list.key_find(defs, mod_name) {
+    Error(Nil) -> []
+    Ok(mod_defs) ->
+      list.reverse(
+        list.fold(
+          list.filter(mod_defs, fn(entry) { entry.0 == name }),
+          [],
+          fn(acc: List(#(String, Span)), entry) {
+            let #(_, stmt) = entry
+            case stmt.data {
+              // The import's own alias entry is not an exposed name.
+              tao.Import(_, alias, _) if alias == name -> acc
+              tao.Import(path, _, _) ->
+                case
+                  is_function_def(defs, path, name)
+                  && !list.any(acc, fn(source) { source.0 == path })
+                {
+                  True -> [#(path, stmt.span), ..acc]
+                  False -> acc
+                }
+              _ -> acc
+            }
+          },
+        ),
+      )
+  }
+}
+
+/// Whether `name` is a function *definition* of the module `path`. Only
+/// `FnDef`s qualify: `import_choice` builds a dispatch choice from the
+/// definition's parameter types, which `Extern` and `FnOverload` do not
+/// expose in a directly usable form (types and import aliases are never
+/// overload choices).
+fn is_function_def(
+  defs: List(#(ModName, List(#(Name, Stmt)))),
+  path: ModName,
+  name: Name,
+) -> Bool {
+  case list.key_find(defs, path) {
+    Error(Nil) -> False
+    Ok(mod_defs) ->
+      case list.key_find(mod_defs, name) {
+        Error(Nil) -> False
+        Ok(stmt) ->
+          case stmt.data {
+            tao.FnDef(..) -> True
+            _ -> False
+          }
+      }
+  }
+}
+
+/// One overload choice for an import that exposes `name`: the choice
+/// names the imported definition and its argument patterns are the
+/// imported function's parameter types (a blind runtime match on the
+/// arguments' types, like an explicit overload — see docs/overloads.md).
+fn import_choice(
+  defs: List(#(ModName, List(#(Name, Stmt)))),
+  name: Name,
+  source: #(String, Span),
+) -> tao.OverloadChoice {
+  let #(path, span) = source
+  let args = case list.key_find(defs, path) {
+    Error(Nil) -> []
+    Ok(mod_defs) ->
+      case list.key_find(mod_defs, name) {
+        Error(Nil) -> []
+        Ok(stmt) ->
+          case stmt.data {
+            tao.FnDef(_, _implicits, params, _returns, _body) ->
+              list.map(params.0, fn(param) {
+                let #(pat, #(opt_type, _default)) = param
+                let pname = case pat.data {
+                  tao.PVar(pname) -> pname
+                  _ -> ""
+                }
+                case opt_type {
+                  Some(type_) -> #(pname, type_to_pattern(type_))
+                  None -> #(pname, tao.pany(span))
+                }
+              })
+            _ -> []
+          }
+      }
+  }
+  tao.OverloadChoice(Some(path), name, args, None, span)
+}
+
+/// A type expression as an overload-dispatch pattern: type names and
+/// constructor applications become constructor patterns; anything else
+/// is a wildcard.
+fn type_to_pattern(type_: tao.Expr) -> tao.Pattern {
+  let s = type_.span
+  case type_.data {
+    tao.Var(name) -> tao.pvar(name, s)
+    tao.Lit(lit) -> tao.Pattern(tao.PLit(lit), s)
+    tao.Ctr(tag, args, tail) -> {
+      let pargs = list.map(args, fn(arg) { #(arg.0, type_to_pattern(arg.1)) })
+      let ptail = option.map(tail, type_to_pattern)
+      tao.pctr_open(tag, pargs, ptail, s)
+    }
+    tao.Tuple(args) -> tao.ptuple(list.map(args, type_to_pattern), s)
+    tao.Rcd(fields, tail) -> {
+      let pfields =
+        list.map(fields, fn(field) {
+          let #(fname, fvalue) = field
+          let pat = case fvalue {
+            Some(expr) -> type_to_pattern(expr)
+            None -> tao.pany(s)
+          }
+          #(fname, pat)
+        })
+      let ptail = option.map(tail, type_to_pattern)
+      tao.prcd_open(pfields, ptail, s)
+    }
+    _ -> tao.pany(s)
+  }
 }
 
 /// Read one entry from a module record, if the module is in scope.
@@ -391,11 +568,27 @@ pub fn stmt_value(
   stmt: tao.Stmt,
   opt_type: Option(v.Type),
 ) -> #(v.Value, v.Type, Context) {
-  // Overload dispatch is a blind runtime match on the arguments'
-  // constructor types (the evaluator does no type lookups), so the
-  // type names in an overloaded function's choices are expanded into
-  // concrete constructor patterns first (see docs/overloads.md).
+  // A name exposed by several imports of the module (see
+  // `import_sources`) is an overload: the statement is the import, but
+  // the value is the overload built from every import that exposes the
+  // name as a function.
   case stmt.data {
+    tao.Import(..) -> {
+      let sources = import_sources(defs, mod_name, name)
+      case list.length(sources) {
+        n if n > 1 -> {
+          let choices =
+            list.map(sources, fn(source) { import_choice(defs, name, source) })
+          let stmt = tao.fn_overload(name, choices, stmt.span)
+          stmt_value(ctx, defs, mod_name, name, stmt, opt_type)
+        }
+        _ -> stmt_value_inner(ctx, defs, mod_name, name, stmt, opt_type)
+      }
+    }
+    // Overload dispatch is a blind runtime match on the arguments'
+    // constructor types (the evaluator does no type lookups), so the
+    // type names in an overloaded function's choices are expanded into
+    // concrete constructor patterns first (see docs/overloads.md).
     tao.FnOverload(fn_name, choices) -> {
       let #(choices, ctx) = expand_overload_choices(ctx, choices)
       let stmt = tao.Stmt(tao.FnOverload(fn_name, choices), stmt.span)
@@ -458,7 +651,13 @@ fn expand_choice(
   let expanded =
     list.map(combos, fn(pats) {
       let args = list.zip(names, pats)
-      tao.OverloadChoice(choice.mod_name, choice.name, args, choice.guard, choice.span)
+      tao.OverloadChoice(
+        choice.mod_name,
+        choice.name,
+        args,
+        choice.guard,
+        choice.span,
+      )
     })
   #(expanded, ctx)
 }

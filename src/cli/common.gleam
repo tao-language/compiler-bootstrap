@@ -10,7 +10,7 @@ import filepath
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/option.{None}
+import gleam/option.{type Option, None, Some}
 import gleam/string
 import simplifile
 import tao/ast.{type Module}
@@ -95,7 +95,10 @@ pub fn normalize(path: String) -> String {
 }
 
 /// Expand `paths` and load every `.tao` file in it, along with the
-/// prelude package (loaded from `lib/prelude`).
+/// prelude package (loaded from `lib/prelude`). Input files that are
+/// themselves part of the prelude package are replaced by their package
+/// copy (the same file loaded under the package's module name), so the
+/// file is never compiled twice under two names.
 pub fn load(paths: List(String)) -> Result(Loaded, String) {
   case expand_paths(paths) {
     Error(msg) -> Error(msg)
@@ -105,11 +108,45 @@ pub fn load(paths: List(String)) -> Result(Loaded, String) {
         load.package_list(["lib"], [#("prelude", None)])
       Ok(Loaded(
         paths: files,
-        mods: mods,
+        mods: prelude_copies(mods, prelude),
         prelude: prelude,
         errors: list.append(errors, prelude_errors),
       ))
     }
+  }
+}
+
+/// Replace modules loaded from the prelude package directory by the
+/// package's own copy of the same file (matched by the path after the
+/// version directory), keeping the other modules unchanged.
+fn prelude_copies(
+  mods: List(Module),
+  prelude: List(Module),
+) -> List(Module) {
+  list.map(mods, fn(mod) {
+    case prelude_package_name(mod.0) {
+      Some(pkg_name) ->
+        // Prelude module names are unique, so the first (only) match wins.
+        case list.find(prelude, fn(m) { m.0 == pkg_name }) {
+          Ok(pkg_mod) -> pkg_mod
+          Error(Nil) -> mod
+        }
+      None -> mod
+    }
+  })
+}
+
+/// The prelude package name of a module loaded from the prelude package
+/// directory (e.g. `/lib/prelude/v0.0.1/result` → `/prelude/result`), if
+/// any.
+fn prelude_package_name(name: String) -> Option(String) {
+  case name {
+    "/lib/prelude/" <> rest ->
+      case string.split(rest, "/") {
+        [_version, ..parts] -> Some("/prelude/" <> string.join(parts, "/"))
+        _ -> None
+      }
+    _ -> None
   }
 }
 
@@ -129,8 +166,15 @@ fn load_modules(files: List(String)) -> #(List(Module), List(Error)) {
 
 /// Type-check `mods` together with the prelude, making the prelude names
 /// available in every module (as the `debug-file` CLI and the corpus test
-/// do).
+/// do). Modules that duplicate a prelude package module are dropped:
+/// loading the same file twice under two names creates duplicate module
+/// records (the path copy would also get implicit prelude imports of
+/// itself).
 pub fn compile(mods: List(Module), prelude: List(Module)) -> Context {
+  let prelude_names = list.map(prelude, fn(mod) { mod.0 })
+  let mods = list.filter(mods, fn(mod) {
+    !list.contains(prelude_names, mod.0)
+  })
   let all = list.append(mods, prelude)
   let all = load.implicit_prelude_imports(all, prelude)
   compile.modules(Context(..new_ctx, ffi: ffi.build), all)

@@ -22,42 +22,40 @@ import tao/tests.{
 }
 
 pub fn examples_prelude_test() {
-  // let #(prelude, e) = load.package_list(["lib"], [#("prelude", None)])
-  // assert e == []
-  // assert list.length(prelude) >= 1
-  // let mods = prelude
-  // let ctx =
-  //   Context(..new_ctx, ffi: ffi.build)
-  //   |> compile.modules(mods)
-  // assert ctx.errors == []
-  // let #(test_defs, ctx) = compile.tests(ctx, prelude)
-  // assert list.length(test_defs) >= 1
-  // let summary = run_all(ctx, test_defs)
-  // let failures = test_failures_message(ctx, summary)
-  // assert summary.num_fail == 0 as failures
-  todo as "hangs due to result.tao hang"
+  let #(prelude, e) = load.package_list(["lib"], [#("prelude", None)])
+  assert e == []
+  assert list.length(prelude) >= 1
+  let mods = prelude
+  let ctx =
+    Context(..new_ctx, ffi: ffi.build)
+    |> compile.modules(mods)
+  assert ctx.errors == []
+  let #(test_defs, ctx) = compile.tests(ctx, prelude)
+  assert list.length(test_defs) >= 1
+  let summary = run_all(ctx, test_defs)
+  let failures = test_failures_message(ctx, summary)
+  assert summary.num_fail == 0 as failures
 }
 
 pub fn examples_gallery_test() {
-  // let #(gallery, e1) = load.directory("examples/tao/gallery")
-  // let #(prelude, e2) = load.package_list(["lib"], [#("prelude", None)])
-  // assert e1 == []
-  // assert e2 == []
-  // assert list.length(gallery) >= 1
-  // assert list.length(prelude) >= 1
-  // let mods =
-  //   list.append(gallery, prelude)
-  //   |> load.implicit_prelude_imports(prelude)
-  // let ctx =
-  //   Context(..new_ctx, ffi: ffi.build)
-  //   |> compile.modules(mods)
-  // assert ctx.errors == []
-  // let #(test_defs, ctx) = compile.tests(ctx, gallery)
-  // assert list.length(test_defs) >= 1
-  // let summary = run_all(ctx, test_defs)
-  // let failures = test_failures_message(ctx, summary)
-  // assert summary.num_fail == 0 as failures
-  todo as "hangs due to result.tao hang"
+  let #(gallery, e1) = load.directory("examples/tao/gallery")
+  let #(prelude, e2) = load.package_list(["lib"], [#("prelude", None)])
+  assert e1 == []
+  assert e2 == []
+  assert list.length(gallery) >= 1
+  assert list.length(prelude) >= 1
+  let mods =
+    list.append(gallery, prelude)
+    |> load.implicit_prelude_imports(prelude)
+  let ctx =
+    Context(..new_ctx, ffi: ffi.build)
+    |> compile.modules(mods)
+  assert ctx.errors == []
+  let #(test_defs, ctx) = compile.tests(ctx, gallery)
+  assert list.length(test_defs) >= 1
+  let summary = run_all(ctx, test_defs)
+  let failures = test_failures_message(ctx, summary)
+  assert summary.num_fail == 0 as failures
 }
 
 /// Build the message for a failing `num_fail == 0` assert: a summary
