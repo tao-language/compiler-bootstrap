@@ -373,6 +373,37 @@ pub fn unify_rcd_field_name_empty_string_test() {
   assert unify(ctx0, #(a, s1), #(b, s2)) == ctx0
 }
 
+pub fn pop_field_positional_field_binds_named_lookups_in_order_test() {
+  // A positional field ("" name) binds *named* lookups in order: this is
+  // how operator calls (arg records with "" fields) unpack into named
+  // pattern fields at runtime, and how positional type annotations (e.g.
+  // `Rst(a, e)` = `{"": a, "": e}`) unify with named tdef records
+  // (`{value: …, error: …}`). Do not "tighten" this away.
+  let fields = [#("", 1), #("", 2)]
+  case tm.pop_field(fields, "x") {
+    Some(#(value, rest)) -> {
+      assert value == 1
+      assert rest == [#("", 2)]
+    }
+    None -> panic as "expected the first positional field"
+  }
+  case tm.pop_field([#("", 2)], "y") {
+    Some(#(value, rest)) -> {
+      assert value == 2
+      assert rest == []
+    }
+    None -> panic as "expected the second positional field"
+  }
+  // Positional lookups ("" name) take the first field in order.
+  case tm.pop_field([#("a", 3), #("b", 4)], "") {
+    Some(#(value, rest)) -> {
+      assert value == 3
+      assert rest == [#("b", 4)]
+    }
+    None -> panic as "expected the first field"
+  }
+}
+
 pub fn unify_rcd_large_field_count_test() {
   // Many fields — stress test for field lookup
   let fields =

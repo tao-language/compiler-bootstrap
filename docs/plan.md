@@ -63,15 +63,49 @@
       (fixed: restore only when granted), and (b) the `defer` dedup hashing huge
       terms (fixed: removed). See §13 for the handoff.
 
-### In progress (current session)
-- [ ] **T4** — Occurs-guard hole solutions across retries (Task 4).
-      ← **NEXT (session 4).** T3 (session 3) stopped the non-termination with a
-      budget, but the *corruption* it papers over — tdef value-holes solved with
-      module records — is unchanged and is T4/T5's job. See §13 for the
-      session-3 handoff (supersedes §12/§11).
+### Done
+- [x] **T4** — Stop tdef value-holes being solved with module records (Task 4).
+      ← **session 5.** Both corruption paths are now closed. Part 1 (session 4):
+      removed the `normalize_value` frame-swap in `unwrap`'s `NHole` branch so a
+      hole's solution keeps its own frame. Part 2 (this session): the *second*
+      path was a **de Bruijn frame mismatch in the value desugaring** — the
+      `__args` argument-record type was a *hole solved deep in the unpacking
+      match*, so its annotations' implicit-param `Var`s sat below the argument
+      record + pattern bindings (deep indices). When the record was re-evaluated
+      as a `Pi` domain in the `for`-param frame, those `Var`s bound to module-
+      record env slots and `solve_hole` put module records into the tdef value
+      holes. **Fix:** for implicit-param functions, build the `__args` record
+      type **concretely in the `for`-param frame** (`desugar.function_inner`
+      now gives the `__args` `Lam` a concrete `parameters_type` record and skips
+      the now-redundant in-body annotation `let` checks); non-implicit functions
+      are unchanged (the record stays a hole so a sibling-param annotation is
+      still checked where the sibling is in scope). Measured: the B shape and
+      `result.tao` re-check now unify in **73/250** budget steps (no cutoff),
+      the probe `b_shape_no_module_record_test_phase_solutions_test` **passes**
+      (0 module-record test-phase solutions), `gleam test` 494 passed / 7 gate
+      failures, `shape_matrix.sh 5` all 5 PASS, `result.tao` 2/2 doctests, and
+      `test lib/prelude/v0.0.1` (whole dir) 22/22. See §15.
+
+### Done
+- [x] **T5** — Stop implicit imports from creating `""` module-record fields (Task 5).
+      ← **session 6.** The implicit prelude import alias is now the reserved
+      name `"/__prelude__"` (`load.implicit_import_alias`): names starting with
+      `/` are module paths, never definition names, so it cannot collide with
+      user code, and — unlike `""` — it is not positional in `pop_field`, so
+      module records no longer carry a `""` field (probe
+      `module_records_have_no_empty_name_fields_test`; `gleam test`
+      496 passed / 7 gate failures). The `pop_field` tightening was **attempted
+      and reverted**: the `""`-field-matches-any-lookup case is a *feature* —
+      operator calls build positional `""` arg records that must bind to named
+      pattern fields at runtime, and positional type annotations (`Rst(a, e)` =
+      `{"": a, "": e}`) must unify with named tdef records. Tightening it broke
+      11 runtime tests (`%error` from rejected unpacking matches); the pinned
+      semantics are now `pop_field_positional_field_binds_named_lookups_in_order_test`.
+      Explicit no-alias imports were checked as a second `""` source: the parser
+      defaults the alias to `filepath.base_name(path)`, never `""` — the implicit
+      import was the only source. See §16.
 
 ### Not started (the tasks, one per session, in order)
-- [ ] **T5** — Stop implicit imports from creating `""` module-record fields; tighten `pop_field` (Task 5).
 - [ ] **T6** — Re-enable the commented-out tests, add a permanent regression gate, write `docs/implicit-args.md`, clean up dead `Test` cases in `define.gleam` (Task 6).
 
 > Tasks are ordered so that each is independently testable and each removes one
@@ -417,19 +451,13 @@ Each task: **write the failing test first → fix → confirm green → update �
 
 ## 8. Next steps & notes
 
-- **Immediate next session = Task 4** (occurs-guard hole solutions across
-  retries). T1–T3 are done: T3's budget stops the *non-termination*, but the
-  *corruption* (tdef value-holes solved with module records, §4/§5) is what
-  makes the descent pathological and is unchanged. T4/T5 remove the root cause;
-  once the holes are no longer solved with module records, the test re-check's
-  unification should complete in far fewer steps (well under the budget) and the
-  doctests will pass *without* the budget having to cut them off — that is the
-  real end state. **The budget must stay**: it is the safety net that turns any
-  residual non-termination into a fast error instead of a hang.
-  - T4 probe target: after `compile.modules` on the B shape, assert no hole's
-    solution transitively mentions itself (bounded, cycle-guarded inspector).
-    The corruption should still be visible before T4 (that's the failing test
-    to write first); after T4 it must be gone.
+- **Immediate next session = Task 6** (re-enable the 7 gate tests, add the
+  permanent `result.tao` regression gate, write `docs/implicit-args.md`, clean
+  up the dead `tao.Test` cases in `define.gleam`). T1–T5 are done: the
+  corruption is gone (T4), the `""` module-record fields are gone (T5), and the
+  test re-check unifies in ~73/250 budget steps with no cutoff. **The budget
+  must stay**: it is the safety net that turns any residual non-termination
+  into a fast error instead of a hang.
 - **`dumpstack.py` now forwards args** (fixed `--` → `-extra` this session), so
   `python scripts/dumpstack.py --delay=2 --duration=3 -- test <shape.tao>`
   reproduces the *with-prelude* hang and its native stack (all schedulers in
@@ -934,3 +962,503 @@ itself (bounded, cycle-guarded inspector).
 - **`gleam build`/`run` line numbers in stack traces don't always match the
   source** (the crash was reported at `error.gleam:88` but the real assert was in
   `quote.gleam:136` via `format.value`); trust the *innermost* frame.
+
+---
+
+## 14. T4 session 4 (CURRENT) — root cause found, first fix landed, second path remains
+
+> **Read this first.** This supersedes §13. T4's real target is *not* the
+> "occurs-guard / in-flight hole set" the original task description guessed.
+> The measured mechanism is **stale de Bruijn frames**: a value's captured
+> bodies get re-captured (or re-evaluated) under the *wrong* environment,
+> silently re-binding their `Var`s to whatever that env's slots hold — module
+> records. That is what solves the tdef value-holes with module records.
+
+### Current state of the working tree (uncommitted, on top of the T3 commit)
+`git status` — all changes are in the working tree only:
+- `src/core/unwrap.gleam` — **THE FIX (part 1).** The `unwrap_neut` `NHole`
+  branch no longer runs the solution through `quote.normalize_value(ffi,
+  solve_env, …)`. It now returns `unwrap_seen(ffi, subst, solution, …)` as-is
+  (sub-holes re-unwrapped, nothing re-anchored). The `import core/quote` is
+  removed. See "Why" below.
+- `src/core/quote.gleam` — removed `pub fn normalize_value` (dead after the
+  unwrap change; it was only called from the removed line).
+- `src/core/unify.gleam` — **tooling only (keep).** `solve_sketch` now prints
+  `Rcd` fields as `name:sketch` (one level deeper, `""`→`*`, tail after `/`,
+  `/_` when closed) and `NHole` with its id (`NHole(h126)`). Added a per-step
+  `USTEP <sketch> v <sketch>` line in `unify_core` (behind `trace_solves`).
+  These make `debug-src --trace-solves` show *which values* the descent pairs
+  together — this is how the second path was found. No behavior change.
+- `test/core/implicit_unify_test.gleam` — rewritten. Old
+  `reanchor_aligned_frame_resolves_test` (pinned the round-trip resolving an
+  `NVar` to an env entry) replaced by `unwrap_keeps_solution_frame_test`
+  (pins the new as-is behavior: `unwrap` returns the solution's `NVar`
+  untouched). Removed the unused `core/ffi` import.
+- `test/core/polymorphism_test.gleam` — `polymorphism_monomorphic_declaration_test`
+  expectation updated: the resolved `Pi`'s captured env is now
+  `[v.hole([], 0), mod_decl]` (the frame it was produced in) instead of the old
+  `[v.var(1), mod_decl]` (the solve frame the round-trip re-captured it under).
+  Comment updated to explain the frame is inert here (body is a constant) and
+  what is pinned (that `unwrap` does *not* re-capture under the solve frame).
+- `test/tao/implicit_args_test.gleam` — **the new T4 probe (keep).**
+  `b_shape_no_module_record_test_phase_solutions_test` + helper
+  `is_module_record`. Compiles the B shape with the prelude, records
+  `ctx.hole_counter` after `compile.modules`, runs `compile.tests`, then
+  asserts **no hole created in the test phase (id ≥ that counter) has a
+  module-record solution** (`is_module_record` = a `Rcd` with a `TypeDef`
+  field value — type-level records never contain `TypeDef`s, only module
+  records do). It is scoped to the test phase because the *main* compile
+  legitimately solves dot-access row holes with bounded module-record
+  *fragments* (h20 etc.) that pre-date the test phase and are harmless.
+  **The failure is a `panic` with only the hole *ids* (ints), NOT an
+  `assert`:** a `Value` is cyclic through its captured envs, so an `assert`
+  failure display recurses forever on a module record and **hangs the whole
+  suite** (this cost a session — see Lessons). `gleam test` currently reports
+  493 passed / 8 failures = the 7 pre-existing gate failures + this probe
+  failing with `module-record solutions in test phase: 132, 131, 127, 126`.
+
+### Verified baseline this session (before any change)
+- `scripts/shape_matrix.sh 5`: all 5 PASS (T3 budget in place).
+- `gleam test`: 493 passed / 7 gate failures.
+- `debug-src` on the B shape (with prelude) + `--trace-solves`: the tdef value
+  holes are solved with module records — `SOLVE h126 <- Rcd[Bool module]`,
+  `SOLVE h127 <- Rcd[user module]` (test 1) and `h131`/`h132` (test 2), each
+  followed by a `BUDGET used=265/250` (the T3 cutoff firing).
+
+### The root cause (measured, step by step)
+The tdef value-holes (h126/h127/h131/h132 — the fresh holes `unify_gadt`'s
+`instantiate` makes for `Rst(value, error)`'s params) get solved because the
+annotation record `Rst(a, e)` = `Rcd([#("", a), #("", e)])` is paired against
+the tdef record `Rcd([#("value", h126), #("error", h127)])` and **the
+annotation's field values are concrete module records** (not holes, not
+`NVar`s), so `solve_hole` fires. Two different annotation-record values exist:
+
+1. **The good one** (`Rcd[|*:NVar|*:NVar|]`): produced by the `unify_core`
+   `For`/`Pi` rules evaluating the function-type body in
+   `env_push(captured_env, n)` — the `For` params come out as `NVar`
+   placeholders. When this is paired against the tdef record it hits the T2
+   rule (`NVar` vs `NHole` → `defer`) — **no corruption**. Confirmed in the
+   trace: `USTEP Rcd[|*:NVar|*:NVar|] v Rcd[|value:NHole(h122)|error:NHole(h123)|]`
+   → `NVar v NHole(h122)` → deferred.
+
+2. **The bad one** (`Rcd[|*:BoolRcd|*:UserRcd|]`): the *same* annotation term
+   evaluated in an env where the `Var` indices for `a`/`e` land on
+   **module-record slots**. This is the one that solves h126/h127 with module
+   records. **This is the path still open** (part 2, below).
+
+**Part 1 (fixed):** `unwrap_neut`'s `NHole` branch ran every hole solution
+through `normalize_value(ffi, solve_env, …)` = `quote(solve_env) |>
+eval(solve_env)`. `quote` re-normalizes `For`/`Lam`/`Pi`/`Fix`/`TypeDef`
+*bodies* in their own captured envs, but `eval(solve_env, tm.For(…))`
+**re-creates the value with `captured_env = solve_env`** — the body's de Bruijn
+indices still address the *original* captured env, so the value now claims its
+body is relative to the wrong env. Every later `For`-rule body evaluation
+(`env_push(value.env, 1)` = `env_push(solve_env, 1)`) then re-binds the body's
+`Var`s to `solve_env`'s slots — module records. Removing the round-trip keeps
+each value in its own frame. This is why `unwrap` returning solutions as-is is
+the correct semantics, and it is what the two rewritten unit tests now pin.
+
+**Part 2 (STILL OPEN):** Even with part 1 fixed, the B shape still solves
+h126/h127/h131/h132 with module records (probe still fails; `--trace-solves`
+still shows the bad annotation variant). So there is a **second** place where
+the annotation term's `Var`s get evaluated against an env whose `a`/`e` slots
+hold module records. Candidates to check (in order of suspicion):
+- `infer.gleam` `instantiate` (the `v.For` case): `env = [v.hole(env, id),
+  ..env]` then `eval(ctx.ffi, env, fun_type_tm)`. `env` here is the `For`
+  value's *captured env*. If that captured env's slots (beyond the one fresh
+  hole pushed) hold module records, and the nested body's `Var` indices reach
+  past the pushed holes into them, the module records leak in. **This is the
+  prime suspect** — verify whether the `_orx` `For` value's captured env
+  (created in `infer_for`, which pushes the param then `pop_vars`es it, so the
+  captured env is the frame *minus* the param) has module records at the
+  indices the annotation's `Var`s use.
+- `infer.gleam` `infer_app_neut`: `expected_pi = v.Pi(env, …)` where `env` is
+  the *hole's captured env* (from `v.Neut(v.NHole(env, _))`), and
+  `ret_type = v.hole([arg_val, ..ctx.env], id)`. The `ctx.env`-based hole
+  capture can embed module records.
+- `core/eval.gleam` `tm.Var(index) -> at(env, index)` is a **blind** lookup:
+  a stale/wrong index silently returns whatever sits in that slot (a module
+  record) instead of erroring or staying neutral. This is the *enabler* for
+  every stale-index path. (An earlier TEMP probe in `eval` — since removed —
+  was meant to confirm which `Var` lookups land on module records; if needed,
+  re-add a `trace_solves`-gated variant, but do not leave it ungated.)
+
+### Immediate next steps (T4, part 2)
+1. **Pin down path 2.** Re-add a `trace_solves`-gated probe in `eval`'s
+   `tm.Var` case that prints `index` + a compact kind-string of the env (like
+   the removed TEMP one) *only when the slot value is a module record*
+   (`is_module_record`-style check), then run
+   `gleam run -- debug-src "$(cat /tmp/taoscratch/B_two_params_two_tests.tao)"
+   --add=prelude --trace-solves` and read which env/index the bad annotation
+   `Var`s hit. Correlate with the `USTEP` lines to name the exact
+   `unify`/`infer` call. (Keep the probe gated; remove before committing.)
+2. **Fix it.** Most likely: the `For` value's captured env must not let body
+   `Var`s reach module-record slots — either the captured env for a
+   quantifier body should be the *param frame* (not the full module env), or
+   `eval`'s `Var` lookup should refuse to return a module record for a
+   type-level `Var` (stay neutral / error). Prefer the smallest change that
+   makes the probe pass; do not re-introduce a frame re-capture (that is part
+   1's bug).
+3. **Verify (definition of done for T4):**
+   - `b_shape_no_module_record_test_phase_solutions_test` **passes** (probe
+     finds 0 module-record test-phase solutions).
+   - `debug-src` on the B shape: **no** `SOLVE hN <- Rcd[<module>]` and **no**
+     `UnificationNotTerminating` in `ctx.errors` (the budget cutoff should stop
+     firing). The doctests still pass.
+   - `gleam test`: 493 passed / 7 gate failures (back to the pre-existing 7;
+     the probe no longer fails).
+   - `scripts/shape_matrix.sh 5`: all 5 PASS.
+   - `gleam run -- test lib/prelude/v0.0.1/result.tao`: passes, fast (<1s).
+4. **Keep the T3 budget** — it is still the safety net. T4 removes the
+   *corruption* so the re-check no longer *needs* the cutoff, but the budget
+   must stay for any residual non-termination.
+5. If part 2 turns out to be the `""`-field / `pop_field` mispairing rather
+   than a stale env, that overlaps **T5** — note it in §1 and re-scope, but the
+   stale-`Var`-into-module-record mechanism above is the leading hypothesis.
+
+### Gotchas / lessons from this session
+- **`assert` on a `Value` hangs the suite on failure.** A module record is
+  cyclic through its captured envs (`Rcd → TypeDef → env → Rcd …`), and
+  Gleam's `assert` failure display structurally prints the compared values, so
+  it recurses forever. `Value` has no `Debug` impl, so you cannot "just" show
+  it. **Any test that can fail on a `Value` must use `panic as (a message with
+  only safe data like Int ids)`, never `assert value == …`.** (The new probe
+  does exactly this; the comment in the test explains why.)
+- **A frame-swap is a silent re-binding, not a no-op.** `quote(env) |>
+  eval(env)` on a value that carries captured bodies looks like a harmless
+  "re-express in env" but it re-captures every `For`/`Lam`/`Pi`/`Fix` body
+  under `env`. If `env` ≠ the body's original frame, every `Var` in those
+  bodies silently binds to `env`'s slots. Never re-capture a body under a
+  different frame; keep each value in the frame it was produced in.
+- **`eval`'s `Var` lookup is the enabler.** `at(env, index)` returns whatever
+  is in the slot for a stale index (a module record, a hole, an unrelated
+  binding). Any code path that evaluates a body in a frame that is not the
+  body's own captured env is a latent corruption site. Audit `eval` call sites
+  (esp. `unify`'s `For`/`Pi`/`Lam`/`Fix` rules, `infer`'s `instantiate`/
+  `infer_app_neut`, and `resolve`) for frame mismatches.
+- **Two values, one term.** The *same* annotation term evaluates to different
+  values in different envs (good: `NVar` fields; bad: module-record fields).
+  When debugging "where does this value come from", the answer is *which env
+  the body was evaluated in*, not *which term* — trace the env, not the term.
+- **`gleam test` has no `--filter`.** To isolate one test, temporarily rename
+  it (must not end in `_test`) and re-run the whole suite; rename back after.
+- **`gleam run -- <word>` treats `<word>` as a CLI command** (the entrypoint
+  dispatches on the first argv). A scratch `src/apitest.gleam` with its own
+  `main` is not reachable via `gleam run -- apitest` (unknown command → help +
+  exit 1). To run a scratch entrypoint you must temporarily point
+  `compiler_bootstrap.main` at it, then restore. (Used once this session; the
+  scratch file is now deleted.)
+- **`panic as "a" <> b` is a precedence trap** → parses as `(panic as "a") <>
+  b` (type error). And `panic as (…)` is *not* valid syntax in this Gleam.
+  Bind the message to a `let` first: `let msg = "…" <> x; panic as msg`.
+- **Gleam `case` arm with multiple statements needs `{ … }`** — `_ ->` followed
+  by a newline + `let` is a syntax error; wrap in a block.
+- **`solve_sketch` depth is safe** as long as it never descends into captured
+  *envs* (the cycle is through envs, not through the record/ctor structure,
+  which is finite). The one-level-deeper Rcd sketch is fine.
+- **The main compile solving dot-access row holes with module-record
+  fragments (h20 `Rcd[Bool_and]` etc.) is legitimate and bounded** — do not
+  "fix" those; they are what the probe deliberately scopes *out* (test phase
+  only). `term.dot` desugars a field access to a match with an
+  open-tail record pattern (`PRcd([#(field, pvar)], Some(PAny))`); against a
+  module-record type the open tail absorbs the remaining module fields. That is
+  correct row-polymorphism; the bug is only when a *type-level* annotation
+  record's fields become whole module records.
+
+---
+
+## 15. T4 session 5 (CURRENT) — the second path found and fixed; T4 done
+
+> **Read this first.** This supersedes §14. T4 is **complete**. The second
+> corruption path (which §14's `infer.instantiate` prime-suspicion pointed at
+> but did not reach) is a **de Bruijn frame mismatch in the value desugaring**,
+> not in `instantiate`. It is fixed in `src/tao/desugar.gleam`.
+
+### The actual root cause (part 2, measured)
+
+The `__args` argument-record type of an implicit-param function was a **hole**
+(the `Lam`'s param was untyped) that got **solved deep in the unpacking
+match**, where the parameter annotations are checked via
+`let "__checkN": <ann> = <param>`. Because the check runs *below* the argument
+record and the pattern bindings, the annotation's implicit-param `Var`s carry
+**deep** de Bruijn indices (e.g. `Rst(a, e)`'s `a`/`e` at indices 4/3 instead
+of 1/0 — three below, for `__args`, `r`, `d`).
+
+That record becomes the `Pi` domain (the `Lam` infers to a `Pi` whose domain
+is the `__args` record). When the `for` quantifiers are instantiated
+(`instantiate`/`unify`'s `For` rule re-evaluates the body with the fresh holes
+pushed), the `Pi` domain is re-evaluated in the **`for`-param frame**, where
+those deep `Var` indices land on **module-record env slots** — so the
+annotation's `a`/`e` become whole module records, and `solve_hole` stores them
+as the tdef value-hole solutions (the `SOLVE hN <- Rcd[<module>]` the trace
+shows). This is a *frame mismatch*: the record was solved in one frame (deep)
+but used in another (the `for` frame).
+
+Verified by dumping the stored `_orx` type body (a temporary `src/apitest.gleam`
+entrypoint that printed the `For` body via `format.term`, since
+`eval`/`unify` had no `ctx` to gate a probe on): the outer `For a`'s body was
+`%for(e: ?103). %pi(__args: {1: #Rst({_: n3, _: n2}), 2: ?106}) -> n0` —
+return `a` at index 1 (correct) but `Rst`'s `a`/`e` at raw indices 4/3 (deep,
+wrong). The `instantiate` probe (§14's prime suspect) produced the **good**
+annotation (fresh holes); the bad one was the `Pi` *domain* carried over from
+the main compile, not anything `instantiate` computed.
+
+### The fix (smallest change that removes the mismatch)
+
+In `desugar.function_inner`'s innermost case, when the function **has implicit
+params**, build the `__args` record type **concretely in the `for`-param frame**
+and give the `__args` `Lam` that concrete type, instead of leaving it a hole:
+
+- `has_implicits: Bool` is threaded through `function_inner` (set in
+  `function` from the implicit-param count).
+- When `has_implicits`, the `Lam` param type is `parameters_type(exports, params, span)`
+  (a concrete `{1: <ann1>, 2: <ann2>, …}` record) and the in-body annotation
+  `let` checks are **skipped** (`parameters_unpack` gained a `skip_checks` flag).
+  The annotations are then checked by unifying the argument against the record
+  type, exactly as before, but now with `a`/`e` at their own `for`-param
+  indices, so re-evaluation in the `for` frame binds them to the instantiated
+  holes, not module records.
+- When **no** implicit params, behavior is unchanged: the `__args` record stays
+  a hole and the annotations are checked inside the match (an annotation may
+  mention a *sibling explicit* param, which is not in scope at the `Lam`'s
+  param-type position — the reason the hole design existed). This mirrors what
+  `function_type` (the type desugaring) already did.
+
+The one case the fix does **not** cover: an implicit-param function whose
+annotation references a *sibling explicit* param (e.g. `fn f<a>(x: a, y: Expr(x))`).
+That annotation cannot be built in the `for` frame (`x` is not in scope), so
+such a function would now desugar to a record with a free `x` and error with
+`VarUndefined` at inference. No prelude or test function has this shape (all
+implicit-param annotations reference only implicit params), so it is a latent,
+documented limitation, not a regression. If it ever matters, the record field
+for that param can fall back to a hole while the concrete fields stay in the
+`for` frame.
+
+### Verification (all green)
+- `b_shape_no_module_record_test_phase_solutions_test` **passes** (0
+  module-record test-phase solutions; was `132, 131, 127, 126`).
+- `debug-src --trace-solves` on the B shape: `SOLVE h126 <- LitT`,
+  `SOLVE h127 <- LitT` (and same for h131/h132) — **no** `Rcd[<module>]` and
+  **no** `UnificationNotTerminating`; the re-check unifies in **73/250** budget
+  steps (the cutoff no longer fires; it was 265/250).
+- `gleam test`: **494 passed / 7 gate failures** (the pre-existing gate set;
+  the probe no longer fails).
+- `scripts/shape_matrix.sh 5`: all 5 PASS.
+- `gleam run -- test lib/prelude/v0.0.1/result.tao`: 2/2 doctests, ~0.35s.
+- `gleam run -- check lib/prelude/v0.0.1`: clean (exit 0).
+- `gleam run -- test lib/prelude/v0.0.1` (whole dir, multi-module): 22/22 —
+  this previously hung and was unverified; now passes.
+
+### Kept / removed this session
+- **Kept** (permanent, from T2/T4-s4): `Context.trace_solves` +
+  `debug-src --trace-solves`, `solve_sketch` (now one-level-deeper on `Rcd`),
+  the `USTEP` per-step trace line, the T3 unify budget, the `unwrap`
+  no-frame-swap (part 1), the probe test + `is_module_record` helper.
+- **Removed** (TEMP probes added while pinning part 2): the `INSTANTIATE …`
+  probe in `infer.instantiate`, the `UNIFY-FOR1/2` probes in `unify`'s `For`
+  rules, the temporary `src/apitest.gleam` entrypoint, and the `solve_sketch`
+  re-export from `unify`. `src/core/infer.gleam` is back to its T3 state.
+
+### Lessons
+- **"The value is re-evaluated in the wrong frame" can be fixed at the source
+  instead of at the re-evaluation site.** Part 1 stopped `unwrap` from
+  re-capturing; part 2 stopped the *term* from carrying deep indices in the
+  first place. Building the `__args` record type in the `for` frame (rather
+  than a hole solved deep) removes the mismatch at the root, and it mirrors the
+  type desugaring (`function_type`), so value and type desugaring now agree.
+- **Dump the actual de Bruijn structure; don't argue about it.** Reasoning
+  about which index a `Var` has through nested `for`/`lam`/`match` was
+  unreliable (three near-wrong derivations). A scratch entrypoint that printed
+  the stored `For` body via `format.term` (which `lift`s with `[name, ..names]`
+  per quantifier) settled it in one run. To run a scratch entrypoint you must
+  temporarily point `compiler_bootstrap.main` at it (`gleam run -- <word>`
+  treats `<word>` as a CLI command, so a standalone `main` is not reachable
+  otherwise) — done here, then reverted.
+- **A hole solved in a deeper frame than it is used is a latent frame
+  mismatch.** Any value that is (a) created as a hole in frame F1, (b) solved
+  in a deeper frame F2, and (c) used in F1 again will re-bind its neutrals to
+  F2's slots. The `__args` record was exactly that. When a type is both
+  *declared* shallow and *elaborated* deep, prefer declaring it concretely in
+  the shallow frame.
+- **Gleam `let _ = echo X` returns `X`** (echo returns its value), so a `case`
+  arm ending in `let _ = echo …` returns `String`, not `Nil` — build the
+  message in a `let msg = …`, then `let _ = echo msg; Nil`.
+- **Gleam `let #(_, x) = tuple` in a scratch that also `echo`s** can trip
+  confusing type errors when the arm's block value is a `String`; keep arm
+  values uniformly `Nil`.
+
+### Tooling added this session (keep)
+- **`debug-src --dump-def <name>`** (permanent, opt-in): after `define.values`,
+  prints the named definition's inferred type value with its de Bruijn
+  structure — `For`/`Pi` bodies are lifted via `format.term` with a flat
+  names list (`n0..n15`), so each `Var` shows the index it addresses; other
+  values are sketched one level deep. This is the exact technique that cracked
+  the frame mismatch (it printed `_orx`'s body as
+  `%for(e). %pi(__args: {1: #Rst({_: <deep>, _: e}), 2: <deep>}) -> <deep>`),
+  and it removes the need for a throwaway `src/apitest.gleam` entrypoint. New
+  helpers `dump_type_value`/`dump_sketch` in `cli/debug_src.gleam`; the flag
+  is parsed in `cli/entrypoint.gleam` (`--dump-def=`) and help updated.
+  **Verified working** (`gleam run -- debug-src "<src>" --add=prelude --dump-def=_orx`).
+  Note: the lifted indices can look "out of range" for the small `for` frame
+  (e.g. `n14` = index 16); this is a display quirk of how the record type's
+  implicit-param `Var`s are indexed — the tests prove they resolve to the
+  correct fresh holes, so do not chase it.
+
+### Next session = T5 (or T6)
+T4 is DONE. The `""` module-record-field corruption it was scoped to is gone
+(the tdef value-holes now solve to literal types, not module records), so T5
+(eliminate `""` module-record fields / tighten `pop_field`) is now pure
+hardening. T6 (re-enable the 7 gate tests, add a permanent regression gate,
+write `docs/implicit-args.md`, clean up dead `Test` cases in `define.gleam`) is
+the natural next step and will turn the suite fully green. The standing
+regression for this whole bug is the probe test
+(`b_shape_no_module_record_test_phase_solutions_test`) plus
+`gleam run -- test lib/prelude/v0.0.1` (whole dir, 22/22) and
+`scripts/shape_matrix.sh`.
+
+### Housekeeping state (session 5 end)
+- All TEMP probes removed; `src/core/infer.gleam` is back to its T3 state
+  (no diff). Working-tree changes are: `src/tao/desugar.gleam` (the fix),
+  `src/core/{quote,unwrap,unify}.gleam` (part 1 + T2/T4-s4 tooling),
+  `src/cli/{debug_src,entrypoint}.gleam` (the `--dump-def` tool), the three
+  test files, and `docs/plan.md`.
+- `gleam build` clean; `gleam test` **494 passed / 7 gate failures** (the
+  pre-existing gate set: 2 `todo`s in `examples_test`, 4 `todo`s in
+  `implicit_args_test`, and the RED `prelude_or_tests_pass_test`).
+- `gleam run -- test lib/prelude/v0.0.1/result.tao`: 2/2; `option.tao`: 2/2;
+  `check lib/prelude/v0.0.1`: clean; `test lib/prelude/v0.0.1` (dir): 22/22;
+  `scripts/shape_matrix.sh 5`: all 5 PASS.
+- One documented limitation (not a regression): an implicit-param function
+  whose annotation references a *sibling explicit* param (e.g.
+  `fn f<a>(x: a, y: Expr(x))`) would now desugar to a record with a free `x`
+  and error with `VarUndefined` at inference. No prelude/test function has
+  this shape. If it ever matters, fall back that one field to a hole while
+  keeping the concrete fields in the `for` frame.
+
+### Final verification (T4, all green, re-run at session end)
+- `gleam build`: clean.
+- `gleam test`: 494 passed / 7 gate failures (probe now passes).
+- `scripts/shape_matrix.sh 5`: all 5 PASS.
+- `gleam run -- test lib/prelude/v0.0.1/result.tao`: 2/2 doctests, ~0.35s.
+- `gleam run -- test lib/prelude/v0.0.1/option.tao`: 2/2.
+- `gleam run -- check lib/prelude/v0.0.1`: clean (exit 0).
+- `gleam run -- test lib/prelude/v0.0.1` (whole dir): 22/22.
+- `debug-src --trace-solves` on B shape: `SOLVE h126/h127/h131/h132 <- LitT`
+  (no `Rcd[<module>]`, no `UnificationNotTerminating`, budget 73/250).
+- `debug-src --dump-def _orx`: prints the type with de Bruijn indices (works).
+
+---
+
+## 16. T5 session 6 (CURRENT) — `""` module-record fields eliminated; T5 done
+
+> **Read this first.** This supersedes §15's "next session" note. T5 is
+> **complete**: implicit prelude imports use a reserved alias, so module
+> records no longer carry `""` fields. The `pop_field` tightening from the
+> original task description was **attempted, measured, and reverted** — it
+> broke a load-bearing runtime feature (see below).
+
+### The fix (one source change)
+
+`src/tao/load.gleam`: the implicit prelude import alias changed from `""` to
+the reserved constant `implicit_import_alias = "/__prelude__"`. Rationale:
+names starting with `/` are module paths (`define.expr_value` filters free
+vars with `string.starts_with(name, "/")` into the module-name branch), so a
+`/`-prefixed alias can never be a user definition name, and — the part that
+matters for this bug — it is not `""`, so it is not *positional* in
+`pop_field`. Module records therefore no longer carry a `""` field, and a
+type-level positional record can no longer mis-pair with an import field of a
+module record.
+
+`""`-alias entries had exactly **one** source: the implicit prelude import.
+The second suspected source (explicit no-alias imports) was checked and is
+not one: the parser (`parse.import_`) defaults the alias to
+`filepath.base_name(path)` (e.g. `"bool"`), never `""`.
+
+### The pop_field tightening: attempted, broke runtime, reverted
+
+The original T5 description suggested restricting `pop_field` so `""` matches
+only positional fields in order. The first attempt removed the
+`[#("", value), ..fields] -> Some(#(value, fields))` case (a `""`-named
+*field* matching *any* lookup). **This broke 11 previously-passing runtime
+tests** (`overload_test`, `factorial*`, `tao_factorial_test`,
+`implicit_args_test` single-test shapes, `unify_gadt_hole_refinement_test`,
+`deferred_constraint_test` overloads): test values became `%error`.
+
+Root cause: the any-match case is a **feature**, not a bug. It is the
+positional-binding mechanism in *both* directions:
+- **Runtime**: operator calls desugar to arg records with `""` fields
+  (`desugar` `Op2`: `[#("", lhs), #("", rhs)]`); a function's `__args`
+  unpacking match has *named* pattern fields (`x`, `y`). `match_pattern_rcd_field`
+  → `pop_field(vfields, "x")` pops the `""` field — without the any-match
+  case the match rejects and the value is `Err` (`%error`).
+- **Unification**: a positional type annotation (`Rst(a, e)` =
+  `Rcd([#("", a), #("", e)])`) unifies with the tdef record built from
+  *parameter names* (`type_definition` uses `pname` fields:
+  `{value: …, error: …}`) precisely because a `""` *lookup* pops the first
+  field in order.
+
+`pop_field` is back to its original form; its semantics are now pinned by
+`pop_field_positional_field_binds_named_lookups_in_order_test`
+(`test/core/row_polymorphism_test.gleam`) so a future "simplification" does
+not silently re-break positional binding. The real defect was never the
+matching rule — it was `""` fields *inside module records* (the alias), which
+the reserved alias removes.
+
+### Tests (written first, both failed pre-fix)
+
+- `module_records_have_no_empty_name_fields_test`
+  (`test/tao/implicit_args_test.gleam`): after `compile.modules` on the B
+  shape with the prelude, no closed record in the env (i.e. no module record)
+  has a `""` field. Failed pre-fix (the scratch module record carried the
+  prelude's `""` field). Note: the first draft filtered env entries by
+  `"/" <> _` names and vacuously passed — the in-memory scratch module is
+  named `"scratch"` (no leading `/`); the final version filters by *value
+  shape* (closed `Rcd`), which is what "module record" means after
+  `compile.modules`.
+- `pop_field_positional_field_binds_named_lookups_in_order_test`
+  (`test/core/row_polymorphism_test.gleam`): pins the positional-binding
+  semantics (named lookups bind `""` fields in order; `""` lookups take the
+  first field). Passes before and after (it pins behavior, it does not gate
+  the fix).
+
+### Verification (all green)
+
+- `gleam test`: **496 passed / 7 gate failures** (the pre-existing gate set:
+  2 `todo`s in `examples_test`, 4 `todo`s in `implicit_args_test`, the RED
+  `prelude_or_tests_pass_test` — T6 re-enables them).
+- `scripts/shape_matrix.sh 5`: all 5 PASS.
+- `gleam run -- test lib/prelude/v0.0.1/result.tao`: 2/2 doctests.
+- `gleam run -- test lib/prelude/v0.0.1` (whole dir): 22/22.
+- `gleam run -- check lib/prelude/v0.0.1`: clean (exit 0).
+- `debug-src --trace-solves` on the B shape: no `SOLVE hN <- Rcd[<module>]`,
+  no `UnificationNotTerminating`, budget max 20/250.
+
+### Lessons
+
+- **A "suspicious" match rule may be a load-bearing feature; measure before
+  tightening.** The `pop_field` any-match case looked exactly like the
+  mispairing bug the plan described — and it is, in the *module-record*
+  direction. But the same case is the only thing binding positional call
+  records to named parameters at runtime. The 11-test breakage (`%error`
+  values from rejected unpacking matches) was the measurement that stopped
+  it. When a rule serves both a buggy context and a working one, fix the
+  context (here: who creates `""` fields), not the rule.
+- **Filter probes by value shape, not by name prefix.** The module-record
+  probe's first draft matched env entries named `"/" <> _` and passed
+  vacuously because the in-memory scratch module is named `"scratch"`.
+  "Module record" is a *value* property (a closed `Rcd` in the post-
+  `compile.modules` env), not a name property.
+- **Check the second source before declaring a field eliminated.** `""`
+  alias entries could have come from explicit no-alias imports too; the
+  parser's `filepath.base_name` default rules it out. One-line check, spared
+  a future "why do my module records have `""` fields again" session.
+
+### Housekeeping state (session 6 end)
+
+- Working-tree changes: `src/tao/load.gleam` (the fix),
+  `test/core/row_polymorphism_test.gleam` + `test/tao/implicit_args_test.gleam`
+  (the two new tests), `docs/plan.md`. `src/core/term.gleam` is back to its
+  pre-session state (the `pop_field` revert).
+- No TEMP instrumentation left behind; no new tooling needed this session.
+- Next session = **T6** (re-enable the 7 gate tests, `result.tao` regression
+  gate, `docs/implicit-args.md`, dead `tao.Test` cleanup in `define.gleam`).

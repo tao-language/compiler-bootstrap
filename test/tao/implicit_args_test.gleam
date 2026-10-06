@@ -337,6 +337,42 @@ pub fn b_shape_no_module_record_test_phase_solutions_test() {
   }
 }
 
+/// Module records must not carry `""`-named fields. The implicit prelude
+/// import used alias `""`, so every module importing the prelude had a
+/// `""` field in its record; a `""` field is positional in `pop_field`
+/// and let type-level positional records (e.g. `Rst(a, e)` = `{"": a,
+/// "": e}`) mis-pair with module-record fields during unification (part
+/// of the result.tao hang). Implicit imports now use a reserved alias
+/// that cannot be a user name. After `compile.modules` the only closed
+/// records in the env are module records, so any of them with a `""`
+/// field is a bug.
+pub fn module_records_have_no_empty_name_fields_test() {
+  case compile_ctx(b_shape) {
+    Some(ctx) -> {
+      let bad = list.filter(ctx.types, fn(entry) {
+        let #(_, value) = entry
+        case value {
+          v.Rcd(fields, None) ->
+            list.any(fields, fn(field) {
+              let #(field_name, _) = field
+              field_name == ""
+            })
+          _ -> False
+        }
+      })
+      case list.length(bad) {
+        0 -> Nil
+        n -> {
+          let msg =
+            "module records with \"\" fields: " <> int.to_string(n)
+          panic as msg
+        }
+      }
+    }
+    None -> panic as "parse error"
+  }
+}
+
 // ============================================================================
 // Harness (modeled on test/tao/overload_test.gleam)
 // ============================================================================

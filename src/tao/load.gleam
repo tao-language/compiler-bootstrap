@@ -10,6 +10,12 @@ import tao/ast.{type Module, type Stmt, Import, import_all}
 import tao/parse.{statements}
 import utils/fs
 
+/// The alias of the implicit prelude imports. Names starting with `/` are
+/// module paths, never definition names, so this alias cannot collide with
+/// user code — and, unlike `""`, it is not positional in `pop_field`, so
+/// module records never carry a `""` field.
+const implicit_import_alias = "/__prelude__"
+
 /// Append an implicit `import <path> *` to every module that is not itself
 /// a prelude module and does not already import it. The prelude (the
 /// standard library, loaded with `--add`) is implicitly imported into every
@@ -33,7 +39,10 @@ pub fn implicit_prelude_imports(
             let path = m.0
             case list.contains(existing, path) {
               True -> Error(Nil)
-              False -> Ok(import_all(path, "", Span(name, 0, 0, 0, 0)))
+              False ->
+                Ok(
+                  import_all(path, implicit_import_alias, Span(name, 0, 0, 0, 0)),
+                )
             }
           })
         #(name, list.append(imports, stmts))
