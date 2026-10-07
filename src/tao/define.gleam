@@ -256,10 +256,14 @@ fn type_stmt_data(
     tao.Test(..) ->
       panic as "test statement reached define (tests are only inferred in compile.tests)"
     tao.FnDef(name, ..) ->
-      // TODO: Only derive the type annotation? Would this work for cyclic definitions?
-      // If cyclic definitions still work like this, maybe separate define.types and define.values are not needed (could be simplified).
+      // TODO: This should use the params+returns type annotations to give a Pi or For-Pi type.
+      // Note: Polymorphic For functions MUST have explicit parameters even if the
+      // arguments/return types are not explicit (holes), example: `fn identity<a>(x)
+      // This is required so that implicit arguments are expanded correctly.
       stmt_value(ctx, defs, mod_name, name, stmt, None)
-    tao.FnOverload(name, _) -> stmt_value(ctx, defs, mod_name, name, stmt, None)
+    tao.FnOverload(name, _) ->
+      // Note: A FnOverload MUST have a For-Pi type so that implicit arguments are expanded.
+      stmt_value(ctx, defs, mod_name, name, stmt, None)
     tao.TypeDef(..) -> {
       // A type definition is a value of the universe `Type`, and its
       // value can be computed directly in phase 1: the parameter types
