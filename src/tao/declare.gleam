@@ -42,7 +42,13 @@ pub fn statement(stmt: Stmt) -> List(#(Name, Stmt)) {
     tao.LetPat(_pattern, _types, _value) -> todo
     tao.LetMut(_name, _opt_type, _value) -> todo
     tao.Mut(_name, _value) -> todo
-    tao.Test(_name, _, _) -> []
+    tao.Test(_name, _, _) ->
+      // DO NOT declare tests as part of the package.
+      // The whole project packages goes through NbE, which means
+      // tests would run at compile time.
+      // So first build/compile/NbE the project WITHOUT tests.
+      // To run tests, there has to be a separate pass, see tao/compile.tests
+      []
     tao.FnDef(name, ..) -> [#(name, stmt)]
     tao.FnOverload(name, _) -> [#(name, stmt)]
     tao.TypeDef(name, _) -> [#(name, stmt)]
