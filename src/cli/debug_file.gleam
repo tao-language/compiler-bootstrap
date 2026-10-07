@@ -1,3 +1,4 @@
+import cli/common
 import core/context.{Context, new_ctx}
 import core/error
 import core/ffi
@@ -41,6 +42,7 @@ pub fn debug_file(
       #([mod, ..mods], list.append(errors, err))
     }
   }
+  let packages = common.with_prelude(packages)
   echo "> load.package_list(paths, packages)"
   let #(pkg_mods, pkg_errors) = load.package_list(paths, packages)
   let #(mods, errors) = #(

@@ -22,6 +22,17 @@ import utils/fs
 @external(erlang, "erlang", "halt")
 pub fn exit(status: Int) -> Nil
 
+/// The package list with the prelude (the standard library) added, so
+/// every command compiles against it (skipped when already present).
+pub fn with_prelude(
+  packages: List(#(String, Option(String))),
+) -> List(#(String, Option(String))) {
+  case list.any(packages, fn(p) { p.0 == "prelude" }) {
+    True -> packages
+    False -> list.append(packages, [#("prelude", None)])
+  }
+}
+
 /// Modules loaded from the given paths, plus the prelude (the standard
 /// library) and any syntax errors encountered while loading.
 pub type Loaded {

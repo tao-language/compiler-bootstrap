@@ -1,11 +1,16 @@
 import core/context.{type Context} as context
+import core/error.{display, display_syntax}
+import core/ffi
 import core/term as tm
 import core/value as v
 import gleam/list
 import gleam/option.{None, Some}
 import syntax/span.{Span}
 import tao/ast as tao
+import tao/compile
 import tao/define
+import tao/load
+import tao/parse as p
 
 const s = Span("define_test", 0, 0, 0, 0)
 
@@ -338,4 +343,54 @@ pub fn expand_mixed_test() {
   let combos = expanded_tags(bool_ctx(), [pctr("Int"), pctr("Bool")])
   assert list.length(combos) == 3
   assert list.contains(combos, ["Int", "True"])
+}
+
+
+// ============================================================================
+// Module ordering: a function body may reference an imported type
+// definition. Function bodies are checked in phase 2 (after every module
+// record exists), so the imported TypeDef is findable by
+// `lookup_type_def` — checking them eagerly in phase 1 (before the
+// imported module's record is created) made `#True` vs `#Bool`
+// unification fail with a spurious type mismatch.
+// ============================================================================
+
+const nl = "\n"
+
+pub fn fn_body_uses_imported_type_def_test() {
+  let src =
+    "fn f(b: Bool) -> Bool ="
+    <> nl
+    <> "match b {"
+    <> nl
+    <> "| True => True"
+    <> nl
+    <> "| _ => False"
+    <> nl
+    <> "}"
+  let errors = check_src(src)
+  assert errors == []
+}
+
+pub fn fn_body_uses_imported_ctor_annot_test() {
+  let src = "let b: Bool = True"
+  let errors = check_src(src)
+  assert errors == []
+}
+
+fn check_src(source: String) -> List(String) {
+  case p.statements("scratch", source) {
+    Ok(stmts) -> {
+      let #(prelude, _load_errors) =
+        load.package_list(["lib"], [#("prelude", None)])
+      let mods: List(#(String, List(tao.Stmt))) =
+        list.append([#("scratch", stmts)], prelude)
+        |> load.implicit_prelude_imports(prelude)
+      let ctx =
+        context.Context(..context.new_ctx, ffi: ffi.build)
+        |> compile.modules(mods)
+      list.map(ctx.errors, fn(err) { display(ffi.build, ctx.types, err) })
+    }
+    Error(err) -> ["PARSE: " <> display_syntax(err)]
+  }
 }

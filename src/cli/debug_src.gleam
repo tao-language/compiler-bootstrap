@@ -2,6 +2,7 @@
 /// (prelude compiled in, like `debug-file`) with per-phase timing and a
 /// full hole-substitution dump. Faster bisection than writing /tmp
 /// files and running `debug-file`.
+import cli/common
 import core/context.{Context, new_ctx}
 import core/error
 import core/ffi
@@ -46,7 +47,8 @@ pub fn debug_src(
         "source: " <> string.inspect(source)
           <> " packages: " <> string.inspect(dependencies),
       )
-      let #(pkg_mods, pkg_errors) = load.package_list(paths, dependencies)
+      let #(pkg_mods, pkg_errors) =
+        load.package_list(paths, common.with_prelude(dependencies))
       let mods: List(Module) =
         list.append([#("scratch", stmts)], pkg_mods)
         |> load.implicit_prelude_imports(pkg_mods)
