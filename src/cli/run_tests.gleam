@@ -5,7 +5,7 @@
 /// there are build errors or any test fails, 0 otherwise.
 import cli/common
 import cli/test_filter.{TestSelection, filter_fn}
-import core/context
+import core/context.{type TraceKind, TraceModules}
 import core/format
 import gleam/int
 import gleam/io
@@ -29,6 +29,8 @@ pub type TestArgs {
     filter: List(String),
     /// The `--skip` patterns.
     skip: List(String),
+    /// The `--trace` kinds.
+    trace_kinds: List(TraceKind),
   )
 }
 
@@ -36,7 +38,7 @@ pub type TestArgs {
 /// `path:test1,test2`) plus repeatable `--filter`/`--skip` flags (either
 /// `--flag pattern` or `--flag=pattern`).
 pub fn parse_test_args(args: List(String)) -> Result(TestArgs, String) {
-  parse(args, [], [], [], [])
+  parse(args, [], [], [], [], [])
 }
 
 fn parse(
@@ -45,17 +47,22 @@ fn parse(
   per_file: List(#(String, List(String))),
   filter: List(String),
   skip: List(String),
+  trace_kinds: List(TraceKind),
 ) -> Result(TestArgs, String) {
   case args {
-    [] -> Ok(TestArgs(paths, per_file, filter, skip))
+    [] -> Ok(TestArgs(paths, per_file, filter, skip, trace_kinds))
     ["--filter", pattern, ..rest] ->
-      parse(rest, paths, per_file, [pattern, ..filter], skip)
+      parse(rest, paths, per_file, [pattern, ..filter], skip, trace_kinds)
     ["--filter=" <> pattern, ..rest] ->
-      parse(rest, paths, per_file, [pattern, ..filter], skip)
+      parse(rest, paths, per_file, [pattern, ..filter], skip, trace_kinds)
     ["--skip", pattern, ..rest] ->
-      parse(rest, paths, per_file, filter, [pattern, ..skip])
+      parse(rest, paths, per_file, filter, [pattern, ..skip], trace_kinds)
     ["--skip=" <> pattern, ..rest] ->
-      parse(rest, paths, per_file, filter, [pattern, ..skip])
+      parse(rest, paths, per_file, filter, [pattern, ..skip], trace_kinds)
+    ["--trace=modules", ..rest] ->
+      parse(rest, paths, per_file, filter, skip, [TraceModules, ..trace_kinds])
+    ["--trace=" <> kind, ..rest] ->
+      Error("unknown trace kind: " <> kind)
     ["--filter"] -> Error("missing pattern for --filter")
     ["--skip"] -> Error("missing pattern for --skip")
     [arg, ..rest] -> {
@@ -65,10 +72,10 @@ fn parse(
         Ok(#(path, names)) -> {
           let path = common.normalize(path)
           let per_file = list.append(per_file, [#(path, test_names(names))])
-          parse(rest, list.append(paths, [path]), per_file, filter, skip)
+          parse(rest, list.append(paths, [path]), per_file, filter, skip, trace_kinds)
         }
         Error(Nil) ->
-          parse(rest, list.append(paths, [arg]), per_file, filter, skip)
+          parse(rest, list.append(paths, [arg]), per_file, filter, skip, trace_kinds)
       }
     }
   }
@@ -113,7 +120,7 @@ fn run_loaded(args: TestArgs) -> Nil {
     Ok(loaded) ->
       case list.length(loaded.errors) {
         0 -> {
-          let ctx = common.compile(loaded.mods, loaded.prelude)
+          let ctx = common.compile(loaded.mods, loaded.prelude, args.trace_kinds)
           common.print_build_errors(ctx)
           case ctx.errors {
             [] -> run_tests_(loaded, ctx, args)

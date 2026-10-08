@@ -1,4 +1,6 @@
+import core/error as e
 import gleam/list
+import gleam/string
 import tao/ast.{type Module, type Stmt} as tao
 
 pub type ModName =
@@ -9,7 +11,9 @@ pub type Name =
 
 /// Collect all module definitions and expand imports into the full
 /// definition list, so every name maps to the statement that defines it.
-pub fn modules(mods: List(Module)) -> List(#(ModName, List(#(Name, Stmt)))) {
+pub fn modules(
+  mods: List(Module),
+) -> #(List(#(ModName, List(#(Name, Stmt)))), List(e.Error)) {
   // Build the complete defs list first, then resolve imports once against
   // it. Resolving against a partial list (e.g. from a recursive step) would
   // fail to find modules that appear later in the list, making the result
@@ -65,39 +69,59 @@ pub fn statement(stmt: Stmt) -> List(#(Name, Stmt)) {
 /// import's desugaring.
 pub fn imports(
   defs: List(#(ModName, List(#(Name, Stmt)))),
-) -> List(#(ModName, List(#(Name, Stmt)))) {
-  list.map(defs, fn(def) {
-    let #(mod_name, mod_defs) = def
-    let mod_defs =
-      list.flat_map(mod_defs, fn(mod_def) {
-        let #(name, stmt) = mod_def
-        case stmt.data {
-          tao.Import(path, _, tao.ImportAll) -> {
-            let exposed = case list.key_find(defs, path) {
-              Error(Nil) -> {
-                echo path
-                echo list.map(defs, fn(entry) { entry.0 })
-                todo as "error: module not found"
-              }
-              Ok(import_defs) ->
-                // Flatten only public names into the import scope, matching
-                // desugar.is_public_name: non-public entries (externs, tests)
-                // must not become entries of the importing module.
+) -> #(List(#(ModName, List(#(Name, Stmt)))), List(e.Error)) {
+  case defs {
+    [] -> #([], [])
+    [#(mod_name, mod_defs), ..rest] -> {
+      let #(new_defs, errs1) = expand_mod_defs(mod_defs, defs)
+      let #(rest_defs, errs2) = imports(rest)
+      #(
+        list.append([#(mod_name, new_defs)], rest_defs),
+        list.append(errs1, errs2),
+      )
+    }
+  }
+}
+
+fn expand_mod_defs(
+  mod_defs: List(#(Name, Stmt)),
+  all_defs: List(#(ModName, List(#(Name, Stmt)))),
+) -> #(List(#(Name, Stmt)), List(e.Error)) {
+  case mod_defs {
+    [] -> #([], [])
+    [#(name, stmt), ..rest] -> {
+      let #(rest_defs, rest_errs) = expand_mod_defs(rest, all_defs)
+      case stmt.data {
+        tao.Import(path, _, tao.ImportAll) ->
+          case list.key_find(all_defs, path) {
+            Error(Nil) -> {
+              let known = list.map(all_defs, fn(entry) { entry.0 })
+              let err = e.Error(
+                e.SyntaxError(
+                  "module not found: " <> path
+                    <> " (known: "
+                    <> string.join(known, ", ")
+                    <> ")",
+                ),
+                stmt.span,
+                [],
+              )
+              #([#(name, stmt), ..rest_defs], [err, ..rest_errs])
+            }
+            Ok(import_defs) -> {
+              let exposed =
                 list.filter(import_defs, fn(mod_def) {
                   is_public_name(mod_def.0)
                 })
-                |> list.map(fn(mod_def) {
-                  let #(name, _) = mod_def
-                  #(name, stmt)
-                })
+                |> list.map(fn(mod_def) { #(mod_def.0, stmt) })
+              let all = list.append([#(name, stmt)], exposed)
+              #(list.append(all, rest_defs), rest_errs)
             }
-            [#(name, stmt), ..exposed]
           }
-          _ -> [#(name, stmt)]
-        }
-      })
-    #(mod_name, mod_defs)
-  })
+        _ -> #([#(name, stmt), ..rest_defs], rest_errs)
+      }
+    }
+  }
 }
 
 /// For each module, the list of names it defines (used for module

@@ -14,6 +14,15 @@ import gleam/option.{type Option, None, Some}
 import syntax/span.{type Span}
 
 // ============================================================================
+// TRACE
+// ============================================================================
+
+/// Kinds of compiler traces that can be enabled via `--trace=<kind>`.
+pub type TraceKind {
+  TraceModules
+}
+
+// ============================================================================
 // CONTEXT
 // ============================================================================
 
@@ -47,6 +56,7 @@ pub type Context {
     hole_counter: Int,
     deferred: Deferred,
     trace_solves: Bool,
+    trace_kinds: List(TraceKind),
     // Work budget for the unification currently in progress (see
     // `unify.unify_budget_limit`): decremented on every unification step so
     // a cyclic/recursive type that re-expands forever drains it into an
@@ -71,7 +81,7 @@ pub type Subst =
 pub type Deferred =
   List(#(#(Value, Span), #(Value, Span)))
 
-pub const new_ctx = Context([], [], [], [], [], [], 0, [], False, 0)
+pub const new_ctx = Context([], [], [], [], [], [], 0, [], False, [], 0)
 
 /// Look up a variable by name, returning its index (innermost-first)
 /// and type. Only the first (innermost) binding is found.

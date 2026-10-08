@@ -5,6 +5,7 @@ import cli/debug_file.{debug_file}
 import cli/debug_src.{debug_src}
 import cli/run.{run}
 import cli/run_tests.{parse_test_args, run_tests}
+import core/context.{type TraceKind, TraceModules}
 import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
@@ -26,12 +27,23 @@ pub fn entrypoint(args: List(String)) {
       io.println(help)
       exit(0)
     }
-    ["check", ..paths] -> check(paths)
-    ["run", file] -> run([file])
-    ["run", ..] -> {
-      io.println_error("error: run takes exactly one file")
-      io.println(help)
-      exit(1)
+    ["check", ..args] -> {
+      case split_trace(args) {
+        Error(msg) -> {
+          io.println_error("error: " <> msg)
+          exit(1)
+        }
+        Ok(#(paths, trace_kinds)) -> check(paths, trace_kinds)
+      }
+    }
+    ["run", ..args] -> {
+      case split_trace(args) {
+        Error(msg) -> {
+          io.println_error("error: " <> msg)
+          exit(1)
+        }
+        Ok(#(files, trace_kinds)) -> run(files, trace_kinds)
+      }
     }
     ["test", ..args] ->
       case parse_test_args(args) {
@@ -173,6 +185,26 @@ pub fn entrypoint(args: List(String)) {
 //       debug_core.run(expr, trace_parser, trace_infer)
 //   }
 // }
+
+/// Split args into positional args and `--trace=<kind>` flags.
+fn split_trace(
+  args: List(String),
+) -> Result(#(List(String), List(TraceKind)), String) {
+  case args {
+    [] -> Ok(#([], []))
+    ["--trace=modules", ..rest] ->
+      case split_trace(rest) {
+        Ok(#(paths, kinds)) -> Ok(#(paths, [TraceModules, ..kinds]))
+        Error(e) -> Error(e)
+      }
+    ["--trace=" <> kind, ..] -> Error("unknown trace kind: " <> kind)
+    [arg, ..rest] ->
+      case split_trace(rest) {
+        Ok(#(paths, kinds)) -> Ok(#([arg, ..paths], kinds))
+        Error(e) -> Error(e)
+      }
+  }
+}
 
 /// Terminate the process with `status`.
 @external(erlang, "erlang", "halt")

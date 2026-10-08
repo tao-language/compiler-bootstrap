@@ -3,16 +3,16 @@
 /// values to stdout. Prints errors to stderr and exits with status 1
 /// when there are errors, 0 otherwise.
 import cli/common
-import core/context
+import core/context.{type TraceKind}
 import core/value as v
 import gleam/io
 import gleam/list
 import gleam/option.{Some}
 import tao/ast.{type Module} as tao
 
-pub fn run(files: List(String)) -> Nil {
+pub fn run(files: List(String), trace_kinds: List(TraceKind)) -> Nil {
   case files {
-    [file] -> run_file(file)
+    [file] -> run_file(file, trace_kinds)
     _ -> {
       io.println_error("error: run takes exactly one file")
       common.exit(1)
@@ -20,7 +20,7 @@ pub fn run(files: List(String)) -> Nil {
   }
 }
 
-fn run_file(file: String) -> Nil {
+fn run_file(file: String, trace_kinds: List(TraceKind)) -> Nil {
   case common.load([file]) {
     Error(msg) -> {
       io.println_error("error: " <> msg)
@@ -29,7 +29,7 @@ fn run_file(file: String) -> Nil {
     Ok(loaded) ->
       case list.length(loaded.errors) {
         0 -> {
-          let ctx = common.compile(loaded.mods, loaded.prelude)
+          let ctx = common.compile(loaded.mods, loaded.prelude, trace_kinds)
           common.print_build_errors(ctx)
           case ctx.errors {
             [] -> print_values(ctx, loaded.mods)

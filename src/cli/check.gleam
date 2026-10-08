@@ -2,10 +2,11 @@
 /// prelude), type-check them, and print any errors to stderr. Exits
 /// with status 1 when there are errors, 0 otherwise.
 import cli/common
+import core/context.{type TraceKind}
 import gleam/io
 import gleam/list
 
-pub fn check(paths: List(String)) -> Nil {
+pub fn check(paths: List(String), trace_kinds: List(TraceKind)) -> Nil {
   case common.load(paths) {
     Error(msg) -> {
       io.println_error("error: " <> msg)
@@ -14,7 +15,7 @@ pub fn check(paths: List(String)) -> Nil {
     Ok(loaded) ->
       case list.length(loaded.errors) {
         0 -> {
-          let ctx = common.compile(loaded.mods, loaded.prelude)
+          let ctx = common.compile(loaded.mods, loaded.prelude, trace_kinds)
           common.print_build_errors(ctx)
           case ctx.errors {
             [] -> Nil

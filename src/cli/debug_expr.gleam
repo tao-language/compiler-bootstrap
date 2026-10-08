@@ -97,7 +97,7 @@ fn debug_pipeline(
   let ctx = Context(..new_ctx, ffi: ffi.build)
 
   echo "> defs = declare.modules(mods)"
-  let defs = declare.modules(mods)
+  let #(defs, _) = declare.modules(mods)
   list.map(defs, fn(def) {
     let #(mod_name, mod_defs) = def
     io.println(string.inspect(mod_name) <> ":")

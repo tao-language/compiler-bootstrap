@@ -92,7 +92,16 @@ pub fn debug_file(
   let fmt_value = fn(val) { format.value(ffi.build, names, val, width, 2) }
 
   echo "> defs = declare.modules(mods)"
-  let defs = declare.modules(mods)
+  let #(defs, declare_errors) = declare.modules(mods)
+  case list.length(declare_errors) {
+    0 -> Nil
+    n -> {
+      list.map(declare_errors, fn(err) {
+        io.println_error("❌ " <> error.display_syntax(err))
+      })
+      io.println_error(int.to_string(n) <> " declare errors")
+    }
+  }
   list.map(defs, fn(def) {
     let #(mod_name, mod_defs) = def
     io.println(string.inspect(mod_name) <> ":")

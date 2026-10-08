@@ -66,7 +66,7 @@ pub fn debug_src(
       let names = list.map(ctx.types, fn(x) { x.0 })
       let fmt_value = fn(val) { format.value(ffi.build, names, val, width, 2) }
 
-      let defs = declare.modules(mods)
+      let #(defs, _) = declare.modules(mods)
       let t0 = now()
       let ctx = define.types(ctx, defs)
       io.println(

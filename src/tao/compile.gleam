@@ -1,4 +1,4 @@
-import core/context.{type Context}
+import core/context.{type Context, Context, TraceModules}
 import core/quote.{quote}
 import core/resolve
 import gleam/list
@@ -7,11 +7,20 @@ import tao/ast.{type Module} as tao
 import tao/declare
 import tao/define
 import tao/tests.{type TestDef, TestDef}
+import tao/trace
 
 /// Compile a set of modules: declare, define (both phases), and resolve
 /// all holes. The resulting context's errors hold any type errors.
 pub fn modules(ctx: Context, mods: List(Module)) -> Context {
-  let defs = declare.modules(mods)
+  let #(defs, declare_errors) = declare.modules(mods)
+  let ctx = Context(..ctx, errors: list.append(declare_errors, ctx.errors))
+  let ctx = case list.contains(ctx.trace_kinds, TraceModules) {
+    True -> {
+      trace.module_trace(mods, defs)
+      ctx
+    }
+    False -> ctx
+  }
   let ctx = define.types(ctx, defs)
   let ctx = define.values(ctx, defs)
   resolve.context(ctx)
@@ -20,7 +29,7 @@ pub fn modules(ctx: Context, mods: List(Module)) -> Context {
 /// Extract and type-check the `>>> test` statements from modules, each
 /// reduced to a term that evaluates to a `Pass` or `Fail` constructor.
 pub fn tests(ctx: Context, mods: List(Module)) -> #(List(TestDef), Context) {
-  let defs = declare.modules(mods)
+  let #(defs, _) = declare.modules(mods)
   let #(raw, ctx) =
     list.fold(mods, #([], ctx), fn(acc, mod) {
       let #(raw, ctx) = acc

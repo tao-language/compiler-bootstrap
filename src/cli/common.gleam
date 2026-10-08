@@ -1,7 +1,7 @@
 /// Shared helpers for the `tao` CLI commands: expanding CLI paths to
 /// `.tao` files, loading modules with the prelude, compiling them, and
 /// printing errors.
-import core/context.{type Context, Context, new_ctx}
+import core/context.{type Context, type TraceKind, Context, new_ctx}
 import core/error.{type Error}
 import core/ffi
 import core/format
@@ -181,14 +181,21 @@ fn load_modules(files: List(String)) -> #(List(Module), List(Error)) {
 /// loading the same file twice under two names creates duplicate module
 /// records (the path copy would also get implicit prelude imports of
 /// itself).
-pub fn compile(mods: List(Module), prelude: List(Module)) -> Context {
+pub fn compile(
+  mods: List(Module),
+  prelude: List(Module),
+  trace_kinds: List(TraceKind),
+) -> Context {
   let prelude_names = list.map(prelude, fn(mod) { mod.0 })
   let mods = list.filter(mods, fn(mod) {
     !list.contains(prelude_names, mod.0)
   })
   let all = list.append(mods, prelude)
   let all = load.implicit_prelude_imports(all, prelude)
-  compile.modules(Context(..new_ctx, ffi: ffi.build), all)
+  compile.modules(
+    Context(..new_ctx, ffi: ffi.build, trace_kinds: trace_kinds),
+    all,
+  )
 }
 
 /// Print syntax (read/parse) errors to stderr.
