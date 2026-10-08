@@ -120,7 +120,7 @@ fn run_loaded(args: TestArgs) -> Nil {
     Ok(loaded) ->
       case list.length(loaded.errors) {
         0 -> {
-          let ctx = common.compile(loaded.mods, loaded.prelude, args.trace_kinds)
+          let ctx = common.compile(loaded.mods, loaded.prelude_names, args.trace_kinds)
           common.print_build_errors(ctx)
           case ctx.errors {
             [] -> run_tests_(loaded, ctx, args)

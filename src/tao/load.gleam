@@ -61,6 +61,105 @@ fn imported_paths(stmts: List(Stmt)) -> List(String) {
   })
 }
 
+/// Compute the canonical module name for a file path. If the file is
+/// inside a known package directory (`<path>/<package>/<version>/…`), the
+/// name is `/<package>/<relpath>` (version stripped). Otherwise the name
+/// is `/` + the file path without extension.
+pub fn canonical_name(
+  paths: List(String),
+  package_names: List(String),
+  file: String,
+) -> String {
+  case find_package_prefix(paths, package_names, file) {
+    Ok(#(pkg_name, prefix_len)) -> {
+      let rel = string.drop_start(file, prefix_len)
+      case string.split(rel, "/") {
+        [_version, ..rest] -> {
+          let relpath = string.join(rest, "/")
+          "/" <> pkg_name <> "/" <> filepath.strip_extension(relpath)
+        }
+        _ -> "/" <> pkg_name
+      }
+    }
+    Error(Nil) -> "/" <> filepath.strip_extension(file)
+  }
+}
+
+fn find_package_prefix(
+  paths: List(String),
+  package_names: List(String),
+  file: String,
+) -> Result(#(String, Int), Nil) {
+  case paths {
+    [] -> Error(Nil)
+    [path, ..rest] ->
+      case find_in_path(path, package_names, file) {
+        Ok(result) -> Ok(result)
+        Error(Nil) -> find_package_prefix(rest, package_names, file)
+      }
+  }
+}
+
+fn find_in_path(
+  path: String,
+  package_names: List(String),
+  file: String,
+) -> Result(#(String, Int), Nil) {
+  case package_names {
+    [] -> Error(Nil)
+    [name, ..rest] -> {
+      let prefix = filepath.join(path, name) <> "/"
+      case string.starts_with(file, prefix) {
+        True -> Ok(#(name, string.length(prefix)))
+        False -> find_in_path(path, rest, file)
+      }
+    }
+  }
+}
+
+/// Load a project: the given files plus the given packages, with
+/// canonical naming. Files that are inside a package directory are named
+/// by their package path (e.g. `/prelude/bool`), not by their file path.
+/// Duplicate modules (same canonical name) are loaded only once.
+pub fn project(
+  paths: List(String),
+  files: List(String),
+  packages: List(#(String, Option(String))),
+) -> #(List(Module), List(e.Error)) {
+  let pkg_names = list.map(packages, fn(p) { p.0 })
+  let #(pkg_mods, pkg_errors) = package_list(paths, packages)
+  let pkg_module_names = list.map(pkg_mods, fn(m) { m.0 })
+  let #(file_mods, file_errors) =
+    load_canonical_files(paths, pkg_names, files, pkg_module_names)
+  #(
+    list.append(file_mods, pkg_mods),
+    list.append(file_errors, pkg_errors),
+  )
+}
+
+fn load_canonical_files(
+  paths: List(String),
+  package_names: List(String),
+  files: List(String),
+  existing_names: List(String),
+) -> #(List(Module), List(e.Error)) {
+  case files {
+    [] -> #([], [])
+    [path, ..rest] -> {
+      let name = canonical_name(paths, package_names, path)
+      case list.contains(existing_names, name) {
+        True -> load_canonical_files(paths, package_names, rest, existing_names)
+        False -> {
+          let #(stmts, errors) = file(path)
+          let #(mods, rest_errors) =
+            load_canonical_files(paths, package_names, rest, existing_names)
+          #([#(name, stmts), ..mods], list.append(errors, rest_errors))
+        }
+      }
+    }
+  }
+}
+
 /// Read and parse one `.tao` file, collecting errors instead of failing.
 pub fn file(full_filename: String) -> #(List(Stmt), List(e.Error)) {
   let #(source, errors) = case simplifile.read(full_filename) {

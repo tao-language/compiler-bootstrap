@@ -4,6 +4,7 @@ import core/error
 import core/ffi
 import core/format
 import core/resolve
+import filepath
 import gleam/int
 import gleam/io
 import gleam/list
@@ -15,6 +16,7 @@ import tao/declare
 import tao/define
 import tao/load
 import tao/tests
+import utils/fs
 
 /// `tao debug-file` — load the project (plus dependencies), run the full
 /// compile pipeline with per-phase output, then run the tests. Exits
@@ -32,25 +34,34 @@ pub fn debug_file(
   io.println("filename: " <> filename)
   io.println("")
 
-  echo "> load.module(filename)"
-  let #(mod, errors) = load.module([src_dir], filename)
-  let #(mods, errors) = case src_dir {
-    "" -> #([mod], errors)
-    _ -> {
-      echo "> load.directory(src_dir)"
-      let #(mods, err) = load.directory(src_dir)
-      #([mod, ..mods], list.append(errors, err))
-    }
-  }
   let packages = common.with_prelude(packages)
-  echo "> load.package_list(paths, packages)"
-  let #(pkg_mods, pkg_errors) = load.package_list(paths, packages)
-  let #(mods, errors) = #(
-    list.append(mods, pkg_mods),
-    list.append(errors, pkg_errors),
-  )
-  // Make prelude (standard library) names available in every module.
-  let mods = load.implicit_prelude_imports(mods, pkg_mods)
+  let files = case src_dir {
+    "" -> [filename]
+    _ ->
+      case fs.list_recursive(src_dir, fn(f) { string.ends_with(f, ".tao") }) {
+        Ok(rel_files) ->
+          list.map(rel_files, fn(f) { filepath.join(src_dir, f) })
+        Error(_) -> [filename]
+      }
+  }
+  echo "> load.project(paths, files, packages)"
+  let #(mods, errors) = load.project(paths, files, packages)
+  let prelude =
+    list.filter(mods, fn(m) {
+      case m.0 {
+        "/prelude" -> True
+        "/prelude/" <> _ -> True
+        _ -> False
+      }
+    })
+  let mods = load.implicit_prelude_imports(mods, prelude)
+  let pkg_names = list.map(packages, fn(p) { p.0 })
+  let target_name = load.canonical_name(paths, pkg_names, filename)
+  let mod =
+    case list.find(mods, fn(m) { m.0 == target_name }) {
+      Ok(m) -> m
+      Error(Nil) -> #("", [])
+    }
   io.println("modules loaded: " <> int.to_string(list.length(mods)))
   list.map(mods, fn(mod) { io.println("  - " <> mod.0) })
   io.println("")

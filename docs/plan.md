@@ -150,7 +150,7 @@ The high-level questions this plan addresses:
 | # | Task | Status |
 |---|---|---|
 | 1 | `--trace=` CLI flag + module-name-resolution trace | done |
-| 2 | One loader, one naming rule | not-started |
+| 2 | One loader, one naming rule | done |
 | 3 | `tao.toml` dependency manifest | not-started |
 | 4 | Prelude always present (as a dependency) | not-started |
 | 5 | Relative imports | not-started |
@@ -393,8 +393,12 @@ canonical name.
   "module not found" error. (Task 1.)~~ **Done.**
 - `src/cli/debug_expr.gleam` `holes_summary` assert in `quote`/`format.value`:
   make it not crash on un-quotable hole values. (Nice-to-have; improves probing.)
-- Remove now-dead code after Task 2: `prelude_copies`, `prelude_package_name`,
-  the `compile` duplicate filter, and any `load` path that no longer has a caller.
+- ~~Remove now-dead code after Task 2: `prelude_copies`, `prelude_package_name`,
+  the `compile` duplicate filter, and any `load` path that no longer has a
+  caller.~~ **Done.** (`prelude_copies`, `prelude_package_name`, and
+  `load_modules` deleted from `common.gleam`; the `compile` filter removed.
+  `load.module`/`load.module_list`/`load.directory` remain as `pub` API but
+  have no internal callers.)
 
 ## Lessons learned (Task 1)
 
@@ -413,10 +417,22 @@ canonical name.
   return is more principled and the old crash-free API is the only one that
   should exist going forward.
 
+## Lessons learned (Task 2)
+
+- **Parameter names shadow function names:** naming a pattern variable `file`
+  shadows the `file/1` function in the same module. Use a distinct name like
+  `path` for the local variable.
+- **Case arms with multiple expressions need `{}`:** `[_v, ..rest] ->\n  let x = ...\n  expr` is a syntax error; wrap in `{ let x = ...; expr }`.
+- **The unified loader is a drop-in replacement:** `load.project(paths, files,
+  packages)` subsumes the old `load_modules` + `package_list` + `prelude_copies`
+  trio. The dedup is by canonical name, so a file inside a package directory is
+  automatically identified with its package module.
+- **`debug-file` needed `filepath` and `utils/fs` imports** after switching to
+  the unified loader (for `filepath.join` and `fs.list_recursive`).
+
 ## Verification checklist (run before marking a task done)
 
-- `timeout -k 9 5 gleam build` (expect ~2s, only the pre-existing warnings).
-- `timeout -k 9 5 gleam test` (all tests; no `--filter`).
+- `timeout -k 9 5 gleam test` (all tests; no `--filter`), no need to run `gleam build` separately, `gleam test` builds automatically.
 - Re-run the §1 probes: intra-/cross-package import; `check` on a prelude file;
   `debug-file --root` single-naming; two-version newest-wins.
 - Grep for leftover `lib/prelude/` string special-casing and `todo`/`echo` in
