@@ -10,11 +10,12 @@ import filepath
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/option.{type Option, None}
+import gleam/option.{type Option, None, Some}
 import gleam/string
 import simplifile
 import tao/ast.{type Module}
 import tao/compile
+import tao/config
 import tao/load
 import utils/fs
 
@@ -106,14 +107,15 @@ pub fn normalize(path: String) -> String {
 }
 
 /// Expand `paths` and load every `.tao` file in it, along with the
-/// prelude package. Files that are inside the prelude package directory
-/// are named by their canonical package path (e.g. `/prelude/bool`),
-/// deduplicated against the package modules.
+/// packages declared in the project's `tao.toml` (or just the prelude
+/// if no manifest is present). Files inside a package directory are
+/// named by their canonical package path, deduplicated against the
+/// package modules.
 pub fn load(paths: List(String)) -> Result(Loaded, String) {
   case expand_paths(paths) {
     Error(msg) -> Error(msg)
     Ok(files) -> {
-      let packages = with_prelude([])
+      let packages = resolve_packages()
       let #(mods, errors) = load.project(["lib"], files, packages)
       let prelude_names =
         list.filter_map(mods, fn(m) {
@@ -130,6 +132,28 @@ pub fn load(paths: List(String)) -> Result(Loaded, String) {
         errors: errors,
       ))
     }
+  }
+}
+
+/// Resolve the package list: read the project's `tao.toml` if present,
+/// convert its dependencies to the loader format, and ensure the prelude
+/// is always included.
+fn resolve_packages() -> List(#(String, Option(String))) {
+  case config.find_project_root(".") {
+    Some(root) -> {
+      let manifest_path = filepath.join(root, "tao.toml")
+      case config.load(manifest_path) {
+        Ok(cfg) -> {
+          let deps =
+            list.map(cfg.dependencies, fn(d) {
+              #(d.name, d.version)
+            })
+          with_prelude(deps)
+        }
+        Error(_) -> with_prelude([])
+      }
+    }
+    None -> with_prelude([])
   }
 }
 

@@ -151,7 +151,7 @@ The high-level questions this plan addresses:
 |---|---|---|
 | 1 | `--trace=` CLI flag + module-name-resolution trace | done |
 | 2 | One loader, one naming rule | done |
-| 3 | `tao.toml` dependency manifest | not-started |
+| 3 | `tao.toml` dependency manifest | done |
 | 4 | Prelude always present (as a dependency) | not-started |
 | 5 | Relative imports | not-started |
 
@@ -429,6 +429,24 @@ canonical name.
   automatically identified with its package module.
 - **`debug-file` needed `filepath` and `utils/fs` imports** after switching to
   the unified loader (for `filepath.join` and `fs.list_recursive`).
+
+## Lessons learned (Task 3)
+
+- **Gleam string patterns `x <> "suffix"` don't work for variable-length
+  prefixes** in all positions. The compiler rejects them with "We can't tell
+  what size this prefix should be." Use `string.ends_with` / `string.drop_end`
+  instead.
+- **No function calls in case guards:** `_ if string.ends_with(x, "]") ->` is
+  illegal. Use nested `case` expressions instead.
+- **`nibble` is a PEG parser library, not a TOML parser.** For our constrained
+  `tao.toml` format, a simple line-based parser is simpler and more
+  maintainable than a full PEG grammar.
+- **Trailing commas in TOML arrays:** multi-line arrays use `}, ` between
+  items. The parser must strip trailing commas before checking for the closing
+  `}` brace.
+- **`scripts/run_from.sh`** is useful for testing the CLI from a different
+  working directory (where a `tao.toml` exists). It runs the compiled Erlang
+  module with the correct `-pa` paths.
 
 ## Verification checklist (run before marking a task done)
 
