@@ -1,5 +1,6 @@
 /// Tests for the canonical naming rule and the unified project loader.
-import gleam/option.{None}
+import gleam/list
+import gleam/option.{None, Some}
 import tao/load
 
 pub fn canonical_name_in_package_test() {
@@ -52,4 +53,49 @@ pub fn canonical_name_prefix_not_confused_test() {
   let pkg_names = ["prelude"]
   assert load.canonical_name(paths, pkg_names, "lib/prelude2/v1/a.tao")
     == "/lib/prelude2/v1/a"
+}
+
+// ── Prelude identity (Task 4) ────────────────────────────────────────────
+
+pub fn is_prelude_root_test() {
+  assert load.is_prelude("/prelude")
+}
+
+pub fn is_prelude_nested_test() {
+  assert load.is_prelude("/prelude/bool")
+  assert load.is_prelude("/prelude/operators/and")
+}
+
+pub fn is_prelude_prefix_not_confused_test() {
+  // "/prelude2" must NOT be treated as the prelude.
+  assert !load.is_prelude("/prelude2")
+  assert !load.is_prelude("/prelude2/bool")
+}
+
+pub fn is_prelude_other_packages_test() {
+  assert !load.is_prelude("/foo/a")
+  assert !load.is_prelude("/main")
+}
+
+pub fn prelude_modules_filters_test() {
+  let mods = [
+    #("/prelude/bool", []),
+    #("/main", []),
+    #("/prelude/option", []),
+    #("/foo/a", []),
+  ]
+  let names = list.map(load.prelude_modules(mods), fn(m) { m.0 })
+  assert names == ["/prelude/bool", "/prelude/option"]
+}
+
+pub fn with_prelude_adds_when_absent_test() {
+  assert load.with_prelude([]) == [#("prelude", None)]
+}
+
+pub fn with_prelude_idempotent_test() {
+  let pkgs = [#("foo", Some("1.0")), #("prelude", None)]
+  assert load.with_prelude(pkgs) == pkgs
+  let pkgs2 = [#("foo", Some("1.0"))]
+  assert load.with_prelude(pkgs2)
+    == [#("foo", Some("1.0")), #("prelude", None)]
 }

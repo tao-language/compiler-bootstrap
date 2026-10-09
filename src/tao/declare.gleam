@@ -66,15 +66,24 @@ pub fn statement(stmt: Stmt) -> List(#(Name, Stmt)) {
 
 /// Expand `import` statements: every name introduced by an import maps
 /// to the *import* statement, so looking the name up later re-runs the
-/// import's desugaring.
+/// import's desugaring. Every module's imports are resolved against the
+/// complete definition list, so resolution is independent of module order
+/// (a module may import one that appears before or after it).
 pub fn imports(
   defs: List(#(ModName, List(#(Name, Stmt)))),
+) -> #(List(#(ModName, List(#(Name, Stmt)))), List(e.Error)) {
+  expand_all(defs, defs)
+}
+
+fn expand_all(
+  defs: List(#(ModName, List(#(Name, Stmt)))),
+  all_defs: List(#(ModName, List(#(Name, Stmt)))),
 ) -> #(List(#(ModName, List(#(Name, Stmt)))), List(e.Error)) {
   case defs {
     [] -> #([], [])
     [#(mod_name, mod_defs), ..rest] -> {
-      let #(new_defs, errs1) = expand_mod_defs(mod_defs, defs)
-      let #(rest_defs, errs2) = imports(rest)
+      let #(new_defs, errs1) = expand_mod_defs(mod_defs, all_defs)
+      let #(rest_defs, errs2) = expand_all(rest, all_defs)
       #(
         list.append([#(mod_name, new_defs)], rest_defs),
         list.append(errs1, errs2),

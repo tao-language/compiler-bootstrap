@@ -1,4 +1,3 @@
-import cli/common
 import core/context.{Context, new_ctx}
 import core/error
 import core/ffi
@@ -34,7 +33,7 @@ pub fn debug_file(
   io.println("filename: " <> filename)
   io.println("")
 
-  let packages = common.with_prelude(packages)
+  let packages = load.with_prelude(packages)
   let files = case src_dir {
     "" -> [filename]
     _ ->
@@ -46,15 +45,7 @@ pub fn debug_file(
   }
   echo "> load.project(paths, files, packages)"
   let #(mods, errors) = load.project(paths, files, packages)
-  let prelude =
-    list.filter(mods, fn(m) {
-      case m.0 {
-        "/prelude" -> True
-        "/prelude/" <> _ -> True
-        _ -> False
-      }
-    })
-  let mods = load.implicit_prelude_imports(mods, prelude)
+  let mods = load.implicit_prelude_imports(mods, load.prelude_modules(mods))
   let pkg_names = list.map(packages, fn(p) { p.0 })
   let target_name = load.canonical_name(paths, pkg_names, filename)
   let mod =

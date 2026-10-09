@@ -16,17 +16,46 @@ import utils/fs
 /// module records never carry a `""` field.
 const implicit_import_alias = "/__prelude__"
 
+/// The name of the prelude package (the standard library). It is an
+/// always-present dependency: every project compiles against it, and its
+/// modules are implicitly imported into every non-prelude module.
+pub const prelude_name = "prelude"
+
+/// Ensure the prelude is in the package list (idempotent). The prelude is
+/// an always-present dependency, so every command compiles against it.
+pub fn with_prelude(
+  packages: List(#(String, Option(String))),
+) -> List(#(String, Option(String))) {
+  case list.any(packages, fn(p) { p.0 == prelude_name }) {
+    True -> packages
+    False -> list.append(packages, [#(prelude_name, None)])
+  }
+}
+
+/// True when a canonical module name belongs to the prelude package
+/// (`/prelude` or `/prelude/<…>`).
+pub fn is_prelude(name: String) -> Bool {
+  name == "/" <> prelude_name
+    || string.starts_with(name, "/" <> prelude_name <> "/")
+}
+
+/// The prelude modules from a loaded module list.
+pub fn prelude_modules(mods: List(Module)) -> List(Module) {
+  list.filter(mods, fn(m) { is_prelude(m.0) })
+}
+
 /// Append an implicit `import <path> *` to every module that is not itself
-/// a prelude module and does not already import it. The prelude (the
-/// standard library, loaded with `--add`) is implicitly imported into every
-/// other module, so its names (e.g. the operators `+`, `-`, `*`) are in
-/// scope without an explicit `import`. Appending after the module's own
-/// statements gives local definitions precedence over the imported names
-/// (the first matching entry in a module's definition list wins).
+/// in `prelude` and does not already import it. The prelude (the standard
+/// library) is implicitly imported into every other module, so its names
+/// (e.g. the operators `+`, `-`, `*`) are in scope without an explicit
+/// `import`. The prelude modules are imported in sorted name order so that
+/// when several of them export the same name (e.g. the internal `_or`)
+/// the winner is deterministic, not filesystem-order dependent.
 pub fn implicit_prelude_imports(
   mods: List(Module),
   prelude: List(Module),
 ) -> List(Module) {
+  let prelude = list.sort(prelude, fn(a, b) { string.compare(a.0, b.0) })
   let prelude_names = list.map(prelude, fn(m) { m.0 })
   list.map(mods, fn(mod) {
     let #(name, stmts) = mod

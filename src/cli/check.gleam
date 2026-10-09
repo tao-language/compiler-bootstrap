@@ -15,7 +15,7 @@ pub fn check(paths: List(String), trace_kinds: List(TraceKind)) -> Nil {
     Ok(loaded) ->
       case list.length(loaded.errors) {
         0 -> {
-          let ctx = common.compile(loaded.mods, loaded.prelude_names, trace_kinds)
+          let ctx = common.compile(loaded.mods, trace_kinds)
           common.print_build_errors(ctx)
           case ctx.errors {
             [] -> Nil

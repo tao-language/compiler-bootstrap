@@ -14,8 +14,13 @@ import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
-import tao/ast.{type Pattern, PAny, PCtr, PLit, PRcd, PTuple, PVar, Pattern}
+import syntax/span.{Span}
+import tao/ast.{
+  type Pattern, type Stmt, PAny, PCtr, PLit, PRcd, PTuple, PVar, Pattern,
+  Import, int, let_var,
+}
 import tao/compile
+import tao/declare
 import tao/load
 import tao/tests.{
   type TestResultSummary, TestFail, TestNeutral, TestPass, run_all,
@@ -56,6 +61,50 @@ pub fn examples_gallery_test() {
   let summary = run_all(ctx, test_defs)
   let failures = test_failures_message(ctx, summary)
   assert summary.num_fail == 0 as failures
+}
+
+/// Pin the resolution of the global `_or` collision. The prelude's
+/// `bool`, `option`, and `result` modules all export an internal `_or`,
+/// and the implicit prelude import flattens all three into every
+/// non-prelude module's global scope. Name resolution takes the *first*
+/// matching entry in a module's definition list, so the winner is whichever
+/// prelude module is imported first. Sorting the prelude modules by name
+/// makes that deterministic: `/prelude/bool` sorts first, so `bool._or`
+/// is the `_or` a lookup finds. (A `_or(True, True)` type-check is not a
+/// reliable pin — the prelude overloads leave deferred constraints that
+/// are silently accepted, so it type-checks under several `_or`s.)
+pub fn prelude_or_collision_deterministic_test() {
+  let #(prelude, e) = load.package_list(["lib"], [#("prelude", None)])
+  assert e == []
+  let s = Span("or_collision", 0, 0, 0, 0)
+  let scratch = #("/scratch", [let_var("x", None, int(1, s), s)])
+  let all = list.append(prelude, [scratch])
+  let with_imports = load.implicit_prelude_imports(all, load.prelude_modules(all))
+  let #(defs, _) = declare.modules(with_imports)
+  let or_path = import_path_for(defs, "/scratch", "_or")
+  let msg = "expected bool._or to win the global _or, got: " <> or_path
+  assert or_path == "/prelude/bool" as msg
+}
+
+/// The module path that `name` in `mod`'s definition list resolves to
+/// (the import it was flattened from), or `""` if it is not an import.
+fn import_path_for(
+  defs: List(#(String, List(#(String, Stmt)))),
+  mod: String,
+  name: String,
+) -> String {
+  case list.key_find(defs, mod) {
+    Ok(mod_defs) ->
+      case list.key_find(mod_defs, name) {
+        Ok(stmt) ->
+          case stmt.data {
+            Import(path, _, _) -> path
+            _ -> ""
+          }
+        Error(Nil) -> ""
+      }
+    Error(Nil) -> ""
+  }
 }
 
 /// Build the message for a failing `num_fail == 0` assert: a summary

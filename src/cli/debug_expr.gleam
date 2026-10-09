@@ -12,7 +12,6 @@
 ///
 /// Unlike `debug-file` (which debugs a whole module: its definitions,
 /// hole resolution, tests), this focuses on a single expression.
-import cli/common
 import core/ast
 import core/context.{type Context, Context, new_ctx}
 import core/error
@@ -72,7 +71,7 @@ fn debug_pipeline(
   // ── Stage 0: build the scaffolding context ───────────────────────
   // The prelude (standard library) is loaded automatically; `packages`
   // holds any extra packages given on the command line.
-  let packages = common.with_prelude(packages)
+  let packages = load.with_prelude(packages)
   io.println(
     ">> load.package_list(" <> string.inspect(paths) <> ", packages)",
   )

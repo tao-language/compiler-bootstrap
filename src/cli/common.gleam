@@ -23,17 +23,6 @@ import utils/fs
 @external(erlang, "erlang", "halt")
 pub fn exit(status: Int) -> Nil
 
-/// The package list with the prelude (the standard library) added, so
-/// every command compiles against it (skipped when already present).
-pub fn with_prelude(
-  packages: List(#(String, Option(String))),
-) -> List(#(String, Option(String))) {
-  case list.any(packages, fn(p) { p.0 == "prelude" }) {
-    True -> packages
-    False -> list.append(packages, [#("prelude", None)])
-  }
-}
-
 /// Modules loaded from the given paths, plus the prelude (the standard
 /// library) and any syntax errors encountered while loading.
 pub type Loaded {
@@ -42,8 +31,6 @@ pub type Loaded {
     paths: List(String),
     /// All loaded modules (including prelude), with canonical names.
     mods: List(Module),
-    /// The names of the prelude modules (for implicit imports).
-    prelude_names: List(String),
     /// Syntax (read/parse) errors, if any.
     errors: List(Error),
   )
@@ -117,18 +104,9 @@ pub fn load(paths: List(String)) -> Result(Loaded, String) {
     Ok(files) -> {
       let packages = resolve_packages()
       let #(mods, errors) = load.project(["lib"], files, packages)
-      let prelude_names =
-        list.filter_map(mods, fn(m) {
-          case m.0 {
-            "/prelude" -> Ok(m.0)
-            "/prelude/" <> _ -> Ok(m.0)
-            _ -> Error(Nil)
-          }
-        })
       Ok(Loaded(
         paths: files,
         mods: mods,
-        prelude_names: prelude_names,
         errors: errors,
       ))
     }
@@ -148,12 +126,12 @@ fn resolve_packages() -> List(#(String, Option(String))) {
             list.map(cfg.dependencies, fn(d) {
               #(d.name, d.version)
             })
-          with_prelude(deps)
+          load.with_prelude(deps)
         }
-        Error(_) -> with_prelude([])
+        Error(_) -> load.with_prelude([])
       }
     }
-    None -> with_prelude([])
+    None -> load.with_prelude([])
   }
 }
 
@@ -161,10 +139,9 @@ fn resolve_packages() -> List(#(String, Option(String))) {
 /// module via implicit imports.
 pub fn compile(
   mods: List(Module),
-  prelude_names: List(String),
   trace_kinds: List(TraceKind),
 ) -> Context {
-  let prelude = list.filter(mods, fn(m) { list.contains(prelude_names, m.0) })
+  let prelude = load.prelude_modules(mods)
   let all = load.implicit_prelude_imports(mods, prelude)
   compile.modules(
     Context(..new_ctx, ffi: ffi.build, trace_kinds: trace_kinds),
