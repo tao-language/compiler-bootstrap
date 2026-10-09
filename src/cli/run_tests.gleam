@@ -61,7 +61,7 @@ fn parse(
       parse(rest, paths, per_file, filter, [pattern, ..skip], trace_kinds)
     ["--trace=modules", ..rest] ->
       parse(rest, paths, per_file, filter, skip, [TraceModules, ..trace_kinds])
-    ["--trace=" <> kind, ..rest] ->
+    ["--trace=" <> kind, ..] ->
       Error("unknown trace kind: " <> kind)
     ["--filter"] -> Error("missing pattern for --filter")
     ["--skip"] -> Error("missing pattern for --skip")

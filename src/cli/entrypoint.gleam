@@ -22,7 +22,10 @@ const help = "Tao compiler bootstrap\n\nUsage:\n  tao check [paths...]          
 /// `debug-file`, `debug-core`, `--help`. The REPL is TODO.
 pub fn entrypoint(args: List(String)) {
   case args {
-    [] -> todo as "TODO: CLI repl"
+    [] -> {
+      io.println(help)
+      exit(0)
+    }
     ["--help", ..] -> {
       io.println(help)
       exit(0)

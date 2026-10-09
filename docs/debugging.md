@@ -439,3 +439,16 @@ traps, all hit in the sessions that fixed the `result.tao` bug:
 - **`@external(erlang, "erlang", "system_time") fn now_ns() -> Int`** is the
   cheap way to time a block (`let t0 = now_ns() ... now_ns() - t0`); use it to
   find which op is slow before assuming it's the recursion.
+
+## Build environment gotchas
+
+- **`build/` holds the compiled Erlang deps, not just project output.** Never
+  `rm -rf build` casually: a from-scratch rebuild re-compiles the rebar3 deps
+  (via `gflambe → eflambe → meck`), and **meck 0.9.2 fails under OTP 27+** —
+  its `prod` profile sets `warnings_as_errors` and OTP 27+ deprecates the old
+  `catch` expression. After any clean build, run `scripts/fix-meck.sh` (adds
+  `nowarn_deprecated_catch` to the extracted `build/packages/meck/rebar.config`),
+  then `gleam build` again.
+- **`scripts/warnings.sh`** prints a categorized table of all build warnings
+  (kind + location + per-kind counts) — use it to track the `todo`-reduction
+  work.

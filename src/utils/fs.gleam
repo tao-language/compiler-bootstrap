@@ -1,6 +1,5 @@
 import filepath
 import gleam/list
-import gleam/regexp.{type Regexp}
 import gleam/result.{try}
 import simplifile
 
@@ -53,7 +52,3 @@ pub fn is_directory(path: String) -> Result(Bool, String) {
   }
 }
 
-pub fn find(_dir: String, _match: Regexp) -> List(String) {
-  todo
-}
-// TODO: implement

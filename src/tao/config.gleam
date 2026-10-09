@@ -105,7 +105,6 @@ fn parse_top_level(line: String, acc: ParseAcc) -> Result(ParseAcc, String) {
           case value {
             "[" -> Ok(ParseAcc(..acc, in_array: True))
             "[" <> tail -> parse_inline_array(tail, acc)
-            "[]" -> Ok(ParseAcc(..acc, in_array: False))
             _ -> Error("expected [ after dependencies =")
           }
         "name" -> Ok(ParseAcc(..acc, name: unquote(value)))

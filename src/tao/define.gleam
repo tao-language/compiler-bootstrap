@@ -526,14 +526,6 @@ pub fn set_var(
   context.set_var(ctx, mod_name, mod_val, mod_typ)
 }
 
-/// Not implemented: list a module's entries with optional value/type.
-pub fn get_mod_vars(
-  _ctx: Context,
-  _mod_name: ModName,
-) -> List(#(Name, Option(v.Value), Option(v.Type))) {
-  todo
-}
-
 fn hole_value(ctx: Context) -> #(v.Value, Context) {
   let #(id, ctx) = context.new_hole(ctx)
   #(v.hole(ctx.env, id), ctx)

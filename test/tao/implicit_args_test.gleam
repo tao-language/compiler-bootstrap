@@ -94,7 +94,7 @@ pub fn wrong_arg_type_test_fails_test() {
     <> ">>> is_empty(1.5) True"
   let #(errors, fails) = run(src)
   assert errors == []
-  assert list.length(fails) > 0
+  assert fails != []
 }
 
 /// The prelude's `_or<a>` must actually work: both tests pass, no
@@ -351,26 +351,7 @@ pub fn module_records_have_no_empty_name_fields_test() {
 // Harness (modeled on test/tao/overload_test.gleam)
 // ============================================================================
 
-/// Type-check an in-memory module against the prelude (as the
-/// `debug-file` CLI does) and return the reported errors.
-fn check(source: String) -> List(String) {
-  case p.statements("scratch", source) {
-    Ok(stmts) -> {
-      let #(prelude, _load_errors) =
-        load.package_list(["lib"], [#("prelude", None)])
-      let mods: List(Module) =
-        list.append([#("scratch", stmts)], prelude)
-        |> load.implicit_prelude_imports(prelude)
-      let ctx =
-        Context(..new_ctx, ffi: ffi.build)
-        |> compile.modules(mods)
-      list.map(ctx.errors, fn(err) { display(ffi.build, ctx.types, err) })
-    }
-    Error(err) -> ["PARSE: " <> display_syntax(err)]
-  }
-}
-
-/// Like `check`, but returns the post-`compile.modules` context (for
+/// Returns the post-`compile.modules` context (for
 /// probing compiler invariants such as hole solutions).
 fn compile_ctx(source: String) -> Option(Context) {
   case p.statements("scratch", source) {
@@ -388,8 +369,8 @@ fn compile_ctx(source: String) -> Option(Context) {
   }
 }
 
-/// Like `check`, but also runs the module's `>>> tests`, returning the
-/// build errors and one line per failed or stuck test.
+/// Compiles the module and runs its `>>> tests`, returning the build
+/// errors and one line per failed or stuck test.
 fn run(source: String) -> #(List(String), List(String)) {
   case p.statements("scratch", source) {
     Error(err) -> #(["PARSE: " <> display_syntax(err)], [])

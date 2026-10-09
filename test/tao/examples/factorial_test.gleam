@@ -5,7 +5,6 @@ import core/infer.{infer}
 import core/resolve
 import core/term.{type Term} as tm
 import core/value.{type Value} as v
-import gleam/io
 import gleam/option.{None, Some}
 import syntax/span.{Span}
 import tao/ast.{type Expr} as tao

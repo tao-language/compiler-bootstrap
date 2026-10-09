@@ -9,7 +9,7 @@
 /// Trivial data-pass-through tests (Lit, LitT, Typ, Ctr, Rcd, Call)
 /// have been removed — they only verify data flows through, not logic.
 import core/ast
-import core/context.{new_ctx, push_var, push_var_opt}
+import core/context.{new_ctx, push_var}
 import core/error as e
 import core/eval.{eval}
 import core/infer.{check, infer}

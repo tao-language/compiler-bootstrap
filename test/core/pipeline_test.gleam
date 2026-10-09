@@ -18,7 +18,7 @@ import core/parse as p
 import core/resolve
 import core/term as tm
 import core/value as v
-import gleam/option.{type Option, None, Some}
+import gleam/option.{None, Some}
 import gleam/string
 import syntax/span.{Span}
 

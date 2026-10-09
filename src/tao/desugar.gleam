@@ -243,7 +243,7 @@ fn function(
   span: Span,
   trace: Option(String),
 ) -> core.Expr {
-  let has_implicits = list.length(implicits.0) > 0
+  let has_implicits = implicits.0 != []
   let core_fun =
     function_inner(exports, has_implicits, implicits, params, opt_returns, body, span, trace)
   case opt_fun_name {
@@ -299,10 +299,10 @@ fn function_inner(
           let core_type = opt_expr(exports, opt_type)
           core.for(#(name, core_type), inner, span)
         }
-        _ -> todo as "error: implicit parameter must be a plain type variable"
+        _ -> panic as "invariant: implicit parameter must be a plain type variable"
       }
     }
-    _ -> todo as "error: implicit parameter must be a plain type variable"
+    _ -> panic as "invariant: implicit parameter must be a plain type variable"
   }
 }
 

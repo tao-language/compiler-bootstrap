@@ -24,7 +24,7 @@ import core/value as v
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/option.{type Option, None, Some}
+import gleam/option.{type Option, Some}
 import gleam/string
 import tao/ast.{type Expr, type Module, type Stmt} as tao
 import tao/declare
