@@ -473,8 +473,31 @@ fn import_path() -> Parser(String, Token, String) {
     token_text(Dot),
     nibble.map(take_int(), int.to_string),
   ]
-  use parts <- do(nibble.many1(nibble.one_of(path_valid)))
-  return("/" <> string.join(parts, ""))
+  nibble.one_of([
+    // Relative: ./path
+    {
+      use _ <- do(nibble.token(Dot))
+      use _ <- do(nibble.token(Div))
+      use parts <- do(nibble.many1(nibble.one_of(path_valid)))
+      return("./" <> string.join(parts, ""))
+    },
+    // Relative: ../path (one or more ../)
+    {
+      use dots <- do(nibble.many1({
+        use _ <- do(nibble.token(Spread))
+        use _ <- do(nibble.token(Div))
+        return("..")
+      }))
+      use parts <- do(nibble.many1(nibble.one_of(path_valid)))
+      let prefix = string.join(dots, "/")
+      return(prefix <> "/" <> string.join(parts, ""))
+    },
+    // Absolute: /path
+    {
+      use parts <- do(nibble.many1(nibble.one_of(path_valid)))
+      return("/" <> string.join(parts, ""))
+    },
+  ])
 }
 
 fn import_alias() -> Parser(String, Token, String) {

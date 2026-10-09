@@ -8,7 +8,7 @@
 /// exists before any body is checked, definitions may reference each
 /// other — including across modules — in any order.
 import core/ast as core
-import core/context.{type Context, lookup_type_def}
+import core/context.{type Context, lookup_type_def, with_err}
 import core/error as e
 import core/eval.{eval}
 import core/infer.{check, infer}
@@ -295,14 +295,30 @@ fn import_entry(
 ) -> #(v.Value, v.Type, Context) {
   case stmt.data {
     tao.Import(path, alias, tao.ImportAll) -> {
-      let names = case list.key_find(defs, path) {
-        Ok(mod_defs) -> list.map(mod_defs, fn(entry) { #(entry.0, entry.0) })
+      case list.key_find(defs, path) {
         Error(Nil) -> {
-          todo as "error: module not found"
+          let known = list.map(defs, fn(entry) { entry.0 })
+          let ctx = with_err(
+            ctx,
+            e.SyntaxError(
+              "module not found: "
+                <> path
+                <> " (known: "
+                <> string.join(known, ", ")
+                <> ")",
+            ),
+            stmt.span,
+          )
+          let #(val, ctx) = hole_value(ctx)
+          let #(typ, ctx) = hole_value(ctx)
+          #(val, typ, ctx)
+        }
+        Ok(mod_defs) -> {
+          let names = list.map(mod_defs, fn(entry) { #(entry.0, entry.0) })
+          let stmt = tao.import_some(path, alias, names, stmt.span)
+          type_stmt(ctx, defs, mod_name, name, stmt)
         }
       }
-      let stmt = tao.import_some(path, alias, names, stmt.span)
-      type_stmt(ctx, defs, mod_name, name, stmt)
     }
     tao.Import(path, alias, tao.ImportSome(names)) ->
       case names {
@@ -316,9 +332,21 @@ fn import_entry(
               #(v.rcd(values), v.rcd(types), ctx)
             }
             Error(Nil) -> {
-              echo list.map(defs, fn(entry) { entry.0 })
-              echo path
-              todo as "error: module not found"
+              let known = list.map(defs, fn(entry) { entry.0 })
+              let ctx = with_err(
+                ctx,
+                e.SyntaxError(
+                  "module not found: "
+                    <> path
+                    <> " (known: "
+                    <> string.join(known, ", ")
+                    <> ")",
+                ),
+                stmt.span,
+              )
+              let #(val, ctx) = hole_value(ctx)
+              let #(typ, ctx) = hole_value(ctx)
+              #(val, typ, ctx)
             }
           }
         [#(x, y), ..] if name == y -> type_name(ctx, defs, path, x)

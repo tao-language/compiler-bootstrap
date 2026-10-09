@@ -383,6 +383,84 @@ pub fn parse_match_tuple_args_test() {
   assert parse_expr(src) == expected
 }
 
+// ============================================================================
+// Relative imports
+// ============================================================================
+
+pub fn parse_import_relative_dot_test() {
+  let src = "import ./bool"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.Import(path, alias, _), _)]) ->
+      path == "./bool" && alias == "bool"
+    _ -> False
+  }
+}
+
+pub fn parse_import_relative_parent_test() {
+  let src = "import ../bool"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.Import(path, alias, _), _)]) ->
+      path == "../bool" && alias == "bool"
+    _ -> False
+  }
+}
+
+pub fn parse_import_relative_grandparent_test() {
+  let src = "import ../../bool"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.Import(path, alias, _), _)]) ->
+      path == "../../bool" && alias == "bool"
+    _ -> False
+  }
+}
+
+pub fn parse_import_relative_subdir_test() {
+  let src = "import ./sub/bool"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.Import(path, alias, _), _)]) ->
+      path == "./sub/bool" && alias == "bool"
+    _ -> False
+  }
+}
+
+pub fn parse_import_relative_parent_subdir_test() {
+  let src = "import ../sub/bool"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.Import(path, alias, _), _)]) ->
+      path == "../sub/bool" && alias == "bool"
+    _ -> False
+  }
+}
+
+pub fn parse_import_absolute_unchanged_test() {
+  let src = "import prelude/bool"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.Import(path, alias, _), _)]) ->
+      path == "/prelude/bool" && alias == "bool"
+    _ -> False
+  }
+}
+
+pub fn parse_import_relative_with_alias_test() {
+  let src = "import ../bool as b"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.Import(path, alias, _), _)]) ->
+      path == "../bool" && alias == "b"
+    _ -> False
+  }
+}
+
+pub fn parse_import_relative_with_scope_test() {
+  let src = "import ./bool {True, False}"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.Import(path, alias, tao.ImportSome(names)), _)]) ->
+      path == "./bool"
+      && alias == "bool"
+      && list.length(names) == 2
+    _ -> False
+  }
+}
+
 pub fn parse_type_def_gadt_test() {
   let src =
     "type Vec(n: Int, a: Type) { | VCons<m>(x: a, xs: Vec(m, a)) -> Vec(m + 1, a) | VNil -> Vec(0, a) }"

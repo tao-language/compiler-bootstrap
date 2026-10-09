@@ -99,9 +99,13 @@ The high-level questions this plan addresses:
 
 ### Suspected (not directly measured)
 
-- Which `_or` wins the global collision is **filesystem directory-listing order**
+- ~~Which `_or` wins the global collision is **filesystem directory-listing order**
   dependent (`fs.list_recursive` order → `implicit_prelude_imports` order). Not
-  measured which of bool/option/result wins; masked in practice because `_or` is
+  measured which of bool/option/result wins; masked in practice because `_or` is~~
+  **Fixed in Task 4:** `implicit_prelude_imports` now sorts prelude modules by
+  name, so `bool._or` deterministically wins. Pinned by
+  `prelude_or_collision_deterministic_test`.
+  masked in practice because `_or` is
   only reached via the type-dispatching `or` overload.
 - **Multi-version coexistence** is unsupported: inferred from `find_version`
   picking a single version; not tested with two versions *simultaneously used* by
@@ -152,8 +156,8 @@ The high-level questions this plan addresses:
 | 1 | `--trace=` CLI flag + module-name-resolution trace | done |
 | 2 | One loader, one naming rule | done |
 | 3 | `tao.toml` dependency manifest | done |
-| 4 | Prelude always present (as a dependency) | not-started |
-| 5 | Relative imports | not-started |
+| 4 | Prelude always present (as a dependency) | done |
+| 5 | Relative imports | done |
 
 Suggested order: **1 → 2 → 3 → 4 → 5**. Task 1 is independent tooling that
 helps verify the rest. Task 2 is the foundation; 3/4/5 build on it.
@@ -354,36 +358,34 @@ special cases.
 
 ---
 
-## Task 5 — Relative imports
+## Task 5 — Relative imports ✅
 
-**Goal.** Allow imports **relative to the importing module's package**, e.g.
-inside the prelude `import ./bool` (or `import bool`) resolves to
+**Goal.** Allow imports **relative to the importing module's directory**, e.g.
+inside the prelude `import ../bool` in `/prelude/operators/and` resolves to
 `/prelude/bool`. This is a source-level convenience; resolution is still by
 canonical name.
 
-**Approach.**
-1. Extend the parser (`src/tao/parse.gleam:import_path`) to accept a relative
-   form (leading `./`, or a bare name meaning "same package"). Keep the existing
-   absolute form (`prelude/bool`) working.
-2. Resolve relative → canonical **at load/declare time**, using the importing
-   module's package prefix: `./bool` in `/prelude/operators/and` →
-   `/prelude/bool`. This needs the importer's package to be known, which Task 2's
-   canonical naming provides.
-3. Update `declare.imports`/`desugar` so a relative import desugars to the
-   canonical path before module-record lookup.
+**Implementation.**
+1. **Parser** (`src/tao/parse.gleam:import_path`): accepts `./path` and
+   `../path` (one or more `../`) in addition to the existing absolute form.
+   The `./` form matches `Dot Div` tokens; the `../` form matches one or more
+   `Spread Div` pairs. Bare names remain absolute (no ambiguity).
+2. **Resolution** (`src/tao/declare.gleam:resolve_relative_imports`): called at
+   the start of `declare.modules`, rewrites all relative import paths to
+   absolute canonical paths using the importing module's directory as the base.
+   Path normalization handles `.` and `..` segments. Escaping the package
+   (e.g. `../../x`) is allowed if the target module exists in the loaded set;
+   otherwise the standard "module not found" error is reported.
 
-**Acceptance.**
-- The prelude's `operators/and.tao` can be rewritten to `import ../bool` (or
-  `import bool`) and still type-checks (pin with a test).
-- Absolute imports still work unchanged.
-- A relative import that escapes the package (`../../x`) has a defined behavior
-  (allowed within the dep closure, or a clear error) — decide and pin.
-
-**Notes.**
-- Depends on Task 2 (canonical `/package/<relpath>` naming) so the relative→
-  canonical rewrite is well-defined.
-- Keep it minimal: relative *within a package* is the main win; cross-package
-  relative paths can be a later extension.
+**Acceptance (all met).**
+- ✅ `import ../bool` in `/prelude/operators/and` resolves to `/prelude/bool`.
+- ✅ `import ./sub/bool` in `/prelude/operators/and` resolves to
+  `/prelude/operators/sub/bool`.
+- ✅ `import ../../bool` in `/prelude/operators/and` resolves to `/bool`
+  (escapes the package; works if the module exists, errors otherwise).
+- ✅ Absolute imports (`import prelude/bool`) work unchanged.
+- ✅ Pinned by 8 parser tests + 8 declare tests (including integration tests
+  through `declare.modules`).
 
 ---
 
@@ -430,6 +432,28 @@ canonical name.
 - **`debug-file` needed `filepath` and `utils/fs` imports** after switching to
   the unified loader (for `filepath.join` and `fs.list_recursive`).
 
+## Lessons learned (Task 4)
+
+- **`declare.imports` had a pre-existing order-dependence bug:** the recursion
+  passed the shrinking `rest` list to `expand_mod_defs`, so a module could only
+  import modules listed *after* it. The comment stated the intent (resolve
+  against the complete list) but the code didn't match. Fixed by threading the
+  full `all_defs` through a new `expand_all` helper. This was masked in the
+  real CLI flow because `load.project` puts file modules before package modules
+  (files import prelude = later in list), but any module listed *after* its
+  dependencies would fail.
+- **`list.key_find` in this Gleam version returns `Result(Value, Nil)`, not
+  `Result(#(Key, Value), Nil)`.** The value is the second element of the tuple
+  directly. This surprised me because the stdlib docs I was working from show
+  the tuple form. Use `Ok(value)` not `Ok(#(k, v))`.
+- **Gleam tuple patterns `#(a, b)` inside `Ok(...)` don't always bind** in
+  nested inference contexts. Field access (`entry.1`) with explicit type
+  annotations is more reliable for nested tuple lists.
+- **The `_or` collision is best pinned by inspecting the def list** (which
+  import a name maps to), not by type-checking a call. The prelude overloads
+  leave deferred constraints that are silently accepted, so `_or(True, True)`
+  type-checks under several `_or` definitions — it's not a discriminating test.
+
 ## Lessons learned (Task 3)
 
 - **Gleam string patterns `x <> "suffix"` don't work for variable-length
@@ -447,6 +471,29 @@ canonical name.
 - **`scripts/run_from.sh`** is useful for testing the CLI from a different
   working directory (where a `tao.toml` exists). It runs the compiled Erlang
   module with the correct `-pa` paths.
+
+## Lessons learned (Task 5)
+
+- **`lexer.symbol` uses lookahead, not consumption:** `lexer.symbol("/",
+  "[^/]", Div)` matches `/` followed by a non-`/` char, but only consumes the
+  `/`. The following char is available for the next token. This is why
+  `prelude/bool` lexes as `[Name("prelude"), Div, Name("bool")]` and not
+  `[Name("prelude"), Div, Name("ool")]`.
+- **`string.join` with `""` vs `"/"`:** joining `["..", ".."]` with `""`
+  gives `"...."` (four dots), not `"../.."`. Use `string.join(dots, "/")`
+  to get the correct path prefix.
+- **Gleam list patterns drop the *first* element, not the last:**
+  `[_last, ..dirs]` binds `_last` to the head and `dirs` to the tail. To drop
+  the *last* element of a list, reverse, drop the first, and reverse back.
+- **Module names are file paths, not directory paths:** a module named
+  `/prelude/operators` is the *file* `operators.tao` in the `prelude/`
+  directory. Its directory is `/prelude`, not `/prelude/operators`. Relative
+  imports are resolved relative to the module's *directory* (the parent of
+  the file), not the module name itself.
+- **Absolute file paths produce double-slash module names:**
+  `canonical_name` prepends `/` to the file path, so an absolute path like
+  `/tmp/foo.tao` becomes `//tmp/foo`. This is a pre-existing issue, not
+  introduced by relative imports.
 
 ## Verification checklist (run before marking a task done)
 

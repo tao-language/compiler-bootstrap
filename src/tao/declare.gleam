@@ -14,6 +14,7 @@ pub type Name =
 pub fn modules(
   mods: List(Module),
 ) -> #(List(#(ModName, List(#(Name, Stmt)))), List(e.Error)) {
+  let mods = resolve_relative_imports(mods)
   // Build the complete defs list first, then resolve imports once against
   // it. Resolving against a partial list (e.g. from a recursive step) would
   // fail to find modules that appear later in the list, making the result
@@ -155,5 +156,75 @@ pub fn is_public_name(name: String) -> Bool {
     "@" <> _ -> False
     ">>> " <> _ -> False
     _ -> True
+  }
+}
+
+/// Rewrite relative import paths (`./…`, `../…`) to absolute canonical
+/// paths, using the importing module's own path as the base.
+pub fn resolve_relative_imports(mods: List(Module)) -> List(Module) {
+  list.map(mods, fn(mod) {
+    let #(mod_name, stmts) = mod
+    let new_stmts = list.map(stmts, fn(stmt) {
+      resolve_stmt_import(mod_name, stmt)
+    })
+    #(mod_name, new_stmts)
+  })
+}
+
+fn resolve_stmt_import(mod_name: String, stmt: Stmt) -> Stmt {
+  case stmt.data {
+    tao.Import(path, alias, scope) ->
+      case is_relative_path(path) {
+        True -> {
+          let resolved = resolve_relative(mod_name, path)
+          tao.Stmt(tao.Import(resolved, alias, scope), stmt.span)
+        }
+        False -> stmt
+      }
+    _ -> stmt
+  }
+}
+
+fn is_relative_path(path: String) -> Bool {
+  string.starts_with(path, "./") || string.starts_with(path, "../")
+}
+
+fn resolve_relative(mod_name: String, relative: String) -> String {
+  let dir_parts = module_dir_parts(mod_name)
+  let rel_parts = string.split(relative, "/")
+  let combined = list.append(dir_parts, rel_parts)
+  let normalized = normalize_path_parts(combined)
+  "/" <> string.join(normalized, "/")
+}
+
+fn module_dir_parts(mod_name: String) -> List(String) {
+  let parts = string.split(mod_name, "/")
+  case parts {
+    ["", ..rest] -> {
+      let reversed = list.reverse(rest)
+      case reversed {
+        [_last, ..dirs] -> list.reverse(dirs)
+        _ -> []
+      }
+    }
+    _ -> []
+  }
+}
+
+fn normalize_path_parts(parts: List(String)) -> List(String) {
+  normalize_helper(parts, [])
+}
+
+fn normalize_helper(parts: List(String), acc: List(String)) -> List(String) {
+  case parts {
+    [] -> list.reverse(acc)
+    ["", ..rest] -> normalize_helper(rest, acc)
+    [".", ..rest] -> normalize_helper(rest, acc)
+    ["..", ..rest] ->
+      case acc {
+        [_last, ..prev] -> normalize_helper(rest, prev)
+        [] -> normalize_helper(rest, acc)
+      }
+    [part, ..rest] -> normalize_helper(rest, [part, ..acc])
   }
 }
