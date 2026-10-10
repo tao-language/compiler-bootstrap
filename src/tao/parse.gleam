@@ -13,7 +13,7 @@ import gleam/result.{try}
 import gleam/set
 import gleam/string
 import nibble.{type Parser, do, return}
-import nibble/lexer.{type Lexer}
+import nibble/lexer.{type Lexer, type Span as NibbleSpan}
 import nibble/pratt
 import syntax/span.{type Span, Span, merge}
 import tao/ast.{
@@ -178,33 +178,80 @@ fn lexer_() -> Lexer(Token, Nil) {
 // PUBLIC API
 // ============================================================================
 
+/// The outcome of parsing: a successful value, or the raw nibble dead ends
+/// (every alternative that failed) for inspection by `debug-parse`.
+pub type Outcome(a) {
+  Parsed(a)
+  ParseFailed(List(nibble.DeadEnd(Token, String)))
+}
+
 /// Parse a single Tao expression (used by the REPL/`-c`).
 pub fn expression(file: String, source: String) -> Result(Expr, e.Error) {
-  use tokens <- try(lex(file, source))
-  case
-    nibble.run(tokens, {
-      use ast <- do(expr(file))
-      use _ <- do(nibble.eof())
-      return(ast)
-    })
-  {
-    Ok(expr) -> Ok(expr)
-    Error(dead_ends) -> Error(dead_ends_to_error(file, dead_ends))
-  }
+  outcome_to_result(file, parse_expression(file, source))
 }
 
 /// Parse a whole Tao module into its top-level statements.
 pub fn statements(file: String, source: String) -> Result(List(Stmt), e.Error) {
+  outcome_to_result(file, parse_statements(file, source))
+}
+
+/// Parse a single Tao expression, keeping the raw dead ends on failure.
+pub fn parse_expression(
+  file: String,
+  source: String,
+) -> Result(Outcome(Expr), e.Error) {
   use tokens <- try(lex(file, source))
-  case
-    nibble.run(tokens, {
-      use stmts <- do(nibble.many(stmt(file)))
-      use _ <- do(nibble.eof())
-      return(stmts)
-    })
-  {
-    Ok(stmts) -> Ok(stmts)
-    Error(dead_ends) -> Error(dead_ends_to_error(file, dead_ends))
+  Ok(
+    case
+      nibble.run(tokens, {
+        use ast <- do(expr(file))
+        use _ <- do(nibble.eof())
+        return(ast)
+      })
+    {
+      Ok(ast) -> Parsed(ast)
+      Error(dead_ends) -> ParseFailed(dead_ends)
+    },
+  )
+}
+
+/// Parse a whole Tao module, keeping the raw dead ends on failure.
+pub fn parse_statements(
+  file: String,
+  source: String,
+) -> Result(Outcome(List(Stmt)), e.Error) {
+  use tokens <- try(lex(file, source))
+  Ok(
+    case
+      nibble.run(tokens, {
+        use stmts <- do(nibble.many(stmt(file)))
+        use _ <- do(nibble.eof())
+        return(stmts)
+      })
+    {
+      Ok(stmts) -> Parsed(stmts)
+      Error(dead_ends) -> ParseFailed(dead_ends)
+    },
+  )
+}
+
+/// Lex the source into its token stream (with spans and lexemes), for
+/// `debug-parse`.
+pub fn tokens(
+  file: String,
+  source: String,
+) -> Result(List(lexer.Token(Token)), e.Error) {
+  lex(file, source)
+}
+
+fn outcome_to_result(
+  file: String,
+  outcome: Result(Outcome(a), e.Error),
+) -> Result(a, e.Error) {
+  case outcome {
+    Error(err) -> Error(err)
+    Ok(Parsed(value)) -> Ok(value)
+    Ok(ParseFailed(dead_ends)) -> Error(dead_ends_to_error(file, dead_ends))
   }
 }
 
@@ -214,10 +261,10 @@ pub fn statements(file: String, source: String) -> Result(List(Stmt), e.Error) {
 
 /// Convert the best nibble DeadEnd into a core/error.Error.
 ///
-/// Picks the first dead-end (closest to the failure point) and converts
-/// its [`nibble.DeadEnd`](https://hexdocs.pm/nibble/nibble/nibble.html#DeadEnd)
+/// Picks the dead end that made the most progress (the furthest position) and
+/// converts its [`nibble.DeadEnd`](https://hexdocs.pm/nibble/nibble/nibble.html#DeadEnd)
 /// into a structured [`Error`](../error#error) with trace breadcrumbs.
-fn dead_ends_to_error(
+pub fn dead_ends_to_error(
   file: String,
   dead_ends: List(nibble.DeadEnd(Token, String)),
 ) -> e.Error {
@@ -228,11 +275,35 @@ fn dead_ends_to_error(
         Span(file, 0, 0, 0, 0),
         [],
       )
-    // TODO: All dead_ends contain information for all alternatives of a `one_of`.
-    // The error should encapsulate all alternatives tried (and failed).
-    // Currently, only the first is reported, and the rest are swallowed.
-    [first, ..] -> dead_end_to_error(file, first)
+    // A `one_of` records a dead end for every alternative it tried. The
+    // alternatives that fail immediately (e.g. `import` when the input is a
+    // `fn` definition) all point at the same starting token, which is
+    // misleading. The most useful dead end is the one that made the most
+    // progress, i.e. the one at the furthest position: it is the most
+    // specific and points at the real problem.
+    [first, ..] -> {
+      let best = furthest_dead_end(first, dead_ends)
+      dead_end_to_error(file, best)
+    }
   }
+}
+
+/// Pick the dead end at the furthest position. Ties keep the first one.
+fn furthest_dead_end(
+  best: nibble.DeadEnd(Token, String),
+  rest: List(nibble.DeadEnd(Token, String)),
+) -> nibble.DeadEnd(Token, String) {
+  list.fold(rest, best, fn(acc, dead_end) {
+    case is_after(dead_end.pos, acc.pos) {
+      True -> dead_end
+      False -> acc
+    }
+  })
+}
+
+fn is_after(a: NibbleSpan, b: NibbleSpan) -> Bool {
+  a.row_start > b.row_start
+  || { a.row_start == b.row_start && a.col_start > b.col_start }
 }
 
 fn dead_end_to_error(
@@ -258,7 +329,11 @@ fn dead_end_to_error(
 
   case dead_end.problem {
     nibble.Expected(expecting, got) ->
-      e.Error(e.ExpectedToken(expecting, token_to_string(got)), span, trace)
+      e.Error(
+        e.ExpectedToken(friendly_expect(expecting), token_to_string(got)),
+        span,
+        trace,
+      )
 
     nibble.Unexpected(tok) ->
       e.Error(e.UnexpectedToken(token_to_string(tok)), span, trace)
@@ -272,7 +347,7 @@ fn dead_end_to_error(
   }
 }
 
-fn token_to_string(tok: Token) -> String {
+pub fn token_to_string(tok: Token) -> String {
   case tok {
     KwImport -> "import"
     KwAs -> "as"
@@ -317,6 +392,57 @@ fn token_to_string(tok: Token) -> String {
     Or -> "or"
     Is -> "is"
     In -> "in"
+  }
+}
+
+/// Nibble reports the expected token as `string.inspect(token)`, which for a
+/// symbol/keyword is just the constructor name (e.g. `"RParen"`). Map those
+/// back to their source spelling. Strings produced by `take_map` (e.g. `"a
+/// name"`) and payload tokens (e.g. `Name("foo")`) are already readable and
+/// fall through unchanged.
+fn friendly_expect(s: String) -> String {
+  case s {
+    "KwImport" -> "import"
+    "KwAs" -> "as"
+    "KwExtern" -> "extern"
+    "KwFn" -> "fn"
+    "KwLet" -> "let"
+    "KwMut" -> "mut"
+    "KwMatch" -> "match"
+    "KwIf" -> "if"
+    "KwElse" -> "else"
+    "KwType" -> "type"
+    "Repl" -> ">>>"
+    "FatArrow" -> "=>"
+    "ThinArrow" -> "->"
+    "TildeArrow" -> "~>"
+    "Spread" -> ".."
+    "LParen" -> "("
+    "RParen" -> ")"
+    "LBrace" -> "{"
+    "RBrace" -> "}"
+    "LBracket" -> "["
+    "RBracket" -> "]"
+    "LAngle" -> "<"
+    "RAngle" -> ">"
+    "Colon" -> ":"
+    "Semicolon" -> ";"
+    "Comma" -> ","
+    "Dot" -> "."
+    "Equals" -> "="
+    "Question" -> "?"
+    "Pipe" -> "|"
+    "At" -> "@"
+    "Percent" -> "%"
+    "Add" -> "+"
+    "Sub" -> "-"
+    "Mul" -> "*"
+    "Div" -> "/"
+    "And" -> "and"
+    "Or" -> "or"
+    "Is" -> "is"
+    "In" -> "in"
+    _ -> s
   }
 }
 

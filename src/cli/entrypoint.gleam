@@ -2,6 +2,7 @@ import cli/check.{check}
 import cli/debug_core.{debug_core}
 import cli/debug_expr.{debug_expr}
 import cli/debug_file.{debug_file}
+import cli/debug_parse.{debug_parse}
 import cli/debug_src.{debug_src}
 import cli/run.{run}
 import cli/run_tests.{parse_test_args, run_tests}
@@ -11,12 +12,13 @@ import gleam/list
 import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
+import simplifile
 
 const format_width = 40
 
 const help = "Tao compiler bootstrap\n\nUsage:\n  tao check [paths...]                  Type-check .tao files (default: .)\n  tao run <file>                        Compile and run a .tao file\n  tao test [paths...]                   Run tests in .tao files (default: .)\n                                        --filter <pattern>  only run matching tests (repeatable)\n                                        --skip <pattern>    skip matching tests (repeatable)\n  tao debug-expr 'expression'           Debug a Tao expression (prelude auto-imported)\n                                        --path <dir>    extra package path (repeatable, default: lib)\n                                        --add <name>    extra package to load (repeatable)\n  tao debug-src 'source'                Debug inline Tao source (prelude compiled in, per-phase timing, subst dump)
                                         --trace-solves  print every hole solve/merge as it happens
-                                        --dump-def <name>  print <name>'s inferred type with de Bruijn indices, then stop\n  tao debug-file <filename>             Debug a Tao module\n  tao debug-core 'core-term'            Debug a Core term\n  tao --help                            Show this help\n\ncheck and test accept file and directory paths; directories are searched\nrecursively for .tao files. If no paths are given, the current directory\nis used. test also accepts <path>:<test1,test2> to restrict the tests run\nin that file, and the --filter/--skip patterns match a test name or a\nmodule path with a test name (module/path.tao:test_name), with * and **\nglob wildcards.\n"
+                                        --dump-def <name>  print <name>'s inferred type with de Bruijn indices, then stop\n  tao debug-file <filename>             Debug a Tao module\n  tao debug-parse <source-or-file>      Debug lexing + parsing (tokens, all dead ends)\n                                        --expr          parse as a single expression (default: module)\n  tao debug-core 'core-term'            Debug a Core term\n  tao --help                            Show this help\n\ncheck and test accept file and directory paths; directories are searched\nrecursively for .tao files. If no paths are given, the current directory\nis used. test also accepts <path>:<test1,test2> to restrict the tests run\nin that file, and the --filter/--skip patterns match a test name or a\nmodule path with a test name (module/path.tao:test_name), with * and **\nglob wildcards.\n"
 
 /// The CLI entry point. Commands: `check`, `run`, `test`, `debug-expr`,
 /// `debug-file`, `debug-core`, `--help`. The REPL is TODO.
@@ -161,6 +163,20 @@ pub fn entrypoint(args: List(String)) {
         }
       debug_src(paths, dependencies, source, format_width, trace_solves, dump_def)
     }
+    ["debug-parse", ..args] -> {
+      let as_expr = list.contains(args, "--expr")
+      case
+        list.filter(args, fn(arg) { !string.starts_with(arg, "--") })
+        |> list.first
+      {
+        Ok(source) -> debug_parse_from_arg(source, as_expr)
+        Error(Nil) -> {
+          io.println_error("error: no source provided")
+          io.println(help)
+          exit(1)
+        }
+      }
+    }
     ["debug-core", source, ..] -> debug_core(source, format_width)
     // [path, ..rest] ->
     //   case rest {
@@ -188,6 +204,27 @@ pub fn entrypoint(args: List(String)) {
 //       debug_core.run(expr, trace_parser, trace_infer)
 //   }
 // }
+
+/// Resolve the `debug-parse` argument: if it names an existing file, read it
+/// and label the output with the path; otherwise treat it as inline source.
+fn debug_parse_from_arg(source: String, as_expr: Bool) {
+  case simplifile.is_file(source) {
+    Ok(True) ->
+      case simplifile.read(source) {
+        Ok(contents) -> debug_parse(source, contents, as_expr)
+        Error(err) -> {
+          io.println_error(
+            "error: could not read "
+              <> source
+              <> ": "
+              <> simplifile.describe_error(err),
+          )
+          exit(1)
+        }
+      }
+    _ -> debug_parse("<debug-parse>", source, as_expr)
+  }
+}
 
 /// Split args into positional args and `--trace=<kind>` flags.
 fn split_trace(

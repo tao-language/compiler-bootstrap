@@ -5,6 +5,7 @@ did a hole get solved with" questions. Pick the tool by what you need:
 
 | you want to... | use |
 |---|---|
+| "Why did this not **parse**?" — see the token stream and *every* parse dead end | `gleam run -- debug-parse <file-or-source> [--expr]` |
 | Bisection: which phase / which hole / which value, while the compile still **finishes** (seconds) | `gleam run -- debug-src "<source>" --add=prelude` — add `--trace-solves` for the live hole-solve trace |
 | Debug a single Tao expression instead of a whole module | `gleam run -- debug-expr "<expr>" --add=prelude` |
 | Debug a whole `.tao` module exactly as it is loaded | `gleam run -- debug-file <path> --add=prelude` |
@@ -20,6 +21,32 @@ the *The `debug-src` pipeline tools* section). **`dumpstack.py`** takes over
 once it stops terminating (below): it samples native BEAM stacks of the hung
 process. A common session flow is to bisect with `debug-src` until the run gets
 slow or hangs, then hand off to `dumpstack.py`.
+
+## `debug-parse` (the parser tool)
+
+Use this when a file does not parse and the normal error message is not enough. It stops at the parser (no type-checking) and prints, top to bottom:
+
+- **`>> source`** — the input (inline, or read from a file).
+- **`>> lex -> tokens`** — the *full* token stream: each token's `row:col`, lexeme, and constructor (e.g. `KwFn`, `Name("f")`, `ThinArrow`). This is how you see exactly what the lexer produced and where.
+- **`>> parse -> module|expression`** — the outcome:
+  - on success: `OK` + the AST;
+  - on failure: **every** dead end, sorted furthest-first, each with its position, problem (`Expected(...)`/`Unexpected(...)`/`EndOfInput`), and context stack (innermost `>` outermost). The furthest dead end is the one the error reporter selects, so it is listed first.
+- **`>> best error`** — the single `❌ …` message the user actually sees.
+
+```
+$ gleam run -- debug-parse /tmp/fn_type.tao
+>> parse -> module
+FAILED (5 dead ends, furthest first):
+  [1]   4:27 Expected(RParen, got=ThinArrow)   in: function body > function definition
+  [2]    4:1 Expected(KwImport, got=KwFn)   in: import statement
+  ...
+>> best error (what the user sees)
+❌ /tmp/fn_type.tao:4:27: expected ")" but found "->"
+      in "function body" (/tmp/fn_type.tao:4:4)
+      in "function definition" (/tmp/fn_type.tao:2:1)
+```
+
+`--expr` parses the source as a single expression instead of a whole module (the default). The argument is treated as a file if it exists, otherwise as inline source.
 
 ## dumpstack.py (the hang tool)
 

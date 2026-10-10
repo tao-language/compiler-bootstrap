@@ -1,5 +1,5 @@
 /// Tests for the Tao language parser (type definitions).
-import core/error.{type Error}
+import core/error.{type Error, ExpectedToken, Error as CompileError}
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/result.{try}
@@ -457,6 +457,44 @@ pub fn parse_import_relative_with_scope_test() {
       path == "./bool"
       && alias == "bool"
       && list.length(names) == 2
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Error localization
+//
+// A `one_of` records a dead end for every alternative it tried. The parser
+// must report the one that made the most progress (the furthest position),
+// not the first alternative that gave up. Otherwise a `fn` definition with a
+// bad body is misreported as "expected import" at the `fn` token.
+// ============================================================================
+
+pub fn parse_fn_type_error_localized_test() {
+  // A function type `Int -> Num` in a parameter is not (yet) valid syntax.
+  // The error is localized to the `->` inside the function definition, not to
+  // the `fn` token where the `import` alternative failed.
+  let src = "fn f(g: Int -> Num) = 1"
+  assert case parse_stmts(src) {
+    Ok(_) -> False
+    Error(CompileError(ExpectedToken(")", "->"), span, trace)) -> {
+      let labels = list.map(trace, fn(entry) { entry.0 })
+      span.start_line == 1
+      && span.start_col == 13
+      && list.contains(labels, "function definition")
+    }
+    _ -> False
+  }
+}
+
+pub fn parse_misplaced_token_general_test() {
+  // A `}` in the middle of a parameter type. Localized to the `}`, proving the
+  // fix is general and not a special case for `->`.
+  let src = "fn f(x: Int } Num) = 1"
+  assert case parse_stmts(src) {
+    Ok(_) -> False
+    Error(CompileError(ExpectedToken(")", "}"), span, _trace)) ->
+      span.start_line == 1 && span.start_col == 13
     _ -> False
   }
 }
