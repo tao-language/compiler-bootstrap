@@ -17,9 +17,38 @@ import syntax/span.{type Span}
 // TRACE
 // ============================================================================
 
-/// Kinds of compiler traces that can be enabled via `--trace=<kind>`.
+/// Kinds of compiler traces that can be enabled via `--trace <kind>`.
+///
+/// A new debug output is a new constructor here plus a print site gated
+/// on `tracing(ctx, kind)`; the CLI surface never changes shape.
 pub type TraceKind {
+  /// Token stream + every parse dead end (parse phase).
+  TraceParse
+  /// Module names + import edges (declare phase).
   TraceModules
+  /// Per-module definition listing; per-phase timing + hole counters
+  /// (declare + define phases).
+  TraceDefines
+  /// Hole substitution dump: solved/unsolved IDs + solutions, deferred
+  /// count (define + resolve phases).
+  TraceHoles
+  /// Live `SOLVE`/`MERGE`/`BUDGET` lines as unification runs.
+  TraceSolves
+  /// Per-statement Tao → Core term + free variables (define phase).
+  TraceDesugar
+  /// Per-statement inferred type + term with holes (define phase).
+  TraceInfer
+  /// Per-statement resolved type + term (define phase).
+  TraceResolve
+  /// Per-statement evaluated value (define phase).
+  TraceEval
+  /// Each test's compiled term (test command).
+  TraceTests
+}
+
+/// Whether a trace kind is enabled in this context.
+pub fn tracing(ctx: Context, kind: TraceKind) -> Bool {
+  list.contains(ctx.trace_kinds, kind)
 }
 
 // ============================================================================
@@ -40,8 +69,10 @@ pub type TraceKind {
 /// * `deferred`: Constraints that could not be decided while a side was
 ///   still neutral; retried as holes get solved and discharged when the
 ///   context is resolved (`resolve.context`).
-/// * `trace_solves`: When true, `unify` prints every hole solve/merge
-///   (debug only; `debug-src --trace-solves`).
+/// * `trace_kinds`: Enabled compiler traces (debug only; `--trace <kind>`).
+/// * `traced_mods`: Module names whose statements get the per-statement
+///   traces (`TraceDesugar`/`TraceInfer`/`TraceResolve`/`TraceEval`); an
+///   empty list traces every module.
 ///
 /// Invariant: `env` and `types` always have the same length and the same
 /// order (innermost first); `lookup` returns an index valid for *both*.
@@ -55,8 +86,8 @@ pub type Context {
     ffi: FFI,
     hole_counter: Int,
     deferred: Deferred,
-    trace_solves: Bool,
     trace_kinds: List(TraceKind),
+    traced_mods: List(String),
     // Work budget for the unification currently in progress (see
     // `unify.unify_budget_limit`): decremented on every unification step so
     // a cyclic/recursive type that re-expands forever drains it into an
@@ -81,7 +112,7 @@ pub type Subst =
 pub type Deferred =
   List(#(#(Value, Span), #(Value, Span)))
 
-pub const new_ctx = Context([], [], [], [], [], [], 0, [], False, [], 0)
+pub const new_ctx = Context([], [], [], [], [], [], 0, [], [], [], 0)
 
 /// Look up a variable by name, returning its index (innermost-first)
 /// and type. Only the first (innermost) binding is found.

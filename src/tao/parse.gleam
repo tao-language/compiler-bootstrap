@@ -229,7 +229,7 @@ fn placeholder_index(lexeme: String) -> Option(Int) {
 // ============================================================================
 
 /// The outcome of parsing: a successful value, or the raw nibble dead ends
-/// (every alternative that failed) for inspection by `debug-parse`.
+/// (every alternative that failed) for inspection by `--trace parse`.
 pub type Outcome(a) {
   Parsed(a)
   ParseFailed(List(nibble.DeadEnd(Token, String)))
@@ -243,6 +243,17 @@ pub fn expression(file: String, source: String) -> Result(Expr, e.Error) {
 /// Parse a whole Tao module into its top-level statements.
 pub fn statements(file: String, source: String) -> Result(List(Stmt), e.Error) {
   outcome_to_result(file, parse_statements(file, source))
+}
+
+/// One statement followed by an optional `;` separator, so statement
+/// lists (module bodies, blocks) accept both newline and semicolon
+/// separation.
+fn stmt_item(file: String) -> Parser(tao.Stmt, Token, String) {
+  {
+    use s <- do(stmt(file))
+    use _ <- do(nibble.optional(nibble.token(Semicolon)))
+    return(s)
+  }
 }
 
 /// Parse a single Tao expression, keeping the raw dead ends on failure.
@@ -274,7 +285,7 @@ pub fn parse_statements(
   Ok(
     case
       nibble.run(tokens, {
-        use stmts <- do(nibble.many(stmt(file)))
+        use stmts <- do(nibble.many(stmt_item(file)))
         use _ <- do(nibble.eof())
         return(stmts)
       })
@@ -286,7 +297,7 @@ pub fn parse_statements(
 }
 
 /// Lex the source into its token stream (with spans and lexemes), for
-/// `debug-parse`.
+/// `--trace parse`.
 pub fn tokens(
   file: String,
   source: String,
@@ -835,7 +846,7 @@ fn fn_def_body(
         // Fn block definition: fn f(x) { stmts }
         {
           use _ <- do(nibble.token(LBrace))
-          use stmts <- do(nibble.many(stmt(file)))
+          use stmts <- do(nibble.many(stmt_item(file)))
           use _ <- do(nibble.token(RBrace))
           return(tao.do(stmts, start))
         },
@@ -1043,7 +1054,7 @@ fn fn_value(file: String) -> Parser(Expr, Token, String) {
         },
         {
           use _ <- do(nibble.token(LBrace))
-          use stmts <- do(nibble.many(stmt(file)))
+          use stmts <- do(nibble.many(stmt_item(file)))
           use _ <- do(nibble.token(RBrace))
           return(tao.do(stmts, start))
         },

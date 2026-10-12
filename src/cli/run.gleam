@@ -1,52 +1,58 @@
-/// `tao run <file>` — load the file (and the prelude), type-check it,
-/// then evaluate the file's top-level definitions and print their
-/// values to stdout. Prints errors to stderr and exits with status 1
-/// when there are errors, 0 otherwise.
+/// `tao run <file> | -e EXPR | -s STMTS` — compile the input, then
+/// evaluate its top-level definitions and print their values to stdout
+/// (an `-e` expression prints its value bare, REPL-style). Prints
+/// errors to stderr and exits with status 1 when there are errors, 0
+/// otherwise.
+import cli/args.{type Opts, InputExpr}
 import cli/common
-import core/context.{type TraceKind}
+import cli/pipeline
+import core/context.{type Context}
 import core/value as v
 import gleam/io
 import gleam/list
 import gleam/option.{Some}
 import tao/ast.{type Module} as tao
 
-pub fn run(files: List(String), trace_kinds: List(TraceKind)) -> Nil {
-  case files {
-    [file] -> run_file(file, trace_kinds)
-    _ -> {
-      io.println_error("error: run takes exactly one file")
+pub fn run(opts: Opts) -> Nil {
+  case pipeline.compile_input(opts.input, opts) {
+    Error(pipeline.LoadFailure(msg)) -> common.load_failure(msg)
+    Error(pipeline.SyntaxFailures(errors)) -> {
+      common.print_syntax_errors(errors)
       common.exit(1)
     }
-  }
-}
-
-fn run_file(file: String, trace_kinds: List(TraceKind)) -> Nil {
-  case common.load([file]) {
-    Error(msg) -> {
-      io.println_error("error: " <> msg)
-      common.exit(1)
-    }
-    Ok(loaded) ->
-      case list.length(loaded.errors) {
-        0 -> {
-          let ctx = common.compile(loaded.mods, trace_kinds)
-          common.print_build_errors(ctx)
-          case ctx.errors {
-            [] -> print_values(ctx, loaded.mods)
-            _ -> common.exit(1)
+    Ok(compiled) -> {
+      common.print_build_errors(compiled.ctx)
+      case compiled.ctx.errors {
+        [] ->
+          case opts.input {
+            InputExpr(..) -> print_expr_value(compiled.ctx, compiled.modules)
+            _ -> print_values(compiled.ctx, compiled.modules)
           }
-        }
-        _ -> {
-          common.print_syntax_errors(loaded.errors)
-          common.exit(1)
-        }
+        _ -> common.exit(1)
       }
+    }
   }
 }
 
-/// Print the value of every top-level `let` binding in the file (the
-/// definitions live in the module's record).
-fn print_values(ctx: context.Context, mods: List(Module)) -> Nil {
+/// `run -e`: print the wrapped expression's value bare (REPL-style).
+fn print_expr_value(ctx: Context, mods: List(Module)) -> Nil {
+  case mods {
+    [#(mod_name, _), ..] ->
+      case context.lookup_var(ctx, mod_name) {
+        Some(#(v.Rcd(values, _), _)) ->
+          case list.key_find(values, pipeline.expr_result_name) {
+            Ok(#(value, _)) -> io.println(common.fmt_value(ctx, value))
+            Error(Nil) -> Nil
+          }
+        _ -> Nil
+      }
+    [] -> Nil
+  }
+}
+
+/// Print the value of every top-level `let` binding in the input
+/// modules (the definitions live in the module's record).
+fn print_values(ctx: Context, mods: List(Module)) -> Nil {
   case mods {
     [#(mod_name, stmts), ..] -> {
       case context.lookup_var(ctx, mod_name) {

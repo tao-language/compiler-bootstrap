@@ -1,5 +1,5 @@
 /// Corpus validation: compile the whole example corpus (the gallery
-/// modules plus the prelude package, exactly as the `debug-file` CLI
+/// modules plus the prelude package, exactly as the `test` CLI
 /// loads them) through the full pipeline and run every `>>> test`
 /// statement. This is the in-repo regression for the prelude/overload
 /// machinery: the overloaded operators' dependent dispatches leave

@@ -1042,3 +1042,45 @@ pub fn parse_placeholder_underscore_still_wildcard_test() {
     _ -> False
   }
 }
+
+pub fn parse_stmts_semicolon_separated_test() {
+  // Statements may be separated by `;` as well as newlines.
+  let stmts = parse_stmts("let x = 1; let y = 2")
+  assert case stmts {
+    Ok([tao.Stmt(tao.LetVar("x", _, _), _), tao.Stmt(tao.LetVar("y", _, _), _)]) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_stmts_trailing_semicolon_test() {
+  // A trailing `;` after the last statement is allowed.
+  let stmts = parse_stmts("let x = 1;")
+  assert case stmts {
+    Ok([tao.Stmt(tao.LetVar("x", _, _), _)]) -> True
+    _ -> False
+  }
+}
+
+pub fn parse_stmts_mixed_separators_test() {
+  // Newline and `;` separation may be mixed.
+  let stmts = parse_stmts("let x = 1\nlet y = 2; let z = 3")
+  assert case stmts {
+    Ok([tao.Stmt(tao.LetVar("x", _, _), _), tao.Stmt(tao.LetVar("y", _, _), _), tao.Stmt(tao.LetVar("z", _, _), _)]) ->
+      True
+    _ -> False
+  }
+}
+
+pub fn parse_fn_block_semicolon_test() {
+  // A block body accepts `;` after statements too.
+  let e = parse_expr("fn(x) { let y = x; let z = y }")
+  assert case e {
+    Ok(tao.Expr(tao.Fn(None, [], #([_], None), None, body), _)) ->
+      case body.data {
+        tao.Do([tao.Stmt(tao.LetVar("y", _, _), _), tao.Stmt(tao.LetVar("z", _, _), _)]) ->
+          True
+        _ -> False
+      }
+    _ -> False
+  }
+}

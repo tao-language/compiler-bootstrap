@@ -166,6 +166,44 @@ pub fn project(
   )
 }
 
+/// Like `project`, but the input modules are already parsed (e.g. from
+/// `-e`/`-s` inline source): canonical naming is applied to their labels
+/// and they are deduplicated against the package modules. Returns the
+/// canonicalized input modules and the full module list (input +
+/// packages).
+pub fn project_modules(
+  paths: List(String),
+  modules: List(Module),
+  packages: List(#(String, Option(String))),
+) -> #(List(Module), List(Module)) {
+  let pkg_names = list.map(packages, fn(p) { p.0 })
+  let #(pkg_mods, _) = package_list(paths, packages)
+  let pkg_module_names = list.map(pkg_mods, fn(m) { m.0 })
+  let file_mods =
+    canonicalize_modules(paths, pkg_names, modules, pkg_module_names)
+  #(file_mods, list.append(file_mods, pkg_mods))
+}
+
+fn canonicalize_modules(
+  paths: List(String),
+  package_names: List(String),
+  modules: List(Module),
+  existing_names: List(String),
+) -> List(Module) {
+  list.fold(modules, [], fn(acc, module) {
+    let #(name, stmts) = module
+    let name = canonical_name(paths, package_names, name)
+    case list.contains(existing_names, name) {
+      True -> acc
+      False ->
+        case list.key_find(acc, name) {
+          Ok(_) -> acc
+          Error(Nil) -> list.append(acc, [#(name, stmts)])
+        }
+    }
+  })
+}
+
 fn load_canonical_files(
   paths: List(String),
   package_names: List(String),

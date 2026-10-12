@@ -18,7 +18,7 @@
 ///   name the arguments' constructor types (`#True{}`/`#False{}` for
 ///   Bool arguments);
 /// * a module that defines `and` locally while the prelude also exports
-///   `and` (the `debug-file` flow loads the file both standalone and as
+///   `and` (the `test` flow loads the file both standalone and as
 ///   a prelude module) — the local definition must shadow the import
 ///   instead of sharing its module-record entry.
 import core/context.{type Context, Context, new_ctx}
@@ -147,7 +147,7 @@ pub fn local_and_shadows_prelude_test() {
 // ============================================================================
 
 /// Type-check an in-memory module against the prelude (as the
-/// `debug-file` CLI does: the prelude is compiled together with the
+/// `test` CLI does: the prelude is compiled together with the
 /// module and implicitly imported into it) and return the reported
 /// errors.
 fn check(source: String) -> List(String) {

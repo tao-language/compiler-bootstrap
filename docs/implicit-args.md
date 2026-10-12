@@ -191,8 +191,7 @@ evaluate directly: `pair(1, True)` reduces to `#Pass`.
 You can inspect the inferred type of a definition with
 
 ```sh
-gleam run -- debug-src 'fn pair<a, b>(x: a, y: b) -> a = x' \
-  --add=prelude --dump-def=pair
+gleam run -- test -s 'fn pair<a, b>(x: a, y: b) -> a = x' --dump-def=pair
 ```
 
 ```
@@ -287,7 +286,7 @@ functions are not affected.
   record instead of `x`): the definition's term is captured with the
   module environment and a de Bruijn level goes stale — the documented
   corruption class in `docs/debugging.md`. The same term evaluates
-  correctly when not a module definition (`debug-expr`), so the bug is in
+  correctly when not a module definition (`run -e`), so the bug is in
   the module-compile/quote path, not the desugaring.
 
 ## Where to look

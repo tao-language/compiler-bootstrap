@@ -5,26 +5,30 @@ did a hole get solved with" questions. Pick the tool by what you need:
 
 | you want to... | use |
 |---|---|
-| "Why did this not **parse**?" — see the token stream and *every* parse dead end | `gleam run -- debug-parse <file-or-source> [--expr]` |
-| Bisection: which phase / which hole / which value, while the compile still **finishes** (seconds) | `gleam run -- debug-src "<source>" --add=prelude` — add `--trace-solves` for the live hole-solve trace |
-| Debug a single Tao expression instead of a whole module | `gleam run -- debug-expr "<expr>" --add=prelude` |
-| Debug a whole `.tao` module exactly as it is loaded | `gleam run -- debug-file <path> --add=prelude` |
+| "Why did this not **parse**?" — see the token stream and *every* parse dead end | `gleam run -- check <file> --trace parse` (or `check -e '<source>' --trace parse`) |
+| Bisection: which phase / which hole / which value, while the compile still **finishes** (seconds) | `gleam run -- test -s "<source>" --trace defines --trace holes` — add `--trace solves` for the live hole-solve trace |
+| Debug a single Tao expression instead of a whole module | `gleam run -- run -e "<expr>" --trace desugar --trace infer --trace resolve --trace eval` |
+| Debug a whole `.tao` module exactly as it is loaded | `gleam run -- test <path> --trace defines --trace holes` |
 | Debug a raw Core term | `gleam run -- debug-core "<term>"` |
 | Locate a **hang** — the run no longer terminates, so the pipeline tools above can't return | `scripts/dumpstack.py` (native-level BEAM stack profiler) |
 | Inspect a pathological value that `format.value` crashes on | `echo`-bracketing + a one-level "sketch" printer (see the *Tracing pathological values* section) |
 
-Two tools cover most work. **`debug-src --trace-solves`** is the workhorse
-while the program still terminates: it runs the full pipeline on inline source
+There are no separate debug commands: the main commands (`check`, `run`,
+`test`) accept files **or** inline source (`-e EXPR`, `-s STMTS`), and every
+diagnostic is an opt-in `--trace <kind>` flag (repeatable). The workhorse while
+the program still terminates is **`test -s "<source>" --trace defines
+--trace holes --trace solves`**: it runs the full pipeline on inline source
 with per-phase timing, a full hole-substitution dump, and a live trace of every
-hole solve — you can watch exactly which hole gets solved with which value (see
-the *The `debug-src` pipeline tools* section). **`dumpstack.py`** takes over
-once it stops terminating (below): it samples native BEAM stacks of the hung
-process. A common session flow is to bisect with `debug-src` until the run gets
-slow or hangs, then hand off to `dumpstack.py`.
+hole solve — you can watch exactly which hole gets solved with which value
+(see the *Pipeline trace flags* section). **`dumpstack.py`** takes over once it
+stops terminating (below): it samples native BEAM stacks of the hung process.
+A common session flow is to bisect with `test -s` until the run gets slow or
+hangs, then hand off to `dumpstack.py`.
 
-## `debug-parse` (the parser tool)
+## `--trace parse` (the parser tool)
 
-Use this when a file does not parse and the normal error message is not enough. It stops at the parser (no type-checking) and prints, top to bottom:
+Use this when a file does not parse and the normal error message is not
+enough. It stops at the parser (no type-checking) and prints, top to bottom:
 
 - **`>> source`** — the input (inline, or read from a file).
 - **`>> lex -> tokens`** — the *full* token stream: each token's `row:col`, lexeme, and constructor (e.g. `KwFn`, `Name("f")`, `ThinArrow`). This is how you see exactly what the lexer produced and where.
@@ -34,7 +38,9 @@ Use this when a file does not parse and the normal error message is not enough. 
 - **`>> best error`** — the single `❌ …` message the user actually sees.
 
 ```
-$ gleam run -- debug-parse /tmp/fn_type.tao
+$ gleam run -- check /tmp/fn_type.tao --trace parse
+>> source (/tmp/fn_type.tao)
+...tokens...
 >> parse -> module
 FAILED (5 dead ends, furthest first):
   [1]   4:27 Expected(RParen, got=ThinArrow)   in: function body > function definition
@@ -46,7 +52,9 @@ FAILED (5 dead ends, furthest first):
       in "function definition" (/tmp/fn_type.tao:2:1)
 ```
 
-`--expr` parses the source as a single expression instead of a whole module (the default). The argument is treated as a file if it exists, otherwise as inline source.
+`-e` parses the source as a single expression (wrapped in `let __result = …`)
+instead of a whole module. The first argument is a file path when it names an
+existing file, inline source otherwise (`-e`/`-s` are always inline).
 
 ## dumpstack.py (the hang tool)
 
@@ -315,34 +323,36 @@ Design constraints worth knowing:
 - If `erl_crash.dump` appears in the repo root (VM boot failure), delete it
   before the next run: `rm -f erl_crash.dump`.
 
-## The `debug-src` pipeline tools
+## The pipeline trace flags
 
-`debug-src` runs **inline source** through the full pipeline (the prelude
+`-s`/`-e` run **inline source** through the full pipeline (the prelude
 compiled in, like a real module) — no writing `/tmp/*.tao` files. It is by far
 the fastest way to bisection a type-checking / unification problem: it runs in
-well under a second and prints a lot. `debug-expr` is the same for a single
-expression, `debug-file` for a whole loaded module, `debug-core` for a raw Core
-term.
+well under a second, and each `--trace <kind>` adds one diagnostic. `run -e`
+is the same for a single expression, `test <file>` for a whole loaded module,
+`debug-core` for a raw Core term.
 
 ```sh
 # From a file (the B/A/C hang shapes from docs/plan.md):
-gleam run -- debug-src "$(cat /tmp/taoscratch/B_two_params_two_tests.tao)" --add=prelude
+gleam run -- test "$(cat /tmp/taoscratch/B_two_params_two_tests.tao)" --trace defines --trace holes
 # Inline:
-gleam run -- debug-src 'type Rst(a, e) { | OkX(a) | ErrX(e) } ...' --add=prelude --trace-solves
+gleam run -- test -s 'type Rst(a, e) { | OkX(a) | ErrX(e) } ...' --trace solves
 ```
 
-`--add=prelude` (or `--add=prelude:0.0.1`) loads the prelude package; the hang
-shapes only reproduce **with** it. `--add` is repeatable; `--path` adds extra
-package search dirs (default `lib`).
+The prelude is always loaded; `--add <pkg[:version]>` (repeatable) loads extra
+packages, `--path <dir>` (repeatable, default `lib`) adds package search dirs.
 
-Output, top to bottom:
-- `source: "..." packages: [#("prelude", None)]` — **confirm the prelude
-  actually loaded** (`packages:` non-empty); an empty `packages:` means you are
-  not debugging the real repro.
+`--trace defines` output, top to bottom:
+- the per-module definition listing (name + kind),
 - `define.types: Nms holes=M`, `define.values: Nms holes=M` — per-phase timing
-  + running hole counter.
-- `// subst=N holes=M deferred=K` — the substitution-table size and the
-  **deferred-constraint queue** at the end of the module compile. A large or
+  + running hole counter,
+- `resolve.context: Nms`, any build errors, then the test re-check
+  (`compile.tests`) and its `✓` / `✗` results (`--trace tests` adds each
+  test's compiled `term:`).
+
+`--trace holes` output (after define and after resolve):
+- `// holes (after define): subst=N holes=M deferred=K` — the
+  substitution-table size and the **deferred-constraint queue**. A large or
   *growing* `deferred=` across retries signals undecidable constraints.
 - One line per solved hole: `h131 (envlen=19): #Rst({...})` — the hole's
   **solution, displayed against its captured solve env** (so `$N` indices are
@@ -350,10 +360,8 @@ Output, top to bottom:
   with?" A solution that is a whole **module record** (a `Rcd` with many
   fields) on a *type-parameter* hole is the corruption signature from
   `docs/plan.md`.
-- `resolve.context: Nms`, any build errors, then the test re-check
-  (`compile.tests`) and its `term:` / `✓` / `✗` results.
 
-**`--trace-solves`** interleaves, live, three kinds of event as unification
+**`--trace solves`** interleaves, live, three kinds of event as unification
 runs (including inside `compile.tests`, where the B-shape corruption happens):
 - `SOLVE h131 <- Rcd[Bool_and_or]` — hole 131 just got solved with a value of
   that sketch (`Rcd[...]` = a record, `LitT`, `Ctr`, `For`, ...; `""`-named
@@ -364,7 +372,17 @@ runs (including inside `compile.tests`, where the B-shape corruption happens):
   `unify` consumed. `used` near (or above) the limit means that unification hit
   the rewrite budget (see *Tuning a threshold*).
 
-Because `debug-src` *finishes* (it is bounded), you can grep its output — unlike
+`--trace desugar|infer|resolve|eval` prints, per top-level statement of the
+*input* modules only (prelude definitions are not traced), the Tao → Core term
++ free vars, the inferred type/term (holes unresolved) + deferred count, the
+resolved type/term, and the evaluated value — the old `debug-expr` stages.
+
+`--dump-def <name>` prints the named definition's inferred type value with its
+de Bruijn structure (quantifier bodies via `format.term`) and stops before
+resolve — the canonical way to inspect a function's inferred type for a de
+Bruijn frame mismatch (see docs/plan.md §15).
+
+Because `test -s` *finishes* (it is bounded), you can grep its output — unlike
 a hang, which you can only sample. Prefer it until the run is slow enough to
 need `dumpstack.py`.
 

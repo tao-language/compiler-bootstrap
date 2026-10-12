@@ -1,5 +1,5 @@
 /// Unification — Higher-order unification for Core values.
-import core/context.{type Context, Context, with_err}
+import core/context.{type Context, Context, TraceSolves, tracing, with_err}
 import core/error as e
 import core/eval.{eval}
 import core/occurs.{occurs}
@@ -51,7 +51,7 @@ pub fn unify(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
     False -> ctx
   }
   let ctx = unify_b(ctx, a, b)
-  let ctx = case ctx.trace_solves {
+  let ctx = case tracing(ctx, TraceSolves) {
     True -> {
       let _ =
         echo "BUDGET used="
@@ -80,10 +80,10 @@ fn unify_b(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
 fn unify_core(ctx: Context, a: #(Value, Span), b: #(Value, Span)) -> Context {
   let #(value1, s1) = a
   let #(value2, s2) = b
-  // One-line sketch of every step (trace_solves): the standard way to see
-  // which values the descent pairs together (see debug-src).
+  // One-line sketch of every step (TraceSolves): the standard way to see
+  // which values the descent pairs together.
   let _ =
-    case ctx.trace_solves {
+    case tracing(ctx, TraceSolves) {
       True -> {
         let _ = echo "USTEP " <> solve_sketch(value1) <> " v " <> solve_sketch(value2)
         Nil
@@ -570,7 +570,7 @@ fn solve_hole(
           case list.key_find(ctx.subst, id) {
             Error(Nil) -> {
               let _ =
-                case ctx.trace_solves {
+                case tracing(ctx, TraceSolves) {
                   True -> {
                     let _ =
                       echo "SOLVE h" <> int.to_string(id) <> " <- "
@@ -590,7 +590,7 @@ fn solve_hole(
             }
             Ok(#(_, existing)) -> {
               let _ =
-                case ctx.trace_solves {
+                case tracing(ctx, TraceSolves) {
                   True -> {
                     let _ =
                       echo "MERGE h" <> int.to_string(id)

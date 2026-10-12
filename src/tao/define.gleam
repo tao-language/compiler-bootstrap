@@ -8,12 +8,26 @@
 /// exists before any body is checked, definitions may reference each
 /// other — including across modules — in any order.
 import core/ast as core
-import core/context.{type Context, lookup_type_def, with_err}
+import core/context.{
+  type Context,
+  TraceDesugar,
+  TraceEval,
+  TraceInfer,
+  TraceResolve,
+  lookup_type_def,
+  tracing,
+  with_err,
+}
 import core/error as e
 import core/eval.{eval}
+import core/format
 import core/infer.{check, infer}
+import core/resolve
+import core/term.{type Term}
 import core/unify.{unify}
 import core/value as v
+import gleam/int
+import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
@@ -537,9 +551,12 @@ fn expr_value(
   mod_name: ModName,
   expr: tao.Expr,
   opt_type: Option(v.Type),
+  opt_name: Option(String),
+  show: Bool,
 ) -> #(v.Value, v.Type, Context) {
   let exports = declare.exports(defs)
   let core_expr = desugar.expr(exports, expr)
+  trace_desugar(ctx, show, opt_name, core_expr)
   // Free variables that are not module names (names start with "/") are
   // local definitions of the current module; each one is brought into
   // scope by lazily registering it (which may create fresh holes).
@@ -567,9 +584,97 @@ fn expr_value(
     Some(typ) -> check(ctx, core_expr, #(typ, expr.span))
     None -> infer(ctx, core_expr)
   }
+  trace_infer(ctx, show, opt_name, typ, term)
+  trace_resolve(ctx, show, opt_name, typ, term)
   let value = eval(ctx.ffi, ctx.env, term)
+  trace_eval(ctx, show, opt_name, value)
   let ctx = context.pop_vars(ctx, list.length(deps))
   #(value, typ, ctx)
+}
+
+/// Whether the per-statement traces apply to this module: only modules
+/// in `ctx.traced_mods` (an empty list means every module), so package
+/// (prelude) definitions do not drown the input's trace.
+fn trace_on(ctx: Context, mod_name: String) -> Bool {
+  case ctx.traced_mods {
+    [] -> True
+    names -> list.contains(names, mod_name)
+  }
+}
+
+/// `--trace desugar|infer|resolve|eval`: per-statement observation of the
+/// define phase. `opt_name` is the statement's name; `None` (type
+/// annotations) is not traced.
+fn trace_desugar(
+  ctx: Context,
+  show: Bool,
+  opt_name: Option(String),
+  core_expr: core.Expr,
+) -> Nil {
+  case opt_name, show, tracing(ctx, TraceDesugar) {
+    Some(name), True, True -> {
+      io.println("// desugar " <> name <> " -> Core Expr:")
+      io.println(format.expr(core_expr, 80, 2))
+      io.println("// free vars: " <> string.inspect(core.free_vars(core_expr)))
+    }
+    _, _, _ -> Nil
+  }
+}
+
+fn trace_infer(
+  ctx: Context,
+  show: Bool,
+  opt_name: Option(String),
+  typ: v.Type,
+  term: Term,
+) -> Nil {
+  case opt_name, show, tracing(ctx, TraceInfer) {
+    Some(name), True, True -> {
+      let names = list.map(ctx.types, fn(entry) { entry.0 })
+      io.println("// infer " <> name <> " -> type:")
+      io.println(format.value(ctx.ffi, names, typ, 80, 2))
+      io.println("// term (holes unresolved):")
+      io.println(format.term(names, term, 80, 2))
+      io.println("// deferred: " <> int.to_string(list.length(ctx.deferred)))
+    }
+    _, _, _ -> Nil
+  }
+}
+
+fn trace_resolve(
+  ctx: Context,
+  show: Bool,
+  opt_name: Option(String),
+  typ: v.Type,
+  term: Term,
+) -> Nil {
+  case opt_name, show, tracing(ctx, TraceResolve) {
+    Some(name), True, True -> {
+      let names = list.map(ctx.types, fn(entry) { entry.0 })
+      let typ = resolve.value(ctx.ffi, ctx.subst, typ)
+      let term = resolve.term(ctx.ffi, ctx.subst, ctx.env, term)
+      io.println("// resolve " <> name <> " -> type:")
+      io.println(format.value(ctx.ffi, names, typ, 80, 2))
+      io.println("// term (resolved):")
+      io.println(format.term(names, term, 80, 2))
+    }
+    _, _, _ -> Nil
+  }
+}
+
+fn trace_eval(
+  ctx: Context,
+  show: Bool,
+  opt_name: Option(String),
+  value: v.Value,
+) -> Nil {
+  case opt_name, show, tracing(ctx, TraceEval) {
+    Some(name), True, True -> {
+      let names = list.map(ctx.types, fn(entry) { entry.0 })
+      io.println("// eval " <> name <> " = " <> format.value(ctx.ffi, names, value, 80, 2))
+    }
+    _, _, _ -> Nil
+  }
 }
 
 fn type_value(
@@ -578,7 +683,8 @@ fn type_value(
   mod_name: ModName,
   typ: tao.Type,
 ) -> #(v.Type, Context) {
-  let #(core_type, _, ctx) = expr_value(ctx, defs, mod_name, typ, None)
+  let show = trace_on(ctx, mod_name)
+  let #(core_type, _, ctx) = expr_value(ctx, defs, mod_name, typ, None, None, show)
   #(core_type, ctx)
 }
 
@@ -592,6 +698,24 @@ pub fn stmt_value(
   stmt: tao.Stmt,
   opt_type: Option(v.Type),
 ) -> #(v.Value, v.Type, Context) {
+  // Import entries mirror another module's definitions (often the
+  // prelude's), so they do not get the per-statement traces.
+  let show = case stmt.data {
+    tao.Import(..) -> False
+    _ -> trace_on(ctx, mod_name)
+  }
+  stmt_value_(ctx, defs, mod_name, name, stmt, opt_type, show)
+}
+
+fn stmt_value_(
+  ctx: Context,
+  defs: List(#(ModName, List(#(Name, Stmt)))),
+  mod_name: ModName,
+  name: Name,
+  stmt: tao.Stmt,
+  opt_type: Option(v.Type),
+  show: Bool,
+) -> #(v.Value, v.Type, Context) {
   // A name exposed by several imports of the module (see
   // `import_sources`) is an overload: the statement is the import, but
   // the value is the overload built from every import that exposes the
@@ -604,9 +728,9 @@ pub fn stmt_value(
           let choices =
             list.map(sources, fn(source) { import_choice(defs, name, source) })
           let stmt = tao.fn_overload(name, choices, stmt.span)
-          stmt_value(ctx, defs, mod_name, name, stmt, opt_type)
+          stmt_value_(ctx, defs, mod_name, name, stmt, opt_type, show)
         }
-        _ -> stmt_value_inner(ctx, defs, mod_name, name, stmt, opt_type)
+        _ -> stmt_value_inner(ctx, defs, mod_name, name, stmt, opt_type, show)
       }
     }
     // Overload dispatch is a blind runtime match on the arguments'
@@ -616,9 +740,9 @@ pub fn stmt_value(
     tao.FnOverload(fn_name, choices) -> {
       let #(choices, ctx) = expand_overload_choices(ctx, choices)
       let stmt = tao.Stmt(tao.FnOverload(fn_name, choices), stmt.span)
-      stmt_value_inner(ctx, defs, mod_name, name, stmt, opt_type)
+      stmt_value_inner(ctx, defs, mod_name, name, stmt, opt_type, show)
     }
-    _ -> stmt_value_inner(ctx, defs, mod_name, name, stmt, opt_type)
+    _ -> stmt_value_inner(ctx, defs, mod_name, name, stmt, opt_type, show)
   }
 }
 
@@ -629,10 +753,11 @@ fn stmt_value_inner(
   name: Name,
   stmt: tao.Stmt,
   opt_type: Option(v.Type),
+  show: Bool,
 ) -> #(v.Value, v.Type, Context) {
   let s = stmt.span
   let tao_expr = tao.do([stmt, tao.return(tao.var(name, s), s)], s)
-  expr_value(ctx, defs, mod_name, tao_expr, opt_type)
+  expr_value(ctx, defs, mod_name, tao_expr, opt_type, Some(name), show)
 }
 
 /// Expand the type names in an overloaded function's choice patterns

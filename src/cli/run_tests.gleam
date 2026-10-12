@@ -1,11 +1,12 @@
-/// `tao test [paths..]` — load the given `.tao` files (and the
-/// prelude), type-check them, then run the files' `>>>` tests (the
-/// prelude's own tests are not run), filtered by the selection. Prints
-/// the test results and a summary to stdout; exits with status 1 when
-/// there are build errors or any test fails, 0 otherwise.
+/// `tao test [paths...] | -e EXPR | -s STMTS` — compile the input, then
+/// run its `>>>` tests (the prelude's own tests are not run), filtered
+/// by the selection. Prints the test results and a summary to stdout;
+/// exits with status 1 when there are build errors or any test fails,
+/// 0 otherwise.
+import cli/args.{type Opts}
 import cli/common
-import cli/test_filter.{TestSelection, filter_fn}
-import core/context.{type TraceKind, TraceModules}
+import cli/pipeline
+import core/context.{type Context, TraceTests}
 import core/format
 import gleam/int
 import gleam/io
@@ -14,85 +15,13 @@ import gleam/string
 import simplifile
 import tao/compile
 import tao/desugar
-import tao/tests
+import tao/tests.{type TestDef}
+import cli/test_filter.{TestSelection, filter_fn}
 
-/// The parsed arguments of `tao test`: the files to run tests for, any
-/// per-file test name restrictions, and the `--filter`/`--skip` patterns.
-pub type TestArgs {
-  TestArgs(
-    /// The file and directory paths (positional arguments).
-    paths: List(String),
-    /// Per-file test name restrictions (`path:test1,test2`).
-    per_file: List(#(String, List(String))),
-    /// The `--filter` patterns.
-    filter: List(String),
-    /// The `--skip` patterns.
-    skip: List(String),
-    /// The `--trace` kinds.
-    trace_kinds: List(TraceKind),
-  )
-}
-
-/// Parse the arguments after `tao test`: positional paths (optionally
-/// `path:test1,test2`) plus repeatable `--filter`/`--skip` flags (either
-/// `--flag pattern` or `--flag=pattern`).
-pub fn parse_test_args(args: List(String)) -> Result(TestArgs, String) {
-  parse(args, [], [], [], [], [])
-}
-
-fn parse(
-  args: List(String),
-  paths: List(String),
-  per_file: List(#(String, List(String))),
-  filter: List(String),
-  skip: List(String),
-  trace_kinds: List(TraceKind),
-) -> Result(TestArgs, String) {
-  case args {
-    [] -> Ok(TestArgs(paths, per_file, filter, skip, trace_kinds))
-    ["--filter", pattern, ..rest] ->
-      parse(rest, paths, per_file, [pattern, ..filter], skip, trace_kinds)
-    ["--filter=" <> pattern, ..rest] ->
-      parse(rest, paths, per_file, [pattern, ..filter], skip, trace_kinds)
-    ["--skip", pattern, ..rest] ->
-      parse(rest, paths, per_file, filter, [pattern, ..skip], trace_kinds)
-    ["--skip=" <> pattern, ..rest] ->
-      parse(rest, paths, per_file, filter, [pattern, ..skip], trace_kinds)
-    ["--trace=modules", ..rest] ->
-      parse(rest, paths, per_file, filter, skip, [TraceModules, ..trace_kinds])
-    ["--trace=" <> kind, ..] ->
-      Error("unknown trace kind: " <> kind)
-    ["--filter"] -> Error("missing pattern for --filter")
-    ["--skip"] -> Error("missing pattern for --skip")
-    [arg, ..rest] -> {
-      // A positional argument is a path, optionally followed by `:test1,test2`
-      // to restrict the tests run in that file.
-      case string.split_once(arg, ":") {
-        Ok(#(path, names)) -> {
-          let path = common.normalize(path)
-          let per_file = list.append(per_file, [#(path, test_names(names))])
-          parse(rest, list.append(paths, [path]), per_file, filter, skip, trace_kinds)
-        }
-        Error(Nil) ->
-          parse(rest, list.append(paths, [arg]), per_file, filter, skip, trace_kinds)
-      }
-    }
-  }
-}
-
-fn test_names(names: String) -> List(String) {
-  list.filter_map(string.split(names, ","), fn(name) {
-    case string.length(name) {
-      0 -> Error(Nil)
-      _ -> Ok(name)
-    }
-  })
-}
-
-pub fn run_tests(args: TestArgs) -> Nil {
+pub fn run_tests(opts: Opts) -> Nil {
   // Test names can only be restricted for files, not directories.
   let bad_file =
-    list.find(args.per_file, fn(entry) {
+    list.find(opts.per_file, fn(entry) {
       let #(path, _) = entry
       case simplifile.is_file(path) {
         Ok(True) -> False
@@ -106,40 +35,26 @@ pub fn run_tests(args: TestArgs) -> Nil {
       )
       common.exit(1)
     }
-    Error(Nil) -> run_loaded(args)
-  }
-}
-
-fn run_loaded(args: TestArgs) -> Nil {
-  case common.load(args.paths) {
-    Error(msg) -> {
-      io.println_error("error: " <> msg)
-      common.exit(1)
-    }
-    Ok(loaded) ->
-      case list.length(loaded.errors) {
-        0 -> {
-          let ctx = common.compile(loaded.mods, args.trace_kinds)
-          common.print_build_errors(ctx)
-          case ctx.errors {
-            [] -> run_tests_(loaded, ctx, args)
+    Error(Nil) ->
+      case pipeline.compile_input(opts.input, opts) {
+        Error(pipeline.LoadFailure(msg)) -> common.load_failure(msg)
+        Error(pipeline.SyntaxFailures(errors)) -> {
+          common.print_syntax_errors(errors)
+          common.exit(1)
+        }
+        Ok(compiled) -> {
+          common.print_build_errors(compiled.ctx)
+          case compiled.ctx.errors {
+            [] -> run_tests_(compiled, opts)
             _ -> common.exit(1)
           }
-        }
-        _ -> {
-          common.print_syntax_errors(loaded.errors)
-          common.exit(1)
         }
       }
   }
 }
 
-fn run_tests_(
-  loaded: common.Loaded,
-  ctx: context.Context,
-  args: TestArgs,
-) -> Nil {
-  // Compile the tests of the input files only (not the prelude's).
+fn run_tests_(compiled: pipeline.Compiled, opts: Opts) -> Nil {
+  // Compile the tests of the input modules only (not the prelude's).
   //
   // The test re-check can fail on its own (a unification budget error the
   // module compile did not hit) — but it is intentionally *not* surfaced
@@ -149,12 +64,12 @@ fn run_tests_(
   // hard failure here would both block those doctests and crash while
   // printing the (corrupted) values. Once the corruption is fixed the
   // re-check no longer hits the budget, so no error is raised at all.
-  let #(test_defs, ctx) = compile.tests(ctx, loaded.mods)
+  let #(test_defs, ctx) = compile.tests(compiled.ctx, compiled.modules)
 
   // Pair every test with the file it was loaded from, then keep only the
   // selected ones.
-  let all_tests = pair_modules(loaded.paths, test_defs)
-  let sel = TestSelection(args.per_file, args.filter, args.skip)
+  let all_tests = pair_modules(compiled.paths, test_defs)
+  let sel = TestSelection(opts.per_file, opts.filter, opts.skip)
   let filter = filter_fn(sel)
   let selected = list.filter(all_tests, fn(t) { filter(t.0, t.1) })
 
@@ -164,7 +79,8 @@ fn run_tests_(
   }
 
   let defs = list.map(selected, fn(t) { t.2 })
-  let summary = tests.run_all(ctx, defs)
+  let names = list.map(ctx.types, fn(entry) { entry.0 })
+  let summary = run_all(ctx, defs, names, list.contains(opts.trace, TraceTests))
 
   list.map(summary.results, fn(res) {
     case res {
@@ -200,14 +116,45 @@ fn run_tests_(
   }
 }
 
+/// Run every test; with `show_terms` (`--trace tests`) prints each
+/// test's compiled term first.
+fn run_all(
+  ctx: Context,
+  defs: List(TestDef),
+  names: List(String),
+  show_terms: Bool,
+) -> tests.TestResultSummary {
+  case defs {
+    [] -> tests.TestResultSummary(ctx.errors, [], 0, 0, 0)
+    [t, ..rest] -> {
+      case show_terms {
+        True -> io.println("term: " <> format.term(names, t.term, 80, 2))
+        False -> Nil
+      }
+      let res = tests.run(ctx, t)
+      let summary = run_all(ctx, rest, names, show_terms)
+      let summary =
+        tests.TestResultSummary(..summary, results: [res, ..summary.results])
+      case res {
+        tests.TestPass(..) ->
+          tests.TestResultSummary(..summary, num_pass: summary.num_pass + 1)
+        tests.TestFail(..) ->
+          tests.TestResultSummary(..summary, num_fail: summary.num_fail + 1)
+        tests.TestNeutral(..) ->
+          tests.TestResultSummary(..summary, num_neutral: summary.num_neutral + 1)
+      }
+    }
+  }
+}
+
 /// Attach the file path of each test. Test names embed their source file
 /// (`">>> <file>:<line>`), so tests are paired with the input paths by
 /// that prefix — robust to the loader's module ordering (an input file
 /// that is also a package module appears in package order, not first).
 fn pair_modules(
   paths: List(String),
-  test_defs: List(tests.TestDef),
-) -> List(#(String, String, tests.TestDef)) {
+  test_defs: List(TestDef),
+) -> List(#(String, String, TestDef)) {
   list.flat_map(paths, fn(path) {
     let prefix = ">>> " <> path <> ":"
     list.filter_map(test_defs, fn(def) {

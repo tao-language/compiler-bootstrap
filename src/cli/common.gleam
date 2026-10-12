@@ -1,40 +1,21 @@
 /// Shared helpers for the `tao` CLI commands: expanding CLI paths to
-/// `.tao` files, loading modules with the prelude, compiling them, and
-/// printing errors.
-import core/context.{type Context, type TraceKind, Context, new_ctx}
+/// `.tao` files, printing errors, and formatting values. The compile
+/// pipeline itself lives in `cli/pipeline`.
+import core/context.{type Context}
 import core/error.{type Error}
-import core/ffi
 import core/format
 import core/value.{type Value}
 import filepath
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/option.{type Option, None, Some}
 import gleam/string
 import simplifile
-import tao/ast.{type Module}
-import tao/compile
-import tao/config
-import tao/load
 import utils/fs
 
 /// Terminate the process with `status`.
 @external(erlang, "erlang", "halt")
 pub fn exit(status: Int) -> Nil
-
-/// Modules loaded from the given paths, plus the prelude (the standard
-/// library) and any syntax errors encountered while loading.
-pub type Loaded {
-  Loaded(
-    /// The expanded `.tao` file paths, in order.
-    paths: List(String),
-    /// All loaded modules (including prelude), with canonical names.
-    mods: List(Module),
-    /// Syntax (read/parse) errors, if any.
-    errors: List(Error),
-  )
-}
 
 /// Expand CLI paths to `.tao` file paths: file paths are passed through
 /// and directory paths are traversed recursively. An empty list is
@@ -93,60 +74,10 @@ pub fn normalize(path: String) -> String {
   }
 }
 
-/// Expand `paths` and load every `.tao` file in it, along with the
-/// packages declared in the project's `tao.toml` (or just the prelude
-/// if no manifest is present). Files inside a package directory are
-/// named by their canonical package path, deduplicated against the
-/// package modules.
-pub fn load(paths: List(String)) -> Result(Loaded, String) {
-  case expand_paths(paths) {
-    Error(msg) -> Error(msg)
-    Ok(files) -> {
-      let packages = resolve_packages()
-      let #(mods, errors) = load.project(["lib"], files, packages)
-      Ok(Loaded(
-        paths: files,
-        mods: mods,
-        errors: errors,
-      ))
-    }
-  }
-}
-
-/// Resolve the package list: read the project's `tao.toml` if present,
-/// convert its dependencies to the loader format, and ensure the prelude
-/// is always included.
-fn resolve_packages() -> List(#(String, Option(String))) {
-  case config.find_project_root(".") {
-    Some(root) -> {
-      let manifest_path = filepath.join(root, "tao.toml")
-      case config.load(manifest_path) {
-        Ok(cfg) -> {
-          let deps =
-            list.map(cfg.dependencies, fn(d) {
-              #(d.name, d.version)
-            })
-          load.with_prelude(deps)
-        }
-        Error(_) -> load.with_prelude([])
-      }
-    }
-    None -> load.with_prelude([])
-  }
-}
-
-/// Type-check `mods`, making the prelude names available in every
-/// module via implicit imports.
-pub fn compile(
-  mods: List(Module),
-  trace_kinds: List(TraceKind),
-) -> Context {
-  let prelude = load.prelude_modules(mods)
-  let all = load.implicit_prelude_imports(mods, prelude)
-  compile.modules(
-    Context(..new_ctx, ffi: ffi.build, trace_kinds: trace_kinds),
-    all,
-  )
+/// Print a loading error (`error: …`) to stderr and exit 1.
+pub fn load_failure(msg: String) -> Nil {
+  io.println_error("error: " <> msg)
+  exit(1)
 }
 
 /// Print syntax (read/parse) errors to stderr.

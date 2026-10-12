@@ -1,11 +1,11 @@
 #!/bin/bash
 # Run the tao compiler CLI. Pass all args through, e.g.:
 #   scripts/tao.sh test /tmp/fn_type.tao
-#   scripts/tao.sh debug-expr "Int -> Num"
+#   scripts/tao.sh run -e "Int -> Num" --trace resolve
 #
 # stderr is captured and shown only on failure (the common case is just
 # `todo` build warnings, which are noise). Override the timeout with
-# TAO_TIMEOUT (default 5s; debug-expr/debug-file print the whole prelude
+# TAO_TIMEOUT (default 5s; --trace defines/holes print the whole prelude
 # context and may need TAO_TIMEOUT=20).
 set -uo pipefail
 cd "$(dirname "$0")/.."

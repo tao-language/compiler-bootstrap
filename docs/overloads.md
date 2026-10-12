@@ -105,8 +105,8 @@ match __type {
 }
 ```
 
-(`gleam run -- debug-expr "True and False"` prints this match after
-inference.) Names that do not name a type definition are left unchanged:
+(`gleam run -- run -e "True and False" --trace resolve` prints this match
+after inference.) Names that do not name a type definition are left unchanged:
 the type checker reports them as errors (next section).
 
 ### 3. Type checking

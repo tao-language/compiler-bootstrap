@@ -315,8 +315,8 @@ pub fn undefined_variable_reported_test() {
 // Harness
 // ============================================================================
 
-/// Compile an in-memory module against the prelude (as the `debug-file`
-/// CLI does: the prelude modules are compiled together with the module
+/// Compile an in-memory module against the prelude (as the `test` CLI
+/// does: the prelude modules are compiled together with the module
 /// and implicitly imported into it) and return the reported errors (or a
 /// parse error message).
 fn check(source: String) -> List(String) {
