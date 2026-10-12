@@ -46,6 +46,8 @@ pub fn expr(exports: List(#(String, List(String))), e: tao.Expr) -> core.Expr {
     tao.Hole(id) -> core.hole_open(id, e.span)
     tao.Lit(value) -> core.lit(value, e.span)
     tao.Var(name) -> core.var(name, e.span)
+    // Placeholders are desugared to `Fn` at parse time, so this is unreachable.
+    tao.Placeholder(_index) -> panic as "unreached: placeholder not desugared"
     tao.Ctr("Type", [], None) -> core.typ(0, e.span)
     tao.Ctr("Type", [#(_, tao.Expr(tao.Lit(lit.Int(u)), _))], None) ->
       core.typ(u, e.span)
@@ -236,14 +238,14 @@ fn parameters_unpack(
 fn function(
   exports: List(#(String, List(String))),
   opt_fun_name: Option(String),
-  implicits: tao.Parameters,
+  implicits: tao.Implicits,
   params: tao.Parameters,
   opt_returns: Option(tao.Type),
   body: tao.Expr,
   span: Span,
   trace: Option(String),
 ) -> core.Expr {
-  let has_implicits = implicits.0 != []
+  let has_implicits = implicits != []
   let core_fun =
     function_inner(exports, has_implicits, implicits, params, opt_returns, body, span, trace)
   case opt_fun_name {
@@ -255,7 +257,7 @@ fn function(
 fn function_inner(
   exports: List(#(String, List(String))),
   has_implicits: Bool,
-  implicits: tao.Parameters,
+  implicits: tao.Implicits,
   params: tao.Parameters,
   opt_returns: Option(tao.Type),
   body: tao.Expr,
@@ -263,7 +265,7 @@ fn function_inner(
   trace: Option(String),
 ) -> core.Expr {
   case implicits {
-    #([], None) -> {
+    [] -> {
       let param_name = "__args"
       // With implicit parameters the argument-record type is built here,
       // in the `for`-param frame, so its annotations (which reference the
@@ -291,43 +293,52 @@ fn function_inner(
     }
     // One `for` quantifier per implicit type variable; an unannotated
     // implicit gets a fresh hole in `infer_for`.
-    #([first, ..rest], tail) -> {
-      case first {
-        #(tao.Pattern(tao.PVar(name), _), #(opt_type, _)) -> {
-          let inner =
-            function_inner(exports, has_implicits, #(rest, tail), params, opt_returns, body, span, None)
-          let core_type = opt_expr(exports, opt_type)
-          core.for(#(name, core_type), inner, span)
-        }
-        _ -> panic as "invariant: implicit parameter must be a plain type variable"
-      }
+    [#(name, opt_type), ..rest] -> {
+      let inner =
+        function_inner(exports, has_implicits, rest, params, opt_returns, body, span, None)
+      let core_type = opt_expr(exports, opt_type)
+      core.for(#(name, core_type), inner, span)
     }
-    _ -> panic as "invariant: implicit parameter must be a plain type variable"
   }
 }
 
 fn function_type(
   exports: List(#(String, List(String))),
-  implicits: tao.Parameters,
+  implicits: tao.Implicits,
   params: tao.Parameters,
   returns: tao.Type,
   span: Span,
 ) -> core.Expr {
   case implicits {
-    #([], None) -> {
+    [] -> {
       let name = "__args"
       let core_param_type = parameters_type(exports, params, span)
       let core_returns = parameters_unpack(exports, name, params, returns, span, False)
       core.pi(#(name, Some(core_param_type)), core_returns, span)
     }
-    _ -> {
+    [_, ..] -> {
       let name = "__impl"
-      let core_implicits_type = parameters_type(exports, implicits, span)
-      let body = tao.fn_t(#([], None), params, returns, span)
-      let core_body = parameters_unpack(exports, name, implicits, body, span, False)
+      let imp_params = implicits_to_params(implicits, span)
+      let core_implicits_type = parameters_type(exports, imp_params, span)
+      let body = tao.fn_t([], params, returns, span)
+      let core_body = parameters_unpack(exports, name, imp_params, body, span, False)
       core.for(#(name, Some(core_implicits_type)), core_body, span)
     }
   }
+}
+
+/// Implicit parameters as a plain parameter list (the names are the binder
+/// patterns), so `parameters_type`/`parameters_unpack` apply to them.
+fn implicits_to_params(
+  implicits: tao.Implicits,
+  span: Span,
+) -> tao.Parameters {
+  let params =
+    list.map(implicits, fn(implicit) {
+      let #(name, opt_type) = implicit
+      #(tao.pvar(name, span), #(opt_type, None))
+    })
+  #(params, None)
 }
 
 fn application(

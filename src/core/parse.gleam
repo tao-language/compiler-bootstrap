@@ -1,6 +1,12 @@
 /// Core Language Parser
 ///
 /// Parses Core source text into AST using the nibble parser combinator library.
+/// 
+/// By default, nibble parsers like one_of will not backtrack if they 
+/// fail after consuming at least one token. Passing a parser to 
+/// nibble.backtrackable will change this behavior and allows us to 
+/// jump back to the state of the parser before it consumed any input 
+/// and try another one.
 import core/ast.{type Expr}
 import core/error as e
 import core/literals.{type LiteralType} as lit

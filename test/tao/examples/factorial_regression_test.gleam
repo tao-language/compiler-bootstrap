@@ -79,7 +79,7 @@ fn factorial(n: Int) -> Expr {
   let fn_def =
     tao.FnDef(
       name: "f",
-      implicits: #([], None),
+      implicits: [],
       params: #([#(tao.pvar("x", s), #(None, None))], None),
       returns: Some(tao.int_t(s)),
       body: tao.match(x, [case0, case_], s),

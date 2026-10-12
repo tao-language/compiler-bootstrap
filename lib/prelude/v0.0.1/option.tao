@@ -11,3 +11,12 @@ fn _or<a>(option: Option(a), default: a) -> a
 
 >>> _or(Some(10), 20)   10
 >>> _or(None, 20)       20
+
+fn map<a, b>(option: Option(a), f: fn(a) -> b) -> Option(b)
+= match option {
+| Some(x) => Some(f(x))
+| None => None
+}
+
+>>> map(Some(10), fn(_) = 42)   Some(42)
+>>> map(None, fn(_) = 42)       None

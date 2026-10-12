@@ -12,7 +12,6 @@ import gleam/io
 import gleam/list
 import gleam/string
 import simplifile
-import tao/ast.{type Module} as tao
 import tao/compile
 import tao/desugar
 import tao/tests
@@ -154,7 +153,7 @@ fn run_tests_(
 
   // Pair every test with the file it was loaded from, then keep only the
   // selected ones.
-  let all_tests = pair_modules(loaded.paths, loaded.mods, test_defs)
+  let all_tests = pair_modules(loaded.paths, test_defs)
   let sel = TestSelection(args.per_file, args.filter, args.skip)
   let filter = filter_fn(sel)
   let selected = list.filter(all_tests, fn(t) { filter(t.0, t.1) })
@@ -201,30 +200,23 @@ fn run_tests_(
   }
 }
 
-/// Attach the file path of each test. `compile.tests` returns the tests
-/// in module order, and statement order within a module, so the tests
-/// can be split back up by counting each module's test statements.
+/// Attach the file path of each test. Test names embed their source file
+/// (`">>> <file>:<line>`), so tests are paired with the input paths by
+/// that prefix — robust to the loader's module ordering (an input file
+/// that is also a package module appears in package order, not first).
 fn pair_modules(
   paths: List(String),
-  mods: List(Module),
   test_defs: List(tests.TestDef),
 ) -> List(#(String, String, tests.TestDef)) {
-  case paths, mods {
-    [path, ..paths], [#(_, stmts), ..mods] -> {
-      let n =
-        list.count(stmts, fn(stmt) {
-          case stmt.data {
-            tao.Test(..) -> True
-            _ -> False
-          }
-        })
-      let #(head, tail) = list.split(test_defs, n)
-      let pairs = list.map(head, fn(def) { #(path, strip_name(def.name), def) })
-      list.append(pairs, pair_modules(paths, mods, tail))
-    }
-    _, [] -> []
-    [], _ -> []
-  }
+  list.flat_map(paths, fn(path) {
+    let prefix = ">>> " <> path <> ":"
+    list.filter_map(test_defs, fn(def) {
+      case string.starts_with(def.name, prefix) {
+        True -> Ok(#(path, strip_name(def.name), def))
+        False -> Error(Nil)
+      }
+    })
+  })
 }
 
 /// Strip the `">>> "` prefix the parser puts on test names.

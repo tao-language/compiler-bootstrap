@@ -110,7 +110,9 @@ pub fn bindings(p: Pattern) -> List(String) {
     PAlias(name, p) -> [name, ..bindings(p)]
     PCtr(_, p) -> bindings(p)
     PRcd(fields, opt_tail) -> {
-      let xs = list.flat_map(fields, fn(kv) { bindings(kv.1) })
+      // Fields are bound left-to-right (the last field is innermost), so
+      // last-bound first is the *reversed* field order.
+      let xs = list.flat_map(list.reverse(fields), fn(kv) { bindings(kv.1) })
       let ys = case opt_tail {
         Some(tail) -> bindings(tail)
         None -> []

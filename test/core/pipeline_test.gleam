@@ -13,6 +13,7 @@ import core/context.{type Context, Context, new_ctx, push_var}
 import core/error as e
 import core/eval.{do_app, eval}
 import core/ffi
+import core/format
 import core/infer.{check, infer}
 import core/parse as p
 import core/resolve
@@ -127,6 +128,28 @@ pub fn pipeline_parsed_hole_test() {
     v.Neut(v.NHole(_, Some(1))) -> True
     _ -> False
   }
+}
+
+// ============================================================================
+// Formatter (`format.term` → `tm.lift`) name rendering
+// ============================================================================
+
+/// Record pattern fields are bound left-to-right (the *last* field is
+/// innermost, de Bruijn index 0), so `tm.bindings` — which feeds
+/// `tm.lift`'s name table — must list them last-bound first. A multi-field
+/// record pattern used to print its body's variables swapped:
+/// `| {1: f, 2: n} => f({1: n})` rendered as `n({1: f})`.
+pub fn pipeline_format_match_rcd_names_test() {
+  let ctx0 = Context(..new_ctx, ffi: ffi)
+  let pat = ast.prcd([#("1", ast.pvar("f", s)), #("2", ast.pvar("n", s))], None, s)
+  let body = ast.app(ast.var("f", s), ast.rcd_values([#("1", ast.var("n", s))], None, s), s)
+  let ast_ =
+    ast.lam(#("__args", None), ast.let_pat(#(pat, None, ast.var("__args", s)), body, s), s)
+  let #(term, _type_, ctx) = pipeline_ast(ast_, ctx0)
+  assert ctx.errors == []
+  // The body's de Bruijn indices: n is 0 (innermost), f is 1.
+  let rendered = format.term([], term, 80, 2)
+  assert string.contains(rendered, "f({`1`: n})")
 }
 
 // ============================================================================

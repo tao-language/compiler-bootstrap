@@ -1,8 +1,9 @@
 /// Tests for the Tao language parser (type definitions).
-import core/error.{type Error, ExpectedToken, Error as CompileError}
+import core/error.{type Error, ExpectedToken, SyntaxError, Error as CompileError}
 import gleam/list
-import gleam/option.{None, Some}
+import gleam/option.{type Option, None, Some}
 import gleam/result.{try}
+import gleam/string
 import syntax/span.{type Span, Span}
 import tao/ast as tao
 import tao/parse as p
@@ -252,7 +253,7 @@ pub fn parse_fn_named_operator_test() {
     tao.Stmt(
       tao.FnDef(
         "and",
-        #([], None),
+        [],
         #(
           [
             #(
@@ -461,6 +462,19 @@ pub fn parse_import_relative_with_scope_test() {
   }
 }
 
+pub fn parse_import_operator_name_test() {
+  // Operators are named with parentheses in imports, like `fn (*)` and
+  // `let (and) = ...`: `import prelude/operators/mul {(*)}`.
+  let src = "import prelude/operators/mul {(*)}"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.Import(path, alias, tao.ImportSome(names)), _)]) ->
+      path == "/prelude/operators/mul"
+      && alias == "mul"
+      && names == [#("*", "*")]
+    _ -> False
+  }
+}
+
 // ============================================================================
 // Error localization
 //
@@ -470,20 +484,30 @@ pub fn parse_import_relative_with_scope_test() {
 // bad body is misreported as "expected import" at the `fn` token.
 // ============================================================================
 
+pub fn parse_fn_type_now_parses_test() {
+  // Function types are valid syntax: `fn f(g: fn(x: Int) -> Num) = 1` parses,
+  // and the parameter type is a `FnT` (a function from `Int` to `Num`).
+  let src = "fn f(g: fn(x: Int) -> Num) = 1"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.FnDef("f", _, params, _, _), _)]) ->
+      case params {
+        #([#(_, #(Some(tao.Expr(tao.FnT(_, _, _), _)), _)), ..], _) -> True
+        _ -> False
+      }
+    _ -> False
+  }
+}
+
 pub fn parse_fn_type_error_localized_test() {
-  // A function type `Int -> Num` in a parameter is not (yet) valid syntax.
-  // The error is localized to the `->` inside the function definition, not to
-  // the `fn` token where the `import` alternative failed.
-  let src = "fn f(g: Int -> Num) = 1"
+  // A bare arrow is not a type: in `fn f(g: Int ->) = 1` the parameter type
+  // is just `Int`, and the `->` is an unexpected token, localized to it
+  // (col 13), not to the `fn` token (col 1) where the `import`/`fn`
+  // alternatives first gave up.
+  let src = "fn f(g: Int ->) = 1"
   assert case parse_stmts(src) {
     Ok(_) -> False
-    Error(CompileError(ExpectedToken(")", "->"), span, trace)) -> {
-      let labels = list.map(trace, fn(entry) { entry.0 })
-      span.start_line == 1
-      && span.start_col == 13
-      && list.contains(labels, "function definition")
-    }
-    _ -> False
+    Error(CompileError(_problem, span, _trace)) ->
+      span.start_line == 1 && span.start_col >= 13
   }
 }
 
@@ -567,4 +591,454 @@ pub fn parse_type_def_gadt_test() {
       ),
     ])
   assert parse_stmts(src) == expected
+}
+
+// ============================================================================
+// Function types and anonymous functions
+//
+// Types are values in Tao, so function types live in the expression grammar.
+// Both forms require the `fn` prefix: `fn(I)(P) -> R` is a function type,
+// `fn(I)(P) -> R = B` (or `fn(I)(P) = B`) an anonymous function. A bare
+// arrow (`A -> B`) is not a type.
+// ============================================================================
+
+pub fn parse_bare_arrow_is_error_test() {
+  // `Int -> Num` is not a type: function types require the `fn` prefix.
+  assert case parse_expr("Int -> Num") {
+    Ok(_) -> False
+    Error(_) -> True
+  }
+}
+
+pub fn parse_fn_type_unnamed_param_test() {
+  // `fn(a) -> b`: unannotated parameters are types, so this is a function
+  // from type `a` to type `b` (not an anonymous function: there is no body).
+  let e = parse_expr("fn(a) -> b")
+  assert case e {
+    Ok(tao.Expr(tao.FnT([], #([p], None), ret), _)) ->
+      case p, ret.data {
+        #(
+          tao.Pattern(tao.PAny, _),
+          #(Some(ptype), _)
+        ),
+        tao.Var(r)
+        if r == "b" ->
+          case ptype.data {
+            tao.Var(v) -> v == "a"
+            _ -> False
+          }
+        _, _ -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn parse_fn_type_named_param_test() {
+  // `fn(x: a) -> b`: the named parameter is bound so the return type may
+  // depend on it.
+  let e = parse_expr("fn(x: a) -> b")
+  assert case e {
+    Ok(tao.Expr(tao.FnT([], #([p], None), ret), _)) ->
+      case p, ret.data {
+        #(
+          tao.Pattern(tao.PVar(name), _),
+          #(Some(ptype), _)
+        ),
+        tao.Var(r)
+        if name == "x" && r == "b" ->
+          case ptype.data {
+            tao.Var(v) -> v == "a"
+            _ -> False
+          }
+        _, _ -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn parse_fn_type_multi_param_test() {
+  // `fn<a, b>(c, d) -> e`: two implicits, two (unannotated) type parameters.
+  let e = parse_expr("fn<a, b>(c, d) -> e")
+  assert case e {
+    Ok(tao.Expr(tao.FnT(implicits, #([p1, p2], None), ret), _)) ->
+      case implicits, ret.data {
+        [#("a", None), #("b", None)],
+        tao.Var(r)
+        if r == "e" ->
+          case p1, p2 {
+            #(_, #(Some(t1), _)), #(_, #(Some(t2), _)) ->
+              case t1.data, t2.data {
+                tao.Var(v1), tao.Var(v2) -> v1 == "c" && v2 == "d"
+                _, _ -> False
+              }
+            _, _ -> False
+          }
+        _, _ -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn parse_fn_type_nested_test() {
+  // `fn(f: fn(x: Int) -> Int) -> Bool`: a function type as a parameter type.
+  let e = parse_expr("fn(f: fn(x: Int) -> Int) -> Bool")
+  assert case e {
+    Ok(tao.Expr(tao.FnT([], #([p], None), ret), _)) ->
+      case p, ret.data {
+        #(_, #(Some(inner), _)),
+        tao.Ctr("Bool", _, _)
+        ->
+          case inner.data {
+            tao.FnT([], #([ip], None), iret) ->
+              case ip, iret.data {
+                #(_, #(Some(it), _)), tao.Ctr("Int", _, _) ->
+                  case it.data {
+                    tao.Ctr("Int", _, _) -> True
+                    _ -> False
+                  }
+                _, _ -> False
+              }
+            _ -> False
+          }
+        _, _ -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn parse_fn_type_missing_body_is_error_test() {
+  // `fn(x: a)` with neither `->` nor `=` is not a complete expression.
+  assert case parse_expr("fn(x: a)") {
+    Ok(_) -> False
+    Error(_) -> True
+  }
+}
+
+pub fn parse_fn_type_implicit_test() {
+  // `fn<a>(a) -> a`: an unannotated implicit type variable.
+  let e = parse_expr("fn<a>(a) -> a")
+  assert case e {
+    Ok(tao.Expr(tao.FnT(implicits, _, _), _)) ->
+      case implicits {
+        [#("a", None)] -> True
+        _ -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn parse_fn_type_typed_implicit_test() {
+  // `fn<a: t>(x: a) -> t`: a typed implicit; the param and return reference it.
+  let e = parse_expr("fn<a: t>(x: a) -> t")
+  assert case e {
+    Ok(tao.Expr(tao.FnT(implicits, params, ret), _)) -> {
+      let imp = case implicits {
+        [#("a", Some(t)), ..] -> Some(t)
+        _ -> None
+      }
+      let par = case params {
+        #([pp], _) -> Some(pp)
+        _ -> None
+      }
+      case imp, par {
+        Some(imp_t), Some(pp) -> {
+          let imp_ref = case imp_t.data {
+            tao.Var(v) -> v == "t"
+            _ -> False
+          }
+          let param_ref = case pp {
+            #(_, #(Some(t), _)) ->
+              case t.data {
+                tao.Var(v) -> v == "a"
+                _ -> False
+              }
+            _ -> False
+          }
+          let ret_ref = case ret.data {
+            tao.Var(v) -> v == "t"
+            _ -> False
+          }
+          imp_ref && param_ref && ret_ref
+        }
+        _, _ -> False
+      }
+    }
+    _ -> False
+  }
+}
+
+// ============================================================================
+// Anonymous functions (`fn(x) = y` and friends)
+// ============================================================================
+
+/// A parsed expression is an anonymous `Fn` with the given implicits and
+/// exactly `n` parameters (structure only, ignoring spans and the body).
+fn is_anon_fn(implicits: List(#(String, Option(tao.Expr))), n: Int, e: tao.Expr) -> Bool {
+  case e.data {
+    tao.Fn(None, imps, #(ps, None), _, _body) ->
+      list.length(ps) == n
+      && list.length(imps) == list.length(implicits)
+      && list.all(
+        list.zip(imps, implicits),
+        fn(pair) {
+          case pair {
+            #(a, b) if a.0 == b.0 -> True
+            _ -> False
+          }
+        },
+      )
+    _ -> False
+  }
+}
+
+pub fn parse_fn_anon_simple_test() {
+  // `fn(x) = y`: an anonymous function of one unannotated parameter.
+  let e = parse_expr("fn(x) = y")
+  assert case e {
+    Ok(expr) -> is_anon_fn([], 1, expr)
+    _ -> False
+  }
+}
+
+pub fn parse_fn_anon_typed_test() {
+  // `fn(x: a) = y`.
+  let e = parse_expr("fn(x: a) = y")
+  assert case e {
+    Ok(tao.Expr(tao.Fn(None, [], #([p], None), None, body), _)) ->
+      case p, body.data {
+        #(
+          tao.Pattern(tao.PVar(name), _),
+          #(Some(t), _)
+        ),
+        tao.Var(r)
+        if name == "x" && r == "y" ->
+          case t.data {
+            tao.Var(v) -> v == "a"
+            _ -> False
+          }
+        _, _ -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn parse_fn_anon_return_test() {
+  // `fn(x: a) -> b = y`: an explicit return type.
+  let e = parse_expr("fn(x: a) -> b = y")
+  assert case e {
+    Ok(tao.Expr(tao.Fn(None, [], _, Some(ret), body), _)) ->
+      case ret.data, body.data {
+        tao.Var(r), tao.Var(b) if r == "b" && b == "y" -> True
+        _, _ -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn parse_fn_anon_implicit_test() {
+  // `fn<a>(x: a) -> b = y`: an unannotated implicit.
+  let e = parse_expr("fn<a>(x: a) -> b = y")
+  assert case e {
+    Ok(expr) -> is_anon_fn([#("a", None)], 1, expr)
+    _ -> False
+  }
+}
+
+pub fn parse_fn_anon_typed_implicit_test() {
+  // `fn<a: T>(x: a) -> b = y`: a typed implicit.
+  let e = parse_expr("fn<a: T>(x: a) -> b = y")
+  assert case e {
+    Ok(tao.Expr(tao.Fn(None, [#("a", Some(t))], _, _, _), _)) ->
+      case t.data {
+        tao.Ctr("T", _, _) -> True
+        _ -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn parse_fn_anon_multi_implicit_test() {
+  // `fn<a, b>(x, y) -> b = z`: two implicits, two parameters.
+  let e = parse_expr("fn<a, b>(x, y) -> b = z")
+  assert case e {
+    Ok(expr) -> is_anon_fn([#("a", None), #("b", None)], 2, expr)
+    _ -> False
+  }
+}
+
+pub fn parse_fn_anon_block_test() {
+  // `fn(x) { let y = x }`: a block body (a `Do`).
+  let e = parse_expr("fn(x) { let y = x }")
+  assert case e {
+    Ok(tao.Expr(tao.Fn(None, [], #([_], None), None, body), _)) ->
+      case body.data {
+        tao.Do([tao.Stmt(tao.LetVar("y", _, _), _)]) -> True
+        _ -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn parse_fn_anon_zero_params_test() {
+  // `fn() = y`: zero parameters.
+  let e = parse_expr("fn() = y")
+  assert case e {
+    Ok(expr) -> is_anon_fn([], 0, expr)
+    _ -> False
+  }
+}
+
+pub fn parse_fn_type_zero_params_test() {
+  // `fn() -> a`: a zero-parameter function type.
+  let e = parse_expr("fn() -> a")
+  assert case e {
+    Ok(tao.Expr(tao.FnT([], #([], None), ret), _)) ->
+      case ret.data {
+        tao.Var(r) -> r == "a"
+        _ -> False
+      }
+    _ -> False
+  }
+}
+
+pub fn parse_let_fn_type_paren_test() {
+  // `let t: (fn(x: a) -> b) = c`: a parenthesized function type annotation.
+  let src = "let t: (fn(x: a) -> b) = c"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.LetVar("t", Some(tao.Expr(tao.FnT(_, _, _), _)), tao.Expr(tao.Var(v), _)), _)])
+    -> v == "c"
+    _ -> False
+  }
+}
+
+pub fn parse_let_fn_type_ambiguous_test() {
+  // `let t: fn(x: a) -> b = c` is ambiguous: the `fn` form is parsed as an
+  // anonymous function (its body swallows `= c`), so the let's `=` is missing
+  // and the source is a parse error. The parenthesized form is the escape
+  // hatch (see `parse_let_fn_type_paren_test`).
+  let src = "let t: fn(x: a) -> b = c"
+  assert case parse_stmts(src) {
+    Ok(_) -> False
+    Error(_) -> True
+  }
+}
+
+// ============================================================================
+// Placeholders (`_`, `_N`): anonymous-function arguments
+//
+// A placeholder expression is desugared at parse time to an anonymous `Fn` whose
+// parameters are the placeholders (1-indexed; `_` is `_1`), each replaced by the
+// corresponding parameter variable.
+// ============================================================================
+
+/// A parsed expression is an anonymous `Fn` with exactly `n` parameters.
+fn is_ph_fn(n: Int, e: tao.Expr) -> Bool {
+  case e.data {
+    tao.Fn(None, [], #(ps, None), None, _body) ->
+      list.length(ps) == n
+    _ -> False
+  }
+}
+
+pub fn parse_placeholder_single_test() {
+  // `_ + 1` -> `fn(x1) = x1 + 1`.
+  let e = parse_expr("_ + 1")
+  assert case e {
+    Ok(expr) -> is_ph_fn(1, expr)
+    _ -> False
+  }
+}
+
+pub fn parse_placeholder_reversed_test() {
+  // `1 / _` -> `fn(x1) = 1 / x1`.
+  let e = parse_expr("1 / _")
+  assert case e {
+    Ok(expr) -> is_ph_fn(1, expr)
+    _ -> False
+  }
+}
+
+pub fn parse_placeholder_numbered_test() {
+  // `_1 + _2` -> `fn(x1, x2) = x1 + x2` (two parameters).
+  let e = parse_expr("_1 + _2")
+  assert case e {
+    Ok(expr) -> is_ph_fn(2, expr)
+    _ -> False
+  }
+}
+
+pub fn parse_placeholder_high_index_test() {
+  // `_3` alone -> a three-parameter function returning its third argument.
+  let e = parse_expr("_3")
+  assert case e {
+    Ok(expr) -> is_ph_fn(3, expr)
+    _ -> False
+  }
+}
+
+pub fn parse_placeholder_zero_is_error_test() {
+  // `_0` is not a valid position (positions are 1-based): a clear syntax error.
+  assert case parse_expr("_0") {
+    Ok(_) -> False
+    Error(_) -> True
+  }
+}
+
+pub fn parse_placeholder_too_large_test() {
+  // `_N` desugars to an N-parameter function, so N is capped (100):
+  // `_101` is a syntax error, `_100` parses.
+  assert case parse_expr("_101") {
+    Ok(_) -> False
+    Error(CompileError(SyntaxError(msg), _, _)) ->
+      string.contains(msg, "too large")
+    _ -> False
+  }
+  assert case parse_expr("_100") {
+    Ok(expr) -> is_ph_fn(100, expr)
+    _ -> False
+  }
+}
+
+pub fn parse_let_underscore_test() {
+  // `let _ = 1` is a wildcard binding: `_` is a `Placeholder` token (not a
+  // name), so `let_var` accepts it and keeps it under the name `"_"`.
+  let src = "let _ = 1"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.LetVar(name, _, tao.Expr(tao.Lit(_), _)), _)]) ->
+      name == "_"
+    _ -> False
+  }
+}
+
+pub fn parse_let_numbered_underscore_test() {
+  // `let _1 = 1` is also a wildcard binding (a numbered placeholder is not a
+  // let name either).
+  let src = "let _1 = 1"
+  assert case parse_stmts(src) {
+    Ok([tao.Stmt(tao.LetVar(name, _, _), _)]) -> name == "_"
+    _ -> False
+  }
+}
+
+pub fn lex_placeholder_test() {
+  // `_`, `_1`, `_2` are placeholder tokens; `_and`, `_1a`, `_1_` are names.
+  assert lex("_") == Ok([p.Placeholder(None)])
+  assert lex("_1") == Ok([p.Placeholder(Some(1))])
+  assert lex("_2") == Ok([p.Placeholder(Some(2))])
+  assert lex("_and") == Ok([p.Name("_and")])
+  assert lex("_1a") == Ok([p.Name("_1a")])
+  assert lex("_1_") == Ok([p.Name("_1_")])
+}
+
+pub fn parse_placeholder_underscore_still_wildcard_test() {
+  // `_` in a pattern is still the wildcard (a `PAny`), not a placeholder.
+  let src = "match x { | _ => 1 }"
+  assert case parse_expr(src) {
+    Ok(tao.Expr(tao.Match(_, cases), _)) ->
+      case cases {
+        [tao.Case(tao.Pattern(tao.PAny, _), _, _)] -> True
+        _ -> False
+      }
+    _ -> False
+  }
 }

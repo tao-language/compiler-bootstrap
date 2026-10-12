@@ -3,17 +3,26 @@
 /// Parses Tao source text into `tao/ast` statements/expressions using the
 /// nibble parser combinator library. Tag names (constructor/type names)
 /// start with an uppercase letter; everything else is a variable name.
+/// 
+/// By default, nibble parsers like one_of will not backtrack if they 
+/// fail after consuming at least one token. Passing a parser to 
+/// nibble.backtrackable will change this behavior and allows us to 
+/// jump back to the state of the parser before it consumed any input 
+/// and try another one.
 import core/error as e
 import filepath
 import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
+import gleam/regexp
 import gleam/result.{try}
 import gleam/set
 import gleam/string
 import nibble.{type Parser, do, return}
-import nibble/lexer.{type Lexer, type Span as NibbleSpan}
+import nibble/lexer.{
+  type Lexer, type Matcher, type Span as NibbleSpan, Keep, NoMatch, Skip,
+}
 import nibble/pratt
 import syntax/span.{type Span, Span, merge}
 import tao/ast.{
@@ -55,6 +64,11 @@ pub type Token {
   Name(String)
   IntLit(Int)
   FloatLit(Float)
+  // An anonymous-function argument placeholder. `_` is `Placeholder(None)`
+  // (the first argument); `_N` is `Placeholder(Some(N))` (the N-th argument,
+  // 1-based). `_0` is a syntax error. Lexed as its own token so it can never
+  // clash with a variable name.
+  Placeholder(Option(Int))
 
   // Symbols
   Repl
@@ -129,6 +143,11 @@ fn lexer_() -> Lexer(Token, Nil) {
     lexer.keyword("is", "\\W", Is),
     lexer.keyword("in", "\\W", In),
 
+    // Placeholders (`_`, `_1`, `_2`, ...): an underscore followed by digits
+    // only. Must come before the identifier rule so they are not lexed as
+    // names (which would let a variable clash with a placeholder).
+    placeholder_matcher(),
+
     // Names
     lexer.identifier("[_a-zA-Z]", "[_\\w]", set.from_list(reserved), Name),
 
@@ -172,6 +191,37 @@ fn lexer_() -> Lexer(Token, Nil) {
     // Whitespace
     lexer.whitespace(Nil) |> lexer.ignore,
   ])
+}
+
+/// Lex `_` and `_N` (an underscore followed by digits only) as `Placeholder`.
+/// `_foo`, `_1a` and the like are not placeholders and fall through to the
+/// identifier rule.
+fn placeholder_matcher() -> Matcher(Token, Nil) {
+  let assert Ok(ident) = regexp.from_string("^_\\d*$")
+  let assert Ok(digit) = regexp.from_string("\\d")
+  let assert Ok(word) = regexp.from_string("\\w")
+  lexer.custom(fn(mode, lexeme, lookahead) {
+    case regexp.check(digit, lookahead), regexp.check(ident, lexeme) {
+      True, True -> Skip
+      // A word char follows (e.g. `_and`): it is a name, not a placeholder.
+      False, True ->
+        case regexp.check(word, lookahead) {
+          True -> NoMatch
+          False -> Keep(Placeholder(placeholder_index(lexeme)), mode)
+        }
+      _, _ -> NoMatch
+    }
+  })
+}
+
+/// `_` is `None` (the first argument); `_N` is `Some(N)`. The 1-based position
+/// is resolved by the parser (`_0` is rejected there).
+fn placeholder_index(lexeme: String) -> Option(Int) {
+  let digits = string.drop_start(lexeme, 1)
+  case digits {
+    "" -> None
+    _ -> int.parse(digits) |> result.map(Some) |> result.unwrap(None)
+  }
 }
 
 // ============================================================================
@@ -288,7 +338,9 @@ pub fn dead_ends_to_error(
   }
 }
 
-/// Pick the dead end at the furthest position. Ties keep the first one.
+/// Pick the dead end at the furthest position. On a position tie, prefer a
+/// specific `Custom` message (e.g. "_0 is not a valid placeholder") over the
+/// generic "expected X" dead ends a `one_of` records for every alternative.
 fn furthest_dead_end(
   best: nibble.DeadEnd(Token, String),
   rest: List(nibble.DeadEnd(Token, String)),
@@ -296,7 +348,15 @@ fn furthest_dead_end(
   list.fold(rest, best, fn(acc, dead_end) {
     case is_after(dead_end.pos, acc.pos) {
       True -> dead_end
-      False -> acc
+      False ->
+        case is_same_pos(dead_end.pos, acc.pos) {
+          True ->
+            case is_custom(dead_end), is_custom(acc) {
+              True, False -> dead_end
+              _, _ -> acc
+            }
+          False -> acc
+        }
     }
   })
 }
@@ -304,6 +364,17 @@ fn furthest_dead_end(
 fn is_after(a: NibbleSpan, b: NibbleSpan) -> Bool {
   a.row_start > b.row_start
   || { a.row_start == b.row_start && a.col_start > b.col_start }
+}
+
+fn is_same_pos(a: NibbleSpan, b: NibbleSpan) -> Bool {
+  a.row_start == b.row_start && a.col_start == b.col_start
+}
+
+fn is_custom(dead_end: nibble.DeadEnd(Token, String)) -> Bool {
+  case dead_end.problem {
+    nibble.Custom(_message) -> True
+    _ -> False
+  }
 }
 
 fn dead_end_to_error(
@@ -362,6 +433,11 @@ pub fn token_to_string(tok: Token) -> String {
     Name(n) -> n
     IntLit(n) -> int.to_string(n)
     FloatLit(f) -> float.to_string(f)
+    Placeholder(n) ->
+      case n {
+        None -> "_"
+        Some(n) -> "_" <> int.to_string(n)
+      }
     Repl -> ">>>"
     FatArrow -> "=>"
     ThinArrow -> "->"
@@ -609,11 +685,13 @@ fn import_path() -> Parser(String, Token, String) {
     },
     // Relative: ../path (one or more ../)
     {
-      use dots <- do(nibble.many1({
-        use _ <- do(nibble.token(Spread))
-        use _ <- do(nibble.token(Div))
-        return("..")
-      }))
+      use dots <- do(
+        nibble.many1({
+          use _ <- do(nibble.token(Spread))
+          use _ <- do(nibble.token(Div))
+          return("..")
+        }),
+      )
       use parts <- do(nibble.many1(nibble.one_of(path_valid)))
       let prefix = string.join(dots, "/")
       return(prefix <> "/" <> string.join(parts, ""))
@@ -632,7 +710,7 @@ fn import_alias() -> Parser(String, Token, String) {
 }
 
 fn import_name() -> Parser(#(String, String), Token, String) {
-  use name <- do(take_name())
+  use name <- do(nibble.one_of([take_name(), op_name()]))
   use alias <- do(nibble.one_of([import_alias(), return(name)]))
   return(#(name, alias))
 }
@@ -657,7 +735,7 @@ fn let_var(file: String) -> Parser(Stmt, Token, String) {
   {
     use start <- do(get_span(file))
     use _ <- do(nibble.token(KwLet))
-    use name <- do(var_name())
+    use name <- do(let_name())
     use typ <- do(
       nibble.optional({
         use _ <- do(nibble.token(Colon))
@@ -736,17 +814,8 @@ fn fn_def_body(
   name: String,
 ) -> Parser(Stmt, Token, String) {
   {
-    use implicits <- do(
-      nibble.one_of([
-        {
-          use _ <- do(nibble.token(LAngle))
-          use implicits <- do(parameters(file))
-          use _ <- do(nibble.token(RAngle))
-          return(implicits)
-        },
-        return(#([], None)),
-      ]),
-    )
+    use implicits <- do(nibble.optional(fn_implicits(file)))
+    let implicits = option.unwrap(implicits, [])
     use _ <- do(nibble.token(LParen))
     use params <- do(parameters(file))
     use _ <- do(nibble.token(RParen))
@@ -842,6 +911,7 @@ fn pattern(file: String) -> Parser(Pattern, Token, String) {
     pfloat(file),
     pint(file),
     pvar(file),
+    punderscore(file),
     pctr(file),
   ])
 }
@@ -864,10 +934,16 @@ fn pvar(file: String) -> Parser(Pattern, Token, String) {
   use start <- do(get_span(file))
   use name <- do(var_name())
   use end <- do(get_span(file))
-  case name {
-    "_" -> return(tao.pany(merge(start, end)))
-    _ -> return(tao.pvar(name, merge(start, end)))
-  }
+  return(tao.pvar(name, merge(start, end)))
+}
+
+/// `_` (and `_N`) in a pattern position is a wildcard. `_` is now a
+/// `Placeholder` token (not a name), so it is matched here, not in `pvar`.
+fn punderscore(file: String) -> Parser(Pattern, Token, String) {
+  use start <- do(get_span(file))
+  use _n <- do(take_placeholder())
+  use end <- do(get_span(file))
+  return(tao.pany(merge(start, end)))
 }
 
 fn pctr(file: String) -> Parser(Pattern, Token, String) {
@@ -910,12 +986,16 @@ fn expr(file: String) -> Parser(Expr, Token, String) {
     ],
     dropping: return(Nil),
   )
+  |> nibble.map(desugar_placeholders)
   |> nibble.in("expression")
 }
 
 fn atom(file: String) -> Parser(Expr, Token, String) {
   use base <- do(
     nibble.one_of([
+      fn_expr(file),
+      paren(file),
+      placeholder(file),
       hole(file),
       float(file),
       int(file),
@@ -924,6 +1004,229 @@ fn atom(file: String) -> Parser(Expr, Token, String) {
     ]),
   )
   postfix(file, base)
+}
+
+/// A `fn` expression: an anonymous function (`fn(x: a) = body`) or a
+/// function type (`fn(x: a) -> b`). The two are disambiguated by the body:
+/// a `=`/`{` makes it a function, a `->` without a body a type. Without an
+/// annotation an unparenthesized parameter is a name (pattern) in the
+/// function and a type in the type, so the function is tried first and the
+/// type only when no body follows. `fn_value` is backtrackable: it can fail
+/// after consuming tokens (e.g. `fn(a) -> b` has no body), and the failure
+/// must not commit so that `fn_type` can re-read the same input.
+fn fn_expr(file: String) -> Parser(Expr, Token, String) {
+  nibble.one_of([nibble.backtrackable(fn_value(file)), fn_type(file)])
+}
+
+/// An anonymous function: `fn<implicits>(params) -> ret = body` or
+/// `fn<implicits>(params) { stmts }`. The `-> ret` part is optional.
+fn fn_value(file: String) -> Parser(Expr, Token, String) {
+  {
+    use start <- do(get_span(file))
+    use _ <- do(nibble.token(KwFn))
+    use implicits <- do(nibble.optional(fn_implicits(file)))
+    let implicits = option.unwrap(implicits, [])
+    use _ <- do(nibble.token(LParen))
+    use params <- do(parameters(file))
+    use _ <- do(nibble.token(RParen))
+    use opt_return <- do(
+      nibble.optional({
+        use _ <- do(nibble.token(ThinArrow))
+        expr(file)
+      }),
+    )
+    use body <- do(
+      nibble.one_of([
+        {
+          use _ <- do(nibble.token(Equals))
+          expr(file)
+        },
+        {
+          use _ <- do(nibble.token(LBrace))
+          use stmts <- do(nibble.many(stmt(file)))
+          use _ <- do(nibble.token(RBrace))
+          return(tao.do(stmts, start))
+        },
+      ]),
+    )
+    use end <- do(get_span(file))
+    return(tao.Expr(
+      tao.Fn(None, implicits, params, opt_return, body),
+      merge(start, end),
+    ))
+  }
+  |> nibble.in("anonymous function")
+}
+
+/// A function *type*: `fn<implicits>(params) -> returns`.
+fn fn_type(file: String) -> Parser(Expr, Token, String) {
+  {
+    use start <- do(get_span(file))
+    use _ <- do(nibble.token(KwFn))
+    use implicits <- do(nibble.optional(fn_implicits(file)))
+    let implicits = option.unwrap(implicits, [])
+    use _ <- do(nibble.token(LParen))
+    use params <- do(sequence(fn_type_param(file), Comma))
+    use _ <- do(nibble.token(RParen))
+    use _ <- do(nibble.token(ThinArrow))
+    use ret <- do(expr(file))
+    use end <- do(get_span(file))
+    return(tao.fn_t(implicits, #(params, None), ret, merge(start, end)))
+  }
+  |> nibble.in("function type")
+}
+
+/// Implicit (quantified) parameters: `<a, b: Type>` — names with optional
+/// type annotations (no patterns, no defaults).
+fn fn_implicits(file: String) -> Parser(tao.Implicits, Token, String) {
+  use _ <- do(nibble.token(LAngle))
+  use params <- do(sequence(type_parameter(file), Comma))
+  use _ <- do(nibble.token(RAngle))
+  return(params)
+}
+
+/// One parameter of a function type: a type, optionally named (`x: a` binds
+/// `x` so the return type may depend on it).
+fn fn_type_param(file: String) -> Parser(tao.Param, Token, String) {
+  use opt_named <- do(
+    nibble.optional({
+      use nstart <- do(get_span(file))
+      use name <- do(take_var())
+      use nend <- do(get_span(file))
+      use _ <- do(nibble.token(Colon))
+      return(#(name, merge(nstart, nend)))
+    }),
+  )
+  use typ <- do(expr(file))
+  let pattern = case opt_named {
+    Some(#(name, nspan)) -> tao.pvar(name, nspan)
+    None -> tao.pany(typ.span)
+  }
+  return(#(pattern, #(Some(typ), None)))
+}
+
+/// A parenthesized expression: `(expr)`.
+fn paren(file: String) -> Parser(Expr, Token, String) {
+  use _ <- do(nibble.token(LParen))
+  use e <- do(expr(file))
+  use _ <- do(nibble.token(RParen))
+  return(e)
+}
+
+/// Placeholder positions are capped: `_N` desugars to an N-parameter
+/// function, so an unbounded N (e.g. `_99999999999999999999`) would build
+/// an unbounded parameter list at parse time.
+const max_placeholder_index = 100
+
+/// A placeholder (`_` or `_N`): an anonymous-function argument. Desugared to a
+/// `Fn` by `desugar_placeholders` after the enclosing expression is parsed.
+fn placeholder(file: String) -> Parser(Expr, Token, String) {
+  use start <- do(get_span(file))
+  use n <- do(take_placeholder())
+  use end <- do(get_span(file))
+  let span = merge(start, end)
+  case n {
+    // `_` is the first argument.
+    None -> return(tao.placeholder(1, span))
+    // `_0` is not a valid position (positions are 1-based).
+    Some(0) ->
+      nibble.throw(
+        "_0 is not a valid placeholder; positions are 1-based, so the first argument is _ (or _1)",
+      )
+    Some(n) if n > max_placeholder_index ->
+      nibble.throw(
+        "_" <> int.to_string(n)
+        <> " is too large; placeholder positions are capped at "
+        <> int.to_string(max_placeholder_index),
+      )
+    Some(n) -> return(tao.placeholder(n, span))
+  }
+}
+
+fn take_placeholder() -> Parser(Option(Int), Token, String) {
+  nibble.take_map("a placeholder", fn(tok) {
+    case tok {
+      Placeholder(n) -> Some(n)
+      _ -> None
+    }
+  })
+}
+
+// ============================================================================
+// PLACEHOLDER DESUGARING
+//
+// A placeholder (`_`, `_N`) is an anonymous-function argument. After an
+// expression is parsed, `desugar_placeholders` collects every placeholder
+// index in it; if there is at least one, the whole expression is wrapped in an
+// anonymous `Fn` whose parameters are the placeholders (1-indexed, `_` is
+// sugar for `_1`), and each placeholder is replaced by the corresponding
+// parameter variable. E.g. `_ + 1` -> `fn(x1) = x1 + 1`, `_2 < _1` ->
+// `fn(x1, x2) = x2 < x1`.
+//
+// Only the pratt *spine* of the expression is walked: every sub-expression
+// (application args, match cases, fn bodies, ...) was parsed — and already
+// desugared — by its own `expr` call, so it contains no raw placeholders.
+// The spine is what this parse level built itself: atoms, `Op1`/`Op2`
+// operands, the fun of an `App`, the base of a `Dot`.
+// ============================================================================
+
+fn ph_name(index: Int) -> String {
+  "__ph" <> int.to_string(index)
+}
+
+fn desugar_placeholders(e: Expr) -> Expr {
+  let #(indices, body) = ph_spine(e, [])
+  case indices {
+    [] -> e
+    [_, ..] -> {
+      let num = ph_max(indices)
+      let params = ph_params(num, e.span)
+      tao.Expr(tao.Fn(None, [], #(params, None), None, body), e.span)
+    }
+  }
+}
+
+fn ph_max(indices: List(Int)) -> Int {
+  list.fold(indices, 0, fn(acc, n) { int.max(acc, n) })
+}
+
+fn ph_params(num: Int, span: Span) -> List(tao.Param) {
+  int_range(1, num)
+  |> list.map(fn(i) { #(tao.pvar(ph_name(i), span), #(None, None)) })
+}
+
+fn int_range(from: Int, to: Int) -> List(Int) {
+  case from > to {
+    True -> []
+    False -> [from, ..int_range(from + 1, to)]
+  }
+}
+
+/// Walk the pratt spine, replacing every `Placeholder(n)` with the variable
+/// `__ph<n>` and collecting the indices that were present (threaded through
+/// `acc`). Non-spine children are already placeholder-free.
+fn ph_spine(e: Expr, acc: List(Int)) -> #(List(Int), Expr) {
+  case e.data {
+    tao.Placeholder(n) -> #([n, ..acc], tao.var(ph_name(n), e.span))
+    tao.Op1(op, x) -> {
+      let #(i, new_x) = ph_spine(x, acc)
+      #(i, tao.Expr(tao.Op1(op, new_x), e.span))
+    }
+    tao.Op2(op, lhs, rhs) -> {
+      let #(i1, new_lhs) = ph_spine(lhs, acc)
+      let #(i2, new_rhs) = ph_spine(rhs, i1)
+      #(i2, tao.Expr(tao.Op2(op, new_lhs, new_rhs), e.span))
+    }
+    tao.App(fun, args, tail) -> {
+      let #(i, new_fun) = ph_spine(fun, acc)
+      #(i, tao.Expr(tao.App(new_fun, args, tail), e.span))
+    }
+    tao.Dot(base, field) -> {
+      let #(i, new_base) = ph_spine(base, acc)
+      #(i, tao.Expr(tao.Dot(new_base, field), e.span))
+    }
+    _ -> #(acc, e)
+  }
 }
 
 /// Postfix operators on an atom: field access `expr.field` (e.g.
@@ -969,18 +1272,31 @@ fn float(file: String) -> Parser(Expr, Token, String) {
 }
 
 fn var_name() -> Parser(String, Token, String) {
+  nibble.one_of([take_var(), op_name()])
+}
+
+/// A `let` name: a variable name, a parenthesized operator, or a
+/// placeholder. `_` is a `Placeholder` token (not a name), so a wildcard
+/// binding (`let _ = ...`) is accepted here and kept under the name `"_"`.
+fn let_name() -> Parser(String, Token, String) {
   nibble.one_of([
-    take_var(),
+    var_name(),
     {
-      // Operators can be named with parentheses: `fn (+)`, `fn (and)`
-      let ops = [Add, Sub, Mul, Div, And, Or, Is, In]
-      let ops_names = list.map(ops, token_text)
-      use _ <- do(nibble.token(LParen))
-      use name <- do(nibble.one_of(ops_names))
-      use _ <- do(nibble.token(RParen))
-      return(name)
+      use _ <- do(take_placeholder())
+      return("_")
     },
   ])
+}
+
+/// A parenthesized operator name: `(*)`, `(and)`, ... — operators are
+/// keywords/symbols, so naming them requires the parentheses.
+fn op_name() -> Parser(String, Token, String) {
+  let ops = [Add, Sub, Mul, Div, And, Or, Is, In]
+  let ops_names = list.map(ops, token_text)
+  use _ <- do(nibble.token(LParen))
+  use name <- do(nibble.one_of(ops_names))
+  use _ <- do(nibble.token(RParen))
+  return(name)
 }
 
 fn var(file: String) -> Parser(Expr, Token, String) {
@@ -1034,7 +1350,8 @@ fn match(file: String) -> Parser(Expr, Token, String) {
     use _ <- do(nibble.token(RBrace))
     use end <- do(get_span(file))
     let arg = case args {
-      [] -> tao.err(start) // Unreachable: `sequence` requires one or more
+      [] -> tao.err(start)
+      // Unreachable: `sequence` requires one or more
       [arg] -> arg
       [first, ..rest] -> {
         let last = case rest {
@@ -1101,7 +1418,8 @@ fn match_case(file: String) -> Parser(Case, Token, String) {
     use _ <- do(nibble.token(FatArrow))
     use body <- do(expr(file))
     let pat = case pats {
-      [] -> tao.pany(start) // Unreachable: `sequence` requires one or more
+      [] -> tao.pany(start)
+      // Unreachable: `sequence` requires one or more
       [pat] -> pat
       [first, ..rest] -> {
         let last = case rest {

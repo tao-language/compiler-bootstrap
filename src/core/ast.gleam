@@ -87,8 +87,10 @@ pub fn bindings(pattern: Pattern) -> List(String) {
     PAlias(pattern, x) -> [x, ..bindings(pattern)]
     PCtr(_, pattern) -> bindings(pattern)
     PRcd(fields, opt_tail) -> {
+      // Fields are bound left-to-right (the last field is innermost), so
+      // last-bound first is the *reversed* field order.
       let xs =
-        list.flat_map(fields, fn(field) {
+        list.flat_map(list.reverse(fields), fn(field) {
           let #(x, pattern) = field
           [x, ..bindings(pattern)]
         })

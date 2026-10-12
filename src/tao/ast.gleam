@@ -27,6 +27,10 @@ pub type ExprData {
   Hole(id: Option(Int))
   Lit(value: Literal)
   Var(name: String)
+  // An anonymous-function argument placeholder (`_` or `_N`), 1-based: `index`
+  // is the argument position. Desugared to a `Fn` at parse time, so this node
+  // should not survive past the parser.
+  Placeholder(index: Int)
   Ctr(tag: String, args: List(#(String, Expr)), tail: Option(Expr))
   Tuple(args: List(Expr))
   Rcd(
@@ -40,14 +44,17 @@ pub type ExprData {
     tail: Option(Expr),
   )
   Ann(value: Expr, type_: Type)
+  // `fn<implicits>(params) = body` / `fn<implicits>(params) -> ret = body`
   Fn(
     name: Option(String),
-    implicits: Parameters,
+    implicits: Implicits,
     params: Parameters,
     returns: Option(Type),
     body: Expr,
   )
-  FnT(implicits: Parameters, params: Parameters, returns: Type)
+  // `fn<implicits>(params) -> ret`: a function type. `implicits` are the
+  // quantified (implicit) arguments of a polymorphic type.
+  FnT(implicits: Implicits, params: Parameters, returns: Type)
   App(fun: Expr, args: List(#(String, Expr)), tail: Option(Expr))
   Dot(base: Expr, field: String)
   Match(arg: Expr, cases: List(Case))
@@ -64,6 +71,11 @@ pub type Param =
 pub type Parameters =
   // (params, tail)
   #(List(Param), Option(Type))
+
+pub type Implicits =
+  // (name, opt_type): quantified arguments; names only (no patterns,
+  // no defaults)
+  List(#(String, Option(Type)))
 
 pub type UnaryOp {
   Neg
@@ -113,7 +125,7 @@ pub type StmtData {
   Test(name: String, expr: Expr, expect: Pattern)
   FnDef(
     name: String,
-    implicits: Parameters,
+    implicits: Implicits,
     params: Parameters,
     returns: Option(Type),
     body: Expr,
@@ -232,6 +244,10 @@ pub fn var(name: String, span: Span) {
   Expr(Var(name), span)
 }
 
+pub fn placeholder(index: Int, span: Span) {
+  Expr(Placeholder(index), span)
+}
+
 pub fn tuple(args: List(Expr), span: Span) {
   Expr(Tuple(args), span)
 }
@@ -278,10 +294,8 @@ pub fn ann(expr: Expr, type_: Type, span: Span) {
   Expr(Ann(expr, type_), span)
 }
 
-/// Function *type*: `FnT(implicits, params, returns)`. `implicits` are
-/// the quantified (implicit) arguments of a polymorphic type.
 pub fn fn_t(
-  implicits: Parameters,
+  implicits: Implicits,
   params: Parameters,
   returns: Type,
   span: Span,
@@ -429,7 +443,7 @@ pub fn let_pat(
 
 pub fn fn_def(
   name: String,
-  implicits: Parameters,
+  implicits: Implicits,
   params: Parameters,
   returns: Option(Type),
   body: Expr,
@@ -440,7 +454,7 @@ pub fn fn_def(
 
 pub fn fn_def_open(
   name: String,
-  implicits: Parameters,
+  implicits: Implicits,
   params: Parameters,
   returns: Option(Type),
   body: Expr,

@@ -42,13 +42,10 @@ fn name<imp1, imp2: Type>(x: imp1, ...) -> ret
 fn name<...>(...) { stmts }  // block body (statements only)
 ```
 
-* The angle-bracket list is parsed by the **same `parameters` combinator**
-  as the argument list (`tao/parse`, `fn_def_body`), so an implicit can
-  carry a type annotation (`a: Type`) and even a default — but desugaring
-  only accepts a **plain type variable** for each implicit (an
-  unannotated implicit gets a fresh hole); anything else hits the
-  `error: implicit parameter must be a plain type variable` guard in
-  `tao/desugar`.
+* The angle-bracket list is parsed by `fn_implicits` (`tao/parse`):
+  names with optional type annotations (`a: Type`), no patterns and no
+  defaults — the `tao.Implicits` type makes anything else
+  unrepresentable. An unannotated implicit gets a fresh hole.
 * Callers write `name(args)` — there is no type-argument syntax.
 * **Explicit type application is planned**: `identity<Int>(42)` would
   behave like a check annotation ("check this"), not a hole: the written
@@ -57,9 +54,13 @@ fn name<...>(...) { stmts }  // block body (statements only)
   supported. The `AppExpectedExplicitArg` error ("expected explicit
   argument, got implicit argument") is the reserved message for that
   syntax and is not constructed anywhere yet.
-* Not every Tao AST form is parseable yet (e.g. the `FnT` function-type
-  expression has no parser rule); the direction is that the whole AST
-  becomes parseable.
+* Function types and anonymous functions are parseable expressions:
+  `fn(x: a) -> b` is a `FnT`, `fn(x: a) = body` an anonymous `Fn`
+  (disambiguated by the body: `=`/`{` makes it a function, `->` without a
+  body a type). A bare arrow (`a -> b`) is not a type. In a `let`
+  annotation the function form is ambiguous with an anonymous function
+  (its body swallows the `let`'s `=`), so parenthesize:
+  `let t: (fn(x: a) -> b) = c`.
 
 ## How it works
 
@@ -121,7 +122,7 @@ monomorphic `pi` body. Overloaded functions use the same mechanism with
 `infer_for` infers the implicit's type (a fresh hole when unannotated),
 evaluates it to a value, pushes the variable onto the context, infers the
 body, **quotes the body's type while the parameter is still in scope**
-(the type may depend on it — `a -> a`), and pops. The result is the
+(the type may depend on it — `fn(a) -> a`), and pops. The result is the
 value
 
 ```
@@ -280,8 +281,14 @@ functions are not affected.
   test simply fails at evaluation. Pinned by
   `wrong_arg_type_test_fails_test`; a real type error would be an
   improvement, but is not required.
-* **Parser coverage is partial** (e.g. `FnT`); the direction is a
-  fully-parseable AST.
+* **Module-level definitions that build and apply anonymous functions
+  over function types can evaluate to `%error`** (e.g. `fn mk(x: Int)
+  -> (fn(y: Int) -> Int) = fn(y: Int) -> Int = x` returns its argument
+  record instead of `x`): the definition's term is captured with the
+  module environment and a de Bruijn level goes stale — the documented
+  corruption class in `docs/debugging.md`. The same term evaluates
+  correctly when not a module definition (`debug-expr`), so the bug is in
+  the module-compile/quote path, not the desugaring.
 
 ## Where to look
 
