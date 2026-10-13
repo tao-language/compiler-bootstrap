@@ -191,7 +191,7 @@ evaluate directly: `pair(1, True)` reduces to `#Pass`.
 You can inspect the inferred type of a definition with
 
 ```sh
-gleam run -- test -s 'fn pair<a, b>(x: a, y: b) -> a = x' --dump-def=pair
+./tao test -s 'fn pair<a, b>(x: a, y: b) -> a = x' --dump-def=pair
 ```
 
 ```

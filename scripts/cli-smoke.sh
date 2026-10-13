@@ -9,14 +9,16 @@ cd "$(dirname "$0")/.."
 pass=0
 fail=0
 
-# run <expected-grep> -- args...: runs `gleam run -- args`, greps stdout+stderr
+# run <expected-grep> -- args...: runs `./tao args`, greps stdout+stderr
 # for expected-grep, and checks the exit status matches $WANT (default 0).
 check() {
   local want_grep="$1"; shift
   local want=0
   if [[ "${1:-}" == "--exit" ]]; then want="$2"; shift 2; fi
   local out
-  out=$(timeout -k 9 5 gleam run -- "$@" 2>&1)
+  # TAO_TIMEOUT=10: some checks trace the whole prelude and exceed ./tao's
+  # 2s default; a caller-set TAO_TIMEOUT wins.
+  out=$(TAO_TIMEOUT="${TAO_TIMEOUT:-10}" ./tao "$@" 2>&1)
   local status=$?
   local ok=1
   if [[ $status -ne 0 && $status -ne 124 && $want -eq 0 ]]; then ok=0; fi

@@ -1,0 +1,26 @@
+#!/bin/bash
+# Run the tao compiler CLI. Pass all args through, e.g.:
+#   ./tao --help
+#   ./tao test examples/tao/gallery/factorial.tao
+#   ./tao run -e "1 + 2" --trace resolve
+#
+# stderr is captured and shown only on failure (the common case is just
+# `todo` build warnings, which are noise). Override the timeout with
+# TAO_TIMEOUT (default 2s)
+
+set -uo pipefail
+
+# Build a standalone binary
+gleam export escript &>/dev/null
+status=$?
+if [ "$status" -ne 0 ]; then
+  gleam build
+  exit $status
+fi
+mv compiler_bootstrap build/tao
+
+# Run with a timeout always in case there's a hang.
+# </dev/null: build/tao is an escript (full BEAM VM). With a terminal on
+# stdin, the VM's user process blocks on read() and the process lingers
+# after the command finishes. /dev/null gives it immediate EOF so it exits.
+time timeout -k 1 "${TAO_TIMEOUT:-2}" ./build/tao "$@" < /dev/null

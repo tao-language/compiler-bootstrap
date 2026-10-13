@@ -5,11 +5,11 @@ did a hole get solved with" questions. Pick the tool by what you need:
 
 | you want to... | use |
 |---|---|
-| "Why did this not **parse**?" — see the token stream and *every* parse dead end | `gleam run -- check <file> --trace parse` (or `check -e '<source>' --trace parse`) |
-| Bisection: which phase / which hole / which value, while the compile still **finishes** (seconds) | `gleam run -- test -s "<source>" --trace defines --trace holes` — add `--trace solves` for the live hole-solve trace |
-| Debug a single Tao expression instead of a whole module | `gleam run -- run -e "<expr>" --trace desugar --trace infer --trace resolve --trace eval` |
-| Debug a whole `.tao` module exactly as it is loaded | `gleam run -- test <path> --trace defines --trace holes` |
-| Debug a raw Core term | `gleam run -- debug-core "<term>"` |
+| "Why did this not **parse**?" — see the token stream and *every* parse dead end | `./tao check <file> --trace parse` (or `check -e '<source>' --trace parse`) |
+| Bisection: which phase / which hole / which value, while the compile still **finishes** (seconds) | `./tao test -s "<source>" --trace defines --trace holes` — add `--trace solves` for the live hole-solve trace |
+| Debug a single Tao expression instead of a whole module | `./tao run -e "<expr>" --trace desugar --trace infer --trace resolve --trace eval` |
+| Debug a whole `.tao` module exactly as it is loaded | `./tao test <path> --trace defines --trace holes` |
+| Debug a raw Core term | `./tao debug-core "<term>"` |
 | Locate a **hang** — the run no longer terminates, so the pipeline tools above can't return | `scripts/dumpstack.py` (native-level BEAM stack profiler) |
 | Inspect a pathological value that `format.value` crashes on | `echo`-bracketing + a one-level "sketch" printer (see the *Tracing pathological values* section) |
 
@@ -25,6 +25,11 @@ stops terminating (below): it samples native BEAM stacks of the hung process.
 A common session flow is to bisect with `test -s` until the run gets slow or
 hangs, then hand off to `dumpstack.py`.
 
+All examples below use `./tao`, the repo's main entry point: it exports a
+standalone binary and runs it under `timeout` (2 s default — override with
+`TAO_TIMEOUT`, e.g. `TAO_TIMEOUT=20 ./tao test big.tao --trace defines`
+for traces that dump a lot).
+
 ## `--trace parse` (the parser tool)
 
 Use this when a file does not parse and the normal error message is not
@@ -38,7 +43,7 @@ enough. It stops at the parser (no type-checking) and prints, top to bottom:
 - **`>> best error`** — the single `❌ …` message the user actually sees.
 
 ```
-$ gleam run -- check /tmp/fn_type.tao --trace parse
+$ ./tao check /tmp/fn_type.tao --trace parse
 >> source (/tmp/fn_type.tao)
 ...tokens...
 >> parse -> module
@@ -315,8 +320,10 @@ Design constraints worth knowing:
 
 ## Housekeeping
 
-- Never run a `gleam run` / `gleam test` that might hang without
-  `timeout -k 9 N` (or via this script, which handles it).
+- Never run the compiler without a timeout: `./tao` wraps every run in
+  `timeout` (override with `TAO_TIMEOUT`), and `dumpstack.py` handles it for
+  you. If you call `gleam run` / `gleam test` directly, wrap them in
+  `timeout -k 9 N`.
 - After a run there should be no stray `beam.smp` (the script reports).
   Gleam's own compiler server (a few MB, spawned by `gleam build`) is
   persistent by design and is *not* a leak.
@@ -334,9 +341,9 @@ is the same for a single expression, `test <file>` for a whole loaded module,
 
 ```sh
 # From a file (the B/A/C hang shapes from docs/plan.md):
-gleam run -- test "$(cat /tmp/taoscratch/B_two_params_two_tests.tao)" --trace defines --trace holes
+./tao test "$(cat /tmp/taoscratch/B_two_params_two_tests.tao)" --trace defines --trace holes
 # Inline:
-gleam run -- test -s 'type Rst(a, e) { | OkX(a) | ErrX(e) } ...' --trace solves
+./tao test -s 'type Rst(a, e) { | OkX(a) | ErrX(e) } ...' --trace solves
 ```
 
 The prelude is always loaded; `--add <pkg[:version]>` (repeatable) loads extra
