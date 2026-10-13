@@ -168,9 +168,11 @@ pub fn project(
 
 /// Like `project`, but the input modules are already parsed (e.g. from
 /// `-e`/`-s` inline source): canonical naming is applied to their labels
-/// and they are deduplicated against the package modules. Returns the
-/// canonicalized input modules and the full module list (input +
-/// packages).
+/// and duplicates within the input are removed. An input module that is
+/// also a package module (e.g. a prelude file passed as the input) stays
+/// an input module, and the package's copy of it is dropped from the full
+/// list. Returns the canonicalized input modules and the full module list
+/// (input + packages, no duplicate module names).
 pub fn project_modules(
   paths: List(String),
   modules: List(Module),
@@ -178,9 +180,9 @@ pub fn project_modules(
 ) -> #(List(Module), List(Module)) {
   let pkg_names = list.map(packages, fn(p) { p.0 })
   let #(pkg_mods, _) = package_list(paths, packages)
-  let pkg_module_names = list.map(pkg_mods, fn(m) { m.0 })
-  let file_mods =
-    canonicalize_modules(paths, pkg_names, modules, pkg_module_names)
+  let file_mods = canonicalize_modules(paths, pkg_names, modules)
+  let input_names = list.map(file_mods, fn(m) { m.0 })
+  let pkg_mods = list.filter(pkg_mods, fn(m) { !list.contains(input_names, m.0) })
   #(file_mods, list.append(file_mods, pkg_mods))
 }
 
@@ -188,18 +190,13 @@ fn canonicalize_modules(
   paths: List(String),
   package_names: List(String),
   modules: List(Module),
-  existing_names: List(String),
 ) -> List(Module) {
   list.fold(modules, [], fn(acc, module) {
     let #(name, stmts) = module
     let name = canonical_name(paths, package_names, name)
-    case list.contains(existing_names, name) {
-      True -> acc
-      False ->
-        case list.key_find(acc, name) {
-          Ok(_) -> acc
-          Error(Nil) -> list.append(acc, [#(name, stmts)])
-        }
+    case list.key_find(acc, name) {
+      Ok(_) -> acc
+      Error(Nil) -> list.append(acc, [#(name, stmts)])
     }
   })
 }

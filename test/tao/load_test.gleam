@@ -99,3 +99,37 @@ pub fn with_prelude_idempotent_test() {
   assert load.with_prelude(pkgs2)
     == [#("foo", Some("1.0")), #("prelude", None)]
 }
+
+// ── project_modules: input vs package dedupe ────────────────────────────
+
+pub fn project_modules_prelude_input_test() {
+  // A prelude file passed as the input is an input module (so
+  // `tao test lib/prelude/…` runs its tests); the package's copy of it
+  // is dropped from the full list.
+  let modules = [
+    #("lib/prelude/v0.0.1/bool.tao", []),
+    #("lib/prelude/v0.0.1/option.tao", []),
+  ]
+  let packages = [#("prelude", None)]
+  let #(input, all) = load.project_modules(["lib"], modules, packages)
+  let input_names = list.map(input, fn(m) { m.0 })
+  assert input_names == ["/prelude/bool", "/prelude/option"]
+  let all_names = list.map(all, fn(m) { m.0 })
+  // No duplicate module names in the full list.
+  assert list.length(all_names) == list.length(list.unique(all_names))
+  // The prelude is still present (from the input), and other prelude
+  // modules come from the package.
+  assert list.contains(all_names, "/prelude/result")
+}
+
+pub fn project_modules_non_package_input_test() {
+  // A file outside any package keeps its path-based name and the package
+  // modules are still loaded alongside it.
+  let modules = [#("examples/tao/gallery/factorial.tao", [])]
+  let packages = [#("prelude", None)]
+  let #(input, all) = load.project_modules(["lib"], modules, packages)
+  let input_names = list.map(input, fn(m) { m.0 })
+  assert input_names == ["/examples/tao/gallery/factorial"]
+  let all_names = list.map(all, fn(m) { m.0 })
+  assert list.contains(all_names, "/prelude/bool")
+}

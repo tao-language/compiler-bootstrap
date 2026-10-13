@@ -149,8 +149,8 @@ fn run_all(
 
 /// Attach the file path of each test. Test names embed their source file
 /// (`">>> <file>:<line>`), so tests are paired with the input paths by
-/// that prefix — robust to the loader's module ordering (an input file
-/// that is also a package module appears in package order, not first).
+/// that prefix, not by module name (an input file that is also a package
+/// module is named by its package path, not its file path).
 fn pair_modules(
   paths: List(String),
   test_defs: List(TestDef),
