@@ -25,8 +25,9 @@ stops terminating (below): it samples native BEAM stacks of the hung process.
 A common session flow is to bisect with `test -s` until the run gets slow or
 hangs, then hand off to `dumpstack.py`.
 
-All examples below use `./tao`, the repo's main entry point: it exports a
-standalone binary and runs it under `timeout` (2 s default — override with
+All examples below use `./tao`, the repo's main entry point: it reuses the
+standalone binary in `build/tao` (rebuilt automatically when stale) and runs
+it under `timeout` (2 s default — override with
 `TAO_TIMEOUT`, e.g. `TAO_TIMEOUT=20 ./tao test big.tao --trace defines`
 for traces that dump a lot).
 

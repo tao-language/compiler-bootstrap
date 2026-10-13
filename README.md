@@ -24,8 +24,10 @@ Further documentation can be found at <https://hexdocs.pm/compiler_bootstrap>.
 gleam test    # Run the tests
 ```
 
-`./tao` builds a standalone binary and runs it under a timeout (override the
-2 s default with `TAO_TIMEOUT`, e.g. `TAO_TIMEOUT=20 ./tao test big.tao`).
+`./tao` runs the standalone binary in `build/tao` under a timeout (override
+the 2 s default with `TAO_TIMEOUT`, e.g. `TAO_TIMEOUT=20 ./tao test big.tao`).
+The binary is rebuilt automatically when it is missing or older than any
+source file (`rm build/tao` forces a rebuild).
 
 If you have `fswatch` installed, you can run tests as files change with:
 

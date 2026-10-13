@@ -10,14 +10,20 @@
 
 set -uo pipefail
 
-# Build a standalone binary
-gleam export escript &>/dev/null
-status=$?
-if [ "$status" -ne 0 ]; then
-  gleam build
-  exit $status
+# Build a standalone binary, unless build/tao is already up to date: it is
+# rebuilt when it is missing or older than any source/config file (a git
+# checkout updates mtimes, so branch switches rebuild too). Any ambiguity is
+# resolved by building; `rm build/tao` forces a rebuild.
+if [ ! -f build/tao ] || \
+   [ -n "$(find src test gleam.toml manifest.toml -newer build/tao -print -quit 2>/dev/null)" ]; then
+  gleam export escript &>/dev/null
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    gleam build
+    exit $status
+  fi
+  mv compiler_bootstrap build/tao
 fi
-mv compiler_bootstrap build/tao
 
 # Run with a timeout always in case there's a hang.
 # </dev/null: build/tao is an escript (full BEAM VM). With a terminal on
